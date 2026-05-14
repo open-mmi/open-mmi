@@ -1,0 +1,13 @@
+[Unit]
+Description=open-mmi CAN daemon
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/open-mmi
+ExecStart=/usr/bin/python3 /opt/open-mmi/canbusd/canbusd.py
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target

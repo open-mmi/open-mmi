@@ -1,0 +1,53 @@
+{
+  "volume_up": {
+    "module": "audio",
+    "func": "volume_up",
+    "args": ["+5%"]
+  },
+
+  "volume_down": {
+    "module": "audio",
+    "func": "volume_down",
+    "args": ["-5%"]
+  },
+
+  "mute_toggle": {
+    "module": "audio",
+    "func": "mute_toggle"
+  },
+
+  "next_track": {
+    "module": "keys",
+    "func": "next_track"
+  },
+
+  "previous_track": {
+    "module": "keys",
+    "func": "prev_track"
+  },
+
+  "play_pause": {
+    "module": "keys",
+    "func": "play_pause"
+  },
+
+  "stop_playback": {
+    "module": "keys",
+    "func": "stop"
+  },
+
+  "brightness_level": {
+    "module": "brightness",
+    "func": "from_can"
+  },
+
+  "vehicle_present:on": {
+    "module": "screen",
+    "func": "wake_and_login"
+  },
+
+  "vehicle_present:off": {
+    "module": "screen",
+    "func": "off"
+  }
+}

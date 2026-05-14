@@ -1,0 +1,67 @@
+{
+  "rules": [
+    {
+      "id": "0x5C1",
+      "byte": 0,
+      "value": 6,
+      "event": "volume_up"
+    },
+    {
+      "id": "0x5C1",
+      "byte": 0,
+      "value": 7,
+      "event": "volume_down"
+    },
+    {
+      "id": "0x5C1",
+      "byte": 0,
+      "value": 43,
+      "event": "mute_toggle"
+    },
+    {
+      "id": "0x5C1",
+      "byte": 0,
+      "value": 4,
+      "event": "next_track"
+    },
+    {
+      "id": "0x5C1",
+      "byte": 0,
+      "value": 5,
+      "event": "previous_track"
+    },
+    {
+      "id": "0x5C1",
+      "byte": 0,
+      "value": 2,
+      "event": "play_pause"
+    },
+    {
+      "id": "0x5C1",
+      "byte": 0,
+      "value": 3,
+      "event": "stop_playback"
+    },
+    {
+      "id": "0x5C1",
+      "byte": 0,
+      "value": 1,
+      "event": "play_pause"
+    },
+    {
+      "id": "0x470",
+      "byte": 2,
+      "value": "any",
+      "event": "brightness_level"
+    }
+  ],
+
+  "presence": [
+    {
+      "id": "0x65F",
+      "timeout_ms": 6000,
+      "on_present": "vehicle_present:on",
+      "on_absent": "vehicle_present:off"
+    }
+  ]
+}
