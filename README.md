@@ -1,3 +1,4 @@
+````markdown
 # open-mmi
 
 Open vehicle MMI integration framework for Linux.
@@ -13,44 +14,49 @@ Designed for:
 
 Supports:
 - SocketCAN
-- hot-reload config
+- hot-reload configuration
 - vehicle profiles
 - user bindings
 - modular actions
 - off-car safe mode
+- systemd + udev integration
 
 ---
 
 # Architecture
 
-open-mmi separates:
+open-mmi is split into three layers:
 
 | Layer | Purpose |
-|---|---|
-| Vehicle Config | What CAN messages mean |
-| Bindings | What should happen |
-| Actions | How Linux performs it |
+|------|--------|
+| Vehicle Config | Interprets raw CAN messages into semantic events |
+| Bindings | Maps events to actions |
+| Actions | Executes system behaviour |
 
-Flow:
+## Flow
 
 ```text
 CAN message
     ↓
-Vehicle event
+Vehicle config (CAN rule match)
     ↓
-User binding
+Event (e.g. volume_up)
     ↓
-Linux action
-```
+Binding lookup
+    ↓
+Action execution
+    ↓
+Linux system effect
+````
 
-Example:
+## Example
 
 ```text
 0x5C1 byte0=0x06
     ↓
-volume_up event
+volume_up
     ↓
-audio.volume_up("+5%")
+audio.volume_up("+10%")
 ```
 
 ---
@@ -60,18 +66,40 @@ audio.volume_up("+5%")
 ```text
 open-mmi/
 ├── canbusd/
+│   └── canbusd.py
+│
 ├── vehicles/
+│   └── seat_1p/
+│       └── config.json
+│
 ├── bindings/
+│   └── default.json
+│
 ├── actions/
+│   ├── audio.py
+│   ├── brightness.py
+│   ├── keys.py
+│   ├── screen.py
+│   └── __init__.py
+│
 ├── systemd/
-└── udev/
+├── udev/
+├── scripts/
+├── pyproject.toml
+└── dev/
 ```
 
 ---
 
 # Vehicle Profiles
 
-Vehicle profiles define CAN mappings.
+Vehicle profiles define how raw CAN data becomes events.
+
+Location:
+
+```text
+vehicles/<vehicle_name>/config.json
+```
 
 Example:
 
@@ -84,17 +112,17 @@ Example:
 }
 ```
 
-Profiles live in:
-
-```text
-vehicles/<vehicle_name>/config.json
-```
-
 ---
 
 # Bindings
 
-Bindings map events to actions.
+Bindings map events → actions.
+
+Location:
+
+```text
+bindings/default.json
+```
 
 Example:
 
@@ -108,25 +136,13 @@ Example:
 }
 ```
 
-Bindings live in:
-
-```text
-bindings/default.json
-```
-
-Users can customize bindings without modifying vehicle configs.
+Bindings can be changed without modifying vehicle configs.
 
 ---
 
 # Actions
 
-Actions are reusable Linux functionality modules.
-
-Examples:
-- media keys
-- audio control
-- brightness control
-- screen wake/sleep
+Actions are Python modules that implement system behaviour.
 
 Located in:
 
@@ -134,19 +150,41 @@ Located in:
 actions/
 ```
 
+Examples:
+
+* audio control
+* media keys
+* brightness control
+* screen power management
+
+Each action exposes simple functions used by bindings.
+
 ---
 
 # Requirements
 
-- Linux
-- Python 3
-- SocketCAN
+## System
 
-Python packages:
+* Linux (systemd recommended)
+* Python 3.10+
+* SocketCAN enabled kernel
+* CAN interface (e.g. can0)
+
+## Python dependencies
+
+No strict `requirements.txt` is used.
+
+Recommended dependency:
+
+* python-can
+
+Install example:
 
 ```bash
-pip install -r requirements.txt
+pip install python-can
 ```
+
+(or via system package manager where available)
 
 ---
 
@@ -158,7 +196,7 @@ pip install -r requirements.txt
 python3 canbusd/canbusd.py --check
 ```
 
-## Run daemon
+## Run (development mode)
 
 ```bash
 python3 canbusd/canbusd.py
@@ -166,43 +204,98 @@ python3 canbusd/canbusd.py
 
 ---
 
-# systemd
+# Installation (system mode)
 
-Example service file:
+Install to system:
+
+```bash
+sudo ./scripts/install.sh
+```
+
+This will:
+
+* copy project to `/opt/open-mmi`
+* install systemd service
+* install udev rules
+* enable CAN interface startup (if configured)
+* start and enable daemon
+
+---
+
+# systemd service
+
+Located at:
 
 ```text
 systemd/canbusd.service
 ```
 
+Responsible for:
+
+* starting daemon at boot
+* restarting on failure
+* managing runtime process
+
 ---
 
-# udev
+# udev rules
 
-Example CAN interface setup rules:
+Located at:
 
 ```text
 udev/80-canbus.rules
 ```
+
+Used to:
+
+* bring up CAN interface (can0)
+* configure bitrate
+* ensure consistent network state
+
+---
+
+# Development
+
+Run locally without install:
+
+```bash
+python3 canbusd/canbusd.py --check
+python3 canbusd/canbusd.py
+```
+
+Development tools:
+
+```text
+dev/
+```
+
+Ignored by git and not used in production installs.
 
 ---
 
 # Contributing
 
 Contributions are welcome:
-- new vehicle mappings
-- new actions
-- hardware integrations
-- documentation
-- tooling
 
-Vehicle profiles should avoid hardcoded user-specific behavior.
+* new vehicle profiles
+* improved CAN mappings
+* new action modules
+* hardware integrations
+* documentation improvements
+* tooling and debugging utilities
+
+Vehicle profiles should remain hardware-focused and not contain user-specific logic.
 
 ---
 
 # Safety
 
-This project interacts with vehicle CAN networks.
+This project interfaces directly with vehicle CAN networks.
 
-Use carefully and at your own risk.
+Incorrect configuration may affect vehicle behaviour or system usability.
 
-Avoid transmitting onto safety-critical CAN networks unless you understand the implications.
+Use carefully and ensure you understand your vehicle’s CAN environment before enabling or modifying mappings.
+
+```
+```
+
