@@ -36,6 +36,16 @@
     "func": "stop"
   },
 
+    "arrow_left": {
+    "module": "keys",
+    "func": "arrow_left"
+  },
+
+    "arrow_right": {
+    "module": "keys",
+    "func": "arrow_right"
+  },
+
   "brightness_level": {
     "module": "brightness",
     "func": "from_can"
