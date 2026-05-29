@@ -1,16 +1,21 @@
 [Unit]
 Description=open-mmi CAN daemon
-After=network.target
+After=graphical-session.target
 
 [Service]
 Type=simple
 
 WorkingDirectory=/opt/open-mmi
 
+Environment="PYTHONUNBUFFERED=1"
+
 ExecStart=/opt/open-mmi/venv/bin/python /opt/open-mmi/canbusd/canbusd.py
 
 Restart=always
 RestartSec=1
 
+StandardOutput=journal
+StandardError=journal
+
 [Install]
-WantedBy=multi-user.target
+WantedBy=default.target
