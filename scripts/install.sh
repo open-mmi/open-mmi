@@ -7,7 +7,7 @@ INSTALL_DIR="/opt/open-mmi"
 REAL_USER="${SUDO_USER:-$USER}"
 REAL_HOME=$(getent passwd "$REAL_USER" | cut -d: -f6)
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 echo "[install] Installing $APP_NAME..."
 
@@ -54,11 +54,11 @@ echo "[install] Installing Python dependencies..."
 # ---------------------------------------------
 echo "[install] Copying application files..."
 
-cp -r "$SCRIPT_DIR/canbusd" "$INSTALL_DIR/"
-cp -r "$SCRIPT_DIR/vehicles" "$INSTALL_DIR/"
-cp -r "$SCRIPT_DIR/bindings" "$INSTALL_DIR/"
-cp -r "$SCRIPT_DIR/actions" "$INSTALL_DIR/"
-cp "$SCRIPT_DIR/pyproject.toml" "$INSTALL_DIR/"
+cp -r "$REPO_ROOT/canbusd" "$INSTALL_DIR/"
+cp -r "$REPO_ROOT/vehicles" "$INSTALL_DIR/"
+cp -r "$REPO_ROOT/bindings" "$INSTALL_DIR/"
+cp -r "$REPO_ROOT/actions" "$INSTALL_DIR/"
+cp "$REPO_ROOT/pyproject.toml" "$INSTALL_DIR/"
 
 # ---------------------------------------------
 # User systemd service
@@ -68,7 +68,7 @@ echo "[install] Installing user systemd service..."
 mkdir -p "$REAL_HOME/.config/systemd/user"
 
 cp \
-  "$SCRIPT_DIR/systemd/user/canbusd.service" \
+  "$REPO_ROOT/systemd/user/canbusd.service" \
   "$REAL_HOME/.config/systemd/user/canbusd.service"
 
 chown "$REAL_USER:$REAL_USER" \
@@ -92,12 +92,12 @@ sudo -u "$REAL_USER" \
 # ---------------------------------------------
 # udev rules
 # ---------------------------------------------
-if [ -f "$SCRIPT_DIR/udev/80-canbus.rules" ]; then
+if [ -f "$REPO_ROOT/udev/80-canbus.rules" ]; then
 
     echo "[install] Installing udev rules..."
 
     sudo cp \
-      "$SCRIPT_DIR/udev/80-canbus.rules" \
+      "$REPO_ROOT/udev/80-canbus.rules" \
       /etc/udev/rules.d/
 
     sudo udevadm control --reload-rules
