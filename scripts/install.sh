@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
 APP_NAME="open-mmi"
 INSTALL_DIR="/opt/open-mmi"
+
+REAL_USER="${SUDO_USER:-$USER}"
+REAL_HOME=$(getent passwd "$REAL_USER" | cut -d: -f6)
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo "[install] Installing $APP_NAME..."
 
@@ -12,55 +17,91 @@ echo "[install] Installing $APP_NAME..."
 echo "[install] Installing system dependencies..."
 
 sudo apt update
+
 sudo apt install -y \
     python3 \
-    python3-can \
-    python3-evdev \
-    can-utils \
-    systemd
+    python3-pip \
+    python3-venv \
+    can-utils
 
 # ---------------------------------------------
-# Stop service if running
+# Install directory
 # ---------------------------------------------
-echo "[install] Stopping existing service (if any)..."
-sudo systemctl stop canbusd 2>/dev/null || true
+echo "[install] Creating install directory..."
+
+sudo mkdir -p "$INSTALL_DIR"
+
+sudo chown -R "$REAL_USER:$REAL_USER" "$INSTALL_DIR"
+
+# ---------------------------------------------
+# Python virtual environment
+# ---------------------------------------------
+echo "[install] Creating virtual environment..."
+
+python3 -m venv "$INSTALL_DIR/venv"
+
+echo "[install] Installing Python dependencies..."
+
+"$INSTALL_DIR/venv/bin/pip" install --upgrade pip
+
+"$INSTALL_DIR/venv/bin/pip" install \
+    python-can \
+    evdev \
+    pulsectl
 
 # ---------------------------------------------
 # Install files
 # ---------------------------------------------
-echo "[install] Installing files to $INSTALL_DIR..."
+echo "[install] Copying application files..."
 
-sudo mkdir -p "$INSTALL_DIR"
-
-sudo cp -r canbusd "$INSTALL_DIR/"
-sudo cp -r vehicles "$INSTALL_DIR/"
-sudo cp -r bindings "$INSTALL_DIR/"
-sudo cp -r actions "$INSTALL_DIR/"
-sudo cp pyproject.toml "$INSTALL_DIR/" || true
+cp -r "$SCRIPT_DIR/canbusd" "$INSTALL_DIR/"
+cp -r "$SCRIPT_DIR/vehicles" "$INSTALL_DIR/"
+cp -r "$SCRIPT_DIR/bindings" "$INSTALL_DIR/"
+cp -r "$SCRIPT_DIR/actions" "$INSTALL_DIR/"
+cp "$SCRIPT_DIR/pyproject.toml" "$INSTALL_DIR/"
 
 # ---------------------------------------------
-# systemd
+# User systemd service
 # ---------------------------------------------
-echo "[install] Installing systemd service..."
+echo "[install] Installing user systemd service..."
 
-sudo cp systemd/canbusd.service /etc/systemd/system/canbusd.service
-sudo systemctl daemon-reload
-sudo systemctl enable canbusd
+mkdir -p "$REAL_HOME/.config/systemd/user"
+
+cp \
+  "$SCRIPT_DIR/systemd/user/canbusd.service" \
+  "$REAL_HOME/.config/systemd/user/canbusd.service"
+
+chown "$REAL_USER:$REAL_USER" \
+  "$REAL_HOME/.config/systemd/user/canbusd.service"
+
+USER_ID=$(id -u "$REAL_USER")
+export XDG_RUNTIME_DIR="/run/user/$USER_ID"
+
+sudo -u "$REAL_USER" \
+    XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
+    systemctl --user daemon-reload
+
+sudo -u "$REAL_USER" \
+    XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
+    systemctl --user enable canbusd
+
+sudo -u "$REAL_USER" \
+    XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
+    systemctl --user restart canbusd
 
 # ---------------------------------------------
-# udev
+# udev rules
 # ---------------------------------------------
-if [ -f udev/80-canbus.rules ]; then
+if [ -f "$SCRIPT_DIR/udev/80-canbus.rules" ]; then
+
     echo "[install] Installing udev rules..."
-    sudo cp udev/80-canbus.rules /etc/udev/rules.d/
+
+    sudo cp \
+      "$SCRIPT_DIR/udev/80-canbus.rules" \
+      /etc/udev/rules.d/
+
     sudo udevadm control --reload-rules
     sudo udevadm trigger
 fi
-
-# ---------------------------------------------
-# Start service
-# ---------------------------------------------
-echo "[install] Starting service..."
-sudo systemctl start canbusd
 
 echo "[install] Done."
