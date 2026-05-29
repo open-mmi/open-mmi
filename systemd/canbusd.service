@@ -4,8 +4,11 @@ After=network.target
 
 [Service]
 Type=simple
+
 WorkingDirectory=/opt/open-mmi
-ExecStart=/usr/bin/python3 /opt/open-mmi/canbusd/canbusd.py
+
+ExecStart=/opt/open-mmi/venv/bin/python /opt/open-mmi/canbusd/canbusd.py
+
 Restart=always
 RestartSec=1
 
