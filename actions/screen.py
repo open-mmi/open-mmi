@@ -16,15 +16,19 @@ def off():
 def on():
     subprocess.Popen(["xset", "dpms", "force", "on"], env=_env())
 
-def wake_and_login(user="pitto"):
+def wake_and_login(user=None):
     """
-    Wake display and *attempt* to switch to (or start) the user's session.
-    - LightDM: dm-tool will switch to user (may still prompt for password unless autologin is set).
-    - If you don’t use LightDM, you can replace the command below with what your greeter supports.
+    Wake display and optionally switch to a user session if a display manager exists.
     """
     on()
-    # Try LightDM’s dm-tool (safe no-op if not present)
+
+    if user is None:
+        return
+
     try:
-        subprocess.Popen(["dm-tool", "switch-to-user", user], env=_env())
+        subprocess.Popen(
+            ["dm-tool", "switch-to-user", user],
+            env=_env()
+        )
     except FileNotFoundError:
         pass
