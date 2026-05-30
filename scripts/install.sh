@@ -6,6 +6,7 @@ INSTALL_DIR="/opt/open-mmi"
 
 REAL_USER="${SUDO_USER:-$USER}"
 REAL_HOME=$(getent passwd "$REAL_USER" | cut -d: -f6)
+USER_ID=$(id -u "$REAL_USER")
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
@@ -22,7 +23,9 @@ sudo apt install -y \
     python3 \
     python3-pip \
     python3-venv \
-    can-utils
+    can-utils \
+    udev \
+    dbus-x11
 
 # ---------------------------------------------
 # Install directory
@@ -30,7 +33,6 @@ sudo apt install -y \
 echo "[install] Creating install directory..."
 
 sudo mkdir -p "$INSTALL_DIR"
-
 sudo chown -R "$REAL_USER:$REAL_USER" "$INSTALL_DIR"
 
 # ---------------------------------------------
@@ -74,7 +76,6 @@ cp \
 chown "$REAL_USER:$REAL_USER" \
   "$REAL_HOME/.config/systemd/user/canbusd.service"
 
-USER_ID=$(id -u "$REAL_USER")
 export XDG_RUNTIME_DIR="/run/user/$USER_ID"
 
 sudo -u "$REAL_USER" \
@@ -93,7 +94,6 @@ sudo -u "$REAL_USER" \
 # udev rules
 # ---------------------------------------------
 if [ -f "$REPO_ROOT/udev/80-canbus.rules" ]; then
-
     echo "[install] Installing udev rules..."
 
     sudo cp \
@@ -102,6 +102,20 @@ if [ -f "$REPO_ROOT/udev/80-canbus.rules" ]; then
 
     sudo udevadm control --reload-rules
     sudo udevadm trigger
+fi
+
+# ---------------------------------------------
+# Permissions fixes (IMPORTANT)
+# ---------------------------------------------
+echo "[install] Applying device permissions..."
+
+# uinput + backlight access group
+sudo usermod -aG video "$REAL_USER"
+
+# ensure immediate backlight fix (udev sometimes lags)
+if [ -e /sys/class/backlight/intel_backlight/brightness ]; then
+    sudo chgrp video /sys/class/backlight/intel_backlight/brightness || true
+    sudo chmod 664 /sys/class/backlight/intel_backlight/brightness || true
 fi
 
 echo "[install] Done."
