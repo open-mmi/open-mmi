@@ -54,7 +54,7 @@ BINDINGS_PATH = BASE_DIR / "bindings" / f"{BINDINGS}.json"
 # -------------------------------------------------
 
 IFACE = "can0"
-RELOAD_INTERVAL = 0.3  # seconds
+RELOAD_INTERVAL = 60  # seconds
 SUBPROCESS_TIMEOUT = 5  # seconds
 PRESENCE_TIMEOUT_CLEANUP = 60000  # ms - clean up entries older than this
 EDGE_TRIGGER_THRESHOLD = 0x00  # Trigger on edge from this value
