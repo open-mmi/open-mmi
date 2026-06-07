@@ -298,6 +298,9 @@ cmd_update() {
         systemctl --user restart canbusd
 
     log_success "Update complete → $new_version"
+
+    log_info "Fixing repository ownership..."
+    sudo chown -R "$REAL_USER:$REAL_USER" "$REPO_ROOT"
 }
 
 # =============================================================================
