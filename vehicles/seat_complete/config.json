@@ -1,0 +1,396 @@
+{
+  "rules": [
+    {
+      "id": "0x5C1",
+      "byte": 0,
+      "value": 6,
+      "event": "volume_up"
+    },
+    {
+      "id": "0x5C1",
+      "byte": 0,
+      "value": 7,
+      "event": "volume_down"
+    },
+    {
+      "id": "0x5C1",
+      "byte": 0,
+      "value": 2,
+      "event": "media_next"
+    },
+    {
+      "id": "0x5C1",
+      "byte": 0,
+      "value": 3,
+      "event": "media_prev"
+    },
+    {
+      "id": "0x5C1",
+      "byte": 0,
+      "value": 0x2B,
+      "event": "media_mute"
+    },
+    {
+      "id": "0x5C1",
+      "byte": 0,
+      "value": 1,
+      "event": "media_pause"
+    },
+    {
+      "id": "0x635",
+      "byte": 0,
+      "value": 0x64,
+      "event": "lights_on"
+    },
+    {
+      "id": "0x635",
+      "byte": 0,
+      "value": 0,
+      "event": "lights_off"
+    },
+    {
+      "id": "0x351",
+      "byte": 0,
+      "value": 2,
+      "event": "reverse_engaged"
+    },
+    {
+      "id": "0x351",
+      "byte": 0,
+      "value": 0,
+      "event": "reverse_disengaged"
+    },
+    {
+      "id": "0x531",
+      "byte": 0,
+      "value": 0,
+      "event": "headlights_off"
+    },
+    {
+      "id": "0x531",
+      "byte": 0,
+      "value": 0xC1,
+      "event": "headlights_sidelights"
+    },
+    {
+      "id": "0x531",
+      "byte": 0,
+      "value": 0xC3,
+      "event": "headlights_dip"
+    },
+    {
+      "id": "0x531",
+      "byte": 0,
+      "value": 0xD3,
+      "event": "headlights_rear_fog"
+    },
+    {
+      "id": "0x531",
+      "byte": 0,
+      "value": 4,
+      "event": "headlights_main_only"
+    },
+    {
+      "id": "0x531",
+      "byte": 0,
+      "value": 0xC5,
+      "event": "headlights_main_sides"
+    },
+    {
+      "id": "0x531",
+      "byte": 0,
+      "value": 0xC7,
+      "event": "headlights_main_dip"
+    },
+    {
+      "id": "0x531",
+      "byte": 0,
+      "value": 0xD7,
+      "event": "headlights_main_rear_fog"
+    },
+    {
+      "id": "0x531",
+      "byte": 0,
+      "value": 0xE3,
+      "event": "reverse_dip_lights"
+    },
+    {
+      "id": "0x531",
+      "byte": 0,
+      "value": 0x20,
+      "event": "reverse_lights_off"
+    },
+    {
+      "id": "0x531",
+      "byte": 0,
+      "value": 0xE1,
+      "event": "reverse_sides_lights"
+    },
+    {
+      "id": "0x531",
+      "byte": 0,
+      "value": 0xF3,
+      "event": "reverse_rear_fog"
+    },
+    {
+      "id": "0x531",
+      "byte": 1,
+      "value": 0x40,
+      "event": "brake_lights_on"
+    },
+    {
+      "id": "0x531",
+      "byte": 1,
+      "value": 0x5B,
+      "event": "brake_hazards"
+    },
+    {
+      "id": "0x531",
+      "byte": 1,
+      "value": 0x11,
+      "event": "indicator_left"
+    },
+    {
+      "id": "0x531",
+      "byte": 1,
+      "value": 0x12,
+      "event": "indicator_right"
+    },
+    {
+      "id": "0x531",
+      "byte": 1,
+      "value": 0x51,
+      "event": "brake_indicator_left"
+    },
+    {
+      "id": "0x531",
+      "byte": 1,
+      "value": 0x52,
+      "event": "brake_indicator_right"
+    },
+    {
+      "id": "0x531",
+      "byte": 1,
+      "value": 0x1B,
+      "event": "hazard_lights"
+    },
+    {
+      "id": "0x621",
+      "byte": 0,
+      "value": 0x20,
+      "event": "handbrake_on"
+    },
+    {
+      "id": "0x621",
+      "byte": 0,
+      "value": 0,
+      "event": "handbrake_off"
+    },
+    {
+      "id": "0x470",
+      "byte": 2,
+      "value": "any",
+      "event": "dimmer_level"
+    },
+    {
+      "id": "0x470",
+      "byte": 1,
+      "value": "any",
+      "event": "door_status"
+    },
+    {
+      "id": "0x181",
+      "byte": 0,
+      "value": 0x40,
+      "event": "osr_window_down"
+    },
+    {
+      "id": "0x181",
+      "byte": 0,
+      "value": 0x80,
+      "event": "osr_window_down_double"
+    },
+    {
+      "id": "0x181",
+      "byte": 0,
+      "value": 0x10,
+      "event": "osr_window_up"
+    },
+    {
+      "id": "0x181",
+      "byte": 0,
+      "value": 0x04,
+      "event": "nsr_window_down"
+    },
+    {
+      "id": "0x181",
+      "byte": 0,
+      "value": 0x08,
+      "event": "nsr_window_down_double"
+    },
+    {
+      "id": "0x181",
+      "byte": 0,
+      "value": 0x01,
+      "event": "nsr_window_up"
+    },
+    {
+      "id": "0x181",
+      "byte": 1,
+      "value": 0x10,
+      "event": "nsf_window_up"
+    },
+    {
+      "id": "0x181",
+      "byte": 1,
+      "value": 0x20,
+      "event": "nsf_window_up_double"
+    },
+    {
+      "id": "0x181",
+      "byte": 1,
+      "value": 0x80,
+      "event": "nsf_window_down_double"
+    },
+    {
+      "id": "0x181",
+      "byte": 1,
+      "value": 0x40,
+      "event": "nsf_window_down"
+    },
+    {
+      "id": "0x181",
+      "byte": 1,
+      "value": 0x04,
+      "event": "osf_window_down"
+    },
+    {
+      "id": "0x181",
+      "byte": 1,
+      "value": 0x08,
+      "event": "osf_window_down_double"
+    },
+    {
+      "id": "0x181",
+      "byte": 1,
+      "value": 0x01,
+      "event": "osf_window_up"
+    },
+    {
+      "id": "0x181",
+      "byte": 1,
+      "value": 0x02,
+      "event": "osf_window_up_double"
+    },
+    {
+      "id": "0x2C1",
+      "byte": 2,
+      "value": 0x80,
+      "event": "horn"
+    },
+    {
+      "id": "0x2C1",
+      "byte": 1,
+      "value": 0x30,
+      "event": "front_washer"
+    },
+    {
+      "id": "0x2C1",
+      "byte": 1,
+      "value": 0x20,
+      "event": "stalk_release"
+    },
+    {
+      "id": "0x2C1",
+      "byte": 1,
+      "value": 0x01,
+      "event": "wiper_single"
+    },
+    {
+      "id": "0x2C1",
+      "byte": 1,
+      "value": 0x02,
+      "event": "wiper_intermittent"
+    },
+    {
+      "id": "0x2C1",
+      "byte": 1,
+      "value": 0x04,
+      "event": "wiper_stage1"
+    },
+    {
+      "id": "0x2C1",
+      "byte": 1,
+      "value": 0x08,
+      "event": "wiper_stage2"
+    },
+    {
+      "id": "0x2C1",
+      "byte": 1,
+      "value": 0x80,
+      "event": "rear_washer"
+    },
+    {
+      "id": "0x2C1",
+      "byte": 1,
+      "value": 0x40,
+      "event": "rear_wiper"
+    },
+    {
+      "id": "0x3C3",
+      "byte": 0,
+      "value": 0,
+      "event": "steering_centre"
+    },
+    {
+      "id": "0x3C3",
+      "byte": 0,
+      "value": 0xE0,
+      "event": "steering_hard_right"
+    },
+    {
+      "id": "0x3C3",
+      "byte": 0,
+      "value": 0xD0,
+      "event": "steering_hard_left"
+    },
+    {
+      "id": "0x601",
+      "byte": 0,
+      "value": 0x80,
+      "event": "mirror_fold"
+    },
+    {
+      "id": "0x601",
+      "byte": 0,
+      "value": 0x10,
+      "event": "mirror_left_adjust"
+    },
+    {
+      "id": "0x601",
+      "byte": 0,
+      "value": 0x20,
+      "event": "mirror_right_adjust"
+    },
+    {
+      "id": "0x601",
+      "byte": 0,
+      "value": 0x40,
+      "event": "mirror_heated"
+    }
+  ],
+  "presence": [
+    {
+      "id": "0x5C1",
+      "timeout_ms": 2000,
+      "on_present": "stalk_present",
+      "on_absent": "stalk_absent"
+    },
+    {
+      "id": "0x181",
+      "timeout_ms": 2000,
+      "on_present": "window_switch_present",
+      "on_absent": "window_switch_absent"
+    }
+  ]
+}
