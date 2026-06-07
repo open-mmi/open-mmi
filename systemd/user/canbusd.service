@@ -1,5 +1,6 @@
 [Unit]
-Description=open-mmi CAN daemon
+Description=open-mmi CAN Bus Daemon
+Documentation=https://github.com/Sheepdog-97/open-mmi
 After=graphical-session.target
 
 [Service]
@@ -7,15 +8,29 @@ Type=simple
 
 WorkingDirectory=/opt/open-mmi
 
+# Python logging buffering
 Environment="PYTHONUNBUFFERED=1"
 
+# Logging level (DEBUG, INFO, WARNING, ERROR)
+Environment="OPEN_MMI_LOG_LEVEL=INFO"
+
+# Vehicle profile (default: seat_1p)
+Environment="OPEN_MMI_VEHICLE=seat_1p"
+
+# Bindings file (default: default)
+Environment="OPEN_MMI_BINDINGS=default"
+
+# Execution
 ExecStart=/opt/open-mmi/venv/bin/python /opt/open-mmi/canbusd/canbusd.py
 
+# Restart policy
 Restart=always
-RestartSec=1
+RestartSec=5
 
+# Logging
 StandardOutput=journal
 StandardError=journal
+SyslogIdentifier=canbusd
 
 [Install]
 WantedBy=default.target
