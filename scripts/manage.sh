@@ -224,54 +224,80 @@ cmd_install() {
 
 cmd_update() {
     log_info "Updating $APP_NAME..."
-    
+
     if ! is_installed; then
         log_error "$APP_NAME not installed"
-        log_info "Run: sudo ./scripts/manage.sh install"
         return 1
     fi
-    
+
     local old_version
     old_version=$(get_installed_version)
-    local new_version
-    new_version=$(get_current_version)
-
-    log_info "Current version: $old_version"
-    log_info "Installed version: $new_version"
 
     cd "$REPO_ROOT"
 
-    # Check for local changes
-if ! git diff --quiet || ! git diff --cached --quiet; then
-    log_warn "Local changes detected in the repository:"
-    
-    # Show a concise summary of changes
-    git status -s
-    
-    if confirm "Overwrite local changes and force update?"; then
-        log_info "Overwriting local changes..."
+    # =========================================================
+    # PHASE 1: SAFE GIT UPDATE (NO SUDO)
+    # =========================================================
+    log_info "Syncing repository (user-level)..."
+
+    # Detect local changes
+    if ! git diff --quiet || ! git diff --cached --quiet; then
+        log_warn "Local changes detected:"
+        git status -s
+
+        if ! confirm "Continue and overwrite local changes?"; then
+            log_info "Update cancelled"
+            return 1
+        fi
+
         git fetch origin main
         git reset --hard origin/main
     else
-        log_info "Update cancelled due to local changes"
-        return 1
+        git fetch origin main
+        git merge origin/main || log_warn "No changes to merge"
     fi
-else
-    git fetch origin main
-    git merge origin/main || log_warn "Merge did not apply changes"
-fi
 
-    # Update installed files and Python dependencies
-    log_info "Updating application files..."
-    cp -r "$REPO_ROOT/canbusd" "$INSTALL_DIR/"
-    cp -r "$REPO_ROOT/vehicles" "$INSTALL_DIR/"
-    cp -r "$REPO_ROOT/bindings" "$INSTALL_DIR/"
-    cp -r "$REPO_ROOT/actions" "$INSTALL_DIR/"
-    cp "$REPO_ROOT/pyproject.toml" "$INSTALL_DIR/"
+    # =========================================================
+    # FIX OWNERSHIP SAFETY NET (ONLY IF NEEDED)
+    # =========================================================
+    if [ "$(stat -c '%U' "$REPO_ROOT")" = "root" ]; then
+        log_warn "Repo owned by root — fixing permissions..."
+        sudo chown -R "$REAL_USER:$REAL_USER" "$REPO_ROOT"
+    fi
 
-    get_current_version > "$VERSION_FILE"
+    local new_version
+    new_version=$(get_current_version)
 
-    log_success "Update complete! New version: $(get_installed_version)"
+    log_info "Repo version: $new_version"
+    log_info "Installed version: $old_version"
+
+    # If nothing changed, exit early
+    if [ "$old_version" = "$new_version" ]; then
+        log_success "Already up to date"
+        return 0
+    fi
+
+    # =========================================================
+    # PHASE 2: SYSTEM DEPLOY (SUDO REQUIRED)
+    # =========================================================
+    log_info "Deploying to system..."
+
+    sudo cp -r "$REPO_ROOT/canbusd" "$INSTALL_DIR/"
+    sudo cp -r "$REPO_ROOT/vehicles" "$INSTALL_DIR/"
+    sudo cp -r "$REPO_ROOT/bindings" "$INSTALL_DIR/"
+    sudo cp -r "$REPO_ROOT/actions" "$INSTALL_DIR/"
+    sudo cp "$REPO_ROOT/pyproject.toml" "$INSTALL_DIR/"
+
+    # Version write (needs sudo because /opt is root-owned)
+    sudo bash -c "echo '$new_version' > '$VERSION_FILE'"
+
+    # Restart daemon
+    export XDG_RUNTIME_DIR="/run/user/$USER_ID"
+    sudo -u "$REAL_USER" \
+        XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
+        systemctl --user restart canbusd
+
+    log_success "Update complete → $new_version"
 }
 
 # =============================================================================
