@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Open vehicle MMI integration framework for Linux"
 readme = "README.md"
 requires-python = ">=3.9"
-license = { text = "MIT" }
+license = { text = "GPL-3.0-only" }
 
 authors = [
     { name = "sheepdog-97" }
