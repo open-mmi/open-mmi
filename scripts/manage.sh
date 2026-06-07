@@ -459,7 +459,9 @@ cmd_status() {
 
 cmd_logs() {
     log_info "Viewing daemon logs (Ctrl+C to exit)"
-    journalctl --user -u canbusd -f
+    sudo -u "$REAL_USER" \
+        XDG_RUNTIME_DIR="/run/user/$USER_ID" \
+        journalctl --user-unit=canbusd -f
 }
 
 # =============================================================================
