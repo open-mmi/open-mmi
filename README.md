@@ -55,7 +55,7 @@ Linux system effect
     ↓
 volume_up
     ↓
-audio.volume_up(\"+10%\")
+audio.volume_up("+10%")
 ```
 
 ---
@@ -89,9 +89,8 @@ open-mmi/
 │   └── 80-canbus.rules
 │
 ├── scripts/
-│   ├── install.sh
-│   ├── uninstall.sh
-│   └── dev_run.sh
+│   ├── manage.sh          (Main installation/management tool)
+│   └── dev_run.sh         (Development runner)
 │
 ├── pyproject.toml
 ├── README.md
@@ -197,7 +196,7 @@ If permissions issues occur, check:
 # User should be in these groups
 groups $USER
 
-# Add user to required groups
+# Add user to required groups (automatic during install)
 sudo usermod -aG video,input $USER
 
 # Apply changes (may require logout/login or use: newgrp video)
@@ -205,7 +204,7 @@ sudo usermod -aG video,input $USER
 
 ## Python Dependencies
 
-Install via pip (automatically handled by install script):
+Install via pip (automatically handled by install):
 
 ```bash
 pip install python-can evdev
@@ -249,13 +248,13 @@ export OPEN_MMI_BINDINGS=default
 export OPEN_MMI_LOG_LEVEL=INFO
 ```
 
-For systemd service, edit:
+For systemd service, edit configuration:
 
-```text
-~/.config/systemd/user/canbusd.service
+```bash
+sudo ./scripts/manage.sh config edit
 ```
 
-And add to `[Service]` section:
+Then add to `[Service]` section:
 
 ```ini
 Environment="OPEN_MMI_LOG_LEVEL=DEBUG"
@@ -278,118 +277,151 @@ python3 canbusd/canbusd.py --check
 # Ensure dependencies are installed
 pip install python-can evdev
 
-# Run daemon
-python3 canbusd/canbusd.py
+# Run daemon (or use dev script)
+./scripts/dev_run.sh
 
-# Or with debug logging
+# Or manually with debug logging
 OPEN_MMI_LOG_LEVEL=DEBUG python3 canbusd/canbusd.py
 ```
 
 ---
 
-# Installation
+# Installation & Management
+
+All installation, update, and management operations use the unified `manage.sh` script.
 
 ## Prerequisites
 
 ```bash
 sudo apt update
-sudo apt install python3 python3-pip python3-venv can-utils udev dbus-x11
+sudo apt install git python3 python3-pip python3-venv can-utils udev dbus-x11
 ```
 
-## Install to System
+## Quick Start
 
 ```bash
-sudo ./scripts/install.sh
+# Install
+sudo ./scripts/manage.sh install
+
+# Check status
+sudo ./scripts/manage.sh status
+
+# View logs
+sudo ./scripts/manage.sh logs
+
+# Update
+sudo ./scripts/manage.sh update
+
+# Uninstall
+sudo ./scripts/manage.sh uninstall
 ```
 
-This will:
+## Installation Manager (`manage.sh`)
+
+Complete unified tool for installation, updates, and management.
+
+### Commands
+
+```bash
+sudo ./scripts/manage.sh install      # Fresh installation
+sudo ./scripts/manage.sh update       # Update with automatic rollback
+sudo ./scripts/manage.sh uninstall    # Remove installation
+sudo ./scripts/manage.sh status       # Show installation status
+sudo ./scripts/manage.sh logs         # View daemon logs in real-time
+sudo ./scripts/manage.sh config edit  # Edit service configuration
+```
+
+### Install
+
+```bash
+sudo ./scripts/manage.sh install
+```
+
+**Does:**
 
 * Create `/opt/open-mmi` installation directory
-* Create Python virtual environment
-* Install Python dependencies (python-can, evdev)
+* Create isolated Python virtual environment
+* Install Python dependencies
 * Copy application files
 * Install systemd user service
 * Install udev rules for CAN interface
-* Configure user permissions (video group)
-* Start and enable daemon
+* Configure user permissions (video, input groups)
+* Start daemon automatically
 
-## Verify Installation
+### Update
 
 ```bash
-# Check daemon status
-systemctl --user status canbusd
+sudo ./scripts/manage.sh update
+```
 
-# View live logs
-journalctl --user -u canbusd -f
+**Features:**
 
-# Check configuration
+* Automatic backup before update
+* Safe merge of changes
+* Dependency upgrade
+* Systemd and udev rules update
+* Automatic rollback on failure
+* Daemon restart with verification
+
+### Uninstall
+
+```bash
+sudo ./scripts/manage.sh uninstall
+```
+
+**Features:**
+
+* Optional backup before removal
+* Clean daemon shutdown
+* Complete file removal
+* udev rules cleanup
+
+### Status
+
+```bash
+sudo ./scripts/manage.sh status
+```
+
+Shows:
+
+* Installation status
+* Installed version
+* Daemon running status
+* User permissions
+* Available backups
+
+### Logs
+
+```bash
+sudo ./scripts/manage.sh logs
+```
+
+View daemon logs in real-time (Ctrl+C to exit).
+
+### Config
+
+```bash
+sudo ./scripts/manage.sh config edit
+```
+
+Edit systemd service configuration safely with reload/restart.
+
+---
+
+# Verify Installation
+
+After installation, verify everything works:
+
+```bash
+# Check installation status
+sudo ./scripts/manage.sh status
+
+# View logs (should show startup messages)
+sudo ./scripts/manage.sh logs
+
+# Validate configuration
 /opt/open-mmi/venv/bin/python /opt/open-mmi/canbusd/canbusd.py --check
 ```
-
----
-
-# Updating
-
-## Update Existing Installation
-
-```bash
-cd /path/to/open-mmi
-git pull origin main
-
-# If dependencies changed
-pip install --upgrade python-can evdev
-
-# Restart daemon
-systemctl --user restart canbusd
-
-# Verify
-journalctl --user -u canbusd --since 1min -f
-```
-
-## Switching Vehicle Profiles
-
-```bash
-# Edit the service file
-systemctl --user edit canbusd
-
-# Add or modify environment variable
-# Environment="OPEN_MMI_VEHICLE=new_vehicle_name"
-
-# Reload and restart
-systemctl --user daemon-reload
-systemctl --user restart canbusd
-
-# Check logs for errors
-journalctl --user -u canbusd -f
-```
-
-## Safe Configuration Testing
-
-Before deploying config changes in production:
-
-```bash
-# Test with new vehicle profile
-OPEN_MMI_VEHICLE=new_profile OPEN_MMI_LOG_LEVEL=DEBUG \
-  python3 canbusd/canbusd.py --check
-
-# If OK, restart service
-systemctl --user restart canbusd
-```
-
----
-
-# Uninstallation
-
-```bash
-sudo ./scripts/uninstall.sh
-```
-
-This will:
-
-* Stop and disable systemd service
-* Remove `/opt/open-mmi` directory
-* Remove udev rules
-* Remove user service file
 
 ---
 
@@ -418,6 +450,25 @@ journalctl --user -u canbusd -n 50
 
 # Only errors
 journalctl --user -u canbusd -p err
+```
+
+Control daemon:
+
+```bash
+# Start
+systemctl --user start canbusd
+
+# Stop
+systemctl --user stop canbusd
+
+# Restart
+systemctl --user restart canbusd
+
+# Status
+systemctl --user status canbusd
+
+# Logs
+journalctl --user -u canbusd -f
 ```
 
 ---
@@ -491,14 +542,25 @@ groups $USER
 
 ```bash
 # Enable debug logging
-systemctl --user edit canbusd
+sudo ./scripts/manage.sh config edit
 # Add: Environment="OPEN_MMI_LOG_LEVEL=DEBUG"
 
-systemctl --user daemon-reload
+# Then restart
 systemctl --user restart canbusd
 
 # Check detailed logs
 journalctl --user -u canbusd -f
+```
+
+## Update Failed
+
+```bash
+# Check available backups
+ls /opt/open-mmi-backups/
+
+# Restore from backup manually if needed
+sudo rm -rf /opt/open-mmi
+sudo cp -r /opt/open-mmi-backups/backup-XXXXX /opt/open-mmi
 ```
 
 ---
@@ -517,8 +579,8 @@ python3 canbusd/canbusd.py --check
 # Run daemon
 python3 canbusd/canbusd.py
 
-# With debug logging
-OPEN_MMI_LOG_LEVEL=DEBUG python3 canbusd/canbusd.py
+# Or use development script
+./scripts/dev_run.sh
 ```
 
 Development tools are in `dev/` (ignored by git, not used in production).
