@@ -242,20 +242,24 @@ cmd_update() {
     cd "$REPO_ROOT"
 
     # Check for local changes
-    if ! git diff --quiet || ! git diff --cached --quiet; then
-        log_warn "Local changes detected in the repository."
-        if confirm "Overwrite local changes and force update?"; then
-            log_info "Overwriting local changes..."
-            git fetch origin main
-            git reset --hard origin/main
-        else
-            log_info "Update cancelled due to local changes"
-            return 1
-        fi
-    else
+if ! git diff --quiet || ! git diff --cached --quiet; then
+    log_warn "Local changes detected in the repository:"
+    
+    # Show a concise summary of changes
+    git status -s
+    
+    if confirm "Overwrite local changes and force update?"; then
+        log_info "Overwriting local changes..."
         git fetch origin main
-        git merge origin/main || log_warn "Merge did not apply changes"
+        git reset --hard origin/main
+    else
+        log_info "Update cancelled due to local changes"
+        return 1
     fi
+else
+    git fetch origin main
+    git merge origin/main || log_warn "Merge did not apply changes"
+fi
 
     # Update installed files and Python dependencies
     log_info "Updating application files..."
