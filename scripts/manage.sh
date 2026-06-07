@@ -231,120 +231,43 @@ cmd_update() {
         return 1
     fi
     
-    local old_version=$(get_installed_version)
-    local new_version=$(get_current_version)
-    
+    local old_version
+    old_version=$(get_installed_version)
+    local new_version
+    new_version=$(get_current_version)
+
     log_info "Current version: $old_version"
-    log_info "Available version: $new_version"
-    
-    if [ "$old_version" = "$new_version" ]; then
-        log_success "Already up to date"
-        return 0
-    fi
-    
-    # Create backup
-    log_info "Creating backup..."
-    sudo mkdir -p "$BACKUP_DIR"
-    local backup_name="backup-$(date +%Y%m%d-%H%M%S)-v${old_version}"
-    local backup_path="$BACKUP_DIR/$backup_name"
-    
-    if ! sudo cp -r "$INSTALL_DIR" "$backup_path"; then
-        log_error "Failed to create backup"
-        return 1
-    fi
-    log_success "Backup created: $backup_path"
-    
-    # Stop daemon
-    log_info "Stopping daemon..."
-    export XDG_RUNTIME_DIR="/run/user/$USER_ID"
-    sudo -u "$REAL_USER" \
-        XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
-        systemctl --user stop canbusd || true
-    
-    # Pull changes
-    log_info "Pulling latest changes..."
+    log_info "Installed version: $new_version"
+
     cd "$REPO_ROOT"
-    if ! git fetch origin main; then
-        log_error "Failed to fetch updates"
-        log_info "Restoring from backup..."
-        sudo rm -rf "$INSTALL_DIR"
-        sudo cp -r "$backup_path" "$INSTALL_DIR"
-        return 1
+
+    # Check for local changes
+    if ! git diff --quiet || ! git diff --cached --quiet; then
+        log_warn "Local changes detected in the repository."
+        if confirm "Overwrite local changes and force update?"; then
+            log_info "Overwriting local changes..."
+            git fetch origin main
+            git reset --hard origin/main
+        else
+            log_info "Update cancelled due to local changes"
+            return 1
+        fi
+    else
+        git fetch origin main
+        git merge origin/main || log_warn "Merge did not apply changes"
     fi
-    
-    if ! git merge origin/main; then
-        log_error "Merge conflict or fetch failed"
-        log_info "Restoring from backup..."
-        sudo rm -rf "$INSTALL_DIR"
-        sudo cp -r "$backup_path" "$INSTALL_DIR"
-        return 1
-    fi
-    
-    # Upgrade Python dependencies
-    log_info "Upgrading Python dependencies..."
-    if ! "$INSTALL_DIR/venv/bin/pip" install --upgrade pip; then
-        log_warn "Failed to upgrade pip (non-fatal)"
-    fi
-    
-    if ! "$INSTALL_DIR/venv/bin/pip" install --upgrade \
-        python-can \
-        evdev; then
-        log_error "Failed to upgrade Python dependencies"
-        log_info "Restoring from backup..."
-        sudo rm -rf "$INSTALL_DIR"
-        sudo cp -r "$backup_path" "$INSTALL_DIR"
-        return 1
-    fi
-    
-    # Update application files
+
+    # Update installed files and Python dependencies
     log_info "Updating application files..."
     cp -r "$REPO_ROOT/canbusd" "$INSTALL_DIR/"
     cp -r "$REPO_ROOT/vehicles" "$INSTALL_DIR/"
     cp -r "$REPO_ROOT/bindings" "$INSTALL_DIR/"
     cp -r "$REPO_ROOT/actions" "$INSTALL_DIR/"
     cp "$REPO_ROOT/pyproject.toml" "$INSTALL_DIR/"
-    
-    # Update systemd service
-    if [ -f "$REPO_ROOT/systemd/user/canbusd.service" ]; then
-        log_info "Updating systemd service..."
-        cp "$REPO_ROOT/systemd/user/canbusd.service" "$REAL_HOME/.config/systemd/user/canbusd.service"
-        chown "$REAL_USER:$REAL_USER" "$REAL_HOME/.config/systemd/user/canbusd.service"
-        sudo -u "$REAL_USER" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user daemon-reload
-    fi
-    
-    # Update udev rules
-    if [ -f "$REPO_ROOT/udev/80-canbus.rules" ]; then
-        log_info "Updating udev rules..."
-        sudo cp "$REPO_ROOT/udev/80-canbus.rules" /etc/udev/rules.d/
-        sudo udevadm control --reload-rules
-        sudo udevadm trigger
-    fi
-    
-    # Store new version
+
     get_current_version > "$VERSION_FILE"
-    
-    # Restart daemon
-    log_info "Restarting daemon..."
-    sudo -u "$REAL_USER" \
-        XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
-        systemctl --user restart canbusd
-    
-    # Verify
-    sleep 1
-    if daemon_running; then
-        log_success "Update complete! Version: $new_version"
-        log_info "Backup kept at: $backup_path"
-    else
-        log_error "Update complete but daemon failed to start"
-        if confirm "Restore from backup?"; then
-            log_info "Restoring from backup..."
-            sudo rm -rf "$INSTALL_DIR"
-            sudo cp -r "$backup_path" "$INSTALL_DIR"
-            sudo -u "$REAL_USER" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user restart canbusd
-            log_success "Restored to version: $old_version"
-        fi
-        return 1
-    fi
+
+    log_success "Update complete! New version: $(get_installed_version)"
 }
 
 # =============================================================================
