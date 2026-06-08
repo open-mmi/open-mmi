@@ -6,6 +6,22 @@ Open vehicle MMI integration framework for Linux.
 
 > Where hex meets human form.
 
+Current milestone: **`v1.0.0-backend`**
+
+This release represents the first stable backend foundation:
+
+- CAN input via SocketCAN
+- profile-driven vehicle decoding
+- configurable event dispatch
+- modular Linux actions
+- timeout-based vehicle presence
+- persistent vehicle status snapshots
+- safe user config under `~/.config/open-mmi`
+- install/update/uninstall tooling
+- CLI dashboard prototype
+
+`v1.0.0-backend` is **not** the final user-facing Open MMI V1 product release. It is the stable backend/platform foundation for future UI, dashboard, and multi-vehicle work.
+
 Designed for:
 
 - car PC projects
@@ -32,21 +48,27 @@ Supports:
 
 # Branches
 
-`main` is the stable branch.
+`main` is the stable backend branch.
 
-`beta/status-cli` is the current beta branch for the vehicle status model and dashboard work.
+Development work should happen on feature or beta branches before being merged into `main`.
 
 Recommended workflow:
 
 ```bash
-# Stable fallback
+# Stable backend
 git switch main
 
-# Status / dashboard development and testing
-git switch beta/status-cli
+# New development branch
+git switch -c beta/my-feature
 ```
 
 For real vehicle testing, keep working changes on a beta branch until they have been tested on the car.
+
+Stable backend releases are tagged, for example:
+
+```bash
+git checkout v1.0.0-backend
+```
 
 ---
 
@@ -57,12 +79,6 @@ For real vehicle testing, keep working changes on a beta branch until they have 
 ```bash
 git clone https://github.com/Sheepdog-97/open-mmi.git
 cd open-mmi
-```
-
-For beta status/dashboard testing:
-
-```bash
-git switch beta/status-cli
 ```
 
 ## 2. Install
@@ -146,7 +162,7 @@ actions and dashboards
 
 ## Three Profile Concepts
 
-Vehicle profiles now have three distinct sections.
+Vehicle profiles have three distinct sections.
 
 ### `rules`
 
@@ -170,9 +186,11 @@ Timeout-based availability checks.
 Example:
 
 ```text
-CAN ID 0x65F seen recently → vehicle_present:on
-CAN ID 0x65F silent too long → vehicle_present:off
+CAN ID 0x65F seen recently      → vehicle.present = true and vehicle_present:on
+CAN ID 0x65F silent too long    → vehicle.present = false and vehicle_present:off
 ```
+
+Presence rules are useful for detecting whether the vehicle bus is awake and for triggering local actions such as screen on/off.
 
 ### `status`
 
@@ -291,12 +309,27 @@ A profile may contain:
     {
       "id": "0x65F",
       "timeout_ms": 6000,
+      "status_path": "vehicle.present",
       "on_present": "vehicle_present:on",
       "on_absent": "vehicle_present:off"
     }
   ]
 }
 ```
+
+`status_path` is optional. If omitted, presence is published to:
+
+```text
+vehicle.present
+```
+
+Presence status is also written under a per-frame diagnostic key such as:
+
+```text
+presence.0x65F = true
+```
+
+`on_present` and `on_absent` are optional events. If present, they are dispatched when the presence state changes.
 
 ## `status`
 
@@ -703,7 +736,7 @@ candump can0
 }
 ```
 
-4. Restart or reload the daemon:
+4. Restart or update the daemon:
 
 ```bash
 systemctl --user restart canbusd.service
@@ -720,6 +753,21 @@ systemctl --user restart canbusd.service
 cd /opt/open-mmi
 ./venv/bin/python ui/dashboard/status_cli.py
 ```
+
+---
+
+# Current Limitations
+
+`v1.0.0-backend` is focused on the backend foundation.
+
+Known limitations:
+
+- the dashboard is currently a CLI prototype
+- only the included Seat 1P profile has been real-car tested
+- vehicle profiles may require manual CAN discovery
+- some status fields may be profile-specific and need refinement
+- automated tests are still minimal
+- Open MMI currently focuses on passive CAN receive and local Linux actions
 
 ---
 
@@ -803,6 +851,8 @@ Always:
 - keep `main` stable
 - use beta branches for real-car testing
 - monitor logs during testing
+
+Open MMI currently focuses on passive CAN receive and local Linux actions. Do not add vehicle CAN transmit/control behaviour without a separate safety design, explicit allowlists, and extensive testing.
 
 ---
 
