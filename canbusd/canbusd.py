@@ -15,7 +15,7 @@ import signal
 import logging
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional, Any
-from canbusd.event_bus import publish
+from canbusd.dispatcher import dispatch
 
 try:
     import can
@@ -298,10 +298,7 @@ def _dispatch_event(
             act["args"] = extra_args
 
     logger.info(f"Event dispatched: {event}")
-
-    publish(event, extra_args)
-
-    _call_action(act)
+    dispatch(event, act, extra_args)
 
 
 # -------------------------------------------------
