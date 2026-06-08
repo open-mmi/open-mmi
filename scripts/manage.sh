@@ -169,11 +169,9 @@ cmd_install() {
     cp -r "$REPO_ROOT/vehicles" "$INSTALL_DIR/"
     cp -r "$REPO_ROOT/bindings" "$INSTALL_DIR/"
     cp -r "$REPO_ROOT/actions" "$INSTALL_DIR/"
-
     if [ -d "$REPO_ROOT/ui" ]; then
         cp -r "$REPO_ROOT/ui" "$INSTALL_DIR/"
     fi
-
     cp -r "$REPO_ROOT/scripts" "$INSTALL_DIR/"
     cp "$REPO_ROOT/pyproject.toml" "$INSTALL_DIR/"
     
@@ -186,9 +184,12 @@ cmd_install() {
     cp "$REPO_ROOT/systemd/user/canbusd.service" "$REAL_HOME/.config/systemd/user/canbusd.service"
     chown "$REAL_USER:$REAL_USER" "$REAL_HOME/.config/systemd/user/canbusd.service"
     
+    mkdir -p "$REAL_HOME/.config/systemd/user/default.target.wants"
+    chown -R "$REAL_USER:$REAL_USER" "$REAL_HOME/.config/systemd/user"
+
     export XDG_RUNTIME_DIR="/run/user/$USER_ID"
     sudo -u "$REAL_USER" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user daemon-reload
-    sudo -u "$REAL_USER" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user enable canbusd
+    sudo -u "$REAL_USER" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user enable canbusd.service
     
     # Install udev rules
     if [ -f "$REPO_ROOT/udev/80-canbus.rules" ]; then
@@ -288,15 +289,14 @@ cmd_update() {
     # =========================================================
     log_info "Deploying to system..."
 
+    sudo rm -rf "$INSTALL_DIR/canbusd" "$INSTALL_DIR/vehicles" "$INSTALL_DIR/bindings" "$INSTALL_DIR/actions" "$INSTALL_DIR/ui" "$INSTALL_DIR/scripts"
     sudo cp -r "$REPO_ROOT/canbusd" "$INSTALL_DIR/"
     sudo cp -r "$REPO_ROOT/vehicles" "$INSTALL_DIR/"
     sudo cp -r "$REPO_ROOT/bindings" "$INSTALL_DIR/"
     sudo cp -r "$REPO_ROOT/actions" "$INSTALL_DIR/"
-
     if [ -d "$REPO_ROOT/ui" ]; then
         sudo cp -r "$REPO_ROOT/ui" "$INSTALL_DIR/"
     fi
-
     sudo cp -r "$REPO_ROOT/scripts" "$INSTALL_DIR/"
     sudo cp "$REPO_ROOT/pyproject.toml" "$INSTALL_DIR/"
 
