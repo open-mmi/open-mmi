@@ -21,7 +21,7 @@ Environment="OPEN_MMI_VEHICLE=seat_1p"
 Environment="OPEN_MMI_BINDINGS=default"
 
 # Execution
-ExecStart=/opt/open-mmi/venv/bin/python /opt/open-mmi/canbusd/canbusd.py
+ExecStart=/opt/open-mmi/venv/bin/python -m canbusd.core
 
 # Restart policy
 Restart=always
