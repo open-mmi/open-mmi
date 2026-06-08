@@ -77,6 +77,17 @@ def _resolve_bindings_path() -> Path:
     return BASE_DIR / "bindings" / f"{BINDINGS}.json"
 
 
+def _set_path(dst: Dict[str, Any], path: str, value: Any) -> None:
+    parts = [p for p in path.split(".") if p]
+    if not parts:
+        return
+
+    cur = dst
+    for part in parts[:-1]:
+        cur = cur.setdefault(part, {})
+    cur[parts[-1]] = value
+
+
 def _load_bindings() -> Dict[str, Dict[str, Any]]:
     path = _resolve_bindings_path()
 
@@ -152,6 +163,7 @@ def _load_config(
                 "timeout_ms": int(p.get("timeout_ms", DEFAULT_PRESENCE_TIMEOUT)),
                 "on_present": p.get("on_present"),
                 "on_absent": p.get("on_absent"),
+                "status_path": p.get("status_path", "vehicle.present"),
             })
 
         status_rules = parse_status_rules(cfg.get("status", []))
@@ -178,6 +190,47 @@ def _load_config(
             prev_status_rules or {},
             prev_path,
         )
+
+
+def _publish_presence(
+    presence_rule: Dict[str, Any],
+    is_present: bool,
+    bindings: Dict[str, Dict[str, Any]],
+) -> None:
+    cid = presence_rule["id"]
+    event = presence_rule.get("on_present") if is_present else presence_rule.get("on_absent")
+
+    update: Dict[str, Any] = {
+        "presence": {
+            f"0x{cid:X}": is_present,
+        }
+    }
+    _set_path(update, presence_rule.get("status_path", "vehicle.present"), is_present)
+
+    publish_status(update)
+
+    if event:
+        logger.info("Presence changed: 0x%X -> %s", cid, "present" if is_present else "absent")
+        dispatch(event, bindings.get(event))
+
+
+def _check_presence(
+    presence: List[Dict[str, Any]],
+    last_seen: Dict[int, float],
+    present_state: Dict[int, Optional[bool]],
+    bindings: Dict[str, Dict[str, Any]],
+    now: float,
+) -> None:
+    for p in presence:
+        cid = p["id"]
+        timeout_s = p["timeout_ms"] / 1000.0
+
+        is_present = cid in last_seen and (now - last_seen[cid]) <= timeout_s
+        previous = present_state.get(cid)
+
+        if previous is None or previous != is_present:
+            present_state[cid] = is_present
+            _publish_presence(p, is_present, bindings)
 
 
 def main():
@@ -212,6 +265,7 @@ def main():
             if bus:
                 bus.shutdown()
                 bus = None
+            _check_presence(presence, last_seen, present_state, bindings, now)
             time.sleep(1)
             continue
 
@@ -219,10 +273,13 @@ def main():
             bus = can.interface.Bus(channel=IFACE, bustype="socketcan")
 
         msg = bus.recv(timeout=0.2)
-        if msg is None:
-            continue
 
         now = time.monotonic()
+
+        if msg is None:
+            _check_presence(presence, last_seen, present_state, bindings, now)
+            continue
+
         last_seen[msg.arbitration_id] = now
 
         cid = msg.arbitration_id
@@ -253,6 +310,8 @@ def main():
                 if last_codes.get(key) == 0 and code == v:
                     dispatch(event, bindings.get(event))
                 last_codes[key] = code
+
+        _check_presence(presence, last_seen, present_state, bindings, now)
 
 
 if __name__ == "__main__":
