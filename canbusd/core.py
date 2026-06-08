@@ -26,12 +26,12 @@ logging.basicConfig(
 logger = logging.getLogger("canbusd")
 
 BASE_DIR = Path(__file__).parent.parent
+USER_CONFIG_DIR = Path(
+    os.getenv("OPEN_MMI_CONFIG_DIR", str(Path.home() / ".config" / "open-mmi"))
+)
 
 VEHICLE = os.getenv("OPEN_MMI_VEHICLE", "seat_1p")
 BINDINGS = os.getenv("OPEN_MMI_BINDINGS", "default")
-
-CFG_PATH = BASE_DIR / "vehicles" / VEHICLE / "config.json"
-BINDINGS_PATH = BASE_DIR / "bindings" / f"{BINDINGS}.json"
 
 IFACE = "can0"
 RELOAD_INTERVAL = 60
@@ -53,14 +53,40 @@ def _sig_hup(_signo: int, _frame: Any) -> None:
 signal.signal(signal.SIGHUP, _sig_hup)
 
 
+def _resolve_vehicle_config_path() -> Path:
+    explicit = os.getenv("OPEN_MMI_VEHICLE_CONFIG")
+    if explicit:
+        return Path(explicit).expanduser()
+
+    user_path = USER_CONFIG_DIR / "vehicles" / VEHICLE / "config.json"
+    if user_path.exists():
+        return user_path
+
+    return BASE_DIR / "vehicles" / VEHICLE / "config.json"
+
+
+def _resolve_bindings_path() -> Path:
+    explicit = os.getenv("OPEN_MMI_BINDINGS_FILE")
+    if explicit:
+        return Path(explicit).expanduser()
+
+    user_path = USER_CONFIG_DIR / "bindings" / f"{BINDINGS}.json"
+    if user_path.exists():
+        return user_path
+
+    return BASE_DIR / "bindings" / f"{BINDINGS}.json"
+
+
 def _load_bindings() -> Dict[str, Dict[str, Any]]:
+    path = _resolve_bindings_path()
+
     try:
-        with open(BINDINGS_PATH, "r") as f:
+        with open(path, "r") as f:
             bindings = json.load(f)
-        logger.info(f"Loaded {len(bindings)} bindings")
+        logger.info(f"Loaded {len(bindings)} bindings from {path}")
         return bindings
     except Exception as e:
-        logger.error(f"Bindings load failed: {e}")
+        logger.error(f"Bindings load failed from {path}: {e}")
         return {}
 
 
@@ -69,32 +95,41 @@ def _load_config(
     prev_mtime=None,
     prev_presence=None,
     prev_status_rules=None,
+    prev_path=None,
 ):
     global _need_reload
 
+    path = _resolve_vehicle_config_path()
+
     try:
-        mtime = CFG_PATH.stat().st_mtime
+        mtime = path.stat().st_mtime
     except FileNotFoundError:
+        logger.error(f"Vehicle config not found: {path}")
         return (
             prev_rules,
             prev_mtime,
             prev_presence or [],
             prev_status_rules or {},
+            prev_path,
         )
 
     with _reload_lock:
         reload_requested = _need_reload
 
-    if prev_mtime == mtime and not reload_requested:
+    path_changed = prev_path is not None and Path(prev_path) != path
+
+    if prev_mtime == mtime and not reload_requested and not path_changed:
         return (
             prev_rules,
             prev_mtime,
             prev_presence or [],
             prev_status_rules or {},
+            path,
         )
 
     try:
-        cfg = json.load(open(CFG_PATH))
+        with open(path, "r") as f:
+            cfg = json.load(f)
 
         rules: Dict[int, List[Tuple]] = {}
         presence = []
@@ -125,26 +160,28 @@ def _load_config(
             _need_reload = False
 
         logger.info(
-            "Loaded config: %d CAN ids, %d presence rules, %d status CAN ids",
+            "Loaded config from %s: %d CAN ids, %d presence rules, %d status CAN ids",
+            path,
             len(rules),
             len(presence),
             len(status_rules),
         )
 
-        return (rules, mtime, presence, status_rules)
+        return (rules, mtime, presence, status_rules, path)
 
     except Exception as e:
-        logger.error(f"Config load failed: {e}")
+        logger.error(f"Config load failed from {path}: {e}")
         return (
             prev_rules,
             prev_mtime,
             prev_presence or [],
             prev_status_rules or {},
+            prev_path,
         )
 
 
 def main():
-    rules, mtime, presence, status_rules = _load_config(None, None)
+    rules, mtime, presence, status_rules, cfg_path = _load_config(None, None)
     bindings = _load_bindings()
 
     last_seen = {}
@@ -155,16 +192,18 @@ def main():
     last_check = 0
 
     logger.info("canbusd starting")
+    logger.info("vehicle=%s bindings=%s config_dir=%s", VEHICLE, BINDINGS, USER_CONFIG_DIR)
 
     while True:
         now = time.monotonic()
 
         if now - last_check > RELOAD_INTERVAL:
-            rules, mtime, presence, status_rules = _load_config(
+            rules, mtime, presence, status_rules, cfg_path = _load_config(
                 rules,
                 mtime,
                 presence,
                 status_rules,
+                cfg_path,
             )
             bindings = _load_bindings()
             last_check = now
