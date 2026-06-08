@@ -1,11 +1,22 @@
-from typing import Any, Dict
-from canbusd.event_bus import publish
+import threading
+from typing import Callable, Dict, Any
 
 _state: Dict[str, Any] = {}
+_subs: list[Callable[[Dict[str, Any]], None]] = []
+_lock = threading.Lock()
 
-def update(key: str, value: Any) -> None:
-    _state[key] = value
-    publish("state.changed", {"key": key, "value": value})
+def update(key: str, value: Any):
+    with _lock:
+        _state[key] = value
+        snapshot = dict(_state)
+
+    for fn in _subs:
+        fn(snapshot)
 
 def get(key: str, default=None):
-    return _state.get(key, default)
+    with _lock:
+        return _state.get(key, default)
+
+def subscribe(fn: Callable[[Dict[str, Any]], None]):
+    with _lock:
+        _subs.append(fn)
