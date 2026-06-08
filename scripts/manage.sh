@@ -169,6 +169,12 @@ cmd_install() {
     cp -r "$REPO_ROOT/vehicles" "$INSTALL_DIR/"
     cp -r "$REPO_ROOT/bindings" "$INSTALL_DIR/"
     cp -r "$REPO_ROOT/actions" "$INSTALL_DIR/"
+
+    if [ -d "$REPO_ROOT/ui" ]; then
+        cp -r "$REPO_ROOT/ui" "$INSTALL_DIR/"
+    fi
+
+    cp -r "$REPO_ROOT/scripts" "$INSTALL_DIR/"
     cp "$REPO_ROOT/pyproject.toml" "$INSTALL_DIR/"
     
     # Store version
@@ -286,6 +292,12 @@ cmd_update() {
     sudo cp -r "$REPO_ROOT/vehicles" "$INSTALL_DIR/"
     sudo cp -r "$REPO_ROOT/bindings" "$INSTALL_DIR/"
     sudo cp -r "$REPO_ROOT/actions" "$INSTALL_DIR/"
+
+    if [ -d "$REPO_ROOT/ui" ]; then
+        sudo cp -r "$REPO_ROOT/ui" "$INSTALL_DIR/"
+    fi
+
+    sudo cp -r "$REPO_ROOT/scripts" "$INSTALL_DIR/"
     sudo cp "$REPO_ROOT/pyproject.toml" "$INSTALL_DIR/"
 
     # Version write (needs sudo because /opt is root-owned)
