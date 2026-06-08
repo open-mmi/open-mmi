@@ -101,6 +101,21 @@ daemon_running() {
         systemctl --user is-active canbusd > /dev/null 2>&1
 }
 
+get_repo_branch() {
+    sudo -u "$REAL_USER" git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main"
+}
+
+get_repo_upstream() {
+    local upstream
+    upstream=$(sudo -u "$REAL_USER" git -C "$REPO_ROOT" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)
+
+    if [ -n "$upstream" ]; then
+        echo "$upstream"
+    else
+        echo "origin/$(get_repo_branch)"
+    fi
+}
+
 # =============================================================================
 # INSTALL
 # =============================================================================
@@ -169,9 +184,11 @@ cmd_install() {
     cp -r "$REPO_ROOT/vehicles" "$INSTALL_DIR/"
     cp -r "$REPO_ROOT/bindings" "$INSTALL_DIR/"
     cp -r "$REPO_ROOT/actions" "$INSTALL_DIR/"
+
     if [ -d "$REPO_ROOT/ui" ]; then
         cp -r "$REPO_ROOT/ui" "$INSTALL_DIR/"
     fi
+
     cp -r "$REPO_ROOT/scripts" "$INSTALL_DIR/"
     cp "$REPO_ROOT/pyproject.toml" "$INSTALL_DIR/"
     
@@ -245,9 +262,18 @@ cmd_update() {
     # =========================================================
     log_info "Syncing repository (user-level)..."
 
+    local branch
+    local upstream
+    branch=$(get_repo_branch)
+    upstream=$(get_repo_upstream)
+
+    log_info "Repo branch: $branch"
+    log_info "Repo upstream: $upstream"
+
+    sudo -u "$REAL_USER" git -C "$REPO_ROOT" fetch origin
+
     # Detect local changes as the real user so SSH keys and Git config work.
-    if ! sudo -u "$REAL_USER" git -C "$REPO_ROOT" diff --quiet || \
-       ! sudo -u "$REAL_USER" git -C "$REPO_ROOT" diff --cached --quiet; then
+    if ! sudo -u "$REAL_USER" git -C "$REPO_ROOT" diff --quiet ||        ! sudo -u "$REAL_USER" git -C "$REPO_ROOT" diff --cached --quiet; then
         log_warn "Local changes detected:"
         sudo -u "$REAL_USER" git -C "$REPO_ROOT" status -s
 
@@ -256,11 +282,9 @@ cmd_update() {
             return 1
         fi
 
-        sudo -u "$REAL_USER" git -C "$REPO_ROOT" fetch origin
-        sudo -u "$REAL_USER" git -C "$REPO_ROOT" reset --hard origin/main
+        sudo -u "$REAL_USER" git -C "$REPO_ROOT" reset --hard "$upstream"
     else
-        sudo -u "$REAL_USER" git -C "$REPO_ROOT" fetch origin
-        sudo -u "$REAL_USER" git -C "$REPO_ROOT" merge origin/main || log_warn "No changes to merge"
+        sudo -u "$REAL_USER" git -C "$REPO_ROOT" merge --ff-only "$upstream" || log_warn "No fast-forward update applied"
     fi
 
     # =========================================================
@@ -288,15 +312,17 @@ cmd_update() {
     # =========================================================
     log_info "Deploying to system..."
 
+    sudo rm -rf         "$INSTALL_DIR/canbusd"         "$INSTALL_DIR/vehicles"         "$INSTALL_DIR/bindings"         "$INSTALL_DIR/actions"         "$INSTALL_DIR/ui"         "$INSTALL_DIR/scripts"
+
     sudo cp -r "$REPO_ROOT/canbusd" "$INSTALL_DIR/"
     sudo cp -r "$REPO_ROOT/vehicles" "$INSTALL_DIR/"
     sudo cp -r "$REPO_ROOT/bindings" "$INSTALL_DIR/"
-    sudo rm -rf "$INSTALL_DIR/canbusd" "$INSTALL_DIR/vehicles" "$INSTALL_DIR/bindings" "$INSTALL_DIR/actions" "$INSTALL_DIR/ui" "$INSTALL_DIR/scripts"
-
     sudo cp -r "$REPO_ROOT/actions" "$INSTALL_DIR/"
+
     if [ -d "$REPO_ROOT/ui" ]; then
         sudo cp -r "$REPO_ROOT/ui" "$INSTALL_DIR/"
     fi
+
     sudo cp -r "$REPO_ROOT/scripts" "$INSTALL_DIR/"
     sudo cp "$REPO_ROOT/pyproject.toml" "$INSTALL_DIR/"
 
