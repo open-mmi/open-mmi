@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security or safety issue
+    url: https://github.com/Sheepdog-97/open-mmi/security/advisories/new
+    about: Please report security or safety issues privately where possible.
