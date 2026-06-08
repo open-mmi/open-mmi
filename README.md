@@ -1,8 +1,8 @@
 # open-mmi
 
-**Open vehicle MMI integration framework for Linux.**
+Open vehicle MMI integration framework for Linux.
 
-`open-mmi` connects vehicle CAN-bus signals to Linux actions, vehicle status, and user-facing interfaces.
+`open-mmi` connects vehicle CAN-bus data to configurable Linux actions, persistent vehicle state, and UI/dashboard consumers.
 
 > Where hex meets human form.
 
@@ -13,67 +13,53 @@ Designed for:
 - Linux infotainment systems
 - steering wheel media controls
 - reverse-engineered vehicle integrations
-- open vehicle dashboards
+- lightweight vehicle dashboards
 
 Supports:
 
 - SocketCAN
 - vehicle profiles
 - user bindings
-- modular Linux actions
-- profile-driven vehicle status mappings
-- persistent status snapshots for CLI / UI consumers
-- off-car safe mode
+- modular actions
+- profile-driven status/state mappings
+- CLI dashboard / future UI consumers
 - hot-reload configuration
+- off-car safe mode
 - systemd + udev integration
-- install / update / uninstall management scripts
+- safe user config directory under `~/.config/open-mmi`
 
 ---
 
-## Project status
+# Branches
 
-`main` is treated as the stable branch.
+`main` is the stable branch.
 
-Active status/dashboard work currently lives on:
-
-```bash
-beta/status-cli
-```
+`beta/status-cli` is the current beta branch for the vehicle status model and dashboard work.
 
 Recommended workflow:
 
 ```bash
-# Stable branch
+# Stable fallback
 git switch main
 
-# Status / UI development branch
+# Status / dashboard development and testing
 git switch beta/status-cli
 ```
 
-For vehicle testing:
-
-```bash
-# On development laptop
-git push
-
-# On the car/test machine
-git fetch origin
-git switch beta/status-cli
-sudo ./scripts/manage.sh update
-```
+For real vehicle testing, keep working changes on a beta branch until they have been tested on the car.
 
 ---
 
 # Quick Start
 
-## 1. Get the code
+## 1. Get the Code
 
 ```bash
 git clone https://github.com/Sheepdog-97/open-mmi.git
 cd open-mmi
 ```
 
-To test the current dashboard/status beta:
+For beta status/dashboard testing:
 
 ```bash
 git switch beta/status-cli
@@ -88,34 +74,17 @@ sudo ./scripts/manage.sh install
 This will:
 
 - install system dependencies
-- create a Python virtual environment in `/opt/open-mmi/venv`
-- install Python dependencies
+- create `/opt/open-mmi`
+- create an isolated Python virtual environment
+- install Python packages
 - copy application files to `/opt/open-mmi`
-- install the `canbusd` systemd user service
-- install udev rules if present
+- copy management scripts to `/opt/open-mmi/scripts`
+- copy UI/dashboard files to `/opt/open-mmi/ui`
+- install the systemd user service
 - configure user permissions
 - start the daemon
 
-The installed copy includes:
-
-```text
-/opt/open-mmi/canbusd/
-/opt/open-mmi/vehicles/
-/opt/open-mmi/bindings/
-/opt/open-mmi/actions/
-/opt/open-mmi/ui/
-/opt/open-mmi/scripts/
-```
-
-This means the installed management script remains available even if the original repo checkout is removed:
-
-```bash
-sudo /opt/open-mmi/scripts/manage.sh status
-sudo /opt/open-mmi/scripts/manage.sh logs
-sudo /opt/open-mmi/scripts/manage.sh uninstall
-```
-
-## 3. Verify installation
+## 3. Verify Installation
 
 ```bash
 sudo ./scripts/manage.sh status
@@ -130,144 +99,124 @@ Version:        <current-version>
 Service:        ✓ Running
 ```
 
-## 4. View daemon logs
+## 4. View Logs
 
 ```bash
 sudo ./scripts/manage.sh logs
 ```
 
-You should see messages from `canbusd`, such as configuration loading, event dispatch, status updates, or CAN interface availability.
+Press Ctrl+C to exit logs.
 
-Press `Ctrl+C` to exit logs.
+## 5. Run the Status Dashboard
 
-## 5. Run the status dashboard
-
-From an installed system:
+From the installed copy:
 
 ```bash
 cd /opt/open-mmi
 ./venv/bin/python ui/dashboard/status_cli.py
 ```
 
-Useful modes:
+Useful alternatives:
 
 ```bash
+cd /opt/open-mmi
 ./venv/bin/python ui/dashboard/status_cli.py --once
 ./venv/bin/python ui/dashboard/status_cli.py --raw
 ```
-
-The dashboard reads the current vehicle status snapshot produced by the daemon.
 
 ---
 
 # How It Works
 
-## Core pipeline
+## Runtime Flow
 
 ```text
-Vehicle CAN frames
+CAN frame from vehicle
         ↓
-vehicles/<profile>/config.json
+canbusd/core.py
         ↓
-semantic events + vehicle status
+active vehicle profile
         ↓
-dispatcher / status bus
+rules / presence / status mappings
         ↓
-actions + dashboard / future UI
+dispatcher + event bus + status bus
+        ↓
+actions and dashboards
 ```
 
-There are two related but different outputs:
+## Three Profile Concepts
 
-| Output type | Purpose | Example |
-|---|---|---|
-| `rules` | momentary events that can trigger actions | `volume_up`, `next_track`, `arrow_left` |
-| `status` | persistent vehicle state for dashboards/UI | `doors.front_left = true`, `vehicle.reverse = false` |
+Vehicle profiles now have three distinct sections.
 
-## Event/action flow
+### `rules`
+
+Momentary events that can trigger actions.
+
+Examples:
 
 ```text
-CAN Message from Vehicle
-        ↓
-[Vehicle Profile rules]
-        ↓
-Event, e.g. "volume_up"
-        ↓
-[Dispatcher]
-        ↓
-[Bindings]
-        ↓
-[Actions]
-        ↓
-Linux system effect
+volume_up
+next_track
+arrow_left
+brightness_level
 ```
+
+These events are looked up in `bindings/*.json` and routed to functions in `actions/`.
+
+### `presence`
+
+Timeout-based availability checks.
 
 Example:
 
 ```text
-0x5C1 byte0 = 0x06
-        ↓
-event = volume_up
-        ↓
-bindings/default.json
-        ↓
-actions/audio.py or actions/keys.py
-        ↓
-volume changes
+CAN ID 0x65F seen recently → vehicle_present:on
+CAN ID 0x65F silent too long → vehicle_present:off
 ```
 
-## Status/UI flow
+### `status`
+
+Persistent vehicle state for dashboards and future UI consumers.
+
+Examples:
 
 ```text
-CAN Message from Vehicle
-        ↓
-[Vehicle Profile status mappings]
-        ↓
-Generic status evaluator
-        ↓
-status_bus persistent snapshot
-        ↓
-CLI dashboard now / real UI later
+doors.front_left = open
+vehicle.reverse = true
+vehicle.handbrake = true
+lighting.mode = dip
+lighting.dimmer_percent = 42
 ```
 
-Example:
-
-```text
-0x470 byte1 mask 0x02
-        ↓
-doors.front_left = true
-        ↓
-dashboard shows front-left door open
-```
-
-The UI does not need to know CAN IDs, byte indexes, masks, or vehicle-specific details. Those belong in the active vehicle profile.
+Status mappings are profile-driven. The core daemon knows generic rule types such as `bool`, `enum`, `bitfield`, `percent`, and `raw`; vehicle-specific CAN knowledge stays inside `vehicles/<profile>/config.json`.
 
 ---
 
-# Project Structure
+# Architecture
 
 ```text
 open-mmi/
 ├── canbusd/
-│   ├── core.py             ← Main CAN daemon loop
-│   ├── dispatcher.py       ← Event publishing + action dispatch
-│   ├── event_bus.py        ← In-process event pub/sub
-│   ├── status_bus.py       ← Persistent vehicle status snapshot store
-│   ├── status_rules.py     ← Generic profile-driven status evaluator
-│   ├── state.py            ← In-memory state helper
+│   ├── core.py             ← daemon loop: CAN input, profile loading
+│   ├── dispatcher.py       ← event → event bus + action execution
+│   ├── event_bus.py        ← in-process pub/sub for events
+│   ├── status_bus.py       ← persistent vehicle state snapshots
+│   ├── status_rules.py     ← generic profile-driven status evaluator
+│   ├── state.py            ← simple in-process state helper
 │   └── __init__.py
 │
 ├── vehicles/
 │   └── seat_1p/
-│       └── config.json     ← Vehicle-specific CAN profile
+│       └── config.json     ← vehicle CAN profile
 │
 ├── bindings/
-│   └── default.json        ← Event → action mappings
+│   └── default.json        ← semantic event → action mapping
 │
 ├── actions/
-│   ├── audio.py            ← Audio / media controls
-│   ├── brightness.py       ← Screen brightness
-│   ├── keys.py             ← Virtual input / media keys
-│   ├── screen.py           ← Display helpers
+│   ├── audio.py
+│   ├── brightness.py
+│   ├── keys.py
+│   ├── screen.py
 │   └── __init__.py
 │
 ├── ui/
@@ -275,7 +224,7 @@ open-mmi/
 │       └── status_cli.py   ← CLI dashboard / UI prototype
 │
 ├── scripts/
-│   └── manage.sh           ← Install / update / uninstall / status / logs
+│   └── manage.sh           ← install/update/uninstall/config
 │
 ├── systemd/
 │   └── user/
@@ -291,7 +240,7 @@ open-mmi/
 
 ---
 
-# Vehicle Profiles
+# Vehicle Profile Format
 
 Vehicle profiles live in:
 
@@ -299,13 +248,7 @@ Vehicle profiles live in:
 vehicles/<profile>/config.json
 ```
 
-The active profile is selected with:
-
-```bash
-OPEN_MMI_VEHICLE=seat_1p
-```
-
-A profile can contain:
+A profile may contain:
 
 ```json
 {
@@ -317,58 +260,49 @@ A profile can contain:
 
 ## `rules`
 
-Rules convert raw CAN byte values into momentary semantic events.
-
-Example:
-
 ```json
 {
-  "id": "0x5C1",
-  "byte": 0,
-  "value": 6,
-  "event": "volume_up"
+  "rules": [
+    {
+      "id": "0x5C1",
+      "byte": 0,
+      "value": 6,
+      "event": "volume_up"
+    },
+    {
+      "id": "0x470",
+      "byte": 2,
+      "value": "any",
+      "event": "brightness_level"
+    }
+  ]
 }
 ```
 
-This means:
+`value` may be a number or `"any"`.
 
-```text
-When CAN ID 0x5C1 has byte 0 equal to 6, emit volume_up.
-```
-
-The special value `"any"` emits when the byte changes and passes the byte value as an extra argument:
-
-```json
-{
-  "id": "0x470",
-  "byte": 2,
-  "value": "any",
-  "event": "brightness_level"
-}
-```
+`"any"` means the event fires when that byte changes, and the byte value is passed as an extra argument.
 
 ## `presence`
 
-Presence rules watch for whether a CAN ID is still being seen.
-
-Example:
-
 ```json
 {
-  "id": "0x65F",
-  "timeout_ms": 6000,
-  "on_present": "vehicle_present:on",
-  "on_absent": "vehicle_present:off"
+  "presence": [
+    {
+      "id": "0x65F",
+      "timeout_ms": 6000,
+      "on_present": "vehicle_present:on",
+      "on_absent": "vehicle_present:off"
+    }
+  ]
 }
 ```
 
-This is useful for vehicle-awake / vehicle-asleep detection.
-
 ## `status`
 
-Status mappings convert CAN bytes into persistent state for dashboards and future UIs.
+Status rules turn raw CAN data into persistent state.
 
-Example bitfield mapping:
+### Bitfield
 
 ```json
 {
@@ -391,24 +325,32 @@ Example bitfield mapping:
 }
 ```
 
-This writes state like:
+This produces status like:
 
 ```json
 {
   "doors": {
-    "front_right": false,
     "front_left": true,
-    "rear_left": false,
-    "rear_right": false,
-    "bonnet": false,
-    "boot": false,
+    "front_right": false,
     "any_open": true,
     "raw": 2
   }
 }
 ```
 
-Example boolean mapping:
+### Percent
+
+```json
+{
+  "id": "0x470",
+  "byte": 2,
+  "type": "percent",
+  "path": "lighting.dimmer_percent",
+  "raw_path": "lighting.dimmer_raw"
+}
+```
+
+### Bool
 
 ```json
 {
@@ -422,7 +364,7 @@ Example boolean mapping:
 }
 ```
 
-Example enum mapping:
+### Enum
 
 ```json
 {
@@ -440,39 +382,15 @@ Example enum mapping:
 }
 ```
 
-Example percentage mapping:
-
-```json
-{
-  "id": "0x470",
-  "byte": 2,
-  "type": "percent",
-  "path": "lighting.dimmer_percent",
-  "raw_path": "lighting.dimmer_raw"
-}
-```
-
-Supported status types:
-
-| Type | Purpose |
-|---|---|
-| `raw` | Store the byte value directly |
-| `percent` | Clamp byte value to 0-100 |
-| `bool` | Match true/false values |
-| `enum` | Map byte values to human-readable strings |
-| `bitfield` | Map bit masks to boolean state fields |
-
 ---
 
-# Bindings
+# Bindings Format
 
 Bindings live in:
 
 ```text
-bindings/*.json
+bindings/<name>.json
 ```
-
-They map events to action modules.
 
 Example:
 
@@ -490,21 +408,196 @@ Example:
 }
 ```
 
-Events without bindings are still published internally, but no action is executed.
+Bindings are selected with:
+
+```ini
+Environment="OPEN_MMI_BINDINGS=default"
+```
 
 ---
 
-# Actions
+# Safe User Config Workflow
 
-Actions live in:
+Application files are installed to:
 
 ```text
-actions/
+/opt/open-mmi
 ```
 
-Current action modules include:
+User-editable config should live in:
 
-## `audio.py`
+```text
+~/.config/open-mmi
+```
+
+This keeps personal vehicle profiles and bindings safe from updates.
+
+## Create User Config
+
+```bash
+sudo ./scripts/manage.sh config init seat_1p default
+```
+
+This creates:
+
+```text
+~/.config/open-mmi/
+├── vehicles/
+│   └── seat_1p/
+│       └── config.json
+└── bindings/
+    └── default.json
+```
+
+Existing user files are not overwritten.
+
+## Edit Vehicle Profile
+
+```bash
+sudo ./scripts/manage.sh config edit-profile seat_1p
+```
+
+## Edit Bindings
+
+```bash
+sudo ./scripts/manage.sh config edit-bindings default
+```
+
+## Edit Service Environment
+
+```bash
+sudo ./scripts/manage.sh config edit-service
+```
+
+Use this for environment variables such as:
+
+```ini
+[Service]
+Environment="OPEN_MMI_VEHICLE=seat_1p"
+Environment="OPEN_MMI_BINDINGS=default"
+Environment="OPEN_MMI_LOG_LEVEL=DEBUG"
+```
+
+## Show Config Paths
+
+```bash
+sudo ./scripts/manage.sh config paths
+```
+
+## Lookup Order
+
+Vehicle config lookup order:
+
+```text
+1. OPEN_MMI_VEHICLE_CONFIG
+2. ~/.config/open-mmi/vehicles/<vehicle>/config.json
+3. /opt/open-mmi/vehicles/<vehicle>/config.json
+```
+
+Bindings lookup order:
+
+```text
+1. OPEN_MMI_BINDINGS_FILE
+2. ~/.config/open-mmi/bindings/<bindings>.json
+3. /opt/open-mmi/bindings/<bindings>.json
+```
+
+So a user can safely keep personal profiles outside the installed app tree.
+
+---
+
+# Management Commands
+
+## Install
+
+```bash
+sudo ./scripts/manage.sh install
+```
+
+## Update
+
+```bash
+sudo ./scripts/manage.sh update
+```
+
+The updater:
+
+- runs Git operations as the real user, not root
+- deploys files to `/opt/open-mmi`
+- installs `canbusd/`, `vehicles/`, `bindings/`, `actions/`, `ui/`, and `scripts/`
+- restarts the user service
+
+## Status
+
+```bash
+sudo ./scripts/manage.sh status
+```
+
+## Logs
+
+```bash
+sudo ./scripts/manage.sh logs
+```
+
+## Config
+
+```bash
+sudo ./scripts/manage.sh config init seat_1p default
+sudo ./scripts/manage.sh config edit-profile seat_1p
+sudo ./scripts/manage.sh config edit-bindings default
+sudo ./scripts/manage.sh config edit-service
+sudo ./scripts/manage.sh config paths
+```
+
+## Uninstall
+
+From a repo checkout:
+
+```bash
+sudo ./scripts/manage.sh uninstall
+```
+
+Or from the installed copy, even if the repo was deleted:
+
+```bash
+sudo /opt/open-mmi/scripts/manage.sh uninstall
+```
+
+---
+
+# Status Dashboard
+
+The dashboard reads the persistent status snapshot produced by `canbusd/status_bus.py`.
+
+Run from the installed copy:
+
+```bash
+cd /opt/open-mmi
+./venv/bin/python ui/dashboard/status_cli.py
+```
+
+Options:
+
+```bash
+./venv/bin/python ui/dashboard/status_cli.py --once
+./venv/bin/python ui/dashboard/status_cli.py --raw
+```
+
+This is currently a CLI dashboard, but the same status snapshot can later feed:
+
+- a web UI
+- a tablet UI
+- a local dashboard service
+- an MQTT bridge
+- a WebSocket bridge
+
+The UI should consume human-readable vehicle state, not raw CAN frames.
+
+---
+
+# Available Actions
+
+## `actions/audio.py`
 
 ```python
 volume_up(step="+5%")
@@ -516,14 +609,14 @@ prev_track()
 stop()
 ```
 
-## `brightness.py`
+## `actions/brightness.py`
 
 ```python
 set_percent(percent)
 from_can(value)
 ```
 
-## `keys.py`
+## `actions/keys.py`
 
 ```python
 play_pause()
@@ -537,7 +630,7 @@ arrow_left()
 arrow_right()
 ```
 
-## `screen.py`
+## `actions/screen.py`
 
 ```python
 on()
@@ -547,62 +640,48 @@ wake_and_login(user)
 
 ---
 
-# Status Dashboard
+# Development and Testing
 
-The current dashboard is a CLI prototype located at:
+## Run the daemon manually
 
-```text
-ui/dashboard/status_cli.py
-```
-
-Run from the installed copy:
+From the repo checkout:
 
 ```bash
-cd /opt/open-mmi
-./venv/bin/python ui/dashboard/status_cli.py
+OPEN_MMI_LOG_LEVEL=DEBUG OPEN_MMI_VEHICLE=seat_1p python3 -m canbusd.core
 ```
 
-One-shot output:
+## Validate JSON
 
 ```bash
-./venv/bin/python ui/dashboard/status_cli.py --once
+python3 -m json.tool vehicles/seat_1p/config.json >/dev/null
+python3 -m json.tool bindings/default.json >/dev/null
 ```
 
-Raw status snapshot:
+## Check Python syntax
 
 ```bash
-./venv/bin/python ui/dashboard/status_cli.py --raw
+python3 -m py_compile canbusd/core.py canbusd/status_rules.py canbusd/status_bus.py
 ```
 
-The dashboard reads the persistent status snapshot written by `canbusd/status_bus.py`.
-
-The current snapshot path defaults to:
-
-```text
-$XDG_RUNTIME_DIR/open-mmi/status.json
-```
-
-with fallback to:
-
-```text
-/tmp/open-mmi-status.json
-```
-
-A future web/tablet UI can consume the same state without decoding CAN itself.
-
----
-
-# Common Workflows
-
-## Add a new button/action
-
-1. Identify the CAN message:
+## Watch raw CAN
 
 ```bash
 candump can0
 ```
 
-2. Add a `rules` entry to the vehicle profile:
+---
+
+# Common Workflows
+
+## Add a New Button Action
+
+1. Watch CAN traffic:
+
+```bash
+candump can0
+```
+
+2. Add a rule to your vehicle profile:
 
 ```json
 {
@@ -624,142 +703,23 @@ candump can0
 }
 ```
 
-4. Validate JSON:
+4. Restart or reload the daemon:
 
 ```bash
-python3 -m json.tool vehicles/my_car/config.json >/dev/null
-python3 -m json.tool bindings/my_bindings.json >/dev/null
-```
-
-5. Update/restart:
-
-```bash
-sudo ./scripts/manage.sh update
-systemctl --user restart canbusd.service
-sudo ./scripts/manage.sh logs
-```
-
-## Add a new status value
-
-1. Identify the CAN message:
-
-```bash
-candump can0
-```
-
-2. Add a `status` entry to the vehicle profile:
-
-```json
-{
-  "id": "0x123",
-  "byte": 0,
-  "type": "bool",
-  "path": "vehicle.example",
-  "true": "0x01",
-  "false": "0x00",
-  "raw_path": "vehicle.example_raw"
-}
-```
-
-3. Validate and update:
-
-```bash
-python3 -m json.tool vehicles/my_car/config.json >/dev/null
-sudo ./scripts/manage.sh update
 systemctl --user restart canbusd.service
 ```
 
+## Add a New Status Signal
+
+1. Identify the CAN frame.
+2. Add a `status` rule to your vehicle profile.
+3. Restart the daemon.
 4. Watch the dashboard:
 
 ```bash
 cd /opt/open-mmi
 ./venv/bin/python ui/dashboard/status_cli.py
 ```
-
-## Test before installing
-
-From the repo checkout:
-
-```bash
-python3 -m py_compile canbusd/core.py canbusd/status_rules.py canbusd/status_bus.py
-python3 -m json.tool vehicles/seat_1p/config.json >/dev/null
-```
-
-For real CAN testing, the daemon should run under the installed environment because permissions, systemd, udev, and runtime paths matter.
-
----
-
-# Management Commands
-
-## Install
-
-```bash
-sudo ./scripts/manage.sh install
-```
-
-## Update
-
-```bash
-sudo ./scripts/manage.sh update
-```
-
-The updater runs Git operations as the real user, then deploys system files with sudo. This allows SSH keys and Git config to work correctly even when the update command is launched with sudo.
-
-## Status
-
-```bash
-sudo ./scripts/manage.sh status
-```
-
-## Logs
-
-```bash
-sudo ./scripts/manage.sh logs
-```
-
-## Edit service config
-
-```bash
-sudo ./scripts/manage.sh config edit
-```
-
-Use this to set environment variables such as:
-
-```ini
-Environment="OPEN_MMI_VEHICLE=seat_1p"
-Environment="OPEN_MMI_BINDINGS=default"
-Environment="OPEN_MMI_LOG_LEVEL=INFO"
-```
-
-## Uninstall
-
-```bash
-sudo ./scripts/manage.sh uninstall
-```
-
-If the repo checkout has been removed, use the installed copy:
-
-```bash
-sudo /opt/open-mmi/scripts/manage.sh uninstall
-```
-
----
-
-# Environment Variables
-
-```bash
-OPEN_MMI_VEHICLE=seat_1p
-OPEN_MMI_BINDINGS=default
-OPEN_MMI_LOG_LEVEL=INFO
-OPEN_MMI_STATUS_PATH=/custom/status.json
-```
-
-| Variable | Purpose |
-|---|---|
-| `OPEN_MMI_VEHICLE` | Select active vehicle profile |
-| `OPEN_MMI_BINDINGS` | Select active bindings file |
-| `OPEN_MMI_LOG_LEVEL` | Set logging level |
-| `OPEN_MMI_STATUS_PATH` | Override status snapshot path |
 
 ---
 
@@ -773,84 +733,36 @@ sudo ./scripts/manage.sh logs
 
 Common causes:
 
-- invalid JSON in vehicle profile or bindings
-- missing `/opt/open-mmi/canbusd`
-- systemd service pointing at the wrong working directory
+- invalid JSON in profile or bindings
 - missing Python dependency
-- permission issue with CAN/input devices
+- missing installed files
+- wrong service environment variable
 
-Check installed files:
-
-```bash
-ls -l /opt/open-mmi/canbusd/core.py
-ls -l /opt/open-mmi/vehicles
-ls -l /opt/open-mmi/actions
-```
-
-## CAN messages are not being received
+## CAN messages not received
 
 ```bash
 ip link show can0
 candump can0
 ```
 
-If `can0` is down:
+## User config not being used
+
+Check paths:
 
 ```bash
-sudo ip link set can0 up
+sudo ./scripts/manage.sh config paths
 ```
 
-## Actions are not executing
-
-Watch logs:
-
-```bash
-sudo ./scripts/manage.sh logs
-```
-
-Look for:
+Check daemon logs for:
 
 ```text
-Event dispatched: <event_name>
+Loaded config from ...
+Loaded bindings from ...
 ```
 
-Then check:
+## Permission denied for virtual input
 
-- does the event exist in `bindings/*.json`?
-- does the module exist in `actions/`?
-- does the function name match?
-- does the action need extra permissions?
-
-## Dashboard is blank
-
-Check that the daemon is running:
-
-```bash
-sudo ./scripts/manage.sh status
-```
-
-Check the status snapshot:
-
-```bash
-cat "${XDG_RUNTIME_DIR:-/tmp}/open-mmi/status.json"
-```
-
-or:
-
-```bash
-find /run/user/$(id -u) /tmp -name status.json 2>/dev/null
-```
-
-Then run:
-
-```bash
-cd /opt/open-mmi
-./venv/bin/python ui/dashboard/status_cli.py --raw
-```
-
-## Permission denied
-
-Check user groups:
+Check groups:
 
 ```bash
 groups $USER
@@ -862,7 +774,7 @@ The user should normally be in:
 video input
 ```
 
-If not:
+If needed:
 
 ```bash
 sudo usermod -aG video,input $USER
@@ -872,79 +784,40 @@ Then log out/in or reboot.
 
 ---
 
-# Requirements
+# Safety
 
-## System
+This project interfaces with vehicle CAN buses.
 
-- Linux with systemd
-- Python 3.9+
-- CAN interface, usually `can0`
-- SocketCAN support
+Incorrect configuration may:
 
-## Python packages
+- trigger unexpected actions
+- misrepresent vehicle state
+- affect driver distraction
+- create unsafe behaviour if connected to critical systems
 
-Installed by `manage.sh`:
+Always:
 
-- `python-can`
-- `evdev`
-
-## Optional system tools
-
-For audio/media:
-
-```bash
-sudo apt install pulseaudio-utils playerctl
-```
-
-For CAN debugging:
-
-```bash
-sudo apt install can-utils
-```
-
-For display/desktop integrations, requirements depend on the desktop/session.
+- start with passive observation
+- avoid vehicle-critical CAN IDs
+- test mappings carefully
+- keep `main` stable
+- use beta branches for real-car testing
+- monitor logs during testing
 
 ---
 
 # Contributing
 
-Good contribution areas:
+Contributions are welcome:
 
-- new vehicle profiles
-- improved CAN decodes
-- new action modules
-- new dashboard/UI consumers
+- vehicle profiles
+- CAN decode notes
+- status mappings
+- action modules
+- UI/dashboard prototypes
 - documentation improvements
-- installer/test workflow improvements
 
-Vehicle profile contributions should keep vehicle-specific CAN knowledge in:
-
-```text
-vehicles/<profile>/config.json
-```
-
-Core Python should stay generic where possible.
-
----
-
-# Safety
-
-**WARNING:** This interfaces with vehicle CAN buses.
-
-Incorrect configuration may:
-
-- trigger unexpected system behaviour
-- cause distracting UI/actions while driving
-- create unsafe assumptions about vehicle state
-
-General guidance:
-
-- prefer read-only CAN observation
-- test off-road or parked first
-- avoid vehicle-critical CAN IDs
-- keep `main` stable and test new work on a beta branch
-- monitor logs during testing
-- verify changes on the real vehicle before merging
+Profile contributions should keep vehicle-specific CAN knowledge in `vehicles/<profile>/config.json`, not in core Python.
 
 ---
 
