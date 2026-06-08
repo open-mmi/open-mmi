@@ -15,6 +15,8 @@ from typing import Dict, List, Tuple, Optional, Any
 import can
 
 from canbusd.dispatcher import dispatch
+from canbusd.status_bus import publish as publish_status
+from canbusd.status_rules import parse_status_rules, evaluate_status_rules
 
 log_level = os.getenv("OPEN_MMI_LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
@@ -62,21 +64,34 @@ def _load_bindings() -> Dict[str, Dict[str, Any]]:
         return {}
 
 
-def _load_config(prev=None, prev_mtime=None):
+def _load_config(
+    prev_rules=None,
+    prev_mtime=None,
+    prev_presence=None,
+    prev_status_rules=None,
+):
     global _need_reload
 
     try:
         mtime = CFG_PATH.stat().st_mtime
     except FileNotFoundError:
-        return prev, prev_mtime, []
+        return (
+            prev_rules,
+            prev_mtime,
+            prev_presence or [],
+            prev_status_rules or {},
+        )
 
     with _reload_lock:
         reload_requested = _need_reload
-        if not reload_requested:
-            _need_reload = False
 
     if prev_mtime == mtime and not reload_requested:
-        return prev, prev_mtime, []
+        return (
+            prev_rules,
+            prev_mtime,
+            prev_presence or [],
+            prev_status_rules or {},
+        )
 
     try:
         cfg = json.load(open(CFG_PATH))
@@ -104,18 +119,32 @@ def _load_config(prev=None, prev_mtime=None):
                 "on_absent": p.get("on_absent"),
             })
 
+        status_rules = parse_status_rules(cfg.get("status", []))
+
         with _reload_lock:
             _need_reload = False
 
-        return (rules, mtime, presence)
+        logger.info(
+            "Loaded config: %d CAN ids, %d presence rules, %d status CAN ids",
+            len(rules),
+            len(presence),
+            len(status_rules),
+        )
+
+        return (rules, mtime, presence, status_rules)
 
     except Exception as e:
         logger.error(f"Config load failed: {e}")
-        return prev, prev_mtime, []
+        return (
+            prev_rules,
+            prev_mtime,
+            prev_presence or [],
+            prev_status_rules or {},
+        )
 
 
 def main():
-    rules, mtime, presence = _load_config(None, None)
+    rules, mtime, presence, status_rules = _load_config(None, None)
     bindings = _load_bindings()
 
     last_seen = {}
@@ -131,7 +160,12 @@ def main():
         now = time.monotonic()
 
         if now - last_check > RELOAD_INTERVAL:
-            rules, mtime, presence = _load_config(rules, mtime)
+            rules, mtime, presence, status_rules = _load_config(
+                rules,
+                mtime,
+                presence,
+                status_rules,
+            )
             bindings = _load_bindings()
             last_check = now
 
@@ -153,6 +187,15 @@ def main():
         last_seen[msg.arbitration_id] = now
 
         cid = msg.arbitration_id
+
+        if cid in status_rules:
+            status_update = evaluate_status_rules(
+                status_rules[cid],
+                msg.data,
+                msg.dlc,
+            )
+            if status_update:
+                publish_status(status_update)
 
         if cid in rules:
             for b, v, event in rules[cid]:
