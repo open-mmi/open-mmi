@@ -23,6 +23,7 @@ NC='\033[0m' # No Color
 REAL_USER="${SUDO_USER:-$USER}"
 REAL_HOME=$(getent passwd "$REAL_USER" | cut -d: -f6)
 USER_ID=$(id -u "$REAL_USER")
+USER_CONFIG_DIR="$REAL_HOME/.config/open-mmi"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
@@ -114,6 +115,32 @@ get_repo_upstream() {
     else
         echo "origin/$(get_repo_branch)"
     fi
+}
+
+
+copy_if_missing() {
+    local src="$1"
+    local dst="$2"
+
+    if [ -e "$dst" ]; then
+        log_warn "Keeping existing user file: $dst"
+        return 0
+    fi
+
+    mkdir -p "$(dirname "$dst")"
+    cp "$src" "$dst"
+    chown "$REAL_USER:$REAL_USER" "$dst"
+    log_success "Created $dst"
+}
+
+open_editor_as_user() {
+    local file="$1"
+    local editor="${EDITOR:-nano}"
+
+    sudo -u "$REAL_USER" \
+        HOME="$REAL_HOME" \
+        XDG_RUNTIME_DIR="/run/user/$USER_ID" \
+        "$editor" "$file"
 }
 
 # =============================================================================
@@ -464,38 +491,149 @@ cmd_logs() {
 
 cmd_config() {
     local action="${1:-help}"
-    
+
     case "$action" in
-        edit)
-            log_info "Editing systemd service configuration"
+        init)
+            local vehicle="${2:-seat_1p}"
+            local bindings="${3:-default}"
+
+            log_info "Creating user config directory at $USER_CONFIG_DIR"
+            mkdir -p "$USER_CONFIG_DIR/vehicles/$vehicle"
+            mkdir -p "$USER_CONFIG_DIR/bindings"
+            chown -R "$REAL_USER:$REAL_USER" "$USER_CONFIG_DIR"
+
+            local source_vehicle="$REPO_ROOT/vehicles/$vehicle/config.json"
+            local source_bindings="$REPO_ROOT/bindings/$bindings.json"
+
+            if [ ! -f "$source_vehicle" ]; then
+                log_error "Vehicle profile not found: $source_vehicle"
+                return 1
+            fi
+
+            if [ ! -f "$source_bindings" ]; then
+                log_error "Bindings file not found: $source_bindings"
+                return 1
+            fi
+
+            copy_if_missing \
+                "$source_vehicle" \
+                "$USER_CONFIG_DIR/vehicles/$vehicle/config.json"
+
+            copy_if_missing \
+                "$source_bindings" \
+                "$USER_CONFIG_DIR/bindings/$bindings.json"
+
+            log_success "User config ready"
+            echo ""
+            echo "  Vehicle profile: $USER_CONFIG_DIR/vehicles/$vehicle/config.json"
+            echo "  Bindings file:   $USER_CONFIG_DIR/bindings/$bindings.json"
+            echo ""
+            log_info "The daemon will prefer these files over /opt/open-mmi when OPEN_MMI_VEHICLE=$vehicle and OPEN_MMI_BINDINGS=$bindings"
+            ;;
+        edit-profile)
+            local vehicle="${2:-${OPEN_MMI_VEHICLE:-seat_1p}}"
+            local profile="$USER_CONFIG_DIR/vehicles/$vehicle/config.json"
+
+            if [ ! -f "$profile" ]; then
+                log_warn "User profile does not exist yet: $profile"
+                log_info "Creating it from installed/repo profile..."
+                cmd_config init "$vehicle" "${OPEN_MMI_BINDINGS:-default}"
+            fi
+
+            open_editor_as_user "$profile"
+            ;;
+        edit-bindings)
+            local bindings="${2:-${OPEN_MMI_BINDINGS:-default}}"
+            local file="$USER_CONFIG_DIR/bindings/$bindings.json"
+
+            if [ ! -f "$file" ]; then
+                log_warn "User bindings do not exist yet: $file"
+                log_info "Creating it from installed/repo bindings..."
+                cmd_config init "${OPEN_MMI_VEHICLE:-seat_1p}" "$bindings"
+            fi
+
+            open_editor_as_user "$file"
+            ;;
+        edit-service|edit)
+            log_info "Editing systemd service override"
             if [ ! -f "$REAL_HOME/.config/systemd/user/canbusd.service" ]; then
                 log_error "Service not installed yet"
                 return 1
             fi
-            
+
+            mkdir -p "$REAL_HOME/.config/systemd/user/canbusd.service.d"
+            chown -R "$REAL_USER:$REAL_USER" "$REAL_HOME/.config/systemd/user"
+
             export XDG_RUNTIME_DIR="/run/user/$USER_ID"
             sudo -u "$REAL_USER" \
+                HOME="$REAL_HOME" \
                 XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
-                systemctl --user edit canbusd
-            
+                systemctl --user edit canbusd.service
+
             log_info "Reloading systemd..."
             sudo -u "$REAL_USER" \
+                HOME="$REAL_HOME" \
                 XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
                 systemctl --user daemon-reload
-            
+
             if daemon_running; then
                 log_info "Restarting daemon..."
                 sudo -u "$REAL_USER" \
+                    HOME="$REAL_HOME" \
                     XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
-                    systemctl --user restart canbusd
+                    systemctl --user restart canbusd.service
             fi
             ;;
         show)
             log_info "Current service configuration:"
-            cat "$REAL_HOME/.config/systemd/user/canbusd.service"
+            systemctl --user cat canbusd.service 2>/dev/null || cat "$REAL_HOME/.config/systemd/user/canbusd.service"
             ;;
-        *)
-            echo "Usage: $0 config {edit|show}"
+        paths)
+            log_info "Configuration paths"
+            echo ""
+            echo "  User config dir: $USER_CONFIG_DIR"
+            echo "  User vehicles:   $USER_CONFIG_DIR/vehicles"
+            echo "  User bindings:   $USER_CONFIG_DIR/bindings"
+            echo "  Installed app:   $INSTALL_DIR"
+            echo ""
+            echo "  Lookup order:"
+            echo "    1. Explicit env path overrides"
+            echo "    2. User config directory"
+            echo "    3. Installed app defaults"
+            ;;
+        help|--help|-h|*)
+            cat <<EOF
+Usage: $0 config <command> [args]
+
+Commands:
+  init [vehicle] [bindings]
+      Create safe user-owned config files under:
+      $USER_CONFIG_DIR
+
+  edit-profile [vehicle]
+      Edit a user-owned vehicle profile.
+      Default vehicle: seat_1p
+
+  edit-bindings [bindings]
+      Edit a user-owned bindings file.
+      Default bindings: default
+
+  edit-service
+      Edit the systemd service override.
+      Use this for OPEN_MMI_VEHICLE, OPEN_MMI_BINDINGS, log level, etc.
+
+  show
+      Show the effective systemd service config.
+
+  paths
+      Show where Open-MMI looks for config files.
+
+Examples:
+  sudo $0 config init seat_1p default
+  sudo $0 config edit-profile seat_1p
+  sudo $0 config edit-bindings default
+  sudo $0 config edit-service
+EOF
             ;;
     esac
 }
@@ -518,7 +656,7 @@ ${BLUE}Commands:${NC}
   
   status       Show installation and daemon status
   logs         View daemon logs in real-time
-  config       Manage service configuration
+  config       Manage user config and service overrides
   
   help         Show this help message
 
@@ -527,7 +665,9 @@ ${BLUE}Examples:${NC}
   sudo ./scripts/manage.sh update
   sudo ./scripts/manage.sh status
   sudo ./scripts/manage.sh logs
-  sudo ./scripts/manage.sh config edit
+  sudo ./scripts/manage.sh config init
+  sudo ./scripts/manage.sh config edit-profile seat_1p
+  sudo ./scripts/manage.sh config edit-service
 
 ${BLUE}Installation Details:${NC}
   Install directory: $INSTALL_DIR
@@ -537,7 +677,9 @@ ${BLUE}Installation Details:${NC}
 ${BLUE}Troubleshooting:${NC}
   View logs:        sudo ./scripts/manage.sh logs
   Check status:     sudo ./scripts/manage.sh status
-  Edit config:      sudo ./scripts/manage.sh config edit
+  Edit config:      sudo ./scripts/manage.sh config init
+  sudo ./scripts/manage.sh config edit-profile seat_1p
+  sudo ./scripts/manage.sh config edit-service
 
 EOF
 }
