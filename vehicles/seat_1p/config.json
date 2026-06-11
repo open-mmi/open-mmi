@@ -152,6 +152,15 @@
         "hazards": "0x08"
       },
       "raw": "secondary_raw"
+    },
+    {
+      "id": "0x470",
+      "byte": 4,
+      "type": "bool",
+      "path": "lighting.bulb_out",
+      "true": "0x10",
+      "false": "0x00",
+      "raw_path": "lighting.bulb_out_raw"
     }
   ]
 }
