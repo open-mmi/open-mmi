@@ -99,11 +99,21 @@ def _line(title: str = "") -> str:
 
 
 def _pair(left_label: str, left_value: Any, right_label: str = "", right_value: Any = "") -> str:
-    left = f"{left_label:<18} {left_value:<14}"
+    left = f"{left_label:<18} {str(left_value):<14}"
     if right_label:
-        right = f"{right_label:<18} {right_value:<14}"
+        right = f"{right_label:<18} {str(right_value):<14}"
         return f"{left} {right}"
     return left
+
+
+def _degrees_label(value: Any) -> str:
+    if not isinstance(value, (int, float)):
+        return "-"
+    if value > 0:
+        return f"{value:.2f}° right"
+    if value < 0:
+        return f"{abs(value):.2f}° left"
+    return "0.00° center"
 
 
 def _render_dashboard(payload: Dict[str, Any], path: Path = STATUS_PATH) -> None:
@@ -114,6 +124,7 @@ def _render_dashboard(payload: Dict[str, Any], path: Path = STATUS_PATH) -> None
     doors = state.get("doors", {}) if isinstance(state.get("doors", {}), dict) else {}
     vehicle = state.get("vehicle", {}) if isinstance(state.get("vehicle", {}), dict) else {}
     lighting = state.get("lighting", {}) if isinstance(state.get("lighting", {}), dict) else {}
+    steering = state.get("steering", {}) if isinstance(state.get("steering", {}), dict) else {}
 
     _clear()
     print("Open MMI Vehicle Status")
@@ -148,14 +159,20 @@ def _render_dashboard(payload: Dict[str, Any], path: Path = STATUS_PATH) -> None
     print(_pair("Reverse raw", vehicle.get("reverse_raw", "-"), "Handbrake raw", vehicle.get("handbrake_raw", "-")))
 
     print()
+    print(_line("Steering"))
+    print(_pair("Angle", _degrees_label(steering.get("angle_degrees")), "Direction", steering.get("direction", "-")))
+    print(_pair("Raw", steering.get("angle_raw", "-"), "Magnitude", steering.get("angle_magnitude_raw", "-")))
+
+    print()
     print(_line("Lighting"))
     dimmer = lighting.get("dimmer_percent", "-")
     if dimmer != "-":
         dimmer = f"{dimmer}%"
     indicator = _indicator_label(lighting)
     print(_pair("Mode", lighting.get("mode", "-"), "Dimmer", dimmer))
-    print(_pair("Lights on", _bool_label(lighting.get("lights_on")), "Brake", _bool_label(lighting.get("brake"))))
-    print(_pair("Indicators", indicator, "Hazards", _bool_label(lighting.get("hazards"))))
+    print(_pair("Lights on", _bool_label(lighting.get("lights_on")), "Bulb out", _bool_label(lighting.get("bulb_out"))))
+    print(_pair("Brake", _bool_label(lighting.get("brake")), "Indicators", indicator))
+    print(_pair("Hazards", _bool_label(lighting.get("hazards")), "Bulb raw", lighting.get("bulb_out_raw", "-")))
     print(_pair("Mode raw", lighting.get("mode_raw", "-"), "Secondary raw", lighting.get("secondary_raw", "-")))
 
     print()
