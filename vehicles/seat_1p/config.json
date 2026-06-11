@@ -55,7 +55,6 @@
       "event": "brightness_level"
     }
   ],
-
   "presence": [
     {
       "id": "0x65F",
@@ -64,7 +63,6 @@
       "on_absent": "vehicle_present:off"
     }
   ],
-
   "status": [
     {
       "id": "0x470",
@@ -90,6 +88,15 @@
       "type": "percent",
       "path": "lighting.dimmer_percent",
       "raw_path": "lighting.dimmer_raw"
+    },
+    {
+      "id": "0x470",
+      "byte": 4,
+      "type": "bool",
+      "path": "lighting.bulb_out",
+      "true": "0x10",
+      "false": "0x00",
+      "raw_path": "lighting.bulb_out_raw"
     },
     {
       "id": "0x351",
@@ -154,13 +161,31 @@
       "raw": "secondary_raw"
     },
     {
-      "id": "0x470",
-      "byte": 4,
-      "type": "bool",
-      "path": "lighting.bulb_out",
-      "true": "0x10",
-      "false": "0x00",
-      "raw_path": "lighting.bulb_out_raw"
+      "id": "0x3C3",
+      "type": "steering_angle",
+      "path": "steering.angle_degrees",
+      "bytes": [
+        0,
+        1
+      ],
+      "encoding": "sign_magnitude_15bit_little",
+      "sign_bit": {
+        "byte": 1,
+        "mask": "0x80",
+        "positive": "right"
+      },
+      "magnitude": {
+        "low_byte": 0,
+        "high_byte": 1,
+        "high_mask": "0x7F"
+      },
+      "scale": 0.04375,
+      "offset": 0,
+      "center": "0x0000",
+      "round": 3,
+      "raw_path": "steering.angle_raw",
+      "magnitude_raw_path": "steering.angle_magnitude_raw",
+      "direction_path": "steering.direction"
     }
   ]
 }
