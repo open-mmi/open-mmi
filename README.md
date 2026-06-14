@@ -837,13 +837,20 @@ python3 -m json.tool vehicles/seat_1p/config.json >/dev/null
 python3 -m json.tool bindings/default.json >/dev/null
 ```
 
+## Run tests
+
+```bash
+python3 -m unittest discover -s tests
+```
+
 ## Check Python syntax
 
 ```bash
-python3 -m py_compile canbusd/core.py canbusd/status_rules.py canbusd/status_bus.py
+python3 -m py_compile canbusd/core.py canbusd/can_runtime.py canbusd/status_rules.py canbusd/status_bus.py
 ```
 
 ## Watch raw CAN
+
 
 ```bash
 candump can0

@@ -127,7 +127,8 @@ Please avoid posting sensitive vehicle data such as full VINs, private locations
 Please check:
 
 ```bash
-python3 -m py_compile canbusd/core.py canbusd/status_rules.py canbusd/status_bus.py
+python3 -m py_compile canbusd/core.py canbusd/can_runtime.py canbusd/status_rules.py canbusd/status_bus.py
+python3 -m unittest discover -s tests
 python3 -m json.tool vehicles/seat_1p/config.json >/dev/null
 python3 -m json.tool bindings/default.json >/dev/null
 bash -n scripts/manage.sh
