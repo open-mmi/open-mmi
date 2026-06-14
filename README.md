@@ -34,6 +34,8 @@ This is **not yet** a polished infotainment replacement, final tablet UI, or mul
 
 The goal is to build a reusable open foundation so vehicle-specific CAN knowledge can live in shareable profiles instead of being rediscovered privately.
 
+See [`docs/project-philosophy.md`](docs/project-philosophy.md) for the project goals and community philosophy.
+
 ---
 
 ## Current tagged checkpoint
@@ -1002,7 +1004,6 @@ Then log out/in or reboot.
 These permissions are a local security tradeoff because they allow interaction with display/input-related system features.
 
 A system with these permissions should be treated as a trusted local vehicle computer, not as a shared untrusted desktop. Only use them where you trust the installed open-mmi configuration.
-
 
 ---
 
