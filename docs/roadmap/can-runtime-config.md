@@ -51,6 +51,22 @@ A future optional helper may bring interfaces up, but that should be explicit us
 
 ---
 
+## Current provisioning split
+
+The current implementation separates provisioning from consumption:
+
+- `udev/80-canbus.rules` provisions the tested SocketCAN interface
+- the current rule targets `can0`
+- the current rule configures `can0` at `100000`
+- `systemd/user/canbusd.service` starts the daemon but does not configure CAN
+- `scripts/manage.sh` installs/removes the udev rule and user service
+- the daemon waits for the configured interface to exist and reconnects if it disappears
+- `scripts/manage.sh config edit-service` already allows local systemd service overrides
+
+The first runtime-config pass should preserve this split.
+
+Named buses should initially describe which already-provisioned interface the daemon should consume. They should not automatically replace the udev/system provisioning layer.
+
 ## Design direction
 
 The future design should model CAN inputs as **named buses**, not just as one global interface.
