@@ -36,7 +36,8 @@ Current behaviour on `main`:
 * the daemon currently opens one SocketCAN interface at a time
 * rules, presence rules, and status rules may optionally declare `bus`
 * rules without `bus` belong to the profile `default_bus`
-* the included udev rule still brings up `can0` at `100000`
+* `config apply-profile` can generate runtime and udev provisioning from the selected profile
+* the generated Seat 1P udev rule brings up `can0` at `100000`
 * the daemon consumes the already-provisioned interface and does not configure bitrate
 
 The maintainer-tested real-car path remains:
@@ -209,6 +210,17 @@ snapshot, while debug views expose bus health and source details.
 ---
 
 ## Recommended next work
+
+### Profile-driven provisioning
+
+Status: **implemented in `beta/profile-provisioning`**.
+
+The selected vehicle profile now drives the normal local setup path. `config
+apply-profile` reads `default_bus` and `can_buses` metadata, writes the daemon
+runtime drop-in, and generates udev provisioning rules.
+
+This keeps normal setup as one profile-selection workflow while preserving
+`config edit-can` as an advanced override.
 
 ### CAN bus health/debug state
 

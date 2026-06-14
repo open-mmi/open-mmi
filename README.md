@@ -610,24 +610,38 @@ User-editable config should live in:
 
 This keeps personal vehicle profiles and bindings safe from updates.
 
-## Create user config
+## Apply a vehicle profile
+
+```bash
+sudo ./scripts/manage.sh config apply-profile seat_1p default
+```
+
+This is the normal setup path. It uses the selected vehicle profile as the source
+of truth and applies the local runtime/provisioning defaults declared by that
+profile.
+
+For the Seat 1P reference profile this means:
+
+```text
+default_bus = comfort
+comfort.interface = can0
+comfort.bitrate = 100000
+comfort.provisioning = udev
+```
+
+It creates user-owned profile/bindings files when missing, writes the daemon
+runtime drop-in, and generates the udev rule for the declared CAN bus.
+
+Existing user files are not overwritten.
+
+## Create user config only
 
 ```bash
 sudo ./scripts/manage.sh config init seat_1p default
 ```
 
-This creates:
-
-```text
-~/.config/open-mmi/
-├── vehicles/
-│   └── seat_1p/
-│       └── config.json
-└── bindings/
-    └── default.json
-```
-
-Existing user files are not overwritten.
+This lower-level command only creates user-owned config files. It does not apply
+CAN runtime/provisioning defaults.
 
 ## Edit vehicle profile
 
@@ -720,6 +734,7 @@ sudo ./scripts/manage.sh logs
 ## Config
 
 ```bash
+sudo ./scripts/manage.sh config apply-profile seat_1p default
 sudo ./scripts/manage.sh config init seat_1p default
 sudo ./scripts/manage.sh config edit-profile seat_1p
 sudo ./scripts/manage.sh config edit-bindings default

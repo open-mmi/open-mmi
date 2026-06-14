@@ -97,6 +97,27 @@ comfort, powertrain, infotainment, OBD, or replay traffic.
 
 ---
 
+## Profile-driven provisioning
+
+Profile selection now drives local CAN provisioning.
+
+The normal user-facing workflow is:
+
+```bash
+sudo ./scripts/manage.sh config apply-profile seat_1p default
+```
+
+That command reads the selected profile's `default_bus` and `can_buses`
+metadata, then generates the matching daemon runtime drop-in and udev
+provisioning rule.
+
+This avoids splitting one vehicle choice across several unrelated commands.
+
+The daemon remains passive. Provisioning is performed only by explicit management
+tooling.
+
+---
+
 ## Non-goals
 
 The current model does not yet implement:
