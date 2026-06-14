@@ -1,6 +1,6 @@
 [project]
 name = "open-mmi"
-version = "0.1.0"
+version = "0.1.0a1"
 description = "Open vehicle MMI integration framework for Linux"
 readme = "README.md"
 requires-python = ">=3.9"

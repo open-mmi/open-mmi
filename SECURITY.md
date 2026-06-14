@@ -1,16 +1,22 @@
 # Security Policy
 
-## Supported Versions
+## Current security status
 
-Security and safety reports should target the current stable backend branch and latest tagged backend release.
+`open-mmi` is currently alpha/backend software.
 
-At the time of writing, the stable backend line is:
+Security and safety reports should target the current active branch, tagged checkpoint, or commit where the issue was found.
+
+Earlier tags such as:
 
 ```text
 v1.0.0-backend
 ```
 
-## Reporting a Security or Safety Issue
+are historical backend checkpoints. They do not represent a final Open MMI v1 product release.
+
+Please include the affected branch, tag, or commit when reporting an issue.
+
+## Reporting a security or safety issue
 
 If you believe you have found a security or safety issue, please do not publish exploit details publicly before the maintainer has had time to review it.
 
@@ -18,15 +24,17 @@ Use GitHub private vulnerability reporting if available, or contact the maintain
 
 Useful details include:
 
-- affected version, branch, or commit
+- affected version, branch, tag, or commit
 - operating system
 - install method
+- CAN adapter used, if relevant
+- vehicle platform/profile used, if relevant
 - whether the issue requires vehicle CAN access
-- whether the issue affects local Linux actions, status reporting, install/update, or service permissions
+- whether the issue affects local Linux actions, status reporting, install/update, service permissions, or vehicle profile handling
 - steps to reproduce, where safe to share
 - logs with sensitive information removed
 
-## Vehicle Safety Scope
+## Vehicle safety scope
 
 Open MMI interfaces with vehicle CAN-bus data.
 
@@ -44,15 +52,74 @@ Open MMI currently focuses on:
 - status decoding
 - dashboard/UI consumers
 
-Open MMI should not add vehicle CAN transmit/control behaviour without:
+Decoded status is informational. It must not be treated as a replacement for OEM warnings, diagnostics, safety systems, or driver judgement.
 
-- a separate safety design
+## CAN transmit/control
+
+`open-mmi` currently focuses on passive CAN receive and local Linux actions.
+
+Vehicle CAN transmit/control behaviour is out of scope for the current alpha/backend project.
+
+Do not add vehicle CAN transmit/control behaviour without:
+
+- a separate design discussion
 - explicit allowlists
 - clear user-facing warnings
-- review from maintainers
-- extensive off-car and controlled testing
+- maintainer review
+- extensive off-car testing
+- controlled real-vehicle testing
+- documentation explaining the risk
 
-## Sensitive Information
+The default project posture should remain passive observation first.
+
+## Local permissions model
+
+`open-mmi` performs local Linux actions such as media key events, brightness changes, screen wake/sleep behaviour, and dashboard/status output.
+
+Some installations may require additional local permissions.
+
+Current examples include:
+
+- access to `uinput` for virtual input events
+- membership of the `input` group for input-related behaviour
+- membership of the `video` group for display/backlight control
+- udev rules for CAN, backlight, and input-related device access
+
+These permissions are local security tradeoffs.
+
+A system with these permissions should be treated as a trusted local vehicle computer, not as a general-purpose multi-user untrusted desktop.
+
+Do not install unknown vehicle profiles, bindings, action modules, scripts, or udev rules from untrusted sources.
+
+## Trusted configuration
+
+Vehicle profiles and bindings are trusted local configuration.
+
+Bindings can map decoded vehicle events to Python action modules. This is intentional, but it means bindings are not just passive data.
+
+A malicious or careless binding may trigger unwanted local actions.
+
+Only use profiles and bindings that you trust or have reviewed.
+
+Vehicle-specific CAN knowledge should live in vehicle profiles, but action behaviour should still be reviewed before use.
+
+## udev rules
+
+The included udev rules are intended to make a dedicated vehicle Linux installation easier to use.
+
+They may grant access to local devices such as CAN interfaces, backlight control, or virtual input.
+
+Before installing open-mmi on a shared or security-sensitive system, review:
+
+```text
+udev/80-canbus.rules
+```
+
+In particular, broad access to `uinput` is convenient for virtual input actions, but it is also powerful. A process with uinput access can create synthetic input devices.
+
+For a dedicated car PC or tablet this may be acceptable. For a general-purpose multi-user machine, it may not be.
+
+## Sensitive information
 
 Please avoid posting:
 
@@ -66,7 +133,9 @@ Please avoid posting:
 
 Redact sensitive data before sharing logs or CAN captures.
 
-## Responsible Disclosure
+CAN logs may reveal details about your vehicle, installed modules, coding, usage patterns, or location-related behaviour when combined with other information.
+
+## Responsible disclosure
 
 The maintainer will aim to acknowledge valid reports, investigate the issue, and publish a fix or mitigation where practical.
 

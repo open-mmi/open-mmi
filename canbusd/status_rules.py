@@ -31,16 +31,95 @@ def parse_status_rules(items: Iterable[Dict[str, Any]]) -> Dict[int, List[Dict[s
         rule = dict(item)
         cid = parse_int(rule["id"])
         rule["id"] = cid
-        rule["byte"] = int(rule.get("byte", 0))
+
+        if "byte" in rule:
+            rule["byte"] = int(rule["byte"])
 
         grouped.setdefault(cid, []).append(rule)
 
     return grouped
 
 
-def evaluate_rule(rule: Dict[str, Any], raw: int) -> Dict[str, Any]:
+def _rule_byte(rule: Dict[str, Any], data: bytes, dlc: int) -> Optional[int]:
+    byte_index = int(rule.get("byte", 0))
+    if dlc <= byte_index:
+        return None
+    return data[byte_index]
+
+
+def _evaluate_signed_magnitude(rule: Dict[str, Any], data: bytes, dlc: int) -> Dict[str, Any]:
+    update: Dict[str, Any] = {}
+
+    magnitude_cfg = rule.get("magnitude", {})
+    sign_cfg = rule.get("sign_bit", {})
+
+    low_byte = int(magnitude_cfg.get("low_byte", rule.get("bytes", [0, 1])[0]))
+    high_byte = int(magnitude_cfg.get("high_byte", rule.get("bytes", [0, 1])[1]))
+
+    sign_byte = int(sign_cfg.get("byte", high_byte))
+    required = max(low_byte, high_byte, sign_byte)
+
+    if dlc <= required:
+        return update
+
+    high_mask = parse_int(magnitude_cfg.get("high_mask", "0x7F"))
+    sign_mask = parse_int(sign_cfg.get("mask", "0x80"))
+
+    low = data[low_byte]
+    high = data[high_byte]
+    sign_raw = data[sign_byte]
+
+    raw_full = (high << 8) | low
+    magnitude = ((high & high_mask) << 8) | low
+
+    center = rule.get("center")
+    if center is not None and raw_full == parse_int(center):
+        value = 0.0
+    else:
+        scale = float(rule.get("scale", 1))
+        offset = float(rule.get("offset", 0))
+        positive_when_set = sign_cfg.get("positive", "right") != "left"
+
+        sign_is_set = bool(sign_raw & sign_mask)
+        is_positive = sign_is_set if positive_when_set else not sign_is_set
+
+        value = (magnitude * scale) + offset
+        if not is_positive:
+            value = -value
+
+    if "round" in rule:
+        value = round(value, int(rule["round"]))
+
+    _set_path(update, rule["path"], value)
+
+    if rule.get("raw_path"):
+        _set_path(update, rule["raw_path"], raw_full)
+
+    if rule.get("magnitude_raw_path"):
+        _set_path(update, rule["magnitude_raw_path"], magnitude)
+
+    if rule.get("direction_path"):
+        if value > 0:
+            direction = sign_cfg.get("positive", "right")
+        elif value < 0:
+            direction = "left" if sign_cfg.get("positive", "right") == "right" else "right"
+        else:
+            direction = "center"
+        _set_path(update, rule["direction_path"], direction)
+
+    return update
+
+
+def evaluate_rule(rule: Dict[str, Any], data: bytes, dlc: int) -> Dict[str, Any]:
     kind = rule.get("type", "raw")
     update: Dict[str, Any] = {}
+
+    if kind in ("signed_magnitude", "steering_angle"):
+        return _evaluate_signed_magnitude(rule, data, dlc)
+
+    raw = _rule_byte(rule, data, dlc)
+    if raw is None:
+        return update
 
     raw_path = rule.get("raw_path")
     if raw_path:
@@ -97,11 +176,7 @@ def evaluate_status_rules(rules: Iterable[Dict[str, Any]], data: bytes, dlc: int
     update: Dict[str, Any] = {}
 
     for rule in rules:
-        byte_index = int(rule.get("byte", 0))
-        if dlc <= byte_index:
-            continue
-
-        partial = evaluate_rule(rule, data[byte_index])
+        partial = evaluate_rule(rule, data, dlc)
         _deep_merge(update, partial)
 
     return update

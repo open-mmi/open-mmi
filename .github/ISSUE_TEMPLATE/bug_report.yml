@@ -1,0 +1,72 @@
+name: Bug report
+description: Report a problem with open-mmi
+title: "[Bug]: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for bugs in the daemon, install tooling, dashboard, profiles, actions, or documentation.
+
+  - type: input
+    id: version
+    attributes:
+      label: Version / branch / commit
+      placeholder: "Example: beta/ui-alpha, beta/trust-cleanup, commit abc123"
+    validations:
+      required: true
+
+  - type: input
+    id: system
+    attributes:
+      label: System
+      description: Linux distro, device, tablet/laptop/SBC
+      placeholder: "Example: Linux Mint on Surface Pro 5"
+    validations:
+      required: false
+
+  - type: input
+    id: vehicle
+    attributes:
+      label: Vehicle/profile
+      placeholder: "Example: seat_1p"
+    validations:
+      required: false
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What happened?
+      placeholder: "Describe the issue clearly."
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+      description: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Run ...
+        2. Start daemon ...
+        3. Open dashboard ...
+        4. See error ...
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Paste relevant logs with sensitive information removed.
+      render: text
+    validations:
+      required: false
