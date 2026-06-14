@@ -30,6 +30,27 @@ Current behaviour:
 
 ---
 
+## Compatibility requirement: udev hotplug and reboot survival
+
+The current setup relies on udev to make the tested CAN adapter usable across hotplug events and reboots.
+
+That behaviour must not regress.
+
+The first named-bus implementation should assume SocketCAN interfaces are provisioned externally by udev, systemd-networkd, or user setup scripts. The daemon should consume those interfaces; it should not silently replace the provisioning layer.
+
+Required behaviour:
+
+- if the configured interface is missing, the daemon keeps running and waits
+- if the interface appears later, the daemon opens it
+- if the interface disappears, the daemon closes the bus and waits for it to return
+- after reboot, existing udev/system setup should still bring the interface back
+- bitrate configuration must remain explicit and reviewable
+- automatic interface setup must not silently change live vehicle CAN settings
+
+A future optional helper may bring interfaces up, but that should be explicit user-chosen behaviour, not hidden daemon behaviour.
+
+---
+
 ## Design direction
 
 The future design should model CAN inputs as **named buses**, not just as one global interface.
