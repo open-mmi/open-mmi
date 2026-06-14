@@ -39,7 +39,7 @@ Open MMI is designed to be profile-driven.
 Vehicle-specific CAN knowledge should live in:
 
 ```text
-vehicles/<profile>/config.json
+vehicles/{profile}/config.json
 ```
 
 Core Python should stay generic wherever possible.

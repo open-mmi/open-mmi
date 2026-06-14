@@ -82,7 +82,7 @@ not raw CAN IDs and bytes.
 Vehicle-specific CAN knowledge belongs in:
 
 ```text
-vehicles/<profile>/config.json
+vehicles/{profile}/config.json
 ```
 
 not in UI code.

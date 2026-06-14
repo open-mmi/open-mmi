@@ -368,7 +368,7 @@ lighting.mode = dip
 lighting.dimmer_percent = 42
 ```
 
-Status mappings are profile-driven. The core daemon knows generic rule types such as `bool`, `enum`, `bitfield`, `percent`, and `raw`; vehicle-specific CAN knowledge stays inside `vehicles/<profile>/config.json`.
+Status mappings are profile-driven. The core daemon knows generic rule types such as `bool`, `enum`, `bitfield`, `percent`, and `raw`; vehicle-specific CAN knowledge stays inside `vehicles/{profile}/config.json`.
 
 ---
 
@@ -377,7 +377,7 @@ Status mappings are profile-driven. The core daemon knows generic rule types suc
 Vehicle profiles live in:
 
 ```text
-vehicles/<profile>/config.json
+vehicles/{profile}/config.json
 ```
 
 A profile may contain:
@@ -546,7 +546,7 @@ This produces status like:
 Bindings live in:
 
 ```text
-bindings/<name>.json
+bindings/{name}.json
 ```
 
 Example:
@@ -1053,7 +1053,7 @@ Useful contribution areas include:
 Profile contributions should keep vehicle-specific CAN knowledge in:
 
 ```text
-vehicles/<profile>/config.json
+vehicles/{profile}/config.json
 ```
 
 not in core Python.
