@@ -266,6 +266,8 @@ actions and dashboards
 
 The core idea is that vehicle-specific CAN knowledge should live in vehicle profiles, not hardcoded into the daemon.
 
+Named CAN bus metadata is documented in [`docs/can-bus-model.md`](docs/can-bus-model.md).
+
 See [`docs/vehicle-profiles.md`](docs/vehicle-profiles.md) for the profile boundary, supported status rule types, and guidance for adding or reviewing vehicle profiles.
 
 ---

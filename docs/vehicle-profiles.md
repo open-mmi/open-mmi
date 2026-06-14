@@ -39,6 +39,13 @@ Examples include:
 - washer fluid warning
 - pad wear warning
 
+Vehicle profiles may also declare CAN bus metadata using `default_bus` and `can_buses`.
+This describes the named bus, expected bitrate, capture point, provisioning method, and
+default SocketCAN interface for the profile.
+
+This metadata is guidance for runtime selection and documentation. The daemon still
+consumes an already-provisioned SocketCAN interface and does not silently configure bitrate.
+
 ## What does not belong in core logic
 
 Core logic must not hard-code:
