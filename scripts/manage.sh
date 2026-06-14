@@ -661,7 +661,8 @@ cmd_config() {
 # Current known-working default:
 #   comfort -> can0
 #
-# The current udev rule provisions can0 at 100000 for the Seat 1P reference setup.
+# The normal profile-driven setup provisions can0 at 100000 for the Seat 1P
+# reference profile.
 # Keep udev/system setup responsible for hotplug/reboot survival.
 
 [Service]
@@ -710,8 +711,15 @@ EOF
 Usage: $0 config <command> [args]
 
 Commands:
+  apply-profile [vehicle] [bindings]
+      Select a vehicle profile and apply its runtime/provisioning defaults.
+      This is the normal setup path.
+      Default vehicle: seat_1p
+      Default bindings: default
+
   init [vehicle] [bindings]
-      Create safe user-owned config files under:
+      Create safe user-owned config files only.
+      This does not apply CAN runtime/provisioning defaults.
       $USER_CONFIG_DIR
 
   edit-profile [vehicle]
@@ -742,6 +750,7 @@ Commands:
       Show where Open-MMI looks for config files.
 
 Examples:
+  sudo $0 config apply-profile seat_1p default
   sudo $0 config init seat_1p default
   sudo $0 config edit-profile seat_1p
   sudo $0 config edit-bindings default
@@ -779,6 +788,7 @@ ${BLUE}Examples:${NC}
   sudo ./scripts/manage.sh update
   sudo ./scripts/manage.sh status
   sudo ./scripts/manage.sh logs
+  sudo ./scripts/manage.sh config apply-profile seat_1p default
   sudo ./scripts/manage.sh config init
   sudo ./scripts/manage.sh config edit-profile seat_1p
   sudo ./scripts/manage.sh config edit-service
@@ -791,7 +801,9 @@ ${BLUE}Installation Details:${NC}
 ${BLUE}Troubleshooting:${NC}
   View logs:        sudo ./scripts/manage.sh logs
   Check status:     sudo ./scripts/manage.sh status
-  Edit config:      sudo ./scripts/manage.sh config init
+  Apply profile:    sudo ./scripts/manage.sh config apply-profile seat_1p default
+  Edit profile:     sudo ./scripts/manage.sh config edit-profile seat_1p
+  sudo ./scripts/manage.sh config init
   sudo ./scripts/manage.sh config edit-profile seat_1p
   sudo ./scripts/manage.sh config edit-service
 
