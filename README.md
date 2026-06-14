@@ -384,15 +384,30 @@ Vehicle profiles live in:
 vehicles/{profile}/config.json
 ```
 
-A profile may contain:
+A profile may contain CAN bus metadata plus rules, presence rules, and status rules:
 
 ```json
 {
+  "default_bus": "comfort",
+  "can_buses": {
+    "comfort": {
+      "interface": "can0",
+      "bitrate": 100000,
+      "capture_point": "maintainer-tested comfort CAN connection",
+      "provisioning": "udev",
+      "bring_up": false
+    }
+  },
   "rules": [],
   "presence": [],
   "status": []
 }
 ```
+
+`default_bus` is used by profile entries that do not explicitly declare `bus`.
+
+`can_buses` documents named CAN bus metadata. The daemon consumes the resolved SocketCAN
+interface, but it does not silently configure bitrate or bring interfaces up.
 
 ---
 
