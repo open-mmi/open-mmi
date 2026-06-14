@@ -266,6 +266,8 @@ actions and dashboards
 
 The core idea is that vehicle-specific CAN knowledge should live in vehicle profiles, not hardcoded into the daemon.
 
+See [`docs/vehicle-profiles.md`](docs/vehicle-profiles.md) for the profile boundary, supported status rule types, and guidance for adding or reviewing vehicle profiles.
+
 ---
 
 # Architecture
@@ -368,7 +370,7 @@ lighting.mode = dip
 lighting.dimmer_percent = 42
 ```
 
-Status mappings are profile-driven. The core daemon knows generic rule types such as `bool`, `enum`, `bitfield`, `percent`, and `raw`; vehicle-specific CAN knowledge stays inside `vehicles/{profile}/config.json`.
+Status mappings are profile-driven. The core daemon knows generic rule types such as `bool`, `enum`, `bitfield`, `percent`, `raw`, and masked boolean rules; vehicle-specific CAN knowledge stays inside `vehicles/{profile}/config.json`.
 
 ---
 
