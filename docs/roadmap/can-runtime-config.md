@@ -1,10 +1,12 @@
 # CAN runtime configuration roadmap
 
-`open-mmi` currently supports one active SocketCAN interface.
+`open-mmi` currently supports one active SocketCAN interface, resolved through a named
+CAN bus model.
 
-This matches the current maintainer-tested Seat Leon 1P / VAG PQ35 setup, but it should
-not become the long-term model. Future vehicles and installs may need multiple CAN inputs
-at different bitrates.
+This matches the current maintainer-tested Seat Leon 1P / VAG PQ35 setup while avoiding a
+hard-coded `can0` assumption in the daemon and vehicle profile model.
+
+Future vehicles and installs may need multiple CAN inputs at different bitrates.
 
 Examples:
 
@@ -21,16 +23,31 @@ runtime behaviour.
 
 ---
 
-## Current behaviour
+## Current implemented behaviour
 
-Current behaviour:
+Current behaviour on `main`:
 
-* the daemon defaults to named bus `comfort`
-* the daemon defaults to interface `can0` unless `OPEN_MMI_CAN_INTERFACE` overrides it
-* the included udev rule brings up `can0` at `100000`
-* the daemon currently opens one SocketCAN bus
-* vehicle rules currently assume that single bus
-* this matches the current Seat 1P / VAG PQ35 maintainer-tested setup
+* the daemon resolves an active named bus
+* the default named bus is `comfort`
+* the Seat 1P profile declares `default_bus` and `can_buses.comfort`
+* the default SocketCAN interface is `can0`
+* `OPEN_MMI_CAN_BUS` can override the selected named bus
+* `OPEN_MMI_CAN_INTERFACE` can override the consumed SocketCAN interface
+* the daemon currently opens one SocketCAN interface at a time
+* rules, presence rules, and status rules may optionally declare `bus`
+* rules without `bus` belong to the profile `default_bus`
+* the included udev rule still brings up `can0` at `100000`
+* the daemon consumes the already-provisioned interface and does not configure bitrate
+
+The maintainer-tested real-car path remains:
+
+```text
+Seat Leon 1P / VAG PQ35
+bus: comfort
+interface: can0
+bitrate metadata: 100000
+provisioning: udev
+```
 
 ---
 
@@ -39,9 +56,9 @@ Current behaviour:
 The current setup relies on udev to make the tested CAN adapter usable across hotplug
 events and reboots. That behaviour must not regress.
 
-The first named-bus implementation should assume SocketCAN interfaces are provisioned
-externally by udev, systemd-networkd, or user setup scripts. The daemon should consume
-those interfaces; it should not silently replace the provisioning layer.
+The daemon should consume SocketCAN interfaces that are provisioned externally by udev,
+systemd-networkd, or user setup scripts. It should not silently replace the provisioning
+layer.
 
 Required behaviour:
 
@@ -64,177 +81,178 @@ The current implementation separates provisioning from consumption:
 * `udev/80-canbus.rules` provisions the tested SocketCAN interface
 * the current rule targets `can0`
 * the current rule configures `can0` at `100000`
-* `OPEN_MMI_CAN_BUS` selects the current named bus label and defaults to `comfort`
+* `OPEN_MMI_CAN_BUS` selects the active named bus and defaults to `comfort`
 * `OPEN_MMI_CAN_INTERFACE` selects the SocketCAN interface consumed by the daemon and
   defaults to `can0`
 * `systemd/user/canbusd.service` starts the daemon but does not configure CAN
 * `scripts/manage.sh` installs/removes the udev rule and user service
-* the daemon waits for the configured interface to exist and reconnects if it disappears
-* `scripts/manage.sh config edit-service` allows local systemd service overrides
 * `scripts/manage.sh config edit-can` creates or edits the CAN runtime override drop-in
+* the daemon waits for the configured interface to exist and reconnects if it disappears
 
-The first runtime-config pass should preserve this split.
-
-Named buses should initially describe which already-provisioned interface the daemon should
-consume. They should not automatically replace the udev/system provisioning layer.
+Named buses describe which already-provisioned interface the daemon should consume. They do
+not automatically replace the udev/system provisioning layer.
 
 ---
 
-## Design direction
+## Vehicle profile bus metadata
 
-The future design should model CAN inputs as **named buses**, not just as one global
-interface.
-
-A possible future runtime config shape:
+Vehicle profiles may declare named CAN bus metadata:
 
 ```json
 {
+  "default_bus": "comfort",
   "can_buses": {
     "comfort": {
       "interface": "can0",
       "bitrate": 100000,
-      "bring_up": false,
-      "capture_point": "radio harness"
+      "capture_point": "maintainer-tested comfort CAN connection",
+      "provisioning": "udev",
+      "bring_up": false
     }
-  },
-  "default_bus": "comfort"
+  }
 }
 ```
 
-Vehicle profile rules may later declare which bus they belong to:
+`bitrate` is metadata and documentation for the expected bus speed. The daemon does not
+currently configure the bitrate.
+
+`bring_up` is reserved as explicit metadata. Setting it does not currently make the daemon
+bring the interface up.
+
+---
+
+## Rule bus selection
+
+Vehicle profile entries may optionally declare a bus:
 
 ```json
 {
   "id": "0x470",
-  "bus": "comfort"
+  "bus": "comfort",
+  "byte": 1,
+  "type": "bitfield",
+  "path": "doors"
 }
 ```
 
-If a rule does not declare a bus, it should use the profile or runtime `default_bus`.
+If `bus` is missing, the entry belongs to the profile `default_bus`.
 
-This keeps today’s one-bus setup simple while leaving a path toward multiple CAN inputs.
-
----
-
-## Long-term goals
-
-The long-term design should support:
-
-* one CAN bus today
-* multiple named CAN buses later
-* different bitrates per bus
-* different physical capture points per bus
-* `vcan` replay/testing
-* `slcan` and USB CAN adapters
-* OBD-port capture
-* radio-harness capture
-* one decoded status snapshot built from all active buses
-
-The status snapshot should remain vehicle-state focused.
-
-UI consumers should not need to know which CAN bus produced a decoded value unless they are
-in a debug/developer view.
+This keeps existing one-bus profiles compatible while allowing future profiles to
+distinguish comfort, powertrain, infotainment, OBD, or replay traffic.
 
 ---
 
-## Open questions
-
-Open questions:
-
-* should runtime CAN config live in service environment, user config, vehicle profile
-  metadata, or a dedicated runtime config file?
-* should `open-mmi` bring interfaces up itself or expect SocketCAN to be ready before the
-  daemon starts?
-* should bitrate be controlled by udev, systemd, runtime config, profile metadata, or
-  external setup scripts?
-* how should `vcan`, `slcan`, USB adapters, OBD capture, and radio-harness capture be
-  represented?
-* how should tested capture points be documented per vehicle profile?
-* how should conflicting decoded values from multiple buses be handled?
-* how should bus freshness/staleness be represented in the status snapshot?
-* should each bus have its own health/debug state?
-
----
-
-## Suggested implementation phases
+## Roadmap phase status
 
 ### Phase 1: single named bus
 
-Keep one active SocketCAN interface, but model it internally as a named bus.
+Status: **done for alpha**.
 
-Example:
+The daemon has a named bus concept and defaults to:
 
 ```text
 default_bus = comfort
 comfort.interface = can0
 ```
 
-Existing vehicle profiles continue working because missing `bus` values default to
-`comfort`.
+Existing profiles continue working because missing `bus` values default to the selected
+profile default bus.
 
 ### Phase 2: runtime-configurable interface
 
-Allow the single named bus interface to be changed without editing Python code.
+Status: **done for alpha**.
+
+The single active bus interface can be changed without editing Python code.
 
 Examples:
 
 ```text
-can0
-can1
-vcan0
-slcan0
+OPEN_MMI_CAN_INTERFACE=can0
+OPEN_MMI_CAN_INTERFACE=can1
+OPEN_MMI_CAN_INTERFACE=vcan0
+OPEN_MMI_CAN_INTERFACE=slcan0
 ```
 
-This should preserve the current `can0` default.
+The default remains `can0`.
 
 ### Phase 3: bus metadata in vehicle/profile docs
 
-Document tested bus names, capture points, and bitrates for each vehicle profile.
+Status: **done for the Seat 1P reference profile**.
 
-Example:
+The Seat Leon 1P / VAG PQ35 profile now declares:
 
 ```text
-Seat Leon 1P / VAG PQ35
 default bus: comfort
 tested interface: can0
 tested bitrate: 100000
-tested capture point: radio harness
+provisioning: udev
 ```
 
 ### Phase 4: per-rule bus field
 
-Allow vehicle rules to specify a bus.
+Status: **implemented, lightly used**.
 
-Example:
+Rules, presence rules, and status rules may declare `bus`.
 
-```json
-{
-  "id": "0x470",
-  "bus": "comfort"
-}
-```
-
-Profiles that do not specify `bus` continue using `default_bus`.
+The current Seat 1P profile does not need explicit `bus` fields yet because all entries
+belong to the default `comfort` bus.
 
 ### Phase 5: multiple active buses
 
-Allow the daemon to open and monitor multiple SocketCAN interfaces.
+Status: **not started**.
 
-Decoded values from all active buses should be merged into one status snapshot.
+The daemon does not yet open and monitor multiple SocketCAN interfaces at the same time.
+
+Decoded values from multiple buses should eventually be merged into one vehicle-state
+snapshot, while debug views expose bus health and source details.
 
 ---
 
-## Non-goals for the first pass
+## Recommended next work
 
-Do not mix the first runtime-config work with:
+### CAN bus health/debug state
+
+Expose the active bus, interface, configured metadata, interface presence, open/closed
+state, and last-frame freshness in the status snapshot.
+
+This should happen before full multi-bus runtime because it will make later debugging much
+easier.
+
+### Replay / vcan workflow
+
+Document and test a repeatable `vcan0` workflow for replaying captures off-car.
+
+Example:
+
+```text
+OPEN_MMI_CAN_BUS=comfort
+OPEN_MMI_CAN_INTERFACE=vcan0
+```
+
+### Profile validation
+
+Add lightweight validation for profile shape, CAN bus metadata, rule bus fields, CAN IDs,
+masks, and status paths.
+
+### Multi-bus runtime
+
+After health/debug state, replay workflow, and validation exist, add support for opening
+multiple named SocketCAN interfaces simultaneously.
+
+---
+
+## Non-goals for the current model
+
+Do not mix the current named-bus model with:
 
 * CAN transmit/control
 * automatic bitrate guessing
 * automatic vehicle detection
+* hidden daemon-side interface provisioning
 * full multi-bus arbitration
 * large vehicle profile rewrites
 * UI redesign
 * release/tag work
 
-The first pass should preserve the current Seat 1P behaviour while removing the hardcoded
-single-interface assumption.
+The current model should preserve the tested Seat 1P behaviour while giving the project a
+clean path toward multiple CAN buses later.
