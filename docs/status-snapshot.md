@@ -6,23 +6,28 @@ This snapshot is the boundary between the backend daemon and UI/dashboard consum
 
 ```text
 CAN frames
-  ↓
+    ↓
 vehicle profile decoding
-  ↓
+    ↓
 status_bus
-  ↓
+    ↓
 status snapshot
-  ↓
+    ↓
 CLI dashboard / future UI consumers
 ```
+
+---
 
 ## Current status
 
 The status snapshot interface is currently alpha.
 
-It is useful for the included CLI dashboard and early UI work, but the schema may change before a stable public release.
+It is useful for the included CLI dashboard and early UI work, but the schema may change
+before a stable public release.
 
 Consumers should handle missing, unknown, stale, or extra fields gracefully.
+
+---
 
 ## Current snapshot path
 
@@ -46,6 +51,8 @@ If `XDG_RUNTIME_DIR` is not available, the fallback path is:
 
 The included CLI dashboard uses the same lookup behaviour.
 
+---
+
 ## Current top-level shape
 
 The status snapshot is currently written as a wrapper object:
@@ -61,6 +68,8 @@ The status snapshot is currently written as a wrapper object:
 
 `state` contains the decoded vehicle state published by the daemon.
 
+---
+
 ## Purpose
 
 The snapshot exists so UI consumers do not need to read raw CAN frames directly.
@@ -73,6 +82,10 @@ state.vehicle.reverse
 state.vehicle.handbrake
 state.lighting.mode
 state.lighting.dimmer_percent
+state.lighting.brake
+state.lighting.left_indicator
+state.lighting.right_indicator
+state.lighting.hazards
 state.doors.any_open
 state.steering.angle_degrees
 ```
@@ -82,10 +95,12 @@ not raw CAN IDs and bytes.
 Vehicle-specific CAN knowledge belongs in:
 
 ```text
-vehicles/{profile}/config.json
+vehicles/<profile>/config.json
 ```
 
 not in UI code.
+
+---
 
 ## Example state
 
@@ -98,8 +113,9 @@ A snapshot may contain state like:
     "vehicle": {
       "present": true,
       "reverse": false,
+      "reverse_raw": 0,
       "handbrake": true,
-      "brake": false
+      "handbrake_raw": 32
     },
     "doors": {
       "front_left": false,
@@ -114,23 +130,35 @@ A snapshot may contain state like:
     "lighting": {
       "mode": "dip",
       "mode_raw": 195,
+      "lights_on": true,
+      "lights_on_raw": 100,
       "dimmer_percent": 42,
       "dimmer_raw": 42,
-      "indicator": "off",
+      "brake": false,
+      "left_indicator": false,
+      "right_indicator": false,
       "hazards": false,
-      "bulb_fault": false
+      "secondary_raw": 0,
+      "bulb_out": false,
+      "bulb_out_raw": 0
     },
     "steering": {
       "angle_degrees": 0.0,
       "direction": "center",
-      "magnitude_degrees": 0.0,
-      "raw": 0
+      "angle_raw": 0,
+      "angle_magnitude_raw": 0
+    },
+    "presence": {
+      "0x65F": true
     }
   }
 }
 ```
 
-This example is illustrative. The exact fields depend on the active vehicle profile and decoded status rules.
+This example is illustrative. The exact fields depend on the active vehicle profile and
+decoded status rules.
+
+---
 
 ## Field behaviour
 
@@ -145,6 +173,8 @@ Consumers should assume:
 
 Consumers should not crash if a field is missing.
 
+---
+
 ## Raw values
 
 Profiles may publish raw values using paths such as:
@@ -152,12 +182,15 @@ Profiles may publish raw values using paths such as:
 ```text
 state.lighting.mode_raw
 state.vehicle.handbrake_raw
-state.steering.raw
+state.steering.angle_raw
 ```
 
 Raw values are useful for debugging and profile development.
 
-UI consumers may display raw values in debug modes, but normal user-facing UI should prefer decoded values.
+UI consumers may display raw values in debug modes, but normal user-facing UI should prefer
+decoded values.
+
+---
 
 ## Freshness
 
@@ -165,7 +198,8 @@ UI consumers may display raw values in debug modes, but normal user-facing UI sh
 
 A UI should treat the snapshot as live vehicle state, not permanent truth.
 
-If the snapshot is missing, invalid, or old, a UI should show a safe disconnected/stale state rather than displaying stale data as if it is current.
+If the snapshot is missing, invalid, or old, a UI should show a safe disconnected/stale
+state rather than displaying stale data as if it is current.
 
 Future versions may expose clearer freshness metadata, such as:
 
@@ -174,17 +208,22 @@ snapshot_age_ms
 source_vehicle_profile
 daemon_state
 schema_version
+can.<bus>.last_frame_at
+can.<bus>.interface_present
 ```
 
 Until that is stable, consumers should handle stale or missing snapshots safely.
+
+---
 
 ## Safety
 
 Decoded status is informational.
 
-It must not be treated as a replacement for OEM warnings, diagnostics, safety systems, or driver judgement.
+It must not be treated as a replacement for OEM warnings, diagnostics, safety systems, or
+driver judgement. Incorrect profile mappings may misrepresent vehicle state.
 
-Incorrect profile mappings may misrepresent vehicle state.
+---
 
 ## Consumer guidance
 
@@ -197,6 +236,8 @@ A dashboard or UI consumer should:
 * avoid parsing raw CAN frames directly
 * avoid hardcoding vehicle-specific CAN IDs
 * clearly label debug/raw values
+
+---
 
 ## Stability promise
 
