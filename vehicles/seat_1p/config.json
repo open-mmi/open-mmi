@@ -1,4 +1,15 @@
 {
+  "default_bus": "comfort",
+  "can_buses": {
+    "comfort": {
+      "interface": "can0",
+      "bitrate": 100000,
+      "capture_point": "maintainer-tested comfort CAN connection",
+      "provisioning": "udev",
+      "bring_up": false,
+      "notes": "Seat Leon 1P / VAG PQ35 maintainer-tested reference setup."
+    }
+  },
   "rules": [
     {
       "id": "0x5C1",
