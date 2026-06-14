@@ -52,6 +52,8 @@ A GitHub Release should only be created when the release has:
 * screenshots or example output where relevant
 * clear alpha/beta/stable status
 
+See [`release-checklist.md`](release-checklist.md) before creating a GitHub Release.
+
 ## Versioning goal
 
 Version numbers should describe project maturity honestly.
