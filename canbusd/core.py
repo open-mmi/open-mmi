@@ -358,7 +358,7 @@ def main():
 
         if bus is None:
             logger.info("Opening CAN bus '%s' on interface '%s'", CAN_BUS, IFACE)
-            bus = can.interface.Bus(channel=IFACE, bustype="socketcan")
+            bus = can.interface.Bus(channel=IFACE, interface="socketcan")
 
         msg = bus.recv(timeout=0.2)
         now = time.monotonic()
