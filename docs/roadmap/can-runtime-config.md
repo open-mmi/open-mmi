@@ -1,8 +1,10 @@
 # CAN runtime configuration roadmap
 
-`open-mmi` currently assumes a single SocketCAN interface.
+`open-mmi` currently supports one active SocketCAN interface.
 
-This matches the current maintainer-tested Seat Leon 1P / VAG PQ35 setup, but it should not become the long-term model. Future vehicles and installs may need multiple CAN inputs at different bitrates.
+This matches the current maintainer-tested Seat Leon 1P / VAG PQ35 setup, but it should
+not become the long-term model. Future vehicles and installs may need multiple CAN inputs
+at different bitrates.
 
 Examples:
 
@@ -14,7 +16,8 @@ OBD capture       canX    vehicle-dependent
 replay/testing    vcan0   no physical bitrate
 ```
 
-This work belongs in a dedicated beta branch because CAN interface setup affects core runtime behaviour.
+This work belongs in dedicated beta branches because CAN interface setup affects core
+runtime behaviour.
 
 ---
 
@@ -22,7 +25,8 @@ This work belongs in a dedicated beta branch because CAN interface setup affects
 
 Current behaviour:
 
-* the daemon expects `can0`
+* the daemon defaults to named bus `comfort`
+* the daemon defaults to interface `can0` unless `OPEN_MMI_CAN_INTERFACE` overrides it
 * the included udev rule brings up `can0` at `100000`
 * the daemon currently opens one SocketCAN bus
 * vehicle rules currently assume that single bus
@@ -32,22 +36,24 @@ Current behaviour:
 
 ## Compatibility requirement: udev hotplug and reboot survival
 
-The current setup relies on udev to make the tested CAN adapter usable across hotplug events and reboots.
+The current setup relies on udev to make the tested CAN adapter usable across hotplug
+events and reboots. That behaviour must not regress.
 
-That behaviour must not regress.
-
-The first named-bus implementation should assume SocketCAN interfaces are provisioned externally by udev, systemd-networkd, or user setup scripts. The daemon should consume those interfaces; it should not silently replace the provisioning layer.
+The first named-bus implementation should assume SocketCAN interfaces are provisioned
+externally by udev, systemd-networkd, or user setup scripts. The daemon should consume
+those interfaces; it should not silently replace the provisioning layer.
 
 Required behaviour:
 
-- if the configured interface is missing, the daemon keeps running and waits
-- if the interface appears later, the daemon opens it
-- if the interface disappears, the daemon closes the bus and waits for it to return
-- after reboot, existing udev/system setup should still bring the interface back
-- bitrate configuration must remain explicit and reviewable
-- automatic interface setup must not silently change live vehicle CAN settings
+* if the configured interface is missing, the daemon keeps running and waits
+* if the interface appears later, the daemon opens it
+* if the interface disappears, the daemon closes the bus and waits for it to return
+* after reboot, existing udev/system setup should still bring the interface back
+* bitrate configuration must remain explicit and reviewable
+* automatic interface setup must not silently change live vehicle CAN settings
 
-A future optional helper may bring interfaces up, but that should be explicit user-chosen behaviour, not hidden daemon behaviour.
+A future optional helper may bring interfaces up, but that should be explicit user-chosen
+behaviour, not hidden daemon behaviour.
 
 ---
 
@@ -55,21 +61,29 @@ A future optional helper may bring interfaces up, but that should be explicit us
 
 The current implementation separates provisioning from consumption:
 
-- `udev/80-canbus.rules` provisions the tested SocketCAN interface
-- the current rule targets `can0`
-- the current rule configures `can0` at `100000`
-- `systemd/user/canbusd.service` starts the daemon but does not configure CAN
-- `scripts/manage.sh` installs/removes the udev rule and user service
-- the daemon waits for the configured interface to exist and reconnects if it disappears
-- `scripts/manage.sh config edit-service` already allows local systemd service overrides
+* `udev/80-canbus.rules` provisions the tested SocketCAN interface
+* the current rule targets `can0`
+* the current rule configures `can0` at `100000`
+* `OPEN_MMI_CAN_BUS` selects the current named bus label and defaults to `comfort`
+* `OPEN_MMI_CAN_INTERFACE` selects the SocketCAN interface consumed by the daemon and
+  defaults to `can0`
+* `systemd/user/canbusd.service` starts the daemon but does not configure CAN
+* `scripts/manage.sh` installs/removes the udev rule and user service
+* the daemon waits for the configured interface to exist and reconnects if it disappears
+* `scripts/manage.sh config edit-service` allows local systemd service overrides
+* `scripts/manage.sh config edit-can` creates or edits the CAN runtime override drop-in
 
 The first runtime-config pass should preserve this split.
 
-Named buses should initially describe which already-provisioned interface the daemon should consume. They should not automatically replace the udev/system provisioning layer.
+Named buses should initially describe which already-provisioned interface the daemon should
+consume. They should not automatically replace the udev/system provisioning layer.
+
+---
 
 ## Design direction
 
-The future design should model CAN inputs as **named buses**, not just as one global interface.
+The future design should model CAN inputs as **named buses**, not just as one global
+interface.
 
 A possible future runtime config shape:
 
@@ -116,7 +130,10 @@ The long-term design should support:
 * radio-harness capture
 * one decoded status snapshot built from all active buses
 
-The status snapshot should remain vehicle-state focused. UI consumers should not need to know which CAN bus produced a decoded value unless they are in a debug/developer view.
+The status snapshot should remain vehicle-state focused.
+
+UI consumers should not need to know which CAN bus produced a decoded value unless they are
+in a debug/developer view.
 
 ---
 
@@ -124,10 +141,14 @@ The status snapshot should remain vehicle-state focused. UI consumers should not
 
 Open questions:
 
-* should runtime CAN config live in service environment, user config, vehicle profile metadata, or a dedicated runtime config file?
-* should `open-mmi` bring interfaces up itself or expect SocketCAN to be ready before the daemon starts?
-* should bitrate be controlled by udev, systemd, runtime config, profile metadata, or external setup scripts?
-* how should `vcan`, `slcan`, USB adapters, OBD capture, and radio-harness capture be represented?
+* should runtime CAN config live in service environment, user config, vehicle profile
+  metadata, or a dedicated runtime config file?
+* should `open-mmi` bring interfaces up itself or expect SocketCAN to be ready before the
+  daemon starts?
+* should bitrate be controlled by udev, systemd, runtime config, profile metadata, or
+  external setup scripts?
+* how should `vcan`, `slcan`, USB adapters, OBD capture, and radio-harness capture be
+  represented?
 * how should tested capture points be documented per vehicle profile?
 * how should conflicting decoded values from multiple buses be handled?
 * how should bus freshness/staleness be represented in the status snapshot?
@@ -148,7 +169,8 @@ default_bus = comfort
 comfort.interface = can0
 ```
 
-Existing vehicle profiles continue working because missing `bus` values default to `comfort`.
+Existing vehicle profiles continue working because missing `bus` values default to
+`comfort`.
 
 ### Phase 2: runtime-configurable interface
 
@@ -214,4 +236,5 @@ Do not mix the first runtime-config work with:
 * UI redesign
 * release/tag work
 
-The first pass should preserve the current Seat 1P behaviour while removing the hardcoded single-interface assumption.
+The first pass should preserve the current Seat 1P behaviour while removing the hardcoded
+single-interface assumption.
