@@ -136,9 +136,13 @@ def evaluate_rule(rule: Dict[str, Any], data: bytes, dlc: int) -> Dict[str, Any]
         true_value = parse_int(rule["true"])
         false_value = parse_int(rule.get("false", 0)) if "false" in rule else None
 
-        if raw == true_value:
+        value = raw
+        if "mask" in rule:
+            value = raw & parse_int(rule["mask"])
+
+        if value == true_value:
             _set_path(update, rule["path"], True)
-        elif false_value is not None and raw == false_value:
+        elif false_value is not None and value == false_value:
             _set_path(update, rule["path"], False)
 
     elif kind == "enum":

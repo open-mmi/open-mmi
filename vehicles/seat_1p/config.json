@@ -114,6 +114,7 @@
       "path": "vehicle.handbrake",
       "true": "0x20",
       "false": "0x00",
+      "mask": "0x20",
       "raw_path": "vehicle.handbrake_raw"
     },
     {
