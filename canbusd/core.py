@@ -33,7 +33,12 @@ USER_CONFIG_DIR = Path(
 VEHICLE = os.getenv("OPEN_MMI_VEHICLE", "seat_1p")
 BINDINGS = os.getenv("OPEN_MMI_BINDINGS", "default")
 
-IFACE = "can0"
+DEFAULT_CAN_BUS = "comfort"
+DEFAULT_CAN_INTERFACE = "can0"
+
+CAN_BUS = os.getenv("OPEN_MMI_CAN_BUS", DEFAULT_CAN_BUS)
+IFACE = os.getenv("OPEN_MMI_CAN_INTERFACE", DEFAULT_CAN_INTERFACE)
+
 RELOAD_INTERVAL = 60
 
 ANY_VALUE_WILDCARD = "any"
@@ -270,6 +275,7 @@ def main():
             continue
 
         if bus is None:
+            logger.info("Opening CAN bus '%s' on interface '%s'", CAN_BUS, IFACE)
             bus = can.interface.Bus(channel=IFACE, bustype="socketcan")
 
         msg = bus.recv(timeout=0.2)
