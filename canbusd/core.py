@@ -177,24 +177,6 @@ def _load_config(
             default_interface=DEFAULT_CAN_INTERFACE,
         )
 
-        CAN_RUNTIME = runtime
-        CAN_BUS = runtime.name
-        IFACE = runtime.interface
-
-        if runtime.profile_has_buses and not runtime.declared:
-            logger.warning(
-                "CAN bus '%s' is not declared in profile metadata; using interface '%s'",
-                runtime.name,
-                runtime.interface,
-            )
-
-        if runtime.bring_up:
-            logger.warning(
-                "CAN bus '%s' has bring_up=true metadata, but daemon-side interface "
-                "configuration is intentionally not implemented",
-                runtime.name,
-            )
-
         all_rule_items = cfg.get("rules", [])
         rule_items = _filter_items_for_bus(all_rule_items, runtime)
 
@@ -229,6 +211,24 @@ def _load_config(
         all_status_items = cfg.get("status", [])
         status_items = _filter_items_for_bus(all_status_items, runtime)
         status_rules = parse_status_rules(status_items)
+
+        CAN_RUNTIME = runtime
+        CAN_BUS = runtime.name
+        IFACE = runtime.interface
+
+        if runtime.profile_has_buses and not runtime.declared:
+            logger.warning(
+                "CAN bus '%s' is not declared in profile metadata; using interface '%s'",
+                runtime.name,
+                runtime.interface,
+            )
+
+        if runtime.bring_up:
+            logger.warning(
+                "CAN bus '%s' has bring_up=true metadata, but daemon-side interface "
+                "configuration is intentionally not implemented",
+                runtime.name,
+            )
 
         with _reload_lock:
             _need_reload = False

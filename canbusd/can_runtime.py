@@ -5,8 +5,9 @@ signal decoding. It models one active named bus today while leaving a path towar
 multiple SocketCAN inputs later.
 """
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any, Dict, Mapping, Optional
+from typing import Any, Dict, Optional
 
 
 @dataclass(frozen=True)
