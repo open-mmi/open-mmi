@@ -20,6 +20,18 @@ Environment="OPEN_MMI_VEHICLE=seat_1p"
 # Bindings file (default: default)
 Environment="OPEN_MMI_BINDINGS=default"
 
+# CAN runtime selection
+# Defaults are equivalent to:
+#   OPEN_MMI_CAN_BUS=comfort
+#   OPEN_MMI_CAN_INTERFACE=can0
+#
+# Override locally with:
+#   ./scripts/manage.sh config edit-service
+#
+# Example override:
+#   Environment="OPEN_MMI_CAN_BUS=comfort"
+#   Environment="OPEN_MMI_CAN_INTERFACE=vcan0"
+
 # Execution
 ExecStart=/opt/open-mmi/venv/bin/python -m canbusd.core
 
