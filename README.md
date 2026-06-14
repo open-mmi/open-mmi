@@ -996,9 +996,12 @@ If needed:
 ```bash
 sudo usermod -aG video,input $USER
 ```
-These permissions are a local security tradeoff because they allow interaction with display/input-related system features. Only use them on systems where you trust the installed open-mmi configuration.
 
 Then log out/in or reboot.
+
+These permissions are a local security tradeoff because they allow interaction with display/input-related system features.
+
+A system with these permissions should be treated as a trusted local vehicle computer, not as a shared untrusted desktop. Only use them where you trust the installed open-mmi configuration.
 
 
 ---
