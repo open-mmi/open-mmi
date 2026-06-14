@@ -154,7 +154,7 @@ A good pull request explains:
 * whether it was tested in a vehicle
 * whether it touches CAN receive, CAN transmit, actions, install/update, udev, service permissions, or UI
 * whether documentation needs updating
-* whether the change is experimental, alpha, or intended as a stable behaviour
+* whether the change is experimental, alpha, or intended as a longer-term interface
 
 If the change affects the status snapshot, update or check:
 
