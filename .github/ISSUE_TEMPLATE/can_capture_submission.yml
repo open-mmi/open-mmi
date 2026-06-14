@@ -1,0 +1,76 @@
+name: CAN capture submission
+description: Submit CAN logs or observations for profile development
+title: "[CAN Capture]: "
+labels: ["can-capture", "needs-review"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this to submit CAN observations or logs.
+
+        Please avoid posting sensitive data. CAN logs may reveal vehicle details, installed modules, coding, and usage patterns.
+
+  - type: input
+    id: vehicle
+    attributes:
+      label: Vehicle
+      placeholder: "Example: 2008 Seat Leon 1P"
+    validations:
+      required: true
+
+  - type: input
+    id: adapter
+    attributes:
+      label: CAN adapter
+      placeholder: "Example: DSD TECH USB-CAN"
+    validations:
+      required: false
+
+  - type: input
+    id: capture_point
+    attributes:
+      label: Capture point
+      placeholder: "Example: radio harness CAN pair, OBD pins 6/14"
+    validations:
+      required: true
+
+  - type: input
+    id: bitrate
+    attributes:
+      label: Bitrate
+      placeholder: "Example: 100000"
+    validations:
+      required: true
+
+  - type: textarea
+    id: actions
+    attributes:
+      label: What actions were performed during the capture?
+      description: List actions in order with approximate timing.
+      placeholder: |
+        00:00 ignition on
+        00:05 sidelights on
+        00:10 dipped beam on
+        00:15 left indicator
+        00:20 hazards
+        00:25 brake pressed
+    validations:
+      required: true
+
+  - type: textarea
+    id: observed_changes
+    attributes:
+      label: Observed CAN changes
+      description: Add any IDs/bytes you noticed changing.
+      placeholder: "Example: 0x531 byte 0 changed from 0x00 to 0xC3 when dipped beam was enabled."
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or attachments
+      description: Attach candump logs or paste short excerpts only.
+      placeholder: "Attach .log/.txt files where possible. Redact anything sensitive."
+    validations:
+      required: false

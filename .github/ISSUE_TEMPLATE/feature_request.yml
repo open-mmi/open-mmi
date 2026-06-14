@@ -1,0 +1,53 @@
+name: Feature request
+description: Suggest an improvement or new capability
+title: "[Feature]: "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for new ideas.
+
+        Please remember that open-mmi is currently alpha/backend software. Passive CAN receive, reusable vehicle profiles, status snapshots, and local Linux actions are the current priority.
+
+  - type: textarea
+    id: feature
+    attributes:
+      label: Feature
+      description: What would you like open-mmi to do?
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem it solves
+      description: What real issue does this solve?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Vehicle profile / CAN decoding
+        - Daemon / backend
+        - Status snapshot / UI consumer
+        - CLI dashboard
+        - Graphical/tablet UI
+        - Actions / bindings
+        - Install / packaging
+        - Documentation
+        - Hardware/testing workflow
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: safety
+    attributes:
+      label: Safety/security impact
+      description: Does this involve CAN transmit/control, driver distraction, permissions, or vehicle-critical behaviour?
+    validations:
+      required: false
