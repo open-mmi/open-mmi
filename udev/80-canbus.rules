@@ -1,4 +1,20 @@
-SUBSYSTEM=="net", KERNEL=="can0", ACTION=="add",   RUN+="/sbin/ip link set can0 down",   RUN+="/sbin/ip link set can0 type can bitrate 100000",   RUN+="/sbin/ip link set can0 up"
+# Default open-mmi CAN provisioning rule.
+#
+# This mirrors the maintainer-tested Seat Leon 1P / VAG PQ35 setup.
+#
+# Normal setup should use:
+#
+#   sudo ./scripts/manage.sh config apply-profile seat_1p default
+#
+# That command regenerates /etc/udev/rules.d/80-canbus.rules from vehicle profile
+# can_buses metadata.
+#
+# canbusd consumes SocketCAN interfaces. It does not configure bitrate or bring
+# interfaces up.
+
+# Seat 1P reference comfort CAN.
+SUBSYSTEM=="net", KERNEL=="can0", ACTION=="add", RUN+="/sbin/ip link set can0 down", RUN+="/sbin/ip link set can0 type can bitrate 100000", RUN+="/sbin/ip link set can0 up"
+
+# Local UI/input support used by open-mmi actions.
 KERNEL=="uinput", MODE="0666"
 SUBSYSTEM=="backlight", KERNEL=="intel_backlight", GROUP="video", MODE="0664"
-

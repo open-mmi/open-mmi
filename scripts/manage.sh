@@ -143,6 +143,50 @@ open_editor_as_user() {
         "$editor" "$file"
 }
 
+
+# =============================================================================
+# PROFILE-DRIVEN PROVISIONING
+# =============================================================================
+apply_profile_provisioning() {
+    local vehicle="${1:-seat_1p}"
+    local bindings="${2:-default}"
+
+    log_info "Applying profile-driven provisioning: vehicle=$vehicle bindings=$bindings"
+
+    python3 "$REPO_ROOT/scripts/profile_provision.py" \
+        --repo-root "$REPO_ROOT" \
+        --install-dir "$INSTALL_DIR" \
+        --user-config-dir "$USER_CONFIG_DIR" \
+        --systemd-user-dir "$REAL_HOME/.config/systemd/user" \
+        --vehicle "$vehicle" \
+        --bindings "$bindings" \
+        --real-user "$REAL_USER"
+
+    chown -R "$REAL_USER:$REAL_USER" "$USER_CONFIG_DIR" "$REAL_HOME/.config/systemd/user" || true
+}
+
+reload_profile_provisioning() {
+    export XDG_RUNTIME_DIR="/run/user/$USER_ID"
+
+    log_info "Reloading systemd user service files..."
+    sudo -u "$REAL_USER" \
+        HOME="$REAL_HOME" \
+        XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
+        systemctl --user daemon-reload
+
+    log_info "Reloading udev rules..."
+    sudo udevadm control --reload-rules
+    sudo udevadm trigger
+
+    if daemon_running; then
+        log_info "Restarting daemon..."
+        sudo -u "$REAL_USER" \
+            HOME="$REAL_HOME" \
+            XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
+            systemctl --user restart canbusd.service
+    fi
+}
+
 # =============================================================================
 # INSTALL
 # =============================================================================
@@ -235,13 +279,11 @@ cmd_install() {
     sudo -u "$REAL_USER" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user daemon-reload
     sudo -u "$REAL_USER" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user enable canbusd.service
     
-    # Install udev rules
-    if [ -f "$REPO_ROOT/udev/80-canbus.rules" ]; then
-        log_info "Installing udev rules..."
-        sudo cp "$REPO_ROOT/udev/80-canbus.rules" /etc/udev/rules.d/
-        sudo udevadm control --reload-rules
-        sudo udevadm trigger
-    fi
+    # Apply default profile-driven CAN provisioning.
+    # This creates user config if missing, writes the daemon runtime drop-in,
+    # and generates udev rules from the selected vehicle profile metadata.
+    apply_profile_provisioning "seat_1p" "default"
+    reload_profile_provisioning
     
     # Set permissions
     log_info "Configuring user permissions..."
@@ -493,6 +535,18 @@ cmd_config() {
     local action="${1:-help}"
 
     case "$action" in
+        apply-profile|set-profile)
+            local vehicle="${2:-seat_1p}"
+            local bindings="${3:-default}"
+
+            apply_profile_provisioning "$vehicle" "$bindings"
+            reload_profile_provisioning
+
+            log_success "Profile applied: $vehicle"
+            echo ""
+            log_info "Normal setup now comes from the selected vehicle profile."
+            log_info "Use 'sudo $0 config edit-can' only for advanced hardware overrides."
+            ;;
         init)
             local vehicle="${2:-seat_1p}"
             local bindings="${3:-default}"
@@ -772,7 +826,7 @@ main() {
             ;;
         config)
             check_root
-            cmd_config "${2:-help}"
+            cmd_config "${@:2}"
             ;;
         help|--help|-h)
             show_help
