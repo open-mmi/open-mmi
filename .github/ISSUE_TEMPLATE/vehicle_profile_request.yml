@@ -1,0 +1,89 @@
+name: Vehicle profile request
+description: Request or help develop support for a new vehicle profile
+title: "[Vehicle Profile]: "
+labels: ["vehicle-profile", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this when asking for support for a new vehicle or platform.
+
+        open-mmi is currently alpha/backend software. The Seat Leon 1P / VAG PQ35 profile is the maintainer-tested reference profile.
+
+  - type: input
+    id: vehicle
+    attributes:
+      label: Vehicle
+      description: Make, model, year, body type
+      placeholder: "Example: 2008 Seat Leon 1P 2.0 TDI"
+    validations:
+      required: true
+
+  - type: input
+    id: platform
+    attributes:
+      label: Platform / chassis
+      description: Platform or chassis code, if known
+      placeholder: "Example: VAG PQ35, Mk5 Golf platform, 1P"
+    validations:
+      required: false
+
+  - type: input
+    id: adapter
+    attributes:
+      label: CAN adapter
+      description: What adapter are you using?
+      placeholder: "Example: USB2CAN, CANable, DSD TECH, PiCAN, etc."
+    validations:
+      required: false
+
+  - type: input
+    id: capture_point
+    attributes:
+      label: Capture point
+      description: Where did you connect to CAN?
+      placeholder: "Example: OBD pins 6/14, radio harness, gateway, cluster, other"
+    validations:
+      required: false
+
+  - type: input
+    id: bitrate
+    attributes:
+      label: Bitrate
+      description: CAN bitrate used for capture
+      placeholder: "Example: 100000, 125000, 250000, 500000"
+    validations:
+      required: false
+
+  - type: textarea
+    id: desired_states
+    attributes:
+      label: What do you want decoded?
+      description: List the vehicle states or controls you are trying to decode.
+      placeholder: |
+        - steering wheel buttons
+        - reverse
+        - handbrake
+        - lights
+        - doors
+        - dimmer
+        - warnings
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Existing evidence / notes
+      description: Add CAN IDs, byte changes, VCDS/OBDeleven notes, screenshots, or links to logs.
+      placeholder: "Example: ID 0x470 byte 2 changes with dimmer."
+    validations:
+      required: false
+
+  - type: textarea
+    id: safety
+    attributes:
+      label: Safety notes
+      description: Mention anything that could affect safety, distraction, or vehicle-critical systems.
+    validations:
+      required: false
