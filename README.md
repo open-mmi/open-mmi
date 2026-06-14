@@ -54,6 +54,8 @@ It proves the first backend foundation:
 
 Future GitHub Releases will use clearer alpha versioning, release notes, known limitations, screenshots or example output, and a clear source checkpoint.
 
+See [`docs/versioning.md`](docs/versioning.md) for the project versioning policy.
+
 ---
 
 ## What open-mmi is for
@@ -992,10 +994,10 @@ If needed:
 ```bash
 sudo usermod -aG video,input $USER
 ```
+These permissions are a local security tradeoff because they allow interaction with display/input-related system features. Only use them on systems where you trust the installed open-mmi configuration.
 
 Then log out/in or reboot.
 
-These permissions are a local security tradeoff because they allow interaction with display/input-related system features. Only use them on systems where you trust the installed open-mmi configuration.
 
 ---
 
