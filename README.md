@@ -726,6 +726,8 @@ sudo /opt/open-mmi/scripts/manage.sh uninstall
 
 The dashboard reads the persistent status snapshot produced by `canbusd/status_bus.py`.
 
+See [`docs/status-snapshot.md`](docs/status-snapshot.md) for the current alpha status snapshot interface.
+
 Run from the installed copy:
 
 ```bash
