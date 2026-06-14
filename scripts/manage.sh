@@ -584,6 +584,56 @@ cmd_config() {
                     systemctl --user restart canbusd.service
             fi
             ;;
+        edit-can)
+            log_info "Editing CAN runtime override"
+            if [ ! -f "$REAL_HOME/.config/systemd/user/canbusd.service" ]; then
+                log_error "Service not installed yet"
+                return 1
+            fi
+
+            local override_dir="$REAL_HOME/.config/systemd/user/canbusd.service.d"
+            local override_file="$override_dir/10-can-runtime.conf"
+
+            mkdir -p "$override_dir"
+            chown -R "$REAL_USER:$REAL_USER" "$REAL_HOME/.config/systemd/user"
+
+            if [ ! -f "$override_file" ]; then
+                cat > "$override_file" <<'EOF'
+# open-mmi CAN runtime selection
+#
+# This selects which already-provisioned SocketCAN interface the daemon consumes.
+# It does not configure bitrate and does not bring the interface up.
+#
+# Current known-working default:
+#   comfort -> can0
+#
+# The current udev rule provisions can0 at 100000 for the Seat 1P reference setup.
+# Keep udev/system setup responsible for hotplug/reboot survival.
+
+[Service]
+Environment="OPEN_MMI_CAN_BUS=comfort"
+Environment="OPEN_MMI_CAN_INTERFACE=can0"
+EOF
+                chown "$REAL_USER:$REAL_USER" "$override_file"
+            fi
+
+            open_editor_as_user "$override_file"
+
+            log_info "Reloading systemd..."
+            export XDG_RUNTIME_DIR="/run/user/$USER_ID"
+            sudo -u "$REAL_USER" \
+                HOME="$REAL_HOME" \
+                XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
+                systemctl --user daemon-reload
+
+            if daemon_running; then
+                log_info "Restarting daemon..."
+                sudo -u "$REAL_USER" \
+                    HOME="$REAL_HOME" \
+                    XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
+                    systemctl --user restart canbusd.service
+            fi
+            ;;
         show)
             log_info "Current service configuration:"
             systemctl --user cat canbusd.service 2>/dev/null || cat "$REAL_HOME/.config/systemd/user/canbusd.service"
@@ -622,6 +672,15 @@ Commands:
       Edit the systemd service override.
       Use this for OPEN_MMI_VEHICLE, OPEN_MMI_BINDINGS, log level, etc.
 
+  edit-can
+      Edit the CAN runtime override.
+      Defaults to the known-working single bus setup:
+      OPEN_MMI_CAN_BUS=comfort
+      OPEN_MMI_CAN_INTERFACE=can0
+
+      This selects which already-provisioned SocketCAN interface the daemon consumes.
+      It does not configure bitrate or bring the interface up.
+
   show
       Show the effective systemd service config.
 
@@ -632,6 +691,7 @@ Examples:
   sudo $0 config init seat_1p default
   sudo $0 config edit-profile seat_1p
   sudo $0 config edit-bindings default
+  sudo $0 config edit-can
   sudo $0 config edit-service
 EOF
             ;;
