@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Open MMI Dashboard
+Comment=View vehicle status from Open MMI
+Exec=gnome-terminal -- bash -lc 'cd /opt/open-mmi && ./venv/bin/python ui/dashboard/status_cli.py; exec bash'
+Icon=utillities-terminal
+Terminal=false
+Categories=Utility;System;
+StartupNotify=true
+Name[en_GB]=open-mmi-status.desktop
