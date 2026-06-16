@@ -72,7 +72,9 @@ See [`docs/versioning.md`](docs/versioning.md) for the project versioning policy
 * local vehicle state/status display
 * future dashboard and UI consumers
 
-The project currently focuses on local, passive CAN receive and Linux-side actions. It does not currently provide active CAN transmit/control behaviour.
+The project currently focuses on local, passive CAN receive and Linux-side actions.
+
+It does not currently provide active CAN transmit/control behaviour.
 
 ---
 
@@ -91,50 +93,41 @@ Current capabilities include:
 * off-car safe mode
 * systemd + udev integration
 * safe user config directory under `~/.config/open-mmi`
+* optional Linux desktop launcher assets for the diagnostic status dashboard
 
 ---
 
 ## Screenshots and visual proof
 
-The UI is currently alpha. Screenshots should be treated as proof of the backend/status pipeline, not as a final user interface.
+The UI is currently alpha. These screenshots should be treated as proof of the backend/status pipeline, install tooling, and diagnostic consumers, not as a final infotainment or tablet interface.
 
-Future screenshots can be added here.
+### Status dashboard alpha
 
-### CLI dashboard alpha
+The lightweight status dashboard consumes the persistent Open MMI status snapshot and displays current vehicle state for diagnostics.
 
-```text
-TODO: Add screenshot of the CLI dashboard consuming live status snapshot.
-```
+![Open MMI status dashboard active](docs/images/status-dashboard-active.png)
 
-Example future Markdown:
+Additional dashboard states:
 
-```markdown
-![open-mmi CLI dashboard alpha](docs/images/status-cli-alpha.png)
-```
+![Open MMI status dashboard closed](docs/images/status-dashboard-closed.png)
 
-### Daemon/status proof
+![Open MMI status dashboard lighting](docs/images/status-dashboard-lighting.png)
 
-```text
-TODO: Add screenshot or terminal capture showing daemon status/logs.
-```
+### Install and management tooling
 
-Example future Markdown:
+The management script handles install, update, status, logs, and uninstall flows.
 
-```markdown
-![open-mmi daemon status](docs/images/daemon-status.png)
-```
+![Open MMI install status](docs/images/install-status.png)
 
-### Future graphical/tablet UI
+![Open MMI manage help](docs/images/manage-help.png)
 
-```text
-TODO: Add screenshot of graphical/tablet UI once it exists.
-```
+![Open MMI update flow](docs/images/update-flow.png)
 
-Example future Markdown:
+### Daemon logs
 
-```markdown
-![open-mmi tablet UI alpha](docs/images/tablet-ui-alpha.png)
-```
+The daemon logs show backend activity, status updates, and service diagnostics.
+
+![Open MMI daemon logs](docs/images/daemon-logs.png)
 
 ---
 
@@ -171,7 +164,7 @@ A git tag is not the same thing as a GitHub Release. Future public GitHub Releas
 ## 1. Get the code
 
 ```bash
-git clone https://github.com/Sheepdog-97/open-mmi.git
+git clone https://github.com/open-mmi/open-mmi.git
 cd open-mmi
 ```
 
@@ -203,10 +196,10 @@ sudo ./scripts/manage.sh status
 Expected output:
 
 ```text
-Status:         ✓ Installed
-Install Dir:    /opt/open-mmi
-Version:        <current-version>
-Service:        ✓ Running
+Status: ✓ Installed
+Install Dir: /opt/open-mmi
+Version:
+Service: ✓ Running
 ```
 
 ## 4. View logs
@@ -234,13 +227,42 @@ cd /opt/open-mmi
 ./venv/bin/python ui/dashboard/status_cli.py --raw
 ```
 
+## 6. Optional desktop launcher
+
+Open MMI includes optional Linux desktop launcher assets for the diagnostic status dashboard.
+
+The launcher is **not installed by default**. To install it for the current user:
+
+```bash
+./scripts/open-mmi-desktop install
+```
+
+To remove it:
+
+```bash
+./scripts/open-mmi-desktop remove
+```
+
+This installs:
+
+```text
+~/.local/share/applications/open-mmi-status.desktop
+~/.local/share/icons/hicolor
+~/.local/share/icons/open-mmi-dark
+~/.local/share/icons/open-mmi-light
+```
+
+The desktop launcher is currently intended as a lightweight diagnostic convenience, not as the final Open MMI user interface.
+
 ---
 
 # Safety note
 
 This project interfaces with vehicle CAN buses.
 
-`open-mmi` currently focuses on passive CAN receive and local Linux actions. Do not add vehicle CAN transmit/control behaviour without a separate safety design, explicit allowlists, warnings, maintainer review, and extensive testing.
+`open-mmi` currently focuses on passive CAN receive and local Linux actions.
+
+Do not add vehicle CAN transmit/control behaviour without a separate safety design, explicit allowlists, warnings, maintainer review, and extensive testing.
 
 Decoded status is informational and should not be treated as a replacement for OEM safety warnings, diagnostics, or driver judgement.
 
@@ -277,20 +299,20 @@ See [`docs/vehicle-profiles.md`](docs/vehicle-profiles.md) for the profile bound
 ```text
 open-mmi/
 ├── canbusd/
-│   ├── core.py             ← daemon loop: CAN input, profile loading
-│   ├── dispatcher.py       ← event → event bus + action execution
-│   ├── event_bus.py        ← in-process pub/sub for events
-│   ├── status_bus.py       ← persistent vehicle state snapshots
-│   ├── status_rules.py     ← generic profile-driven status evaluator
-│   ├── state.py            ← simple in-process state helper
+│   ├── core.py              ← daemon loop: CAN input, profile loading
+│   ├── dispatcher.py        ← event → event bus + action execution
+│   ├── event_bus.py         ← in-process pub/sub for events
+│   ├── status_bus.py        ← persistent vehicle state snapshots
+│   ├── status_rules.py      ← generic profile-driven status evaluator
+│   ├── state.py             ← simple in-process state helper
 │   └── __init__.py
 │
 ├── vehicles/
 │   └── seat_1p/
-│       └── config.json     ← vehicle CAN profile
+│       └── config.json      ← vehicle CAN profile
 │
 ├── bindings/
-│   └── default.json        ← semantic event → action mapping
+│   └── default.json         ← semantic event → action mapping
 │
 ├── actions/
 │   ├── audio.py
@@ -301,10 +323,29 @@ open-mmi/
 │
 ├── ui/
 │   └── dashboard/
-│       └── status_cli.py   ← CLI dashboard / UI prototype
+│       └── status_cli.py    ← CLI diagnostic dashboard
 │
 ├── scripts/
-│   └── manage.sh           ← install/update/uninstall/config
+│   ├── manage.sh            ← install/update/uninstall/config
+│   └── open-mmi-desktop     ← optional desktop launcher install/remove
+│
+├── packaging/
+│   └── linux-desktop/
+│       ├── open-mmi-status.desktop
+│       └── icons/
+│           ├── hicolor/
+│           ├── open-mmi-dark/
+│           └── open-mmi-light/
+│
+├── docs/
+│   └── images/
+│       ├── daemon-logs.png
+│       ├── install-status.png
+│       ├── manage-help.png
+│       ├── status-dashboard-active.png
+│       ├── status-dashboard-closed.png
+│       ├── status-dashboard-lighting.png
+│       └── update-flow.png
 │
 ├── systemd/
 │   └── user/
@@ -352,8 +393,13 @@ Timeout-based availability checks.
 Example:
 
 ```text
-CAN ID 0x65F seen recently      → vehicle.present = true and vehicle_present:on
-CAN ID 0x65F silent too long    → vehicle.present = false and vehicle_present:off
+CAN ID 0x65F seen recently
+→ vehicle.present = true
+→ vehicle_present:on
+
+CAN ID 0x65F silent too long
+→ vehicle.present = false
+→ vehicle_present:off
 ```
 
 Presence rules are useful for detecting whether the vehicle bus is awake and for triggering local actions such as screen on/off.
@@ -372,7 +418,9 @@ lighting.mode = dip
 lighting.dimmer_percent = 42
 ```
 
-Status mappings are profile-driven. The core daemon knows generic rule types such as `bool`, `enum`, `bitfield`, `percent`, `raw`, and masked boolean rules; vehicle-specific CAN knowledge stays inside `vehicles/{profile}/config.json`.
+Status mappings are profile-driven.
+
+The core daemon knows generic rule types such as `bool`, `enum`, `bitfield`, `percent`, `raw`, and masked boolean rules; vehicle-specific CAN knowledge stays inside `vehicles/{profile}/config.json`.
 
 ---
 
@@ -406,8 +454,7 @@ A profile may contain CAN bus metadata plus rules, presence rules, and status ru
 
 `default_bus` is used by profile entries that do not explicitly declare `bus`.
 
-`can_buses` documents named CAN bus metadata. The daemon consumes the resolved SocketCAN
-interface, but it does not silently configure bitrate or bring interfaces up.
+`can_buses` documents named CAN bus metadata. The daemon consumes the resolved SocketCAN interface, but it does not silently configure bitrate or bring interfaces up.
 
 ---
 
@@ -470,7 +517,9 @@ Presence status is also written under a per-frame diagnostic key such as:
 presence.0x65F = true
 ```
 
-`on_present` and `on_absent` are optional events. If present, they are dispatched when the presence state changes.
+`on_present` and `on_absent` are optional events.
+
+If present, they are dispatched when the presence state changes.
 
 ---
 
@@ -616,9 +665,9 @@ This keeps personal vehicle profiles and bindings safe from updates.
 sudo ./scripts/manage.sh config apply-profile seat_1p default
 ```
 
-This is the normal setup path. It uses the selected vehicle profile as the source
-of truth and applies the local runtime/provisioning defaults declared by that
-profile.
+This is the normal setup path.
+
+It uses the selected vehicle profile as the source of truth and applies the local runtime/provisioning defaults declared by that profile.
 
 For the Seat 1P reference profile this means:
 
@@ -629,8 +678,7 @@ comfort.bitrate = 100000
 comfort.provisioning = udev
 ```
 
-It creates user-owned profile/bindings files when missing, writes the daemon
-runtime drop-in, and generates the udev rule for the declared CAN bus.
+It creates user-owned profile/bindings files when missing, writes the daemon runtime drop-in, and generates the udev rule for the declared CAN bus.
 
 Existing user files are not overwritten.
 
@@ -640,8 +688,9 @@ Existing user files are not overwritten.
 sudo ./scripts/manage.sh config init seat_1p default
 ```
 
-This lower-level command only creates user-owned config files. It does not apply
-CAN runtime/provisioning defaults.
+This lower-level command only creates user-owned config files.
+
+It does not apply CAN runtime/provisioning defaults.
 
 ## Edit vehicle profile
 
@@ -690,8 +739,8 @@ Bindings lookup order:
 
 ```text
 1. OPEN_MMI_BINDINGS_FILE
-2. ~/.config/open-mmi/bindings/<bindings>.json
-3. /opt/open-mmi/bindings/<bindings>.json
+2. ~/.config/open-mmi/bindings/<name>.json
+3. /opt/open-mmi/bindings/<name>.json
 ```
 
 So a user can safely keep personal profiles outside the installed app tree.
@@ -742,6 +791,28 @@ sudo ./scripts/manage.sh config edit-service
 sudo ./scripts/manage.sh config paths
 ```
 
+## Optional desktop launcher
+
+Install the diagnostic status dashboard launcher for the current user:
+
+```bash
+./scripts/open-mmi-desktop install
+```
+
+Remove it:
+
+```bash
+./scripts/open-mmi-desktop remove
+```
+
+Reinstall it:
+
+```bash
+./scripts/open-mmi-desktop reinstall
+```
+
+The desktop launcher is optional and is not required for headless, service-only, or custom UI installs.
+
 ## Uninstall
 
 From a repo checkout:
@@ -778,15 +849,51 @@ Options:
 ./venv/bin/python ui/dashboard/status_cli.py --raw
 ```
 
-This is currently a CLI dashboard, but the same status snapshot can later feed:
+This is currently a CLI diagnostic dashboard, but the same status snapshot can later feed:
 
 * a web UI
 * a tablet UI
 * a local dashboard service
 * an MQTT bridge
 * a WebSocket bridge
+* vehicle/platform-specific Open MMI UI packages
 
 The UI should consume human-readable vehicle state, not raw CAN frames.
+
+---
+
+# Desktop integration
+
+Open MMI includes optional Linux desktop integration for the diagnostic status dashboard.
+
+Files live in:
+
+```text
+packaging/linux-desktop/
+├── open-mmi-status.desktop
+└── icons/
+    ├── hicolor/
+    ├── open-mmi-dark/
+    └── open-mmi-light/
+```
+
+The desktop launcher is intentionally opt-in. Open MMI is primarily the integration/backend layer, and users may later choose a separate UI package.
+
+The diagnostic launcher is useful for development, testing, and quick local status checks.
+
+Install:
+
+```bash
+./scripts/open-mmi-desktop install
+```
+
+Remove:
+
+```bash
+./scripts/open-mmi-desktop remove
+```
+
+The launcher is installed for the current user, not system-wide.
 
 ---
 
@@ -852,6 +959,12 @@ python3 -m json.tool vehicles/seat_1p/config.json >/dev/null
 python3 -m json.tool bindings/default.json >/dev/null
 ```
 
+## Validate desktop launcher
+
+```bash
+desktop-file-validate packaging/linux-desktop/open-mmi-status.desktop
+```
+
 ## Run tests
 
 ```bash
@@ -866,12 +979,13 @@ python3 -m py_compile canbusd/core.py canbusd/can_runtime.py canbusd/status_rule
 
 ## Watch raw CAN
 
-
 ```bash
 candump can0
 ```
 
-The examples currently use `can0`. Other adapters, capture points, vehicles, or bitrates may require adjustment.
+The examples currently use `can0`.
+
+Other adapters, capture points, vehicles, or bitrates may require adjustment.
 
 ---
 
@@ -960,7 +1074,7 @@ Vehicle coding, installed modules, equipment level, and capture point may affect
 
 Known limitations:
 
-* the dashboard is currently a CLI prototype
+* the dashboard is currently a CLI diagnostic prototype
 * only the included Seat 1P / VAG PQ35 profile has been real-car tested by the maintainer
 * vehicle profiles may require manual CAN discovery
 * CAN interface and bitrate assumptions may need adjustment for other vehicles or adapters
@@ -969,6 +1083,7 @@ Known limitations:
 * replay/demo tooling is not yet complete
 * Open MMI currently focuses on passive CAN receive and local Linux actions
 * this is not yet a polished end-user infotainment system
+* graphical, tablet, and vehicle-specific UI packages are not yet part of the core install
 
 Decoded status is informational and should not be treated as a replacement for OEM safety warnings or diagnostics.
 
@@ -1020,6 +1135,28 @@ Loaded config from ...
 Loaded bindings from ...
 ```
 
+## Desktop launcher does not appear
+
+Install or reinstall the optional desktop launcher:
+
+```bash
+./scripts/open-mmi-desktop reinstall
+```
+
+Then restart your application launcher, log out and back in, or restart the desktop shell.
+
+You can also check that the desktop file exists:
+
+```bash
+ls ~/.local/share/applications/open-mmi-status.desktop
+```
+
+And that the icon files exist:
+
+```bash
+ls ~/.local/share/icons/hicolor/scalable/apps/open-mmi.svg
+```
+
 ## Permission denied for virtual input
 
 Check groups:
@@ -1044,7 +1181,9 @@ Then log out/in or reboot.
 
 These permissions are a local security tradeoff because they allow interaction with display/input-related system features.
 
-A system with these permissions should be treated as a trusted local vehicle computer, not as a shared untrusted desktop. Only use them where you trust the installed open-mmi configuration.
+A system with these permissions should be treated as a trusted local vehicle computer, not as a shared untrusted desktop.
+
+Only use them where you trust the installed open-mmi configuration.
 
 ---
 
@@ -1090,6 +1229,7 @@ Useful contribution areas include:
 * install/testing notes
 * screenshots and example output
 * replay/demo data once tooling supports it
+* optional UI packages and UI consumers
 
 Profile contributions should keep vehicle-specific CAN knowledge in:
 
@@ -1129,6 +1269,4 @@ Important principles:
 
 # License
 
-GPL-3.0-only.
-
-See `LICENSE`.
+GPL-3.0-only. See `LICENSE`.
