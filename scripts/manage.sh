@@ -143,6 +143,50 @@ open_editor_as_user() {
         "$editor" "$file"
 }
 
+
+# =============================================================================
+# PROFILE-DRIVEN PROVISIONING
+# =============================================================================
+apply_profile_provisioning() {
+    local vehicle="${1:-seat_1p}"
+    local bindings="${2:-default}"
+
+    log_info "Applying profile-driven provisioning: vehicle=$vehicle bindings=$bindings"
+
+    python3 "$REPO_ROOT/scripts/profile_provision.py" \
+        --repo-root "$REPO_ROOT" \
+        --install-dir "$INSTALL_DIR" \
+        --user-config-dir "$USER_CONFIG_DIR" \
+        --systemd-user-dir "$REAL_HOME/.config/systemd/user" \
+        --vehicle "$vehicle" \
+        --bindings "$bindings" \
+        --real-user "$REAL_USER"
+
+    chown -R "$REAL_USER:$REAL_USER" "$USER_CONFIG_DIR" "$REAL_HOME/.config/systemd/user" || true
+}
+
+reload_profile_provisioning() {
+    export XDG_RUNTIME_DIR="/run/user/$USER_ID"
+
+    log_info "Reloading systemd user service files..."
+    sudo -u "$REAL_USER" \
+        HOME="$REAL_HOME" \
+        XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
+        systemctl --user daemon-reload
+
+    log_info "Reloading udev rules..."
+    sudo udevadm control --reload-rules
+    sudo udevadm trigger
+
+    if daemon_running; then
+        log_info "Restarting daemon..."
+        sudo -u "$REAL_USER" \
+            HOME="$REAL_HOME" \
+            XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
+            systemctl --user restart canbusd.service
+    fi
+}
+
 # =============================================================================
 # INSTALL
 # =============================================================================
@@ -235,13 +279,11 @@ cmd_install() {
     sudo -u "$REAL_USER" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user daemon-reload
     sudo -u "$REAL_USER" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user enable canbusd.service
     
-    # Install udev rules
-    if [ -f "$REPO_ROOT/udev/80-canbus.rules" ]; then
-        log_info "Installing udev rules..."
-        sudo cp "$REPO_ROOT/udev/80-canbus.rules" /etc/udev/rules.d/
-        sudo udevadm control --reload-rules
-        sudo udevadm trigger
-    fi
+    # Apply default profile-driven CAN provisioning.
+    # This creates user config if missing, writes the daemon runtime drop-in,
+    # and generates udev rules from the selected vehicle profile metadata.
+    apply_profile_provisioning "seat_1p" "default"
+    reload_profile_provisioning
     
     # Set permissions
     log_info "Configuring user permissions..."
@@ -493,6 +535,18 @@ cmd_config() {
     local action="${1:-help}"
 
     case "$action" in
+        apply-profile|set-profile)
+            local vehicle="${2:-seat_1p}"
+            local bindings="${3:-default}"
+
+            apply_profile_provisioning "$vehicle" "$bindings"
+            reload_profile_provisioning
+
+            log_success "Profile applied: $vehicle"
+            echo ""
+            log_info "Normal setup now comes from the selected vehicle profile."
+            log_info "Use 'sudo $0 config edit-can' only for advanced hardware overrides."
+            ;;
         init)
             local vehicle="${2:-seat_1p}"
             local bindings="${3:-default}"
@@ -607,7 +661,8 @@ cmd_config() {
 # Current known-working default:
 #   comfort -> can0
 #
-# The current udev rule provisions can0 at 100000 for the Seat 1P reference setup.
+# The normal profile-driven setup provisions can0 at 100000 for the Seat 1P
+# reference profile.
 # Keep udev/system setup responsible for hotplug/reboot survival.
 
 [Service]
@@ -656,8 +711,15 @@ EOF
 Usage: $0 config <command> [args]
 
 Commands:
+  apply-profile [vehicle] [bindings]
+      Select a vehicle profile and apply its runtime/provisioning defaults.
+      This is the normal setup path.
+      Default vehicle: seat_1p
+      Default bindings: default
+
   init [vehicle] [bindings]
-      Create safe user-owned config files under:
+      Create safe user-owned config files only.
+      This does not apply CAN runtime/provisioning defaults.
       $USER_CONFIG_DIR
 
   edit-profile [vehicle]
@@ -688,6 +750,7 @@ Commands:
       Show where Open-MMI looks for config files.
 
 Examples:
+  sudo $0 config apply-profile seat_1p default
   sudo $0 config init seat_1p default
   sudo $0 config edit-profile seat_1p
   sudo $0 config edit-bindings default
@@ -725,6 +788,7 @@ ${BLUE}Examples:${NC}
   sudo ./scripts/manage.sh update
   sudo ./scripts/manage.sh status
   sudo ./scripts/manage.sh logs
+  sudo ./scripts/manage.sh config apply-profile seat_1p default
   sudo ./scripts/manage.sh config init
   sudo ./scripts/manage.sh config edit-profile seat_1p
   sudo ./scripts/manage.sh config edit-service
@@ -737,7 +801,9 @@ ${BLUE}Installation Details:${NC}
 ${BLUE}Troubleshooting:${NC}
   View logs:        sudo ./scripts/manage.sh logs
   Check status:     sudo ./scripts/manage.sh status
-  Edit config:      sudo ./scripts/manage.sh config init
+  Apply profile:    sudo ./scripts/manage.sh config apply-profile seat_1p default
+  Edit profile:     sudo ./scripts/manage.sh config edit-profile seat_1p
+  sudo ./scripts/manage.sh config init
   sudo ./scripts/manage.sh config edit-profile seat_1p
   sudo ./scripts/manage.sh config edit-service
 
@@ -772,7 +838,7 @@ main() {
             ;;
         config)
             check_root
-            cmd_config "${2:-help}"
+            cmd_config "${@:2}"
             ;;
         help|--help|-h)
             show_help
