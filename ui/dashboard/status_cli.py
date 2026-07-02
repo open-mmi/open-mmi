@@ -262,6 +262,7 @@ def _render_dashboard(payload: Dict[str, Any], path: Path = STATUS_PATH, theme: 
     doors = state.get("doors", {}) if isinstance(state.get("doors", {}), dict) else {}
     vehicle = state.get("vehicle", {}) if isinstance(state.get("vehicle", {}), dict) else {}
     lighting = state.get("lighting", {}) if isinstance(state.get("lighting", {}), dict) else {}
+    climate = state.get("climate", {}) if isinstance(state.get("climate", {}), dict) else {}
     steering = state.get("steering", {}) if isinstance(state.get("steering", {}), dict) else {}
 
     _clear()
@@ -301,7 +302,12 @@ def _render_dashboard(payload: Dict[str, Any], path: Path = STATUS_PATH, theme: 
         f"{theme.sym('park', 'P')} Handbrake",
         _state_label(vehicle.get("handbrake"), theme, true_text="ON", false_text="OFF", true_colour="amber"),
     ))
+    print(_pair("Speed", _speed_label(vehicle.get("speed_kmh")), "Speed raw", vehicle.get("speed_raw", "-")))
     print(_pair("Reverse raw", vehicle.get("reverse_raw", "-"), "Handbrake raw", vehicle.get("handbrake_raw", "-")))
+
+    print()
+    print(_line("Climate"))
+    print(_pair("Blower", _percent_label(climate.get("blower_load_percent")), "Blower raw", climate.get("blower_load_raw", "-")))
 
     print()
     print(_line("Steering"))
@@ -338,6 +344,49 @@ def _render_dashboard(payload: Dict[str, Any], path: Path = STATUS_PATH, theme: 
     print()
     print(_line())
     print(theme.dim("Press Ctrl+C to exit."))
+
+
+def _percent_label(value: Any) -> str:
+    if value is None or value == "-":
+        return "-"
+
+    try:
+        return f"{float(value):.1f}%"
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def _speed_unit() -> str:
+    unit = __import__("os").environ.get("OPEN_MMI_SPEED_UNIT", "mph").strip().lower()
+
+    if unit in ("kmh", "kph", "km/h"):
+        return "kmh"
+
+    if unit == "both":
+        return "both"
+
+    return "mph"
+
+
+def _speed_label(speed_kmh: Any) -> str:
+    if speed_kmh is None or speed_kmh == "-":
+        return "-"
+
+    try:
+        kmh = float(speed_kmh)
+    except (TypeError, ValueError):
+        return str(speed_kmh)
+
+    mph = kmh * 0.621371
+    unit = _speed_unit()
+
+    if unit == "kmh":
+        return f"{kmh:.1f} km/h"
+
+    if unit == "both":
+        return f"{mph:.1f} mph / {kmh:.1f} km/h"
+
+    return f"{mph:.1f} mph"
 
 
 def _format_value(value: Any) -> str:
