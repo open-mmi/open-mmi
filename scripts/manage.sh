@@ -582,7 +582,8 @@ cmd_config() {
             echo "  Vehicle profile: $USER_CONFIG_DIR/vehicles/$vehicle/config.json"
             echo "  Bindings file:   $USER_CONFIG_DIR/bindings/$bindings.json"
             echo ""
-            log_info "The daemon will prefer these files over /opt/open-mmi when OPEN_MMI_VEHICLE=$vehicle and OPEN_MMI_BINDINGS=$bindings"
+            log_info "These files are local user overrides/custom config files."
+            log_info "Normal profile setup uses: sudo $0 config apply-profile $vehicle $bindings"
             ;;
         edit-profile)
             local vehicle="${2:-${OPEN_MMI_VEHICLE:-seat_1p}}"
