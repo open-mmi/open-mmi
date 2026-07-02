@@ -198,6 +198,26 @@
       "raw_path": "steering.angle_raw",
       "magnitude_raw_path": "steering.angle_magnitude_raw",
       "direction_path": "steering.direction"
+    },
+    {
+      "id": "0x3E1",
+      "byte": 4,
+      "type": "scaled",
+      "path": "climate.blower_load_percent",
+      "scale": 0.39215686274509803,
+      "offset": 0.0,
+      "round": 1,
+      "raw_path": "climate.blower_load_raw"
+    },
+    {
+      "id": "0x351",
+      "type": "u16le",
+      "start_byte": 1,
+      "path": "vehicle.speed_kmh",
+      "scale": 0.005,
+      "offset": 0.0,
+      "round": 1,
+      "raw_path": "vehicle.speed_raw"
     }
   ]
 }
