@@ -110,12 +110,44 @@ def _evaluate_signed_magnitude(rule: Dict[str, Any], data: bytes, dlc: int) -> D
     return update
 
 
+def _scale_value(raw: int, rule: Dict[str, Any]) -> float:
+    scale = float(rule.get("scale", 1))
+    offset = float(rule.get("offset", 0))
+    value = (raw * scale) + offset
+
+    if "round" in rule:
+        value = round(value, int(rule["round"]))
+
+    return value
+
+
+def _evaluate_u16le(rule: Dict[str, Any], data: bytes, dlc: int) -> Dict[str, Any]:
+    update: Dict[str, Any] = {}
+
+    start_byte = parse_int(rule.get("start_byte", rule.get("byte", 0)))
+    high_byte = start_byte + 1
+
+    if dlc <= high_byte:
+        return update
+
+    raw = data[start_byte] | (data[high_byte] << 8)
+
+    if rule.get("raw_path"):
+        _set_path(update, rule["raw_path"], raw)
+
+    _set_path(update, rule["path"], _scale_value(raw, rule))
+    return update
+
+
 def evaluate_rule(rule: Dict[str, Any], data: bytes, dlc: int) -> Dict[str, Any]:
     kind = rule.get("type", "raw")
     update: Dict[str, Any] = {}
 
     if kind in ("signed_magnitude", "steering_angle"):
         return _evaluate_signed_magnitude(rule, data, dlc)
+
+    if kind == "u16le":
+        return _evaluate_u16le(rule, data, dlc)
 
     raw = _rule_byte(rule, data, dlc)
     if raw is None:
@@ -131,6 +163,9 @@ def evaluate_rule(rule: Dict[str, Any], data: bytes, dlc: int) -> Dict[str, Any]
     elif kind == "percent":
         value = max(0, min(100, raw))
         _set_path(update, rule["path"], value)
+
+    elif kind == "scaled":
+        _set_path(update, rule["path"], _scale_value(raw, rule))
 
     elif kind == "bool":
         true_value = parse_int(rule["true"])
