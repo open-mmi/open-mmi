@@ -239,6 +239,29 @@ A dashboard or UI consumer should:
 
 ---
 
+## Seat 1P profile-specific fields
+
+Some vehicle profiles expose additional passive status fields when the relevant CAN signals are available.
+
+The Seat 1P comfort/infotainment profile currently publishes:
+
+```text
+state.vehicle.speed_kmh
+state.vehicle.speed_raw
+state.climate.blower_load_percent
+state.climate.blower_load_raw
+```
+
+`state.vehicle.speed_kmh` is decoded from the comfort CAN speed signal and is stored internally as kilometres per hour. User interfaces may choose to display this value as mph, km/h, or both.
+
+`state.climate.blower_load_percent` is decoded as an approximate HVAC blower load percentage.
+
+Raw companion fields such as `speed_raw` and `blower_load_raw` are intended for debugging and profile development.
+
+Consumers should treat these fields as optional because they may not exist for every vehicle profile.
+
+---
+
 ## Stability promise
 
 Before a stable release, the status snapshot schema may change.
