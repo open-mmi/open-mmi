@@ -218,6 +218,26 @@
       "offset": 0.0,
       "round": 1,
       "raw_path": "vehicle.speed_raw"
+    },
+    {
+      "id": "0x35B",
+      "byte": 3,
+      "type": "scaled",
+      "path": "engine.coolant_temp_c",
+      "scale": 1.0,
+      "offset": -92.0,
+      "round": 1,
+      "raw_path": "engine.coolant_temp_raw"
+    },
+    {
+      "id": "0x571",
+      "byte": 0,
+      "type": "scaled",
+      "path": "electrical.terminal30_voltage_v",
+      "scale": 0.05,
+      "offset": 5.1,
+      "round": 2,
+      "raw_path": "electrical.terminal30_voltage_raw"
     }
   ]
 }
