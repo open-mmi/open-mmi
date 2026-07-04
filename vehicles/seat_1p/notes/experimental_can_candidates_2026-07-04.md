@@ -44,3 +44,34 @@ RPM:
 Heater flaps:
 - No convincing passive candidate found in current capture
 - keep diagnostic-only for now
+
+## Runtime test note
+
+On the Surface install, the user service loaded the per-user profile copy:
+
+```text
+/home/open-mmi/.config/open-mmi/vehicles/seat_1p/config.json
+
+## Runtime test note
+
+On the Surface install, the user service loaded the per-user profile copy:
+
+```text
+/home/open-mmi/.config/open-mmi/vehicles/seat_1p/config.json
+
+The updated profile had to be copied there from:
+
+/opt/open-mmi/vehicles/seat_1p/config.json
+
+Runtime observations:
+
+Terminal 30 voltage:
+- idle: ~14.45 V
+- ignition on with loads: ~12.45 V
+- ignition on loads off: ~12.55 V
+
+Coolant:
+- OpenMMI value: ~61 °C
+- cluster indicated roughly ~64 °C
+- difference appears plausible due to cluster smoothing/display behaviour
+
