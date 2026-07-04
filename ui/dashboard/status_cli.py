@@ -262,7 +262,7 @@ def _render_dashboard(payload: Dict[str, Any], path: Path = STATUS_PATH, theme: 
     doors = state.get("doors", {}) if isinstance(state.get("doors", {}), dict) else {}
     vehicle = state.get("vehicle", {}) if isinstance(state.get("vehicle", {}), dict) else {}
     lighting = state.get("lighting", {}) if isinstance(state.get("lighting", {}), dict) else {}
-    climate = state.get("climate", {}) if isinstance(state.get("climate", {}), dict) else {} engine = state.get("engine", {}) if isinstance(state.get("engine", {}), dict) else {} electrical = state.get("electrical", {}) if isinstance(state.get("electrical", {}), dict) else {}
+    climate = state.get("climate", {}) if isinstance(state.get("climate", {}), dict) else {}
     steering = state.get("steering", {}) if isinstance(state.get("steering", {}), dict) else {}
 
     _clear()
@@ -306,10 +306,6 @@ def _render_dashboard(payload: Dict[str, Any], path: Path = STATUS_PATH, theme: 
     print(_pair("Reverse raw", vehicle.get("reverse_raw", "-"), "Handbrake raw", vehicle.get("handbrake_raw", "-")))
 
     print()
-    print(_line("Engine / Electrical"))
-    print(_pair("Coolant", _temperature_label(engine.get("coolant_temp_c")), "Coolant raw", engine.get("coolant_temp_raw", "-")))
-    print(_pair("Terminal 30", _voltage_label(electrical.get("terminal30_voltage_v")), "Terminal 30 raw", electrical.get("terminal30_voltage_raw", "-")))
-    print()
     print(_line("Climate"))
     print(_pair("Blower", _percent_label(climate.get("blower_load_percent")), "Blower raw", climate.get("blower_load_raw", "-")))
 
@@ -349,22 +345,6 @@ def _render_dashboard(payload: Dict[str, Any], path: Path = STATUS_PATH, theme: 
     print(_line())
     print(theme.dim("Press Ctrl+C to exit."))
 
-
-def _temperature_label(value: Any) -> str:
-    if value is None or value == "-":
-        return "-"
-    try:
-        return f"{float(value):.1f} °C"
-    except (TypeError, ValueError):
-        return str(value)
-
-def _voltage_label(value: Any) -> str:
-    if value is None or value == "-":
-        return "-"
-    try:
-        return f"{float(value):.2f} V"
-    except (TypeError, ValueError):
-        return str(value)
 
 def _percent_label(value: Any) -> str:
     if value is None or value == "-":
