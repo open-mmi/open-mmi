@@ -206,6 +206,8 @@ def render_systemd_dropin(plan: ProfileProvisionPlan) -> str:
 [Service]
 Environment="OPEN_MMI_VEHICLE={plan.vehicle}"
 Environment="OPEN_MMI_BINDINGS={plan.bindings}"
+Environment="OPEN_MMI_VEHICLE_CONFIG={plan.profile_path}"
+Environment="OPEN_MMI_BINDINGS_FILE={plan.bindings_path}"
 Environment="OPEN_MMI_CAN_BUS={plan.default_bus}"
 Environment="OPEN_MMI_CAN_INTERFACE={plan.active_interface}"
 """
@@ -342,26 +344,17 @@ def main() -> int:
     user_bindings = args.user_config_dir / "bindings" / f"{args.bindings}.json"
 
     if args.dry_run:
-        profile_source = user_profile if user_profile.exists() else src_profile
-        profile = load_json(profile_source)
-        plan = build_plan(profile, user_profile, user_bindings, args.vehicle, args.bindings)
+        profile = load_json(src_profile)
+        plan = build_plan(profile, src_profile, src_bindings, args.vehicle, args.bindings)
 
         print_summary(plan, args.systemd_user_dir)
-
-        if not user_profile.exists():
-            print(f"Would create user profile: {user_profile}")
-        if not user_bindings.exists():
-            print(f"Would create user bindings: {user_bindings}")
+        print(f"Using source profile: {src_profile}")
+        print(f"Using source bindings: {src_bindings}")
 
         return 0
 
-    profile_created = copy_if_missing(src_profile, user_profile)
-    bindings_created = copy_if_missing(src_bindings, user_bindings)
-
-    chown_tree(args.user_config_dir, args.real_user)
-
-    profile = load_json(user_profile)
-    plan = build_plan(profile, user_profile, user_bindings, args.vehicle, args.bindings)
+    profile = load_json(src_profile)
+    plan = build_plan(profile, src_profile, src_bindings, args.vehicle, args.bindings)
 
     apply_plan(plan, args.systemd_user_dir, args.real_user)
     print_summary(plan, args.systemd_user_dir)
