@@ -75,3 +75,21 @@ Coolant:
 - cluster indicated roughly ~64 °C
 - difference appears plausible due to cluster smoothing/display behaviour
 
+
+## Outside temperature correction
+
+Initial outside-temperature candidates used `raw * 0.5 - 100`, which produced impossible live values:
+
+```text
+regulation:  -26.5 °C on OpenMMI / ~23 °C on VCDS
+unfiltered:  -26.0 °C on OpenMMI / ~24 °C on VCDS
+
+Those OpenMMI values imply raw bytes around 147 and 148. Using raw * 0.5 - 50 gives:
+
+147 -> 23.5 °C
+148 -> 24.0 °C
+
+So both outside-temperature candidates now use:
+
+outside_temp_c = raw * 0.5 - 50
+

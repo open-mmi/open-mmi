@@ -225,8 +225,8 @@
       "byte": 3,
       "type": "scaled",
       "path": "engine.coolant_temp_c",
-      "scale": 1.0,
-      "offset": -92.0,
+      "scale": 0.75,
+      "offset": -49.0,
       "round": 1,
       "raw_path": "engine.coolant_temp_raw"
     },
@@ -246,7 +246,7 @@
       "type": "scaled",
       "path": "climate.outside_temp_regulation_c",
       "scale": 0.5,
-      "offset": -100.0,
+      "offset": -50.0,
       "round": 1,
       "raw_path": "climate.outside_temp_regulation_raw"
     },
@@ -256,7 +256,7 @@
       "type": "scaled",
       "path": "climate.outside_temp_unfiltered_c",
       "scale": 0.5,
-      "offset": -100.0,
+      "offset": -50.0,
       "round": 1,
       "raw_path": "climate.outside_temp_unfiltered_raw"
     },
