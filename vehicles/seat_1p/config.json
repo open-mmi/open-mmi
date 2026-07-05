@@ -98,6 +98,7 @@
       "byte": 2,
       "type": "percent",
       "path": "lighting.dimmer_percent",
+      "mask": "0x7F",
       "raw_path": "lighting.dimmer_raw"
     },
     {
@@ -204,7 +205,7 @@
       "byte": 4,
       "type": "scaled",
       "path": "climate.blower_load_percent",
-      "scale": 0.39215686274509803,
+      "scale": 0.4,
       "offset": 0.0,
       "round": 1,
       "raw_path": "climate.blower_load_raw"
@@ -218,6 +219,127 @@
       "offset": 0.0,
       "round": 1,
       "raw_path": "vehicle.speed_raw"
+    },
+    {
+      "id": "0x35B",
+      "byte": 3,
+      "type": "scaled",
+      "path": "engine.coolant_temp_c",
+      "scale": 0.75,
+      "offset": -49.0,
+      "round": 1,
+      "raw_path": "engine.coolant_temp_raw"
+    },
+    {
+      "id": "0x35B",
+      "type": "u16le",
+      "start_byte": 1,
+      "path": "engine.speed_rpm",
+      "scale": 0.25,
+      "offset": 0.0,
+      "round": 0,
+      "raw_path": "engine.speed_raw"
+    },
+    {
+      "id": "0x527",
+      "byte": 5,
+      "type": "scaled",
+      "path": "climate.outside_temp_regulation_c",
+      "scale": 0.5,
+      "offset": -50.0,
+      "round": 1,
+      "raw_path": "climate.outside_temp_regulation_raw"
+    },
+    {
+      "id": "0x527",
+      "byte": 6,
+      "type": "scaled",
+      "path": "climate.outside_temp_unfiltered_c",
+      "scale": 0.5,
+      "offset": -50.0,
+      "round": 1,
+      "raw_path": "climate.outside_temp_unfiltered_raw"
+    },
+    {
+      "id": "0x3E1",
+      "byte": 0,
+      "type": "bool",
+      "path": "climate.rear_window_heater_requested",
+      "mask": "0x04",
+      "true": "0x04",
+      "false": "0x00",
+      "raw_path": "climate.klima_status_raw"
+    },
+    {
+      "id": "0x3E1",
+      "byte": 0,
+      "type": "bool",
+      "path": "climate.front_windscreen_heater_requested",
+      "mask": "0x08",
+      "true": "0x08",
+      "false": "0x00"
+    },
+    {
+      "id": "0x3E1",
+      "byte": 0,
+      "type": "bool",
+      "path": "climate.compressor_active",
+      "mask": "0x10",
+      "true": "0x10",
+      "false": "0x00"
+    },
+    {
+      "id": "0x571",
+      "byte": 0,
+      "type": "scaled",
+      "path": "electrical.supply_voltage_v",
+      "scale": 0.05,
+      "offset": 5.1,
+      "round": 2,
+      "raw_path": "electrical.supply_voltage_raw"
+    },
+    {
+      "id": "0x635",
+      "byte": 0,
+      "type": "percent",
+      "path": "lighting.dimmer_percent_mirror",
+      "raw_path": "lighting.dimmer_635_raw"
+    },
+    {
+      "id": "0x575",
+      "byte": 3,
+      "type": "raw",
+      "path": "climate.rear_window_heater_raw"
+    },
+    {
+      "id": "0x555",
+      "byte": 1,
+      "type": "scaled",
+      "path": "climate.debug_555_b1",
+      "scale": 1.0,
+      "offset": 0.0,
+      "round": 0,
+      "raw_path": "climate.debug_555_b1_raw"
+    },
+    {
+      "id": "0x555",
+      "byte": 3,
+      "type": "scaled",
+      "path": "climate.debug_555_b3",
+      "scale": 1.0,
+      "offset": 0.0,
+      "round": 0,
+      "raw_path": "climate.debug_555_b3_raw"
+    },
+    {
+      "id": "0x555",
+      "byte": 4,
+      "type": "scaled",
+      "path": "climate.debug_555_b4",
+      "scale": 1.0,
+      "offset": 0.0,
+      "round": 0,
+      "raw_path": "climate.debug_555_b4_raw"
     }
   ]
 }
