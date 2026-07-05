@@ -47,6 +47,12 @@ def _rule_byte(rule: Dict[str, Any], data: bytes, dlc: int) -> Optional[int]:
     return data[byte_index]
 
 
+def _masked_value(raw: int, rule: Dict[str, Any]) -> int:
+    if "mask" in rule:
+        return raw & parse_int(rule["mask"])
+    return raw
+
+
 def _evaluate_signed_magnitude(rule: Dict[str, Any], data: bytes, dlc: int) -> Dict[str, Any]:
     update: Dict[str, Any] = {}
 
@@ -131,11 +137,12 @@ def _evaluate_u16le(rule: Dict[str, Any], data: bytes, dlc: int) -> Dict[str, An
         return update
 
     raw = data[start_byte] | (data[high_byte] << 8)
+    value_raw = _masked_value(raw, rule)
 
     if rule.get("raw_path"):
         _set_path(update, rule["raw_path"], raw)
 
-    _set_path(update, rule["path"], _scale_value(raw, rule))
+    _set_path(update, rule["path"], _scale_value(value_raw, rule))
     return update
 
 
@@ -157,33 +164,31 @@ def evaluate_rule(rule: Dict[str, Any], data: bytes, dlc: int) -> Dict[str, Any]
     if raw_path:
         _set_path(update, raw_path, raw)
 
+    value_raw = _masked_value(raw, rule)
+
     if kind == "raw":
-        _set_path(update, rule["path"], raw)
+        _set_path(update, rule["path"], value_raw)
 
     elif kind == "percent":
-        value = max(0, min(100, raw))
+        value = max(0, min(100, value_raw))
         _set_path(update, rule["path"], value)
 
     elif kind == "scaled":
-        _set_path(update, rule["path"], _scale_value(raw, rule))
+        _set_path(update, rule["path"], _scale_value(value_raw, rule))
 
     elif kind == "bool":
         true_value = parse_int(rule["true"])
         false_value = parse_int(rule.get("false", 0)) if "false" in rule else None
 
-        value = raw
-        if "mask" in rule:
-            value = raw & parse_int(rule["mask"])
-
-        if value == true_value:
+        if value_raw == true_value:
             _set_path(update, rule["path"], True)
-        elif false_value is not None and value == false_value:
+        elif false_value is not None and value_raw == false_value:
             _set_path(update, rule["path"], False)
 
     elif kind == "enum":
         values = {parse_int(k): v for k, v in rule.get("values", {}).items()}
-        if raw in values:
-            _set_path(update, rule["path"], values[raw])
+        if value_raw in values:
+            _set_path(update, rule["path"], values[value_raw])
         elif "default" in rule:
             _set_path(update, rule["path"], rule["default"])
 
