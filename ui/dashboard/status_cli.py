@@ -233,12 +233,21 @@ def _render_dashboard(payload: Dict[str, Any], path: Path=STATUS_PATH, theme: Op
     print(_pair('Speed', _speed_label(vehicle.get('speed_kmh')), 'Speed raw', vehicle.get('speed_raw', '-')))
     print(_pair('Reverse raw', vehicle.get('reverse_raw', '-'), 'Handbrake raw', vehicle.get('handbrake_raw', '-')))
     print()
-    print(_line('Engine / Electrical'))
-    print(_pair('Coolant', _temperature_label(engine.get('coolant_temp_c')), 'Coolant raw', engine.get('coolant_temp_raw', '-')))
-    print(_pair('Terminal 30', _voltage_label(electrical.get('terminal30_voltage_v')), 'Terminal 30 raw', electrical.get('terminal30_voltage_raw', '-')))
+    engine_speed = engine.get("speed_rpm")
+    supply_voltage = electrical.get("supply_voltage_v", electrical.get("terminal30_voltage_v"))
+    supply_voltage_raw = electrical.get("supply_voltage_raw", electrical.get("terminal30_voltage_raw", "-"))
+
+    print(_line("Engine / Electrical"))
+    print(_pair("RPM", _rpm_label(engine_speed), "RPM raw", engine.get("speed_raw", "-")))
+    print(_pair("Coolant", _temperature_label(engine.get("coolant_temp_c")), "Coolant raw", engine.get("coolant_temp_raw", "-")))
+    print(_pair("Supply voltage", _voltage_label(supply_voltage), "Voltage raw", supply_voltage_raw))
     print()
-    print(_line('Climate'))
-    print(_pair('Blower', _percent_label(climate.get('blower_load_percent')), 'Blower raw', climate.get('blower_load_raw', '-')))
+    print(_line("Climate"))
+    print(_pair("Blower", _percent_label(climate.get("blower_load_percent")), "Raw", climate.get("blower_load_raw", "-")))
+    print(_pair("Outside reg", _temperature_label(climate.get("outside_temp_regulation_c")), "Outside raw", climate.get("outside_temp_regulation_raw", "-")))
+    print(_pair("Outside unfiltered", _temperature_label(climate.get("outside_temp_unfiltered_c")), "Unfiltered raw", climate.get("outside_temp_unfiltered_raw", "-")))
+    print(_pair("Rear heater", _bool_label(climate.get("rear_window_heater_requested")), "Klima raw", climate.get("klima_status_raw", "-")))
+    print(_pair("Compressor", _bool_label(climate.get("compressor_active")), "Front screen", _bool_label(climate.get("front_windscreen_heater_requested"))))
     print()
     print(_line('Steering'))
     print(_pair('Angle', _degrees_label(steering.get('angle_degrees'), theme), 'Direction', steering.get('direction', '-')))
@@ -272,6 +281,23 @@ def _voltage_label(value: Any) -> str:
         return f'{float(value):.2f} V'
     except (TypeError, ValueError):
         return str(value)
+
+def _rpm_label(value: Any) -> str:
+    if value is None or value == "-":
+        return "-"
+    try:
+        return f"{float(value):.0f} rpm"
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def _bool_label(value: Any) -> str:
+    if value is True:
+        return "yes"
+    if value is False:
+        return "no"
+    return "-" if value is None else str(value)
+
 
 def _percent_label(value: Any) -> str:
     if value is None or value == '-':
