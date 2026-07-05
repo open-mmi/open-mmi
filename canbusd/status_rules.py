@@ -146,6 +146,39 @@ def _evaluate_u16le(rule: Dict[str, Any], data: bytes, dlc: int) -> Dict[str, An
     return update
 
 
+
+def _evaluate_uint_le(rule: Dict[str, Any], data: bytes, dlc: int) -> Dict[str, Any]:
+    update: Dict[str, Any] = {}
+    start_byte = parse_int(rule.get("start_byte", rule.get("byte", 0)))
+
+    kind = rule.get("type")
+    if kind == "u24le":
+        length = 3
+    elif kind == "u32le":
+        length = 4
+    else:
+        length = int(rule.get("length", 1))
+
+    if length < 1 or length > 8:
+        return update
+
+    end_byte = start_byte + length - 1
+    if dlc <= end_byte:
+        return update
+
+    raw = 0
+    for offset in range(length):
+        raw |= data[start_byte + offset] << (8 * offset)
+
+    value_raw = _masked_value(raw, rule)
+
+    if rule.get("raw_path"):
+        _set_path(update, rule["raw_path"], raw)
+
+    _set_path(update, rule["path"], _scale_value(value_raw, rule))
+    return update
+
+
 def evaluate_rule(rule: Dict[str, Any], data: bytes, dlc: int) -> Dict[str, Any]:
     kind = rule.get("type", "raw")
     update: Dict[str, Any] = {}
@@ -156,6 +189,8 @@ def evaluate_rule(rule: Dict[str, Any], data: bytes, dlc: int) -> Dict[str, Any]
     if kind == "u16le":
         return _evaluate_u16le(rule, data, dlc)
 
+    if kind in ("u24le", "u32le", "uint_le"):
+        return _evaluate_uint_le(rule, data, dlc)
     raw = _rule_byte(rule, data, dlc)
     if raw is None:
         return update
