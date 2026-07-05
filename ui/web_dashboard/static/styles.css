@@ -453,3 +453,230 @@ h1 {
   .pager { margin-left: 0; width: 100%; justify-content: center; }
   .tile { min-height: 5.8rem; }
 }
+
+/* open-mmi dashboard ui pass 2: digital rpm gauge */
+:root {
+  --rpm-scale: 0;
+  --rpm-colour: var(--blue);
+}
+
+:root.rpm-unknown { --rpm-colour: var(--dim); }
+:root.rpm-idle { --rpm-colour: var(--blue); }
+:root.rpm-normal { --rpm-colour: var(--green); }
+:root.rpm-high { --rpm-colour: var(--amber); }
+:root.rpm-redline { --rpm-colour: var(--red); }
+
+.speed,
+.value,
+.state,
+.tach-centre,
+.footer-item strong {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+.tach {
+  --rpm-bar-pad: clamp(1rem, 3vw, 2rem);
+  --rpm-bar-bottom: clamp(1.15rem, 2.5vh, 1.85rem);
+  position: relative;
+  width: min(100%, 42rem);
+  min-height: clamp(13rem, 32vh, 22rem);
+  aspect-ratio: auto;
+  display: grid;
+  place-items: center;
+  padding: clamp(1rem, 2.4vw, 2rem);
+  border: 1px solid rgba(255, 255, 255, .16);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 50% 42%, color-mix(in srgb, var(--rpm-colour) 22%, transparent), transparent 44%),
+    linear-gradient(180deg, rgba(255, 255, 255, .075), rgba(255, 255, 255, .025)),
+    rgba(8, 10, 14, .78);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, .035),
+    0 24px 70px rgba(0, 0, 0, .32);
+  overflow: hidden;
+}
+
+.tach.compact {
+  width: min(100%, 34rem);
+  min-height: clamp(11.5rem, 26vh, 17rem);
+}
+
+.tach::before,
+.tach::after {
+  content: "";
+  position: absolute;
+  left: var(--rpm-bar-pad);
+  right: var(--rpm-bar-pad);
+  bottom: var(--rpm-bar-bottom);
+  height: clamp(.75rem, 1.7vh, 1.1rem);
+  border-radius: 999px;
+  pointer-events: none;
+}
+
+.tach::before {
+  border: 1px solid rgba(255, 255, 255, .20);
+  background:
+    linear-gradient(90deg,
+      rgba(82, 216, 120, .35) 0 64%,
+      rgba(255, 177, 59, .42) 64% 86%,
+      rgba(255, 60, 56, .55) 86% 100%),
+    rgba(255, 255, 255, .055);
+  box-shadow: inset 0 0 12px rgba(0, 0, 0, .45);
+}
+
+.tach::after {
+  right: var(--rpm-bar-pad);
+  background: linear-gradient(90deg, rgba(255, 255, 255, .92), var(--rpm-colour));
+  box-shadow: 0 0 18px color-mix(in srgb, var(--rpm-colour) 70%, transparent);
+  transform: scaleX(var(--rpm-scale));
+  transform-origin: left center;
+  transition:
+    transform 220ms cubic-bezier(.22, .61, .36, 1),
+    background-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.needle {
+  display: none !important;
+}
+
+.tach-labels {
+  position: absolute;
+  left: var(--rpm-bar-pad);
+  right: var(--rpm-bar-pad);
+  bottom: calc(var(--rpm-bar-bottom) + clamp(1.05rem, 2.4vh, 1.65rem));
+  inset-block-start: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: rgba(234, 237, 242, .66);
+  font-size: clamp(.85rem, 1.45vw, 1.35rem);
+  letter-spacing: .04em;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.tach-labels .hot,
+.hot {
+  color: var(--red);
+}
+
+.tach-centre {
+  position: relative;
+  inset: auto;
+  z-index: 2;
+  width: 100%;
+  margin: 0 0 clamp(2.1rem, 6vh, 4.3rem);
+  text-align: center;
+  color: var(--rpm-colour);
+  font-size: clamp(4.7rem, 10vw, 9.4rem);
+  font-weight: 300;
+  letter-spacing: -.075em;
+  line-height: .86;
+  text-shadow:
+    0 0 22px color-mix(in srgb, var(--rpm-colour) 52%, transparent),
+    0 0 64px color-mix(in srgb, var(--rpm-colour) 24%, transparent);
+  transition: color 160ms ease, text-shadow 160ms ease;
+}
+
+.tach.compact .tach-centre {
+  font-size: clamp(3.5rem, 7.5vw, 6.3rem);
+}
+
+.tach-centre::before {
+  content: "ENGINE SPEED";
+  display: block;
+  margin-bottom: .55rem;
+  color: var(--muted);
+  font-size: clamp(.78rem, 1.3vw, 1.1rem);
+  font-weight: 600;
+  letter-spacing: .18em;
+  line-height: 1;
+}
+
+.tach-centre small {
+  display: block;
+  margin-top: .45rem;
+  color: rgba(242, 244, 247, .78);
+  font-size: .18em;
+  font-weight: 600;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+}
+
+:root.rpm-redline .tach {
+  animation: rpmRedlinePulse 700ms ease-in-out infinite alternate;
+}
+
+@keyframes rpmRedlinePulse {
+  from {
+    border-color: rgba(255, 60, 56, .38);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .035), 0 24px 70px rgba(0, 0, 0, .32);
+  }
+  to {
+    border-color: rgba(255, 60, 56, .78);
+    box-shadow: inset 0 0 0 1px rgba(255, 60, 56, .20), 0 0 42px rgba(255, 60, 56, .18);
+  }
+}
+
+@media (max-width: 720px) {
+  .tach {
+    min-height: clamp(11rem, 35vh, 17rem);
+    border-radius: 14px;
+  }
+
+  .tach-centre {
+    font-size: clamp(4rem, 20vw, 6.4rem);
+  }
+
+  .tach-labels {
+    font-size: clamp(.72rem, 3.4vw, 1rem);
+  }
+}
+
+@media (max-height: 620px) and (orientation: landscape) {
+  .tach {
+    min-height: 11rem;
+  }
+
+  .tach-centre {
+    margin-bottom: 2.4rem;
+    font-size: clamp(3.6rem, 9vw, 5.8rem);
+  }
+}
+/* end open-mmi dashboard ui pass 2 */
+
+/* open-mmi dashboard ui pass 2b: toned rpm glow */
+.tach {
+  background:
+    radial-gradient(circle at 50% 42%, color-mix(in srgb, var(--rpm-colour) 9%, transparent), transparent 42%),
+    linear-gradient(180deg, rgba(255, 255, 255, .065), rgba(255, 255, 255, .022)),
+    rgba(8, 10, 14, .78);
+}
+
+.tach::after {
+  box-shadow: 0 0 8px color-mix(in srgb, var(--rpm-colour) 34%, transparent);
+}
+
+.tach-centre {
+  text-shadow:
+    0 0 9px color-mix(in srgb, var(--rpm-colour) 28%, transparent),
+    0 0 26px color-mix(in srgb, var(--rpm-colour) 10%, transparent);
+}
+
+:root.rpm-redline .tach {
+  animation-duration: 1100ms;
+}
+
+@keyframes rpmRedlinePulse {
+  from {
+    border-color: rgba(255, 60, 56, .30);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .03), 0 20px 58px rgba(0, 0, 0, .28);
+  }
+  to {
+    border-color: rgba(255, 60, 56, .54);
+    box-shadow: inset 0 0 0 1px rgba(255, 60, 56, .12), 0 0 22px rgba(255, 60, 56, .10);
+  }
+}
+/* end open-mmi dashboard ui pass 2b */

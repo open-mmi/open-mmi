@@ -84,12 +84,24 @@ function lightsLabel(value) {
 
 function updateTach(rpm) {
   const n = Number(rpm);
-  const clamped = Number.isFinite(n) ? Math.max(0, Math.min(6000, n)) : 0;
-  const rotation = -16 + (clamped / 6000) * 120;
-  document.documentElement.style.setProperty("--rpm-rotation", `${rotation}deg`);
-}
+  const isKnown = Number.isFinite(n);
+  const clamped = isKnown ? Math.max(0, Math.min(6000, n)) : 0;
+  const progress = clamped / 6000;
+  const root = document.documentElement;
 
-function render(payload) {
+  root.style.setProperty("--rpm-scale", progress.toFixed(4));
+  root.classList.remove("rpm-unknown", "rpm-idle", "rpm-normal", "rpm-high", "rpm-redline");
+
+  let state = "rpm-unknown";
+  if (isKnown) {
+    if (clamped < 900) state = "rpm-idle";
+    else if (clamped < 4200) state = "rpm-normal";
+    else if (clamped < 5200) state = "rpm-high";
+    else state = "rpm-redline";
+  }
+
+  root.classList.add(state);
+} function render(payload) {
   updateHealth(payload);
   const state = payload.state || {};
   const vehicle = state.vehicle || {};
