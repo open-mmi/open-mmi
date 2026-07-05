@@ -222,3 +222,6 @@ Vehicle profiles are experimental.
 
 A profile may be incomplete, wrong, or specific to a trim, module coding, model year, or
 retrofit state. `open-mmi` should not be treated as safety-critical software.
+
+
+See also: [`docs/profile-ownership.md`](profile-ownership.md).

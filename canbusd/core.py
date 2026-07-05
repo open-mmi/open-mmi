@@ -72,7 +72,11 @@ def _resolve_vehicle_config_path() -> Path:
 
     user_path = USER_CONFIG_DIR / "vehicles" / VEHICLE / "config.json"
     if user_path.exists():
-        return user_path
+        logger.warning(
+            "User vehicle profile override exists but is not active: %s. "
+            "Set OPEN_MMI_VEHICLE_CONFIG to use it explicitly.",
+            user_path,
+        )
 
     return BASE_DIR / "vehicles" / VEHICLE / "config.json"
 
@@ -84,7 +88,11 @@ def _resolve_bindings_path() -> Path:
 
     user_path = USER_CONFIG_DIR / "bindings" / f"{BINDINGS}.json"
     if user_path.exists():
-        return user_path
+        logger.warning(
+            "User bindings override exists but is not active: %s. "
+            "Set OPEN_MMI_BINDINGS_FILE to use it explicitly.",
+            user_path,
+        )
 
     return BASE_DIR / "bindings" / f"{BINDINGS}.json"
 
