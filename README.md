@@ -50,7 +50,7 @@ It proves the first backend foundation:
 * modular Linux actions
 * timeout-based vehicle presence
 * persistent vehicle status snapshots
-* safe user config under `~/.config/open-mmi`
+* explicit opt-in user overrides under `~/.config/open-mmi`
 * install/update/uninstall tooling
 * CLI dashboard prototype
 
@@ -92,7 +92,7 @@ Current capabilities include:
 * hot-reload configuration
 * off-car safe mode
 * systemd + udev integration
-* safe user config directory under `~/.config/open-mmi`
+* explicit opt-in user override directory under `~/.config/open-mmi`
 * optional Linux desktop launcher assets for the diagnostic status dashboard
 
 ---
@@ -611,11 +611,19 @@ This produces status like:
 
 # Bindings format
 
-Bindings live in:
+Repo/default bindings live in:
 
 ```text
 bindings/{name}.json
 ```
+
+Installed repo/default bindings live in:
+
+```text
+/opt/open-mmi/bindings/{name}.json
+```
+
+Optional user binding overrides may live in `~/.config/open-mmi/bindings/`, but they are used only when `OPEN_MMI_BINDINGS_FILE` is explicitly set.
 
 Example:
 
@@ -643,7 +651,7 @@ Bindings are trusted local configuration. Do not install random bindings or vehi
 
 ---
 
-# Safe user config workflow
+# Config defaults and explicit overrides
 
 Application files are installed to:
 
@@ -651,13 +659,24 @@ Application files are installed to:
 /opt/open-mmi
 ```
 
-User-editable config should live in:
+Normal runtime uses repo/default configuration from the installed application tree:
+
+```text
+/opt/open-mmi/vehicles/<vehicle>/config.json
+/opt/open-mmi/bindings/<bindings>.json
+```
+
+User override files may live under:
 
 ```text
 ~/.config/open-mmi
 ```
 
-This keeps personal vehicle profiles and bindings safe from updates.
+User override files are sacred: Open MMI must not overwrite, refresh, migrate, or delete them automatically.
+
+User override files are also opt-in only. They are not selected automatically just because they exist.
+
+See [`docs/profile-ownership.md`](docs/profile-ownership.md) for the full ownership model.
 
 ## Apply a vehicle profile
 
@@ -667,7 +686,7 @@ sudo ./scripts/manage.sh config apply-profile seat_1p default
 
 This is the normal setup path.
 
-It uses the selected vehicle profile as the source of truth and applies the local runtime/provisioning defaults declared by that profile.
+It uses the selected repo/default vehicle profile and repo/default bindings as the runtime source of truth, and applies the local runtime/provisioning defaults declared by that profile.
 
 For the Seat 1P reference profile this means:
 
@@ -678,31 +697,27 @@ comfort.bitrate = 100000
 comfort.provisioning = udev
 ```
 
-It creates user-owned profile/bindings files when missing, writes the daemon runtime drop-in, and generates the udev rule for the declared CAN bus.
+Applying a profile writes the daemon runtime drop-in and generates the udev rule for the declared CAN bus.
 
-Existing user files are not overwritten.
+It should not create, overwrite, or select user override files under `~/.config/open-mmi`.
 
-## Create user config only
+## Explicit user overrides
 
-```bash
-sudo ./scripts/manage.sh config init seat_1p default
+A user vehicle-profile override can be selected by setting `OPEN_MMI_VEHICLE_CONFIG` explicitly, for example:
+
+```ini
+[Service]
+Environment="OPEN_MMI_VEHICLE_CONFIG=/home/open-mmi/.config/open-mmi/vehicles/seat_1p/config.json"
 ```
 
-This lower-level command only creates user-owned config files.
+A user bindings override can be selected by setting `OPEN_MMI_BINDINGS_FILE` explicitly, for example:
 
-It does not apply CAN runtime/provisioning defaults.
-
-## Edit vehicle profile
-
-```bash
-sudo ./scripts/manage.sh config edit-profile seat_1p
+```ini
+[Service]
+Environment="OPEN_MMI_BINDINGS_FILE=/home/open-mmi/.config/open-mmi/bindings/default.json"
 ```
 
-## Edit bindings
-
-```bash
-sudo ./scripts/manage.sh config edit-bindings default
-```
+A user override file is safe from Open MMI updates, but it also stops receiving repo/default improvements until the user updates that override manually.
 
 ## Edit service environment
 
@@ -719,6 +734,8 @@ Environment="OPEN_MMI_BINDINGS=default"
 Environment="OPEN_MMI_LOG_LEVEL=DEBUG"
 ```
 
+To opt into user override files, set `OPEN_MMI_VEHICLE_CONFIG` and/or `OPEN_MMI_BINDINGS_FILE` explicitly.
+
 ## Show config paths
 
 ```bash
@@ -730,20 +747,18 @@ sudo ./scripts/manage.sh config paths
 Vehicle config lookup order:
 
 ```text
-1. OPEN_MMI_VEHICLE_CONFIG
-2. ~/.config/open-mmi/vehicles/<vehicle>/config.json
-3. /opt/open-mmi/vehicles/<vehicle>/config.json
+1. OPEN_MMI_VEHICLE_CONFIG, if explicitly set
+2. /opt/open-mmi/vehicles/<vehicle>/config.json
 ```
 
 Bindings lookup order:
 
 ```text
-1. OPEN_MMI_BINDINGS_FILE
-2. ~/.config/open-mmi/bindings/<name>.json
-3. /opt/open-mmi/bindings/<name>.json
+1. OPEN_MMI_BINDINGS_FILE, if explicitly set
+2. /opt/open-mmi/bindings/<bindings>.json
 ```
 
-So a user can safely keep personal profiles outside the installed app tree.
+User files under `~/.config/open-mmi` are ignored unless explicitly selected.
 
 ---
 
@@ -784,12 +799,13 @@ sudo ./scripts/manage.sh logs
 
 ```bash
 sudo ./scripts/manage.sh config apply-profile seat_1p default
-sudo ./scripts/manage.sh config init seat_1p default
-sudo ./scripts/manage.sh config edit-profile seat_1p
-sudo ./scripts/manage.sh config edit-bindings default
 sudo ./scripts/manage.sh config edit-service
 sudo ./scripts/manage.sh config paths
 ```
+
+Normal setup uses repo/default vehicle profiles and repo/default bindings from `/opt/open-mmi`.
+
+User override files under `~/.config/open-mmi` are opt-in only and must be selected explicitly with `OPEN_MMI_VEHICLE_CONFIG` or `OPEN_MMI_BINDINGS_FILE`.
 
 ## Optional desktop launcher
 
@@ -1120,7 +1136,9 @@ Check:
 * ground is connected if required by the adapter
 * the selected capture point actually exposes the frames you expect
 
-## User config not being used
+## User override not being used
+
+User override files under `~/.config/open-mmi` are not used automatically. They must be selected explicitly with `OPEN_MMI_VEHICLE_CONFIG` or `OPEN_MMI_BINDINGS_FILE`.
 
 Check paths:
 
@@ -1134,6 +1152,8 @@ Check daemon logs for:
 Loaded config from ...
 Loaded bindings from ...
 ```
+
+If an override file exists but is not selected, the daemon logs a warning and continues using the repo/default file from `/opt/open-mmi`.
 
 ## Desktop launcher does not appear
 
