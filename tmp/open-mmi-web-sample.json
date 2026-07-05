@@ -6,46 +6,36 @@
       "reverse": false,
       "handbrake": true,
       "speed_kmh": 0,
-      "speed_raw": 0,
-      "odometer_km": 318088,
-      "odometer_raw": 318088
+      "odometer_km": 318088
     },
     "fuel": {
       "range_km_candidate": 72.3,
       "range_raw_candidate": 7231,
-      "range_km_rounded_candidate": 72,
-      "range_km_rounded_raw_candidate": 72
+      "range_km_rounded_candidate": 72
     },
     "engine": {
       "speed_rpm": 800,
-      "speed_raw": 3200,
-      "coolant_temp_c": 80,
-      "coolant_temp_raw": 172
+      "coolant_temp_c": 80
     },
     "electrical": {
-      "supply_voltage_v": 13.9,
-      "supply_voltage_raw": 176
+      "supply_voltage_v": 13.9
     },
     "climate": {
       "blower_load_percent": 13.6,
-      "blower_load_raw": 34,
       "outside_temp_regulation_c": 20.5,
       "outside_temp_unfiltered_c": 22.5,
       "front_demist_air_request": true,
-      "front_demist_air_request_raw": 128,
       "rear_window_heater_requested": false,
-      "compressor_active": false,
-      "front_windscreen_heater_requested": false,
-      "klima_status_raw": 32
+      "compressor_active": false
     },
     "doors": {
       "front_left": false,
-      "front_right": false,
+      "front_right": true,
       "rear_left": false,
       "rear_right": false,
       "boot": false,
       "bonnet": false,
-      "any_open": false
+      "any_open": true
     },
     "lighting": {
       "mode": "off",

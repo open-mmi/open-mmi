@@ -2,143 +2,152 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Open MMI Factory Dashboard</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-  <main id="app" class="screen">
+  <main class="screen">
     <header class="topbar">
       <div>
         <h1 id="pageTitle">Drive</h1>
         <div class="subline">Open MMI live vehicle status</div>
       </div>
-      <div class="health">
+      <div class="health-pill">
         <span id="healthDot" class="health-dot waiting"></span>
-        <span id="healthText">waiting</span>
+        <strong id="healthText">waiting</strong>
         <span id="ageText">--</span>
       </div>
     </header>
 
-    <section id="pageDrive" class="page active">
-      <div class="grid drive-grid">
-        <div class="stack">
-          <article class="tile">
-            <div class="icon">⛽</div>
-            <div>
-              <div class="label">Range est.</div>
-              <div class="big"><span data-value="rangeMi">--</span><span class="unit">mi</span></div>
-            </div>
-          </article>
-          <article class="tile coolant-tile">
-            <div class="icon">♨</div>
-            <div>
-              <div class="label">Coolant actual</div>
-              <div class="big"><span data-value="coolant">--</span><span class="unit">°C</span></div>
-              <div class="temp-bar"><span class="temp-blue"></span><span class="temp-white"></span><span class="temp-red"></span><i class="temp-marker"></i></div>
-              <div class="temp-scale"><span>50</span><span>90</span><span>130</span></div>
-            </div>
-          </article>
-          <article class="tile">
-            <div class="icon">☀</div>
-            <div>
-              <div class="label">Outside</div>
-              <div class="big"><span data-value="outsideReg">--</span><span class="unit">°C</span></div>
-            </div>
-          </article>
-        </div>
-
-        <div class="centerpiece">
-          <div class="speed-readout"><span data-value="speedMph">--</span><span>mph</span></div>
-          <div class="tach">
-            <div class="tach-scale"><span>0</span><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span class="red">6</span></div>
-            <div class="tach-needle"></div>
-            <div class="tach-value"><span data-value="rpm">--</span><small>rpm</small></div>
+    <section id="pageDrive" class="page page-drive active" aria-label="Drive page">
+      <div class="panel-stack">
+        <article class="tile">
+          <div class="icon">⛽</div>
+          <div><div class="label">Range est.</div><div class="value"><span data-field="range_mi">--</span><small>mi</small></div></div>
+        </article>
+        <article class="tile">
+          <div class="icon">♨</div>
+          <div class="full">
+            <div class="label">Coolant actual</div>
+            <div class="value"><span data-field="coolant_c">--</span><small>°C</small></div>
+            <div class="temp-bar"><i class="blue"></i><i class="white"></i><i class="red"></i><b></b></div>
+            <div class="temp-scale"><span>50</span><span>90</span><span>130</span></div>
           </div>
-        </div>
+        </article>
+        <article class="tile">
+          <div class="icon">☀</div>
+          <div><div class="label">Outside</div><div class="value"><span data-field="outside_reg_c">--</span><small>°C</small></div></div>
+        </article>
+      </div>
 
-        <div class="stack right">
-          <article class="tile">
-            <div>
-              <div class="label">Odometer</div>
-              <div class="big"><span data-value="odoMi">--</span><span class="unit">mi</span></div>
-            </div>
-          </article>
-          <article class="tile">
-            <div class="icon">▣</div>
-            <div>
-              <div class="label">Supply voltage</div>
-              <div class="big"><span data-value="voltage">--</span><span class="unit">V</span></div>
-            </div>
-          </article>
+      <div class="hero-card">
+        <div class="speed"><span data-field="speed_mph">--</span><small>mph</small></div>
+        <div class="tach">
+          <div class="tach-labels"><span>0</span><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span class="hot">6</span></div>
+          <div class="needle" id="tachNeedle"></div>
+          <div class="tach-centre"><span data-field="rpm">--</span><small>rpm</small></div>
         </div>
+      </div>
+
+      <div class="panel-stack">
+        <article class="tile"><div><div class="label">Odometer</div><div class="value"><span data-field="odo_mi">--</span><small>mi</small></div></div></article>
+        <article class="tile"><div class="icon">▣</div><div><div class="label">Supply voltage</div><div class="value"><span data-field="voltage_v">--</span><small>V</small></div></div></article>
+        <article class="tile compact"><div class="label">Lighting mode</div><strong data-field="lighting_mode">--</strong></article>
       </div>
     </section>
 
-    <section id="pageClimate" class="page">
-      <div class="grid climate-grid">
-        <div class="stack">
-          <article class="tile"><div class="icon">☀</div><div><div class="label">Outside reg.</div><div class="big"><span data-value="outsideReg">--</span><span class="unit">°C</span></div></div></article>
-          <article class="tile"><div class="icon">☁</div><div><div class="label">Outside unfiltered</div><div class="big"><span data-value="outsideUnfiltered">--</span><span class="unit">°C</span></div></div></article>
-          <article class="tile"><div class="icon">▤</div><div><div class="label">Rear heater</div><div class="big state" data-bool="rearHeater">--</div></div></article>
-        </div>
-        <div class="blower-dial">
-          <div class="fan">✽</div>
-          <div class="blower-value"><span data-value="blower">--</span><span>%</span></div>
-          <div class="dial-label">blower load</div>
-        </div>
-        <div class="stack right">
-          <article class="tile"><div class="icon">♨</div><div><div class="label">Front demist</div><div class="big state red" data-bool="frontDemist">--</div></div></article>
-          <article class="tile"><div class="icon">❄</div><div><div class="label">Compressor</div><div class="big state" data-bool="compressor">--</div></div></article>
-          <article class="tile"><div class="icon">⇥</div><div><div class="label">Air intake</div><div class="big state small">Normal</div></div></article>
-        </div>
+    <section id="pageClimate" class="page page-climate" aria-label="Climate page">
+      <div class="panel-stack">
+        <article class="tile"><div class="icon">☀</div><div><div class="label">Outside reg.</div><div class="value"><span data-field="outside_reg_c">--</span><small>°C</small></div></div></article>
+        <article class="tile"><div class="icon">☁</div><div><div class="label">Outside unfiltered</div><div class="value"><span data-field="outside_unfiltered_c">--</span><small>°C</small></div></div></article>
+        <article class="tile"><div class="icon">▤</div><div><div class="label">Rear heater</div><div class="state" data-bool="rear_heater">--</div></div></article>
+      </div>
+
+      <div class="blower-card">
+        <div class="fan">✽</div>
+        <div class="blower-value"><span data-field="blower_pct">--</span><small>%</small></div>
+        <div class="dial-label">blower load</div>
+      </div>
+
+      <div class="panel-stack">
+        <article class="tile"><div class="icon">♨</div><div><div class="label">Front demist</div><div class="state danger" data-bool="front_demist">--</div></div></article>
+        <article class="tile"><div class="icon">❄</div><div><div class="label">Compressor</div><div class="state" data-bool="compressor">--</div></div></article>
+        <article class="tile compact"><div class="label">Air intake</div><strong data-field="air_intake">Normal</strong></article>
       </div>
     </section>
 
-    <section id="pageVehicle" class="page">
-      <div class="grid vehicle-grid">
-        <div class="stack">
-          <article class="tile"><div class="icon red">ⓘ</div><div><div class="label">Handbrake</div><div class="big state red" data-bool="handbrake">--</div></div></article>
-          <article class="tile"><div class="icon">R</div><div><div class="label">Reverse</div><div class="big state" data-bool="reverse">--</div></div></article>
-          <article class="tile"><div class="icon">◐</div><div><div class="label">Dimmer</div><div class="big"><span data-value="dimmer">--</span><span class="unit">%</span></div></div></article>
-          <article class="tile"><div class="icon">☾</div><div><div class="label">Lights</div><div class="big state" data-value="lightingMode">--</div></div></article>
+    <section id="pageVehicle" class="page page-vehicle" aria-label="Vehicle page">
+      <div class="panel-stack">
+        <article class="tile"><div class="icon danger">!</div><div><div class="label">Handbrake</div><div class="state danger" data-bool="handbrake">--</div></div></article>
+        <article class="tile"><div class="icon">R</div><div><div class="label">Reverse</div><div class="state" data-bool="reverse">--</div></div></article>
+        <article class="tile"><div class="icon">◐</div><div><div class="label">Dimmer</div><div class="value"><span data-field="dimmer_pct">--</span><small>%</small></div></div></article>
+        <article class="tile compact"><div class="label">Lights</div><strong data-field="lights_on">--</strong></article>
+      </div>
+
+      <div class="vehicle-card">
+        <div class="car-shell" id="carShell" aria-hidden="true">
+          <span class="door-mark fl" data-door-mark="front_left"></span>
+          <span class="door-mark fr" data-door-mark="front_right"></span>
+          <span class="door-mark rl" data-door-mark="rear_left"></span>
+          <span class="door-mark rr" data-door-mark="rear_right"></span>
+          <span class="door-mark boot" data-door-mark="boot"></span>
+          <span class="door-mark bonnet" data-door-mark="bonnet"></span>
         </div>
-        <div class="car-card">
-          <div id="carTop" class="car-top"><span class="door front-left"></span><span class="door front-right"></span><span class="door rear-left"></span><span class="door rear-right"></span><span class="boot"></span><span class="bonnet"></span></div>
-          <div class="door-summary"><span>Doors</span><strong data-value="doorSummary">--</strong></div>
+
+        <div class="door-list">
+          <div class="door-row" data-door-row="front_left"><span>Front left</span><strong data-door-text="front_left">--</strong></div>
+          <div class="door-row" data-door-row="front_right"><span>Front right</span><strong data-door-text="front_right">--</strong></div>
+          <div class="door-row" data-door-row="rear_left"><span>Rear left</span><strong data-door-text="rear_left">--</strong></div>
+          <div class="door-row" data-door-row="rear_right"><span>Rear right</span><strong data-door-text="rear_right">--</strong></div>
+          <div class="door-row" data-door-row="boot"><span>Boot</span><strong data-door-text="boot">--</strong></div>
+          <div class="door-row" data-door-row="bonnet"><span>Bonnet</span><strong data-door-text="bonnet">--</strong></div>
         </div>
-        <div class="stack right">
-          <article class="tile"><div class="icon">💡</div><div><div class="label">Bulb out</div><div class="big state" data-bool-no="bulbOut">--</div></div></article>
-          <article class="tile"><div class="icon">↔</div><div><div class="label">Indicators</div><div class="big state" data-value="indicators">--</div></div></article>
-          <article class="tile"><div class="icon">△</div><div><div class="label">Hazards</div><div class="big state" data-bool="hazards">--</div></div></article>
-        </div>
+      </div>
+
+      <div class="panel-stack">
+        <article class="tile"><div class="icon">💡</div><div><div class="label">Bulb out</div><div class="state" data-bool-no="bulb_out">--</div></div></article>
+        <article class="tile"><div class="icon">↔</div><div><div class="label">Indicators</div><div class="state" data-field="indicators">--</div></div></article>
+        <article class="tile"><div class="icon">△</div><div><div class="label">Hazards</div><div class="state danger" data-bool="hazards">--</div></div></article>
       </div>
     </section>
 
-    <section id="pageElectrical" class="page">
-      <div class="grid electrical-grid">
-        <div class="stack">
-          <article class="tile coolant-tile"><div class="icon">♨</div><div><div class="label">Coolant actual</div><div class="big"><span data-value="coolant">--</span><span class="unit">°C</span></div><div class="temp-bar"><span class="temp-blue"></span><span class="temp-white"></span><span class="temp-red"></span><i class="temp-marker"></i></div><div class="temp-scale"><span>50</span><span>90</span><span>130</span></div></div></article>
-          <article class="tile"><div class="icon">▣</div><div><div class="label">Supply voltage</div><div class="big"><span data-value="voltage">--</span><span class="unit">V</span></div></div></article>
-          <article class="tile"><div class="icon">☀</div><div><div class="label">Outside</div><div class="big"><span data-value="outsideReg">--</span><span class="unit">°C</span></div></div></article>
+    <section id="pageElectrical" class="page page-electrical" aria-label="Engine and electrical page">
+      <div class="panel-stack">
+        <article class="tile">
+          <div class="icon">♨</div>
+          <div class="full"><div class="label">Coolant actual</div><div class="value"><span data-field="coolant_c">--</span><small>°C</small></div><div class="temp-bar"><i class="blue"></i><i class="white"></i><i class="red"></i><b></b></div><div class="temp-scale"><span>50</span><span>90</span><span>130</span></div></div>
+        </article>
+        <article class="tile"><div class="icon">▣</div><div><div class="label">Supply voltage</div><div class="value"><span data-field="voltage_v">--</span><small>V</small></div></div></article>
+        <article class="tile"><div class="icon">☀</div><div><div class="label">Outside</div><div class="value"><span data-field="outside_reg_c">--</span><small>°C</small></div></div></article>
+      </div>
+
+      <div class="hero-card technical">
+        <div class="tach compact">
+          <div class="needle" id="tachNeedle2"></div>
+          <div class="tach-centre"><span data-field="rpm">--</span><small>rpm</small></div>
         </div>
-        <div class="technical-tach">
-          <div class="tach compact"><div class="tach-needle"></div><div class="tach-value"><span data-value="rpm">--</span><small>rpm</small></div></div>
-          <div class="actual-note">ⓘ Actual values</div>
-        </div>
-        <div class="stack right">
-          <article class="tile"><div><div class="label">Odometer</div><div class="big"><span data-value="odoMi">--</span><span class="unit">mi</span></div></div></article>
-          <article class="tile"><div class="icon">⛽</div><div><div class="label">Range est.</div><div class="big"><span data-value="rangeMi">--</span><span class="unit">mi</span></div></div></article>
-        </div>
+        <div class="actual-note">ⓘ Actual values from CAN, not cluster-normalised</div>
+      </div>
+
+      <div class="panel-stack">
+        <article class="tile"><div><div class="label">Odometer</div><div class="value"><span data-field="odo_mi">--</span><small>mi</small></div></div></article>
+        <article class="tile"><div class="icon">⛽</div><div><div class="label">Range est.</div><div class="value"><span data-field="range_mi">--</span><small>mi</small></div></div></article>
       </div>
     </section>
 
     <footer class="status-strip">
-      <div class="footer-alert"><span class="brake-icon">!</span><div><span>Handbrake</span><strong data-bool="handbrake">--</strong></div></div>
+      <div class="footer-item alert"><span class="round-alert">!</span><div><span>Handbrake</span><strong data-bool="handbrake">--</strong></div></div>
       <div class="footer-item"><span>Reverse</span><strong data-bool="reverse">--</strong></div>
-      <div class="pages"><button data-page="0" class="active"></button><button data-page="1"></button><button data-page="2"></button><button data-page="3"></button></div>
+      <nav class="pager" aria-label="Dashboard pages">
+        <button data-page="0" class="active" title="Drive"></button>
+        <button data-page="1" title="Climate"></button>
+        <button data-page="2" title="Vehicle"></button>
+        <button data-page="3" title="Engine / Electrical"></button>
+      </nav>
     </footer>
   </main>
+
   <script src="/app.js"></script>
 </body>
 </html>
