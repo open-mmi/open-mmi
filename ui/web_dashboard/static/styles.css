@@ -680,3 +680,137 @@ h1 {
   }
 }
 /* end open-mmi dashboard ui pass 2b */
+
+/* open-mmi dashboard ui pass 11: inline data tell-tales */
+.openmmi-telltale-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.openmmi-telltale-value {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(.55rem, 1.4vw, 1.1rem);
+  min-height: clamp(2.4rem, 5vw, 4.8rem);
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.openmmi-indicator-pair {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(.65rem, 1.8vw, 1.45rem);
+}
+
+.openmmi-telltale {
+  --telltale-size: clamp(2.75rem, 5.25vw, 5.5rem);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--telltale-size);
+  height: var(--telltale-size);
+  flex: 0 0 var(--telltale-size);
+  opacity: .13;
+  background: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  filter: none !important;
+  transform: translateZ(0);
+}
+
+.footer-item .openmmi-telltale {
+  --telltale-size: clamp(1.75rem, 3.2vw, 3rem);
+}
+
+.openmmi-telltale img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  filter: none !important;
+}
+
+.openmmi-telltale.is-active { opacity: 1; }
+.openmmi-telltale.is-inactive { opacity: .13; }
+.openmmi-telltale.is-unknown { opacity: .22; }
+
+.openmmi-telltale-left-turn.is-active,
+.openmmi-telltale-right-turn.is-active,
+.openmmi-telltale-hazard.is-active {
+  animation: openMmiTelltaleFlash 850ms steps(1, end) infinite;
+}
+
+@keyframes openMmiTelltaleFlash {
+  0%, 48% { opacity: 1; }
+  49%, 100% { opacity: .14; }
+}
+
+.openmmi-telltale.icon-load-failed::after {
+  content: "⚠";
+  color: #ffb84d;
+  font-size: calc(var(--telltale-size) * .62);
+}
+
+.openmmi-telltale.icon-load-failed img {
+  display: none;
+}
+
+.openmmi-telltale-host.tile {
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+}
+
+.openmmi-telltale-host.tile > .icon,
+.openmmi-telltale-host.tile > .tile-icon,
+.openmmi-telltale-host.tile .label,
+.openmmi-telltale-host.footer-item > span:not(.openmmi-telltale):not(.openmmi-telltale-sr),
+.openmmi-telltale-host.footer-item div > span,
+.openmmi-telltale-host.footer-item .label {
+  display: none !important;
+}
+
+/* Keep the digital RPM glow subdued after tell-tale CSS is appended. */
+.tach::after {
+  box-shadow: 0 0 3px rgba(255, 255, 255, .08) !important;
+}
+
+.tach-centre,
+.digital-rpm-value,
+.rpm-readout,
+.rpm-number {
+  text-shadow: 0 0 4px rgba(255, 255, 255, .06) !important;
+  filter: none !important;
+}
+
+.digital-rpm-panel,
+.rpm-panel,
+.tach.digital,
+.tach {
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.025), 0 10px 24px rgba(0,0,0,.24) !important;
+}
+
+@media (max-width: 720px) {
+  .openmmi-telltale {
+    --telltale-size: clamp(2.35rem, 11vw, 4.5rem);
+  }
+
+  .footer-item .openmmi-telltale {
+    --telltale-size: clamp(1.55rem, 7vw, 2.65rem);
+  }
+}
+/* end open-mmi dashboard ui pass 11 */
