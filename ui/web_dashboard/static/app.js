@@ -251,6 +251,112 @@ function updateTach(rpm) {
 })();
 /* end open-mmi dashboard ui pass 11 */
 
+/* open-mmi dashboard ui pass 12: coolant and voltage fixes */
+(function installCoolantAndVoltageFixes() {
+  "use strict";
+
+  function qsa(selector) {
+    return Array.from(document.querySelectorAll(selector));
+  }
+
+  function asNumber(value) {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+  }
+
+  function voltageState(voltage) {
+    if (voltage === null) return "unknown";
+    if (voltage < 11.8 || voltage > 15.2) return "danger";
+    if (voltage < 12.2 || voltage > 14.9) return "warn";
+    return "normal";
+  }
+
+  function coolantState(tempC) {
+    if (tempC === null) return "unknown";
+    if (tempC >= 112) return "hot";
+    if (tempC <= 60) return "cold";
+    return "normal";
+  }
+
+  function batterySvg() {
+    return '' +
+      '<svg class="openmmi-voltage-icon" viewBox="0 0 96 64" role="img" aria-hidden="true" focusable="false">' +
+        '<path d="M18 18H78c4.4 0 8 3.6 8 8v12c4.4 0 8 3.6 8 8s-3.6 8-8 8v-2c0 4.4-3.6 8-8 8H18c-4.4 0-8-3.6-8-8V26c0-4.4 3.6-8 8-8Z" fill="none" stroke="currentColor" stroke-width="7" stroke-linejoin="round"/>' +
+        '<path d="M31 32v14M24 39h14M61 39h14" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round"/>' +
+      '</svg>';
+  }
+
+  function updateVoltageTellTale(payload) {
+    const state = (payload && payload.state) || {};
+    const electrical = state.electrical || {};
+    const voltage = asNumber(electrical.supply_voltage_v ?? electrical.terminal30_voltage_v);
+    const status = voltageState(voltage);
+
+    qsa('[data-field="voltage_v"]').forEach((node) => {
+      const text = node.textContent && node.textContent.trim() ? node.textContent.trim() : "--";
+      node.classList.add("openmmi-voltage-field");
+      node.innerHTML =
+        '<span class="openmmi-voltage-readout is-' + status + '" title="Supply voltage: ' + text + ' V">' +
+          batterySvg() +
+          '<span class="openmmi-voltage-number">' + text + '</span>' +
+        '</span>';
+
+      const tile = node.closest('.tile');
+      if (tile) {
+        tile.classList.toggle('openmmi-voltage-warn', status === 'warn');
+        tile.classList.toggle('openmmi-voltage-danger', status === 'danger');
+      }
+    });
+  }
+
+  function updateCoolantGauge(payload) {
+    const state = (payload && payload.state) || {};
+    const engine = state.engine || {};
+    const tempC = asNumber(engine.coolant_temp_c);
+    const status = coolantState(tempC);
+
+    qsa('.temp-bar').forEach((bar) => {
+      bar.classList.add('openmmi-coolant-gauge');
+      bar.classList.remove('is-cold', 'is-normal', 'is-hot', 'is-unknown');
+      bar.classList.add('is-' + status);
+
+      if (tempC === null) {
+        bar.style.removeProperty('--coolant-pos');
+        bar.setAttribute('title', 'Coolant temperature: unknown');
+        return;
+      }
+
+      // The printed scale is 50 / 90 / 130 °C, so map the marker to that range.
+      const percent = clamp(((tempC - 50) / 80) * 100, 0, 100);
+      bar.style.setProperty('--coolant-pos', percent.toFixed(1) + '%');
+      bar.setAttribute('title', 'Coolant temperature: ' + tempC.toFixed(0) + ' °C');
+    });
+  }
+
+  function applyCoolantAndVoltageFixes(payload) {
+    updateVoltageTellTale(payload || {});
+    updateCoolantGauge(payload || {});
+  }
+
+  if (typeof render !== "function") {
+    console.warn("Open MMI coolant/voltage patch: render() was not found");
+    return;
+  }
+
+  const previousRender = render;
+  render = function renderWithCoolantAndVoltageFixes(payload) {
+    previousRender(payload);
+    applyCoolantAndVoltageFixes(payload || {});
+  };
+
+  window.openMmiApplyCoolantAndVoltageFixes = applyCoolantAndVoltageFixes;
+})();
+/* end open-mmi dashboard ui pass 12 */
+
 async function fetchStatus() {
   try {
     const response = await fetch("/api/status", { cache: "no-store" });

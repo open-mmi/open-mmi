@@ -814,3 +814,107 @@ h1 {
   }
 }
 /* end open-mmi dashboard ui pass 11 */
+
+/* open-mmi dashboard ui pass 12: coolant and voltage fixes */
+.openmmi-voltage-field {
+  display: inline-block;
+}
+
+.openmmi-voltage-readout {
+  display: inline-flex;
+  align-items: center;
+  gap: .18em;
+  color: rgba(233, 238, 245, .86);
+  line-height: .95;
+}
+
+.openmmi-voltage-readout .openmmi-voltage-icon {
+  width: .72em;
+  height: .72em;
+  flex: 0 0 .72em;
+  opacity: .92;
+  transform: translateY(.035em);
+  filter: none !important;
+}
+
+.openmmi-voltage-readout.is-normal {
+  color: rgba(233, 238, 245, .86);
+}
+
+.openmmi-voltage-readout.is-warn {
+  color: var(--amber);
+}
+
+.openmmi-voltage-readout.is-danger {
+  color: var(--red);
+}
+
+.openmmi-voltage-readout.is-unknown {
+  color: var(--dim);
+}
+
+.tile.openmmi-voltage-warn,
+.tile.openmmi-voltage-danger {
+  border-color: color-mix(in srgb, currentColor 28%, rgba(255,255,255,.14));
+}
+
+.openmmi-coolant-gauge b {
+  left: var(--coolant-pos, 52%) !important;
+  transform: translateX(-50%);
+  transition: left 180ms linear, background-color 180ms linear, box-shadow 180ms linear;
+}
+
+.openmmi-coolant-gauge.is-cold b {
+  background: #9bd7ff !important;
+  box-shadow: 0 0 10px rgba(155, 215, 255, .65) !important;
+}
+
+.openmmi-coolant-gauge.is-normal b {
+  background: #fff !important;
+  box-shadow: 0 0 10px rgba(255,255,255,.6) !important;
+}
+
+.openmmi-coolant-gauge.is-hot b {
+  background: var(--red) !important;
+  box-shadow: 0 0 14px rgba(255, 60, 56, .72) !important;
+}
+
+.openmmi-coolant-gauge.is-unknown b {
+  opacity: .32;
+}
+/* end open-mmi dashboard ui pass 12 */
+
+/* open-mmi dashboard ui pass 13: voltage tile icon fix */
+.openmmi-voltage-tile-icon {
+  color: rgba(233, 238, 245, .88);
+  display: grid;
+  place-items: center;
+}
+
+.openmmi-voltage-tile-icon svg {
+  width: 1.38em;
+  height: 1.38em;
+  display: block;
+  filter: none !important;
+}
+
+.tile.openmmi-voltage-warn .openmmi-voltage-tile-icon,
+.tile:has(.openmmi-voltage-readout.is-warn) .openmmi-voltage-tile-icon {
+  color: var(--amber);
+}
+
+.tile.openmmi-voltage-danger .openmmi-voltage-tile-icon,
+.tile:has(.openmmi-voltage-readout.is-danger) .openmmi-voltage-tile-icon {
+  color: var(--red);
+}
+
+/* Pass 12 put a small battery next to the number. The tell-tale now lives in the
+   tile icon position, so hide that duplicate while keeping the readout wrapper. */
+.openmmi-voltage-readout .openmmi-voltage-icon {
+  display: none !important;
+}
+
+.openmmi-voltage-readout {
+  gap: 0 !important;
+}
+/* end open-mmi dashboard ui pass 13 */
