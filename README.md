@@ -1290,3 +1290,32 @@ Important principles:
 # License
 
 GPL-3.0-only. See `LICENSE`.
+
+<!-- OPEN_MMI_WEB_DASHBOARD_DOCS_START -->
+
+## Web dashboard
+
+Open MMI includes a local, read-only web dashboard for displaying the current vehicle status snapshot and companion in-car pages.
+
+Current dashboard pages:
+
+- **Drive** — speed, RPM, live/stale status, odometer/range/temperature, and footer tell-tales.
+- **Climate** — climate and cabin state where available from the status snapshot.
+- **Vehicle** — doors, lighting, locks, and body state where available.
+- **Media** — optional Jellyfin music player using a server-side API token and local browser audio playback.
+
+The dashboard is served by:
+
+```bash
+python3 ui/web_dashboard/server.py
+```
+
+A dynamic demo mode is available for UI work away from the car:
+
+```bash
+python3 ui/web_dashboard/server.py --demo --demo-scenario traffic
+```
+
+More details, including Jellyfin configuration, tell-tale test mode, media keys, and icon attribution notes, are in [`ui/web_dashboard/README.md`](ui/web_dashboard/README.md).
+
+<!-- OPEN_MMI_WEB_DASHBOARD_DOCS_END -->
