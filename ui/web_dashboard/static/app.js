@@ -1,4 +1,4 @@
-const PAGE_NAMES = ["Drive", "Climate", "Vehicle", "Engine / Electrical"];
+const PAGE_NAMES = ["Drive", "Climate", "Vehicle", "Media"];
 const PAGE_IDS = ["pageDrive", "pageClimate", "pageVehicle", "pageElectrical"];
 const DOORS = ["front_left", "front_right", "rear_left", "rear_right", "boot", "bonnet"];
 
@@ -385,3 +385,584 @@ function init() {
 }
 
 init();
+
+
+// --- Open MMI Jellyfin real Bootstrap media v5 start ---
+/*
+  Jellyfin Media v5
+  - actual Bootstrap classes for layout: container-fluid/row/col/card/d-flex/overflow/list-group/input-group/btn/progress
+  - Bootstrap Icons-style inline SVG controls, so controls are icons again and do not rely on icon font loading
+  - measured viewport height so the Media page fits above the dashboard footer/status strip
+  - local browser audio is primary; remote Jellyfin Web session is secondary status only
+*/
+try {
+  if (Array.isArray(PAGE_NAMES)) PAGE_NAMES[3] = "Media";
+  if (Array.isArray(PAGE_IDS)) PAGE_IDS[3] = "pageElectrical";
+} catch (_) {}
+
+const openMmiMedia = {
+  queue: [],
+  index: -1,
+  current: null,
+  bound: false,
+  lastQuery: "",
+};
+
+function ommiMediaEsc(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function ommiMediaText(value, fallback = "--") {
+  return value === null || value === undefined || value === "" ? fallback : String(value);
+}
+
+function ommiMediaTime(seconds) {
+  const n = Number(seconds);
+  if (!Number.isFinite(n) || n < 0) return "--:--";
+  const total = Math.floor(n);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function ommiMediaIcon(name, cls = "") {
+  // Bootstrap Icons SVG paths, embedded inline so the controls work offline after the page loads.
+  const paths = {
+    "play-fill": '<path d="m11.596 8.697-6.363 3.692C4.693 12.702 4 12.323 4 11.692V4.308c0-.631.693-1.01 1.233-.697l6.363 3.692a.802.802 0 0 1 0 1.394z"/>',
+    "pause-fill": '<path d="M5.5 3.5A1.5 1.5 0 0 1 7 5v6a1.5 1.5 0 0 1-3 0V5a1.5 1.5 0 0 1 1.5-1.5zm5 0A1.5 1.5 0 0 1 12 5v6a1.5 1.5 0 0 1-3 0V5a1.5 1.5 0 0 1 1.5-1.5z"/>',
+    "skip-start-fill": '<path d="M4 4a.5.5 0 0 1 1 0v3.248l6.267-3.636c.54-.313 1.233.066 1.233.696v7.384c0 .63-.693 1.009-1.233.696L5 8.752V12a.5.5 0 0 1-1 0V4z"/>',
+    "skip-end-fill": '<path d="M12.5 4a.5.5 0 0 0-1 0v3.248L5.233 3.612C4.693 3.299 4 3.678 4 4.308v7.384c0 .63.693 1.009 1.233.696L11.5 8.752V12a.5.5 0 0 0 1 0V4z"/>',
+    "stop-fill": '<path d="M5 3.5h6A1.5 1.5 0 0 1 12.5 5v6A1.5 1.5 0 0 1 11 12.5H5A1.5 1.5 0 0 1 3.5 11V5A1.5 1.5 0 0 1 5 3.5z"/>',
+    "search": '<path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.099zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z"/>',
+    "clock-history": '<path d="M8.515 1.019A7 7 0 1 1 1.004 8.5.5.5 0 0 1 2 8a6 6 0 1 0 1.76-4.243l-.04.04h1.533a.5.5 0 0 1 0 1H2.5a.5.5 0 0 1-.5-.5V1.543a.5.5 0 0 1 1 0v1.52A6.974 6.974 0 0 1 8.515 1.019z"/><path d="M7.5 3a.5.5 0 0 1 .5.5v5.21l3.248 1.856a.5.5 0 0 1-.496.868l-3.5-2A.5.5 0 0 1 7 9V3.5a.5.5 0 0 1 .5-.5z"/>',
+    "music-note-beamed": '<path d="M6 13c0 1.105-1.12 2-2.5 2S1 14.105 1 13s1.12-2 2.5-2 2.5.895 2.5 2z"/><path fill-rule="evenodd" d="M11 11V2h1v9h-1z"/><path d="M11 11c0 1.105-1.12 2-2.5 2S6 12.105 6 11s1.12-2 2.5-2 2.5.895 2.5 2z"/><path fill-rule="evenodd" d="M6 3v10H5V3h1z"/><path d="M5 2.905a1 1 0 0 1 .9-.995l6-.6a1 1 0 0 1 1.1.995V4L5 4.905v-2z"/>',
+    "volume-up-fill": '<path d="M11.536 14.01A8.473 8.473 0 0 0 14.026 8a8.473 8.473 0 0 0-2.49-6.01l-.708.707A7.476 7.476 0 0 1 13.025 8c0 2.071-.84 3.946-2.197 5.303l.708.707z"/><path d="M10.121 12.596A6.48 6.48 0 0 0 12.025 8a6.48 6.48 0 0 0-1.904-4.596l-.707.707A5.48 5.48 0 0 1 11.025 8a5.48 5.48 0 0 1-1.61 3.89l.706.706z"/><path d="M8.707 11.182A4.486 4.486 0 0 0 10.025 8a4.486 4.486 0 0 0-1.318-3.182L8 5.525A3.489 3.489 0 0 1 9.025 8 3.49 3.49 0 0 1 8 10.475l.707.707zM6.717 3.55A.5.5 0 0 1 7 4v8a.5.5 0 0 1-.812.39L3.825 10.5H1.5A.5.5 0 0 1 1 10V6a.5.5 0 0 1 .5-.5h2.325l2.363-1.89a.5.5 0 0 1 .529-.06z"/>',
+  };
+  return `<svg class="bi ${cls}" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true" focusable="false">${paths[name] || paths["music-note-beamed"]}</svg>`;
+}
+
+function ommiMediaPage() {
+  let page = document.querySelector("#pageElectrical") || Array.from(document.querySelectorAll(".page"))[3];
+  if (!page) {
+    page = document.createElement("section");
+    const footer = document.querySelector("footer.status-strip") || document.querySelector("footer");
+    (footer?.parentNode || document.body).insertBefore(page, footer || null);
+  }
+  const active = page.classList.contains("active");
+  page.id = "pageElectrical";
+  page.className = `page page-media${active ? " active" : ""}`;
+  page.setAttribute("aria-label", "Media page");
+
+  document.querySelectorAll(".media-shell, .open-mmi-media-v2, .open-mmi-media-v3, .open-mmi-media-v4, .open-mmi-media-v5").forEach((node) => {
+    if (!page.contains(node)) node.remove();
+  });
+
+  if (!page.querySelector("#openMmiMediaRoot")) {
+    page.replaceChildren(ommiMediaBuildRoot());
+    openMmiMedia.bound = false;
+  }
+  ommiMediaUpdatePagerLabels();
+  ommiMediaBind();
+  ommiMediaFitViewport();
+  return page;
+}
+
+function ommiMediaBuildRoot() {
+  const root = document.createElement("div");
+  root.id = "openMmiMediaRoot";
+  root.dataset.bootstrap = "true";
+  root.className = "open-mmi-media-v5 container-fluid p-0 overflow-hidden";
+  root.innerHTML = `
+    <div class="row gx-2 gy-0 h-100 min-h-0 overflow-hidden ommi-media-row align-items-stretch">
+      <section class="col-12 col-md-5 col-xl-4 h-100 min-h-0 d-flex overflow-hidden ommi-player-col" aria-label="Local Jellyfin player">
+        <div class="card flex-fill h-100 min-h-0 overflow-hidden ommi-media-card">
+          <div class="card-body d-flex flex-column min-h-0 h-100 gap-2 ommi-player-body">
+            <div id="ommiMediaArt" class="ommi-art flex-shrink-0" aria-hidden="true"><span>${ommiMediaIcon("music-note-beamed", "ommi-art-icon")}</span></div>
+            <div class="min-w-0 flex-shrink-0 ommi-now-copy">
+              <div class="text-uppercase small text-secondary ommi-kicker">${ommiMediaIcon("volume-up-fill")} Local player</div>
+              <h2 id="ommiMediaTitle" class="ommi-now-title mb-1">Select music</h2>
+              <div id="ommiMediaSubtitle" class="ommi-now-subtitle text-secondary">Tap a track to play through this dashboard</div>
+              <div id="ommiMediaMessage" class="ommi-message text-secondary" role="status"></div>
+            </div>
+            <audio id="ommiMediaAudio" preload="metadata"></audio>
+            <div id="ommiMediaProgressTrack" class="progress ommi-progress flex-shrink-0" role="slider" aria-label="Playback progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+              <div id="ommiMediaProgressFill" class="progress-bar ommi-progress-fill" style="width:0%"></div>
+            </div>
+            <div class="d-flex justify-content-between small text-secondary ommi-time flex-shrink-0">
+              <span id="ommiMediaElapsed">--:--</span><span id="ommiMediaDuration">--:--</span>
+            </div>
+            <div class="btn-group w-100 flex-shrink-0 ommi-controls" role="group" aria-label="Playback controls">
+              <button type="button" id="ommiMediaPrev" class="btn btn-outline-light ommi-icon-btn" aria-label="Previous track">${ommiMediaIcon("skip-start-fill")}</button>
+              <button type="button" id="ommiMediaPlay" class="btn btn-info ommi-icon-btn ommi-play-btn" aria-label="Play">${ommiMediaIcon("play-fill")}</button>
+              <button type="button" id="ommiMediaNext" class="btn btn-outline-light ommi-icon-btn" aria-label="Next track">${ommiMediaIcon("skip-end-fill")}</button>
+              <button type="button" id="ommiMediaStop" class="btn btn-outline-secondary ommi-icon-btn" aria-label="Stop">${ommiMediaIcon("stop-fill")}</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="col-12 col-md-7 col-xl-8 h-100 min-h-0 d-flex overflow-hidden ommi-browser-col" aria-label="Jellyfin music browser">
+        <div class="card flex-fill h-100 min-h-0 overflow-hidden ommi-media-card">
+          <div class="card-body d-flex flex-column min-h-0 h-100 gap-2 ommi-browser-body">
+            <div class="input-group input-group-lg flex-shrink-0 ommi-search">
+              <input id="ommiMediaSearch" type="search" class="form-control" autocomplete="off" placeholder="Search songs, artists, albums" aria-label="Search Jellyfin music">
+              <button type="button" id="ommiMediaSearchBtn" class="btn btn-outline-light ommi-search-btn" aria-label="Search">${ommiMediaIcon("search")}</button>
+              <button type="button" id="ommiMediaRecentBtn" class="btn btn-outline-secondary ommi-recent-btn" aria-label="Recent music">${ommiMediaIcon("clock-history")}</button>
+            </div>
+            <div class="d-flex justify-content-between align-items-center flex-shrink-0 ommi-list-heading">
+              <span id="ommiMediaListTitle">Recent music</span>
+              <span class="d-inline-flex align-items-center gap-2"><small id="ommiMediaRemoteState" class="text-secondary ommi-remote-state">--</small><span id="ommiMediaCount" class="badge rounded-pill text-bg-secondary">--</span></span>
+            </div>
+            <div id="ommiMediaResults" class="list-group list-group-flush flex-grow-1 min-h-0 overflow-auto ommi-results" role="list" aria-label="Tracks"></div>
+          </div>
+        </div>
+      </section>
+    </div>`;
+  return root;
+}
+
+function ommiMediaFitViewport() {
+  const page = document.querySelector("#pageElectrical.page-media");
+  const root = document.querySelector("#openMmiMediaRoot");
+  if (!page || !root) return;
+
+  const pageRect = page.getBoundingClientRect();
+  let bottom = window.innerHeight;
+  const candidates = Array.from(document.querySelectorAll("footer, .footer, .status-strip, .nav-dots, .pager, .page-dots, .dashboard-footer, .bottom-bar"));
+  for (const el of candidates) {
+    if (page.contains(el) || !el.getClientRects().length) continue;
+    const rect = el.getBoundingClientRect();
+    if (rect.top > pageRect.top + 20 && rect.top < bottom) bottom = rect.top;
+  }
+
+  const safeGap = 8;
+  const height = Math.max(220, Math.floor(bottom - pageRect.top - safeGap));
+  root.style.height = `${height}px`;
+  root.style.maxHeight = `${height}px`;
+  root.style.minHeight = "0";
+}
+
+function ommiMediaUpdatePagerLabels() {
+  document.querySelectorAll('[data-page="3"]').forEach((button) => {
+    button.title = "Media";
+    button.setAttribute("aria-label", "Media");
+  });
+  if (document.querySelector('[data-page="3"].active')) {
+    const title = document.querySelector("#pageTitle");
+    if (title) title.textContent = "Media";
+  }
+}
+
+function ommiMediaSetMessage(text, kind = "") {
+  const el = document.querySelector("#ommiMediaMessage");
+  if (!el) return;
+  el.textContent = text || "";
+  el.className = `ommi-message ${kind === "error" ? "text-danger" : "text-secondary"}`;
+}
+
+function ommiMediaSetArtwork(track) {
+  const art = document.querySelector("#ommiMediaArt");
+  if (!art) return;
+  if (track?.image_url) {
+    art.classList.add("has-art");
+    art.innerHTML = `<img src="${ommiMediaEsc(track.image_url)}" alt="">`;
+  } else {
+    art.classList.remove("has-art");
+    art.innerHTML = `<span>${ommiMediaIcon("music-note-beamed", "ommi-art-icon")}</span>`;
+  }
+}
+
+function ommiMediaSetNowPlaying(track) {
+  const title = document.querySelector("#ommiMediaTitle");
+  const subtitle = document.querySelector("#ommiMediaSubtitle");
+  if (!title || !subtitle) return;
+  if (!track) {
+    title.textContent = "Select music";
+    subtitle.textContent = "Tap a track to play through this dashboard";
+    ommiMediaSetArtwork(null);
+    return;
+  }
+  title.textContent = ommiMediaText(track.name, "Untitled");
+  subtitle.textContent = [track.artist, track.album].filter(Boolean).join(" · ") || "Jellyfin music";
+  ommiMediaSetArtwork(track);
+}
+
+function ommiMediaUpdateProgress() {
+  const audio = document.querySelector("#ommiMediaAudio");
+  const elapsed = document.querySelector("#ommiMediaElapsed");
+  const duration = document.querySelector("#ommiMediaDuration");
+  const fill = document.querySelector("#ommiMediaProgressFill");
+  const track = document.querySelector("#ommiMediaProgressTrack");
+  if (!audio || !elapsed || !duration || !fill) return;
+  const dur = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : Number(openMmiMedia.current?.duration_seconds || 0);
+  const pct = dur > 0 ? Math.max(0, Math.min(100, (audio.currentTime / dur) * 100)) : 0;
+  elapsed.textContent = ommiMediaTime(audio.currentTime);
+  duration.textContent = ommiMediaTime(dur);
+  fill.style.width = `${pct}%`;
+  track?.setAttribute("aria-valuenow", String(Math.round(pct)));
+}
+
+function ommiMediaUpdatePlayState() {
+  const audio = document.querySelector("#ommiMediaAudio");
+  const play = document.querySelector("#ommiMediaPlay");
+  if (play && audio) {
+    play.innerHTML = audio.paused ? ommiMediaIcon("play-fill") : ommiMediaIcon("pause-fill");
+    play.setAttribute("aria-label", audio.paused ? "Play" : "Pause");
+  }
+}
+
+async function ommiMediaFetchJson(path) {
+  const response = await fetch(path, { cache: "no-store" });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return response.json();
+}
+
+function ommiMediaRenderResults(items) {
+  const results = document.querySelector("#ommiMediaResults");
+  const count = document.querySelector("#ommiMediaCount");
+  if (!results) return;
+
+  openMmiMedia.queue = Array.isArray(items) ? items.filter((item) => item && item.id) : [];
+  if (count) count.textContent = String(openMmiMedia.queue.length);
+
+  if (!openMmiMedia.queue.length) {
+    results.innerHTML = `<div class="ommi-empty">No tracks found. Try search, or check <code>/api/jellyfin/search?limit=5</code>.</div>`;
+    return;
+  }
+
+  results.innerHTML = openMmiMedia.queue.map((item, index) => `
+    <button type="button" class="list-group-item list-group-item-action d-grid ommi-track" data-open-mmi-track="${index}" role="listitem" aria-label="Play ${ommiMediaEsc(item.name || "track")}">
+      <span class="ommi-track-art">${item.image_url ? `<img src="${ommiMediaEsc(item.image_url)}" alt="">` : ommiMediaIcon("music-note-beamed")}</span>
+      <span class="ommi-track-copy"><strong>${ommiMediaEsc(item.name || "Untitled")}</strong><small>${ommiMediaEsc([item.artist, item.album].filter(Boolean).join(" · ") || "Unknown artist")}</small></span>
+      <span class="ommi-track-duration">${ommiMediaTime(item.duration_seconds)}</span>
+    </button>`).join("");
+}
+
+async function ommiMediaLoadLibrary(query = "") {
+  ommiMediaPage();
+  const listTitle = document.querySelector("#ommiMediaListTitle");
+  const q = String(query || "").trim();
+  openMmiMedia.lastQuery = q;
+  if (listTitle) listTitle.textContent = q ? "Search results" : "Recent music";
+  ommiMediaSetMessage(q ? "Searching…" : "Loading music…");
+  try {
+    const payload = await ommiMediaFetchJson(`/api/jellyfin/search?q=${encodeURIComponent(q)}&limit=60`);
+    if (payload.error) ommiMediaSetMessage(payload.error, "error");
+    else ommiMediaSetMessage("Tap any track to play locally.");
+    ommiMediaRenderResults(payload.items || []);
+  } catch (err) {
+    ommiMediaSetMessage(`Could not load library: ${err.message}`, "error");
+    ommiMediaRenderResults([]);
+  }
+  ommiMediaFitViewport();
+}
+
+async function ommiMediaRefreshStatus() {
+  ommiMediaPage();
+  try {
+    const status = await ommiMediaFetchJson("/api/jellyfin/status");
+    const remote = document.querySelector("#ommiMediaRemoteState");
+    if (remote) {
+      const label = status?.configured ? (status?.state_label || status?.status || "ready") : "not configured";
+      remote.textContent = String(label).toUpperCase();
+      remote.title = status?.subtitle || "";
+    }
+    if (!status?.configured) ommiMediaSetMessage(status.subtitle || "Jellyfin is not configured", "error");
+  } catch (err) {
+    const remote = document.querySelector("#ommiMediaRemoteState");
+    if (remote) remote.textContent = "ERROR";
+    ommiMediaSetMessage(`Jellyfin status failed: ${err.message}`, "error");
+  }
+}
+
+async function ommiMediaPlayIndex(index) {
+  ommiMediaPage();
+  const audio = document.querySelector("#ommiMediaAudio");
+  const item = openMmiMedia.queue[Number(index)];
+  if (!audio || !item) return;
+
+  openMmiMedia.index = Number(index);
+  openMmiMedia.current = item;
+  ommiMediaSetNowPlaying(item);
+  ommiMediaSetMessage("Loading audio…");
+
+  document.querySelectorAll(".ommi-track.is-playing").forEach((node) => node.classList.remove("is-playing", "active"));
+  document.querySelector(`[data-open-mmi-track="${openMmiMedia.index}"]`)?.classList.add("is-playing", "active");
+
+  audio.src = `/api/jellyfin/stream/${encodeURIComponent(item.id)}`;
+  audio.load();
+  try {
+    await audio.play();
+    ommiMediaSetMessage("Playing locally on this dashboard.");
+  } catch (err) {
+    ommiMediaSetMessage(`Tap play to start audio: ${err.message}`, "error");
+  }
+  ommiMediaUpdatePlayState();
+  ommiMediaFitViewport();
+}
+
+function ommiMediaNext() {
+  if (!openMmiMedia.queue.length) return;
+  const next = openMmiMedia.index < 0 ? 0 : (openMmiMedia.index + 1) % openMmiMedia.queue.length;
+  ommiMediaPlayIndex(next);
+}
+
+function ommiMediaPrev() {
+  if (!openMmiMedia.queue.length) return;
+  const prev = openMmiMedia.index <= 0 ? openMmiMedia.queue.length - 1 : openMmiMedia.index - 1;
+  ommiMediaPlayIndex(prev);
+}
+
+function ommiMediaBind() {
+  if (openMmiMedia.bound) return;
+  const root = document.querySelector("#openMmiMediaRoot");
+  const audio = document.querySelector("#ommiMediaAudio");
+  if (!root || !audio) return;
+
+  root.addEventListener("click", async (event) => {
+    const trackButton = event.target.closest?.("[data-open-mmi-track]");
+    if (trackButton) {
+      event.preventDefault();
+      await ommiMediaPlayIndex(trackButton.dataset.openMmiTrack);
+      return;
+    }
+    if (event.target.closest?.("#ommiMediaSearchBtn")) return ommiMediaLoadLibrary(document.querySelector("#ommiMediaSearch")?.value || "");
+    if (event.target.closest?.("#ommiMediaRecentBtn")) {
+      const input = document.querySelector("#ommiMediaSearch");
+      if (input) input.value = "";
+      return ommiMediaLoadLibrary("");
+    }
+    if (event.target.closest?.("#ommiMediaPrev")) return ommiMediaPrev();
+    if (event.target.closest?.("#ommiMediaNext")) return ommiMediaNext();
+    if (event.target.closest?.("#ommiMediaStop")) {
+      audio.pause();
+      audio.currentTime = 0;
+      openMmiMedia.current = null;
+      openMmiMedia.index = -1;
+      ommiMediaSetNowPlaying(null);
+      document.querySelectorAll(".ommi-track.is-playing").forEach((node) => node.classList.remove("is-playing", "active"));
+      ommiMediaUpdateProgress();
+      ommiMediaUpdatePlayState();
+      ommiMediaSetMessage("Stopped.");
+      return;
+    }
+    if (event.target.closest?.("#ommiMediaPlay")) {
+      if (!openMmiMedia.current && openMmiMedia.queue.length) return ommiMediaPlayIndex(0);
+      if (audio.paused) {
+        try { await audio.play(); ommiMediaSetMessage("Playing locally on this dashboard."); }
+        catch (err) { ommiMediaSetMessage(`Could not start audio: ${err.message}`, "error"); }
+      } else {
+        audio.pause();
+      }
+      ommiMediaUpdatePlayState();
+      return;
+    }
+    const progress = event.target.closest?.("#ommiMediaProgressTrack");
+    if (progress && Number.isFinite(audio.duration) && audio.duration > 0) {
+      const rect = progress.getBoundingClientRect();
+      const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+      audio.currentTime = ratio * audio.duration;
+      ommiMediaUpdateProgress();
+    }
+  });
+
+  root.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && event.target?.id === "ommiMediaSearch") ommiMediaLoadLibrary(event.target.value || "");
+  });
+
+  audio.addEventListener("timeupdate", ommiMediaUpdateProgress);
+  audio.addEventListener("durationchange", ommiMediaUpdateProgress);
+  audio.addEventListener("play", ommiMediaUpdatePlayState);
+  audio.addEventListener("pause", ommiMediaUpdatePlayState);
+  audio.addEventListener("ended", ommiMediaNext);
+  audio.addEventListener("error", () => ommiMediaSetMessage("Audio stream failed. Check Jellyfin access and codec support.", "error"));
+
+  window.addEventListener("resize", ommiMediaFitViewport);
+  window.addEventListener("orientationchange", () => setTimeout(ommiMediaFitViewport, 100));
+  openMmiMedia.bound = true;
+}
+
+function ommiMediaBoot() {
+  ommiMediaPage();
+  ommiMediaSetNowPlaying(openMmiMedia.current);
+  ommiMediaRefreshStatus();
+  if (!openMmiMedia.queue.length) ommiMediaLoadLibrary("");
+}
+
+ommiMediaBoot();
+document.addEventListener("DOMContentLoaded", ommiMediaBoot);
+setInterval(() => { ommiMediaPage(); ommiMediaUpdatePagerLabels(); ommiMediaFitViewport(); }, 1000);
+setInterval(ommiMediaRefreshStatus, 7000);
+// --- Open MMI Jellyfin real Bootstrap media v5 end ---
+
+
+// --- Open MMI Jellyfin viewport v6 start ---
+/*
+  Corrective viewport fit for the Media page.
+  The previous Bootstrap pass measured the available height but then put a
+  height:100% row with vertical gutters and full-height cards inside it, which
+  caused the bottom of the player/card to be clipped. This wrapper replaces the
+  fit function without touching the Jellyfin API/audio code.
+*/
+try {
+  const ommiPreviousMediaFitViewport = typeof ommiMediaFitViewport === "function" ? ommiMediaFitViewport : null;
+  ommiMediaFitViewport = function ommiMediaFitViewportV6() {
+    const page = document.querySelector("#pageElectrical.page-media");
+    const root = document.querySelector("#openMmiMediaRoot");
+    if (!page || !root) {
+      if (ommiPreviousMediaFitViewport) ommiPreviousMediaFitViewport();
+      return;
+    }
+
+    const pageRect = page.getBoundingClientRect();
+    let bottom = window.innerHeight;
+    const selectors = [
+      "footer", ".footer", ".status-strip", ".nav-dots", ".pager", ".page-dots",
+      ".dashboard-footer", ".bottom-bar", ".footer-status", ".status-row"
+    ].join(",");
+
+    for (const el of Array.from(document.querySelectorAll(selectors))) {
+      if (page.contains(el) || !el.getClientRects().length) continue;
+      const style = window.getComputedStyle(el);
+      if (style.display === "none" || style.visibility === "hidden") continue;
+      const rect = el.getBoundingClientRect();
+      if (rect.top > pageRect.top + 16 && rect.top < bottom) bottom = rect.top;
+    }
+
+    // Leave enough gap for the page/card rounded corners to be visible instead
+    // of ending exactly at the footer boundary and looking clipped.
+    const safeGap = 14;
+    const height = Math.max(220, Math.floor(bottom - pageRect.top - safeGap));
+    page.style.setProperty("--ommi-media-viewport-height", `${height}px`);
+    page.style.height = `${height}px`;
+    page.style.maxHeight = `${height}px`;
+    root.style.height = "100%";
+    root.style.maxHeight = "100%";
+    root.style.minHeight = "0";
+  };
+
+  window.addEventListener("resize", () => requestAnimationFrame(ommiMediaFitViewport));
+  window.addEventListener("orientationchange", () => setTimeout(ommiMediaFitViewport, 150));
+  requestAnimationFrame(ommiMediaFitViewport);
+} catch (error) {
+  console.warn("Open MMI Media viewport v6 failed", error);
+}
+// --- Open MMI Jellyfin viewport v6 end ---
+
+
+// --- Open MMI Jellyfin render stability v8b start ---
+/*
+  Tolerant Media layout stabiliser.
+
+  This patch intentionally avoids replacing the Jellyfin player functions; the
+  current app.js has drifted through several small fixes, so exact function-name
+  matching is fragile. Instead it stabilises the rendered Media DOM:
+    - marks the active Media page/root with v8b classes,
+    - reserves the track-list slot immediately with skeleton rows,
+    - keeps page/root scroll at the top,
+    - lets only #ommiMediaResults scroll,
+    - reruns the existing viewport fit hook when the list mutates.
+*/
+(function () {
+  const PAGE_SELECTOR = "#pageElectrical.page-media, #pageElectrical";
+  const ROOT_SELECTOR = "#openMmiMediaRoot";
+  const RESULTS_SELECTOR = "#ommiMediaResults";
+
+  function fit() {
+    const page = document.querySelector(PAGE_SELECTOR);
+    const root = document.querySelector(ROOT_SELECTOR);
+    const results = document.querySelector(RESULTS_SELECTOR);
+
+    if (page) {
+      page.classList.add("page-media-v8b");
+      if (page.classList.contains("active")) page.scrollTop = 0;
+    }
+    if (root) {
+      root.classList.add("open-mmi-media-v8b");
+      root.scrollTop = 0;
+    }
+    if (results) {
+      results.classList.add("ommi-results-v8b");
+      if (!results.dataset.openMmiUserScrolled) results.scrollTop = 0;
+    }
+
+    if (typeof window.ommiMediaFitViewport === "function") {
+      try { window.ommiMediaFitViewport(); } catch (_) {}
+    } else if (typeof ommiMediaFitViewport === "function") {
+      try { ommiMediaFitViewport(); } catch (_) {}
+    }
+  }
+
+  function skeleton() {
+    const results = document.querySelector(RESULTS_SELECTOR);
+    if (!results) return;
+    const hasRealRows = results.querySelector(".ommi-track:not(.ommi-track-skeleton-v8b), .list-group-item:not(.ommi-track-skeleton-v8b)");
+    const hasChildren = results.children.length > 0;
+    if (hasRealRows || hasChildren) return;
+
+    results.dataset.openMmiState = "loading";
+    results.innerHTML = Array.from({ length: 8 }, (_, index) => `
+      <div class="ommi-track ommi-track-skeleton-v8b" aria-hidden="true">
+        <span class="ommi-track-art ommi-skeleton-box-v8b"></span>
+        <span class="ommi-track-copy">
+          <strong class="ommi-skeleton-line-v8b ${index % 3 === 0 ? "is-short" : ""}"></strong>
+          <small class="ommi-skeleton-line-v8b ${index % 2 === 0 ? "is-tiny" : ""}"></small>
+        </span>
+        <span class="ommi-track-duration ommi-skeleton-line-v8b is-time"></span>
+      </div>`).join("");
+  }
+
+  function stabilise() {
+    skeleton();
+    fit();
+    requestAnimationFrame(fit);
+  }
+
+  function bindResultsScroll() {
+    const results = document.querySelector(RESULTS_SELECTOR);
+    if (!results || results.__openMmiV8bScrollBound) return;
+    results.addEventListener("scroll", () => {
+      if (results.scrollTop > 8) results.dataset.openMmiUserScrolled = "1";
+    }, { passive: true });
+    results.__openMmiV8bScrollBound = true;
+  }
+
+  function observe() {
+    const root = document.querySelector(ROOT_SELECTOR) || document.body;
+    if (root.__openMmiV8bObserverBound) return;
+    const observer = new MutationObserver(() => {
+      bindResultsScroll();
+      requestAnimationFrame(stabilise);
+    });
+    observer.observe(root, { childList: true, subtree: true });
+    root.__openMmiV8bObserverBound = true;
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    bindResultsScroll();
+    observe();
+    stabilise();
+    setTimeout(stabilise, 250);
+    setTimeout(stabilise, 1000);
+  });
+
+  window.addEventListener("resize", () => requestAnimationFrame(stabilise));
+  window.addEventListener("orientationchange", () => setTimeout(stabilise, 150));
+
+  // If this script is appended after DOMContentLoaded, run immediately too.
+  if (document.readyState !== "loading") {
+    bindResultsScroll();
+    observe();
+    stabilise();
+    setTimeout(stabilise, 250);
+    setTimeout(stabilise, 1000);
+  }
+})();
+// --- Open MMI Jellyfin render stability v8b end ---
+

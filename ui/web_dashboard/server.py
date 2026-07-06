@@ -7,6 +7,7 @@ It does not subscribe to CAN directly and does not transmit/control the car.
 
 from __future__ import annotations
 
+import ssl
 import argparse
 import json
 import math
@@ -255,6 +256,319 @@ def demo_status(scenario: str, started_at: float) -> Dict[str, Any]:
     }
 
 
+
+
+
+
+# --- Open MMI Jellyfin local audio client start ---
+JELLYFIN_TIMEOUT_SECONDS = 4.0
+JELLYFIN_ACTIVE_WITHIN_SECONDS = 600
+JELLYFIN_AUDIO_CHUNK_BYTES = 64 * 1024
+
+
+def _jellyfin_config() -> Dict[str, Any]:
+    url = os.getenv("OPEN_MMI_JELLYFIN_URL", "").strip().rstrip("/")
+    token = os.getenv("OPEN_MMI_JELLYFIN_TOKEN", "").strip()
+    session_id = os.getenv("OPEN_MMI_JELLYFIN_SESSION_ID", "").strip()
+    device_name = os.getenv("OPEN_MMI_JELLYFIN_DEVICE", "").strip().lower()
+    user_id = os.getenv("OPEN_MMI_JELLYFIN_USER_ID", "").strip()
+    insecure_tls = os.getenv("OPEN_MMI_JELLYFIN_INSECURE_TLS", "").strip().lower() in {"1", "true", "yes", "on"}
+    return {
+        "configured": bool(url and token),
+        "url": url,
+        "token": token,
+        "session_id": session_id,
+        "device_name": device_name,
+        "user_id": user_id,
+        "insecure_tls": insecure_tls,
+    }
+
+
+def _jellyfin_auth_headers(config: Dict[str, Any]) -> Dict[str, str]:
+    return {
+        "Accept": "application/json",
+        "Authorization": f"MediaBrowser Token={config['token']}",
+        "X-MediaBrowser-Token": config["token"],
+    }
+
+
+def _jellyfin_urlopen(request: Any, config: Dict[str, Any], *, timeout: float):
+    from urllib.request import urlopen
+
+    if config.get("insecure_tls"):
+        context = ssl._create_unverified_context()
+        return urlopen(request, timeout=timeout, context=context)
+    return urlopen(request, timeout=timeout)
+
+
+def _jellyfin_request_json(config: Dict[str, Any], path: str) -> Any:
+    from urllib.error import HTTPError, URLError
+    from urllib.request import Request
+
+    url = f"{config['url']}{path}"
+    request = Request(url, headers=_jellyfin_auth_headers(config))
+    try:
+        with _jellyfin_urlopen(request, config, timeout=JELLYFIN_TIMEOUT_SECONDS) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        raise RuntimeError(f"Jellyfin HTTP {exc.code}") from exc
+    except URLError as exc:
+        raise RuntimeError(f"Jellyfin connection failed: {exc.reason}") from exc
+    except TimeoutError as exc:
+        raise RuntimeError("Jellyfin request timed out") from exc
+
+
+def _jellyfin_user_id(config: Dict[str, Any]) -> str | None:
+    if config.get("user_id"):
+        return str(config["user_id"])
+    try:
+        user = _jellyfin_request_json(config, "/Users/Me")
+        if isinstance(user, dict) and user.get("Id"):
+            return str(user["Id"])
+    except Exception:
+        # API keys generated outside a user session may not be associated with /Users/Me.
+        # /Items can still work with an API key, so do not fail just because this lookup fails.
+        return None
+    return None
+
+
+def _ticks_to_seconds(value: Any) -> float | None:
+    try:
+        ticks = float(value)
+    except (TypeError, ValueError):
+        return None
+    return ticks / 10_000_000.0
+
+
+def _format_jellyfin_item(item: Dict[str, Any]) -> Dict[str, Any]:
+    artists = item.get("Artists") or []
+    album_artist = item.get("AlbumArtist")
+    artist = album_artist or ", ".join(map(str, artists[:3]))
+    album = item.get("Album") or item.get("AlbumName")
+    runtime_seconds = _ticks_to_seconds(item.get("RunTimeTicks"))
+    item_id = str(item.get("Id") or "")
+    image_url = None
+    if item_id and (item.get("ImageTags", {}) or {}).get("Primary"):
+        image_url = f"/api/jellyfin/image/{item_id}"
+    return {
+        "id": item_id,
+        "name": item.get("Name") or "Untitled",
+        "artist": artist or "Unknown artist",
+        "album": album or "",
+        "duration_seconds": runtime_seconds,
+        "image_url": image_url,
+    }
+
+
+def _jellyfin_demo_tracks() -> Dict[str, Any]:
+    return {
+        "configured": True,
+        "demo": True,
+        "items": [
+            {"id": "demo-night-drive", "name": "Night Drive", "artist": "Open MMI Demo", "album": "Synthetic Radio", "duration_seconds": 224, "image_url": None},
+            {"id": "demo-morning-commute", "name": "Morning Commute", "artist": "Open MMI Demo", "album": "Synthetic Radio", "duration_seconds": 188, "image_url": None},
+            {"id": "demo-road-trip", "name": "Road Trip Mix", "artist": "Open MMI Demo", "album": "Synthetic Radio", "duration_seconds": 256, "image_url": None},
+        ],
+    }
+
+
+def _jellyfin_demo_status() -> Dict[str, Any]:
+    now = time.time()
+    duration = 224.0
+    position = now % duration
+    return {
+        "configured": True,
+        "demo": True,
+        "status": "idle",
+        "state_label": "local player ready",
+        "server_name": "demo://jellyfin",
+        "title": "Jellyfin demo",
+        "subtitle": "Local audio player layout preview",
+        "client": "Open MMI",
+        "device_name": "Dashboard",
+        "user_name": "demo",
+        "position_seconds": round(position, 1),
+        "runtime_seconds": duration,
+        "progress_percent": round((position / duration) * 100.0, 1),
+        "image_url": None,
+    }
+
+
+def _pick_jellyfin_session(sessions: list[Dict[str, Any]], config: Dict[str, Any]) -> Dict[str, Any] | None:
+    if config.get("session_id"):
+        for session in sessions:
+            if str(session.get("Id", "")) == config["session_id"]:
+                return session
+
+    if config.get("device_name"):
+        for session in sessions:
+            device = str(session.get("DeviceName", "")).lower()
+            client = str(session.get("Client", "")).lower()
+            if config["device_name"] in device or config["device_name"] in client:
+                return session
+
+    for session in sessions:
+        if session.get("NowPlayingItem"):
+            return session
+
+    return sessions[0] if sessions else None
+
+
+def _jellyfin_status_payload(demo_mode: bool = False) -> Dict[str, Any]:
+    config = _jellyfin_config()
+    if not config["configured"]:
+        if demo_mode:
+            return _jellyfin_demo_status()
+        return {
+            "configured": False,
+            "status": "unconfigured",
+            "state_label": "not configured",
+            "title": "Jellyfin not configured",
+            "subtitle": "Set OPEN_MMI_JELLYFIN_URL and OPEN_MMI_JELLYFIN_TOKEN",
+        }
+
+    try:
+        sessions = _jellyfin_request_json(config, f"/Sessions?activeWithinSeconds={JELLYFIN_ACTIVE_WITHIN_SECONDS}")
+        if not isinstance(sessions, list):
+            sessions = []
+        session = _pick_jellyfin_session(sessions, config)
+        if not session:
+            return {
+                "configured": True,
+                "status": "ready",
+                "state_label": "ready",
+                "server_url": config["url"],
+                "server_name": config["url"].replace("https://", "").replace("http://", ""),
+                "title": "Jellyfin ready",
+                "subtitle": "Pick a track below to play locally",
+            }
+
+        item = session.get("NowPlayingItem") or {}
+        play_state = session.get("PlayState") or {}
+        paused = play_state.get("IsPaused") is True
+        position_seconds = _ticks_to_seconds(play_state.get("PositionTicks"))
+        runtime_seconds = _ticks_to_seconds(item.get("RunTimeTicks"))
+        progress = None
+        if position_seconds is not None and runtime_seconds and runtime_seconds > 0:
+            progress = (position_seconds / runtime_seconds) * 100.0
+
+        formatted = _format_jellyfin_item(item) if item else {}
+        status = "paused" if paused else "playing" if item else "ready"
+        return {
+            "configured": True,
+            "status": status,
+            "state_label": status,
+            "server_url": config["url"],
+            "server_name": config["url"].replace("https://", "").replace("http://", ""),
+            "title": formatted.get("name") or "Jellyfin ready",
+            "subtitle": " · ".join(part for part in [formatted.get("artist"), formatted.get("album")] if part) or "Pick a track below to play locally",
+            "client": session.get("Client"),
+            "device_name": session.get("DeviceName"),
+            "user_name": session.get("UserName"),
+            "position_seconds": position_seconds,
+            "runtime_seconds": runtime_seconds,
+            "progress_percent": progress,
+            "image_url": formatted.get("image_url"),
+        }
+    except Exception as exc:
+        return {
+            "configured": True,
+            "status": "error",
+            "state_label": "error",
+            "server_url": config["url"],
+            "server_name": config["url"],
+            "title": "Jellyfin unavailable",
+            "subtitle": str(exc),
+        }
+
+
+def _jellyfin_search_payload(query: str = "", limit: int = 24, demo_mode: bool = False) -> Dict[str, Any]:
+    config = _jellyfin_config()
+    if not config["configured"]:
+        if demo_mode:
+            return _jellyfin_demo_tracks()
+        return {"configured": False, "items": [], "error": "Jellyfin is not configured"}
+
+    try:
+        from urllib.parse import urlencode
+
+        user_id = _jellyfin_user_id(config)
+        params = {
+            "IncludeItemTypes": "Audio",
+            "Recursive": "true",
+            "Limit": str(max(1, min(int(limit), 60))),
+            "SortBy": "DateCreated,SortName",
+            "SortOrder": "Descending",
+            "Fields": "PrimaryImageAspectRatio,MediaSources,AlbumArtist,Artists",
+            "EnableImages": "true",
+        }
+        if user_id:
+            params["UserId"] = user_id
+        query = (query or "").strip()
+        if query:
+            params["SearchTerm"] = query
+            params["SortBy"] = "SortName"
+            params["SortOrder"] = "Ascending"
+        data = _jellyfin_request_json(config, "/Items?" + urlencode(params))
+        items = data.get("Items", []) if isinstance(data, dict) else []
+        return {
+            "configured": True,
+            "items": [_format_jellyfin_item(item) for item in items if isinstance(item, dict) and item.get("Id")],
+        }
+    except Exception as exc:
+        return {"configured": True, "items": [], "error": str(exc)}
+
+
+def _jellyfin_proxy_audio(handler: Any, item_id: str) -> None:
+    from urllib.error import HTTPError, URLError
+    from urllib.parse import quote, urlencode
+    from urllib.request import Request
+
+    config = _jellyfin_config()
+    if not config["configured"]:
+        handler.send_error(404, "Jellyfin is not configured")
+        return
+
+    item_id = quote(item_id.strip(), safe="")
+    params = {
+        "static": "true",
+        "deviceId": "open-mmi-dashboard",
+        "allowAudioStreamCopy": "true",
+        "enableAutoStreamCopy": "true",
+    }
+    user_id = _jellyfin_user_id(config)
+    if user_id:
+        params["UserId"] = user_id
+
+    url = f"{config['url']}/Audio/{item_id}/stream?" + urlencode(params)
+    headers = _jellyfin_auth_headers(config)
+    headers["Accept"] = "audio/*,*/*"
+    if handler.headers.get("Range"):
+        headers["Range"] = handler.headers.get("Range")
+
+    request = Request(url, headers=headers)
+    try:
+        with _jellyfin_urlopen(request, config, timeout=JELLYFIN_TIMEOUT_SECONDS) as response:
+            status = getattr(response, "status", 200)
+            handler.send_response(status)
+            for header in ["Content-Type", "Content-Length", "Content-Range", "Accept-Ranges", "Last-Modified", "ETag"]:
+                value = response.headers.get(header)
+                if value:
+                    handler.send_header(header, value)
+            handler.send_header("Cache-Control", "no-store")
+            handler.end_headers()
+            while True:
+                chunk = response.read(JELLYFIN_AUDIO_CHUNK_BYTES)
+                if not chunk:
+                    break
+                handler.wfile.write(chunk)
+    except HTTPError as exc:
+        handler.send_error(exc.code, f"Jellyfin stream HTTP {exc.code}")
+    except (URLError, TimeoutError, BrokenPipeError) as exc:
+        handler.send_error(502, str(exc))
+# --- Open MMI Jellyfin local audio client end ---
+
+
 class DashboardHandler(SimpleHTTPRequestHandler):
     status_path: Path = default_status_path()
     static_dir: Path = Path(__file__).with_name("static")
@@ -287,6 +601,53 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
+
+
+
+        if parsed.path == "/api/jellyfin/status":
+            self._send_json(_jellyfin_status_payload(self.demo_mode))
+            return
+
+        if parsed.path == "/api/jellyfin/search":
+            from urllib.parse import parse_qs
+            query = parse_qs(parsed.query or "")
+            q = query.get("q", [""])[0]
+            try:
+                limit = int(query.get("limit", ["24"])[0])
+            except (TypeError, ValueError):
+                limit = 24
+            self._send_json(_jellyfin_search_payload(q, limit, self.demo_mode))
+            return
+
+        if parsed.path.startswith("/api/jellyfin/stream/"):
+            from urllib.parse import unquote
+            item_id = unquote(parsed.path.rsplit("/", 1)[-1])
+            _jellyfin_proxy_audio(self, item_id)
+            return
+
+        if parsed.path.startswith("/api/jellyfin/image/"):
+            config = _jellyfin_config()
+            if not config["configured"]:
+                self.send_error(404, "Jellyfin is not configured")
+                return
+            item_id = parsed.path.rsplit("/", 1)[-1]
+            from urllib.error import HTTPError, URLError
+            from urllib.request import Request
+            image_url = f"{config['url']}/Items/{item_id}/Images/Primary?maxHeight=480&quality=84"
+            request = Request(image_url, headers={"Authorization": f"MediaBrowser Token={config['token']}", "X-MediaBrowser-Token": config["token"]})
+            try:
+                with _jellyfin_urlopen(request, config, timeout=JELLYFIN_TIMEOUT_SECONDS) as response:
+                    body = response.read()
+                    content_type = response.headers.get("Content-Type", "image/jpeg")
+                self.send_response(200)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Cache-Control", "private, max-age=60")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            except (HTTPError, URLError, TimeoutError) as exc:
+                self.send_error(502, str(exc))
+            return
 
         if parsed.path == "/api/status":
             payload = self._current_payload(parsed.query)
