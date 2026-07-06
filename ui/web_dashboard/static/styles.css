@@ -1805,3 +1805,173 @@ body,
 }
 /* --- Open MMI media footer scoped repair end --- */
 
+/* --- Open MMI stable footer tell-tales start --- */
+/* One stable footer tell-tale renderer. The slots always exist; only opacity and
+   active state changes. This prevents footer icons from recentering/jumping on
+   every 500 ms status poll. */
+.openmmi-footer-black,
+.status-strip.openmmi-footer-black,
+footer.openmmi-footer-black,
+.screen > footer.openmmi-footer-black,
+.footer.openmmi-footer-black,
+.bottom-bar.openmmi-footer-black {
+  position: relative !important;
+  background: #000 !important;
+  background-color: #000 !important;
+  background-image: none !important;
+  backdrop-filter: none !important;
+}
+
+.openmmi-footer-with-telltales {
+  overflow: hidden !important;
+}
+
+#openMmiFooterTelltales.openmmi-stable-footer-telltales-strip,
+.openmmi-stable-footer-telltales-strip {
+  --ommi-footer-icon-size: clamp(1.18rem, 2.15vw, 1.95rem);
+  --ommi-footer-icon-gap: clamp(.36rem, 1.05vw, .78rem);
+  position: absolute !important;
+  left: 50% !important;
+  top: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: var(--ommi-footer-icon-gap) !important;
+  width: auto !important;
+  min-width: calc((var(--ommi-footer-icon-size) * 7) + (var(--ommi-footer-icon-gap) * 6)) !important;
+  height: calc(var(--ommi-footer-icon-size) + .2rem) !important;
+  margin: 0 !important;
+  padding: 0 clamp(.35rem, .9vw, .7rem) !important;
+  z-index: 6 !important;
+  pointer-events: none !important;
+  background: transparent !important;
+}
+
+#openMmiFooterTelltales .openmmi-footer-telltale,
+.openmmi-stable-footer-telltales-strip .openmmi-footer-telltale {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: var(--ommi-footer-icon-size) !important;
+  height: var(--ommi-footer-icon-size) !important;
+  flex: 0 0 var(--ommi-footer-icon-size) !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  filter: none !important;
+  text-shadow: none !important;
+  line-height: 1 !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  transform: none !important;
+}
+
+#openMmiFooterTelltales .openmmi-footer-telltale img,
+#openMmiFooterTelltales .openmmi-footer-telltale svg {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain !important;
+  flex: 0 0 auto !important;
+  filter: none !important;
+}
+
+#openMmiFooterTelltales .openmmi-footer-telltale.is-active {
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+#openMmiFooterTelltales .openmmi-footer-telltale.is-inactive,
+#openMmiFooterTelltales .openmmi-footer-telltale.is-unknown {
+  opacity: 0 !important;
+  visibility: hidden !important;
+}
+
+#openMmiFooterTelltales .openmmi-footer-telltale-left-turn,
+#openMmiFooterTelltales .openmmi-footer-telltale-right-turn,
+#openMmiFooterTelltales .openmmi-footer-telltale-hazard,
+#openMmiFooterTelltales .openmmi-footer-telltale-headlamp {
+  color: #39ff75 !important;
+}
+
+#openMmiFooterTelltales .openmmi-footer-telltale-parking-brake {
+  color: #ff4a4a !important;
+}
+
+#openMmiFooterTelltales .openmmi-footer-telltale-bulb-failure {
+  color: #ffb72e !important;
+}
+
+#openMmiFooterTelltales .openmmi-footer-telltale-high-beam {
+  color: #4aa3ff !important;
+}
+
+#openMmiFooterTelltales .openmmi-footer-telltale-left-turn.is-active,
+#openMmiFooterTelltales .openmmi-footer-telltale-right-turn.is-active,
+#openMmiFooterTelltales .openmmi-footer-telltale-hazard.is-active {
+  animation: openmmiClusterBlink 1.08s steps(1, end) infinite !important;
+}
+
+@keyframes openmmiClusterBlink {
+  0%, 47% { opacity: 1; visibility: visible; }
+  48%, 100% { opacity: 0; visibility: hidden; }
+}
+
+.openmmi-footer-telltale-sr {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+.openmmi-telltale-moved-to-footer,
+.openmmi-telltale-moved-to-footer *,
+.openmmi-light-state-moved-to-footer,
+.openmmi-light-state-moved-to-footer *,
+.openmmi-footer-duplicate-hidden,
+.openmmi-footer-duplicate-hidden *,
+.openmmi-footer-reverse-hidden,
+.openmmi-footer-reverse-hidden *,
+.openmmi-footer-park-duplicate-hidden,
+.openmmi-footer-park-duplicate-hidden * {
+  display: none !important;
+}
+
+.openmmi-telltale-test-badge {
+  position: absolute !important;
+  right: clamp(.45rem, 1.2vw, .9rem) !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  color: #ffd15c !important;
+  background: rgba(255, 170, 0, .13) !important;
+  border: 1px solid rgba(255, 209, 92, .35) !important;
+  border-radius: 999px !important;
+  padding: .12rem .45rem !important;
+  font-size: clamp(.58rem, 1vw, .72rem) !important;
+  letter-spacing: .08em !important;
+  text-transform: uppercase !important;
+  white-space: nowrap !important;
+  pointer-events: none !important;
+  z-index: 8 !important;
+}
+
+@media (max-width: 720px), (max-height: 520px) {
+  #openMmiFooterTelltales.openmmi-stable-footer-telltales-strip,
+  .openmmi-stable-footer-telltales-strip {
+    --ommi-footer-icon-size: clamp(1.02rem, 3.65vw, 1.55rem);
+    --ommi-footer-icon-gap: clamp(.22rem, .8vw, .48rem);
+  }
+
+  .openmmi-telltale-test-badge {
+    display: none !important;
+  }
+}
+/* --- Open MMI stable footer tell-tales end --- */
