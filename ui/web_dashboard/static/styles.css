@@ -1451,3 +1451,357 @@ h1 {
 }
 /* --- Open MMI Jellyfin render stability v8b end --- */
 
+
+/* --- Open MMI dashboard shell footer containment start --- */
+/*
+  The old dashboard used .screen::before as a fixed viewport border. On the
+  tablet that makes the page pager/status strip look visually outside the
+  rounded dashboard square. Make the real .screen element the shell instead,
+  then keep the footer as its bottom grid row.
+*/
+html,
+body {
+  width: 100%;
+  height: 100%;
+}
+
+body {
+  overflow: hidden !important;
+  padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left)) !important;
+}
+
+.screen {
+  position: relative !important;
+  height: calc(100svh - max(20px, env(safe-area-inset-top) + env(safe-area-inset-bottom))) !important;
+  min-height: 0 !important;
+  max-height: calc(100svh - max(20px, env(safe-area-inset-top) + env(safe-area-inset-bottom))) !important;
+  grid-template-rows: auto minmax(0, 1fr) auto !important;
+  overflow: hidden !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 16px !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, .025),
+    0 28px 70px rgba(0, 0, 0, .34) !important;
+}
+
+.screen::before {
+  display: none !important;
+}
+
+.screen > .page,
+.screen > .page.active,
+.screen > .page-media,
+.screen > .page-media.active {
+  min-height: 0 !important;
+  overflow: hidden;
+}
+
+.status-strip {
+  min-height: clamp(4.1rem, 9.5vh, 6.8rem) !important;
+  align-self: end !important;
+  margin: 0 calc(-1 * clamp(14px, 2.8vw, 46px)) calc(-1 * clamp(12px, 2.4vh, 26px)) !important;
+  padding:
+    clamp(.65rem, 1.2vh, .95rem)
+    clamp(1rem, 4vw, 4rem)
+    max(clamp(.65rem, 1.2vh, .95rem), env(safe-area-inset-bottom)) !important;
+  border-top: 1px solid var(--line) !important;
+  border-bottom-left-radius: 15px !important;
+  border-bottom-right-radius: 15px !important;
+  overflow: hidden !important;
+}
+
+.status-strip .pager,
+.pager {
+  flex: 0 0 auto !important;
+  align-items: center !important;
+  padding: .2rem .35rem !important;
+  border-radius: 999px !important;
+  background: rgba(0, 0, 0, .16) !important;
+  border: 1px solid rgba(255, 255, 255, .08) !important;
+}
+
+.status-strip .pager button,
+.pager button {
+  flex: 0 0 auto !important;
+}
+
+@media (max-width: 720px) {
+  body {
+    padding: 8px !important;
+  }
+
+  .screen {
+    height: calc(100svh - 16px) !important;
+    max-height: calc(100svh - 16px) !important;
+  }
+
+  .status-strip {
+    margin: 0 calc(-1 * clamp(14px, 2.8vw, 46px)) calc(-1 * clamp(12px, 2.4vh, 26px)) !important;
+    min-height: clamp(4.8rem, 13vh, 7.2rem) !important;
+    padding-bottom: max(.8rem, env(safe-area-inset-bottom)) !important;
+  }
+}
+/* --- Open MMI dashboard shell footer containment end --- */
+
+
+/* --- Open MMI shell regression fix start --- */
+/*
+  Regression fixes after moving the footer inside the real shell:
+  - prevent Bootstrap/browser defaults from exposing white backgrounds,
+  - restore bright telemetry/readout text,
+  - keep Media contained from first paint while Jellyfin content loads.
+*/
+:root {
+  color-scheme: dark !important;
+  --ommi-bg-0: #05070b;
+  --ommi-bg-1: #090f18;
+  --ommi-bg-2: #0d1622;
+  --ommi-text-strong: #f7fbff;
+  --ommi-text: #eaf2ff;
+  --ommi-text-soft: #b8c7d8;
+}
+
+html,
+body {
+  background: radial-gradient(circle at 50% -25%, #152238 0%, var(--ommi-bg-1) 34%, var(--ommi-bg-0) 100%) !important;
+  color: var(--ommi-text) !important;
+}
+
+body,
+.screen,
+.page,
+.page.active,
+.page-media,
+.page-media.active {
+  background-color: transparent !important;
+}
+
+.screen {
+  background:
+    radial-gradient(circle at 18% 0%, rgba(75, 149, 255, .075), transparent 34%),
+    linear-gradient(180deg, rgba(17, 28, 43, .96), rgba(7, 11, 17, .98)) !important;
+  color: var(--ommi-text) !important;
+}
+
+/* Bootstrap cards/lists/inputs can otherwise leak a white theme into Media. */
+.card,
+.card-body,
+.list-group,
+.list-group-item,
+.form-control,
+.input-group-text,
+.btn,
+.ommi-media-card,
+.ommi-player-card,
+.ommi-browser-card,
+.tile,
+.stat,
+.panel,
+.status-strip {
+  color: var(--ommi-text) !important;
+}
+
+.card,
+.ommi-media-card,
+.ommi-player-card,
+.ommi-browser-card {
+  background: rgba(8, 14, 22, .78) !important;
+  border-color: rgba(255, 255, 255, .10) !important;
+}
+
+.list-group-item,
+.ommi-track {
+  background: rgba(255, 255, 255, .035) !important;
+  color: var(--ommi-text) !important;
+  border-color: rgba(255, 255, 255, .075) !important;
+}
+
+.form-control,
+.input-group-text {
+  background: rgba(0, 0, 0, .24) !important;
+  color: var(--ommi-text-strong) !important;
+  border-color: rgba(255, 255, 255, .14) !important;
+}
+
+.form-control::placeholder {
+  color: rgba(234, 242, 255, .55) !important;
+}
+
+/* Restore high-contrast vehicle telemetry after Bootstrap/text-muted overrides. */
+.value,
+.readout,
+.speed-value,
+.speed .value,
+.stat .value,
+.tile .value,
+.tile strong,
+.big-number,
+.rpm-digital-value,
+.drive-speed,
+#speedValue,
+#rpmValue,
+[data-field="speed_mph"],
+[data-field="speed_kmh"],
+[data-field="odometer_mi"],
+[data-field="odometer_km"],
+[data-field="outside_temp_c"],
+[data-field="coolant_temp_c"],
+[data-field="voltage_v"],
+[data-field="range_mi"],
+[data-field="range_km"] {
+  color: var(--ommi-text-strong) !important;
+  opacity: 1 !important;
+  text-shadow: 0 0 12px rgba(140, 190, 255, .12) !important;
+}
+
+.label,
+.unit,
+.subvalue,
+.meta,
+.text-muted,
+.small,
+.tile .label,
+.stat .label,
+.footer-item span,
+.ommi-track small,
+.ommi-media-subtitle,
+.ommi-session,
+.ommi-nowplaying-meta {
+  color: var(--ommi-text-soft) !important;
+  opacity: 1 !important;
+}
+
+/* Keep Media out of the footer from first paint. The JS guard below refines
+   the exact height, but these rules prevent the one-second overlap race. */
+#pageElectrical.page-media,
+#pageElectrical.page-media.active,
+.page-media.active {
+  min-height: 0 !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+
+#openMmiMediaRoot,
+#openMmiMediaRoot.open-mmi-media-v8b {
+  height: 100% !important;
+  max-height: 100% !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+
+#openMmiMediaRoot .container-fluid,
+#openMmiMediaRoot .row,
+#openMmiMediaRoot [class*="col-"],
+#openMmiMediaRoot .card,
+#openMmiMediaRoot .card-body,
+#openMmiMediaRoot .ommi-media-row,
+#openMmiMediaRoot .ommi-player-col,
+#openMmiMediaRoot .ommi-browser-col,
+#openMmiMediaRoot .ommi-player-card,
+#openMmiMediaRoot .ommi-browser-card {
+  min-height: 0 !important;
+  max-height: 100% !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+
+#ommiMediaResults,
+#openMmiMediaRoot .ommi-results,
+#openMmiMediaRoot .list-group {
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  overscroll-behavior: contain !important;
+  padding-bottom: .45rem !important;
+}
+
+/* On short tablet landscape screens, trim the Media chrome before it clips. */
+@media (max-height: 620px) {
+  #openMmiMediaRoot .card-body,
+  #openMmiMediaRoot .ommi-player-card,
+  #openMmiMediaRoot .ommi-browser-card {
+    padding-top: .55rem !important;
+    padding-bottom: .55rem !important;
+  }
+
+  #openMmiMediaRoot .ommi-art,
+  #openMmiMediaRoot .ommi-cover,
+  #openMmiMediaRoot .ommi-album-art {
+    max-height: 34vh !important;
+  }
+
+  #openMmiMediaRoot h1,
+  #openMmiMediaRoot h2,
+  #openMmiMediaRoot h3,
+  #openMmiMediaRoot .card-title {
+    margin-bottom: .35rem !important;
+    line-height: 1.05 !important;
+  }
+}
+/* --- Open MMI shell regression fix end --- */
+
+
+/* --- Open MMI media footer scoped repair start --- */
+/*
+  Repair for the current working tree after the broad first-paint grid patch.
+  These rules are intentionally Media-scoped. They do not change .screen,
+  .page, Drive, Climate, or Vehicle layout globally.
+*/
+#pageElectrical.page-media:not(.active) {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+#pageElectrical.page-media.active.ommi-media-footer-scoped {
+  height: var(--ommi-media-page-height) !important;
+  max-height: var(--ommi-media-page-height) !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+  contain: layout paint !important;
+}
+
+#pageElectrical.page-media.active.ommi-media-footer-scoped #openMmiMediaRoot,
+#pageElectrical.page-media.active #openMmiMediaRoot {
+  height: var(--ommi-media-root-height, 100%) !important;
+  max-height: var(--ommi-media-root-height, 100%) !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+
+#pageElectrical.page-media.active #openMmiMediaRoot .container-fluid,
+#pageElectrical.page-media.active #openMmiMediaRoot .row,
+#pageElectrical.page-media.active #openMmiMediaRoot .ommi-media-row,
+#pageElectrical.page-media.active #openMmiMediaRoot [class*="col-"],
+#pageElectrical.page-media.active #openMmiMediaRoot .card,
+#pageElectrical.page-media.active #openMmiMediaRoot .card-body,
+#pageElectrical.page-media.active #openMmiMediaRoot .ommi-player-card,
+#pageElectrical.page-media.active #openMmiMediaRoot .ommi-browser-card,
+#pageElectrical.page-media.active #openMmiMediaRoot .ommi-browser-body {
+  min-height: 0 !important;
+  max-height: 100% !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+
+#pageElectrical.page-media.active #openMmiMediaRoot .ommi-browser-card,
+#pageElectrical.page-media.active #openMmiMediaRoot .ommi-browser-body {
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+#pageElectrical.page-media.active #ommiMediaResults,
+#pageElectrical.page-media.active #openMmiMediaRoot .ommi-results,
+#pageElectrical.page-media.active #openMmiMediaRoot .list-group {
+  min-height: 0 !important;
+  flex: 1 1 auto !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  overscroll-behavior: contain !important;
+  scrollbar-gutter: stable !important;
+}
+/* --- Open MMI media footer scoped repair end --- */
+

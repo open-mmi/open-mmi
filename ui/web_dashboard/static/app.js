@@ -966,3 +966,380 @@ try {
 })();
 // --- Open MMI Jellyfin render stability v8b end ---
 
+
+// --- Open MMI media early footer guard start ---
+/*
+  Keep the Media page inside the content row immediately, before the Jellyfin
+  library request completes. This avoids the brief first-paint overlap where the
+  Media player can cover the bottom status/nav strip and then snap back.
+*/
+(function () {
+  function clampMediaToContentRow() {
+    const page = document.querySelector("#pageElectrical.page-media, #pageElectrical");
+    const root = document.querySelector("#openMmiMediaRoot");
+    const screen = document.querySelector(".screen");
+    const footer = document.querySelector(".status-strip");
+    if (!page || !screen) return;
+
+    const screenRect = screen.getBoundingClientRect();
+    const pageRect = page.getBoundingClientRect();
+    const footerRect = footer ? footer.getBoundingClientRect() : null;
+    const bottom = footerRect ? footerRect.top : screenRect.bottom;
+    const available = Math.max(180, Math.floor(bottom - pageRect.top));
+
+    page.style.height = `${available}px`;
+    page.style.maxHeight = `${available}px`;
+    page.style.minHeight = "0";
+    page.style.overflow = "hidden";
+
+    if (root) {
+      root.style.height = "100%";
+      root.style.maxHeight = "100%";
+      root.style.minHeight = "0";
+      root.style.overflow = "hidden";
+    }
+
+    const results = document.querySelector("#ommiMediaResults");
+    if (results) {
+      results.style.minHeight = "0";
+      results.style.overflowY = "auto";
+      results.style.overflowX = "hidden";
+    }
+  }
+
+  function scheduleClamp() {
+    clampMediaToContentRow();
+    requestAnimationFrame(clampMediaToContentRow);
+    setTimeout(clampMediaToContentRow, 80);
+    setTimeout(clampMediaToContentRow, 300);
+  }
+
+  document.addEventListener("DOMContentLoaded", scheduleClamp);
+  window.addEventListener("resize", scheduleClamp);
+  window.addEventListener("orientationchange", () => setTimeout(scheduleClamp, 150));
+
+  const observer = new MutationObserver(scheduleClamp);
+  if (document.readyState !== "loading") scheduleClamp();
+  document.addEventListener("DOMContentLoaded", () => {
+    const target = document.querySelector("#pageElectrical") || document.body;
+    observer.observe(target, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "style"] });
+  });
+})();
+// --- Open MMI media early footer guard end ---
+
+
+// --- Open MMI media footer scoped repair start ---
+/*
+  Media-only footer clamp.
+
+  The previous first-paint fix used global .screen/.page grid rules, which could
+  break Drive/Climate/Vehicle. This repair measures the actual distance from the
+  active Media page top to the status/footer strip and applies that height only
+  to #pageElectrical.page-media and #openMmiMediaRoot.
+*/
+(function () {
+  const PAGE_SELECTOR = "#pageElectrical.page-media, #pageElectrical";
+  const ROOT_SELECTOR = "#openMmiMediaRoot";
+  const FOOTER_SELECTOR = ".status-strip, footer.status-strip, .screen > footer";
+
+  let raf = 0;
+
+  function getMediaPage() {
+    const page = document.querySelector(PAGE_SELECTOR);
+    if (!page) return null;
+    // Only clamp the Jellyfin/Media page. If the old id exists on a non-media
+    // page, require the Media root to be present before changing dimensions.
+    const root = page.querySelector(ROOT_SELECTOR) || document.querySelector(ROOT_SELECTOR);
+    if (!root) return null;
+    return { page, root };
+  }
+
+  function clearWhenInactive(page, root) {
+    if (page.classList.contains("active")) return false;
+    page.classList.remove("ommi-media-footer-scoped");
+    page.style.removeProperty("--ommi-media-page-height");
+    root.style.removeProperty("--ommi-media-root-height");
+    return true;
+  }
+
+  function clampMediaFooter() {
+    raf = 0;
+    const media = getMediaPage();
+    if (!media) return;
+    const { page, root } = media;
+    if (clearWhenInactive(page, root)) return;
+
+    const footer = document.querySelector(FOOTER_SELECTOR);
+    const screen = document.querySelector(".screen") || document.body;
+    if (!footer || !screen) return;
+
+    const pageRect = page.getBoundingClientRect();
+    const footerRect = footer.getBoundingClientRect();
+    const screenRect = screen.getBoundingClientRect();
+
+    // Use the earlier of footer top and screen bottom, so the media root cannot
+    // cover the footer even during Jellyfin/library first paint.
+    const bottomLimit = Math.min(footerRect.top, screenRect.bottom);
+    const available = Math.floor(bottomLimit - pageRect.top - 6);
+
+    // Ignore impossible measurements during the earliest layout ticks; retry
+    // shortly instead of writing nonsense dimensions.
+    if (!Number.isFinite(available) || available < 180) {
+      setTimeout(requestClamp, 40);
+      return;
+    }
+
+    const px = `${available}px`;
+    page.classList.add("ommi-media-footer-scoped");
+    page.style.setProperty("--ommi-media-page-height", px);
+    root.style.setProperty("--ommi-media-root-height", px);
+
+    const results = document.querySelector("#ommiMediaResults");
+    if (results) results.classList.add("ommi-media-results-scoped");
+  }
+
+  function requestClamp() {
+    if (raf) return;
+    raf = requestAnimationFrame(clampMediaFooter);
+  }
+
+  function scheduleStartupClamps() {
+    requestClamp();
+    requestAnimationFrame(requestClamp);
+    setTimeout(requestClamp, 50);
+    setTimeout(requestClamp, 200);
+    setTimeout(requestClamp, 800);
+  }
+
+  document.addEventListener("DOMContentLoaded", scheduleStartupClamps);
+  window.addEventListener("resize", requestClamp, { passive: true });
+  window.addEventListener("orientationchange", () => setTimeout(requestClamp, 120), { passive: true });
+
+  // Page changes and Jellyfin list loads can alter the active page/content.
+  const observer = new MutationObserver(requestClamp);
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", () => observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["class", "style"]
+    }));
+  } else if (document.body) {
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["class", "style"]
+    });
+    scheduleStartupClamps();
+  }
+
+  window.openMmiClampMediaFooter = requestClamp;
+})();
+// --- Open MMI media footer scoped repair end ---
+
+
+// --- Open MMI Jellyfin media keys fix start ---
+/*
+  System media-key integration for the local Jellyfin player.
+
+  Browsers often handle play/pause automatically for an <audio> element, but
+  next/previous track usually require Media Session action handlers. The helper
+  functions below delegate to the existing Jellyfin player functions when they
+  exist, and fall back to clicking the visible dashboard controls otherwise.
+*/
+(function () {
+  const AUDIO_SELECTORS = ["#ommiMediaAudio", "#mediaAudio"];
+
+  function mediaAudio() {
+    for (const selector of AUDIO_SELECTORS) {
+      const audio = document.querySelector(selector);
+      if (audio) return audio;
+    }
+    return null;
+  }
+
+  function clickFirst(selectors) {
+    for (const selector of selectors) {
+      const element = document.querySelector(selector);
+      if (element) {
+        element.click();
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function callIfFunction(name) {
+    const fn = window[name] || (typeof globalThis !== "undefined" ? globalThis[name] : null);
+    if (typeof fn === "function") {
+      fn();
+      return true;
+    }
+    return false;
+  }
+
+  function mediaNext() {
+    if (callIfFunction("openMmiMediaNext")) return;
+    if (callIfFunction("mediaNextTrack")) return;
+    clickFirst(["#ommiMediaNext", "#mediaNext", '[aria-label="Next"]', '[aria-label="Next track"]']);
+  }
+
+  function mediaPrev() {
+    if (callIfFunction("openMmiMediaPrev")) return;
+    if (callIfFunction("mediaPreviousTrack")) return;
+    clickFirst(["#ommiMediaPrev", "#mediaPrev", '[aria-label="Previous"]', '[aria-label="Previous track"]']);
+  }
+
+  async function mediaPlay() {
+    const audio = mediaAudio();
+    if (!audio) {
+      clickFirst(["#ommiMediaPlay", "#mediaPlayPause", '[aria-label="Play or pause"]']);
+      return;
+    }
+    try {
+      if (audio.paused) await audio.play();
+    } catch (_) {
+      clickFirst(["#ommiMediaPlay", "#mediaPlayPause", '[aria-label="Play or pause"]']);
+    }
+  }
+
+  function mediaPause() {
+    const audio = mediaAudio();
+    if (audio && !audio.paused) audio.pause();
+  }
+
+  function mediaPlayPause() {
+    const audio = mediaAudio();
+    if (!audio) {
+      clickFirst(["#ommiMediaPlay", "#mediaPlayPause", '[aria-label="Play or pause"]']);
+      return;
+    }
+    if (audio.paused) mediaPlay();
+    else audio.pause();
+  }
+
+  function mediaStop() {
+    const audio = mediaAudio();
+    if (clickFirst(["#ommiMediaStop", "#mediaStop", '[aria-label="Stop"]'])) return;
+    if (audio) {
+      audio.pause();
+      audio.currentTime = 0;
+    }
+  }
+
+  function updateMediaSessionMetadata() {
+    if (!("mediaSession" in navigator) || !("MediaMetadata" in window)) return;
+
+    const title = document.querySelector("#ommiMediaTitle, #mediaTitle")?.textContent?.trim() || "Open MMI";
+    const subtitle = document.querySelector("#ommiMediaSubtitle, #mediaSubtitle")?.textContent?.trim() || "Jellyfin";
+    const art = document.querySelector("#ommiMediaArt img, #mediaArt img, .ommi-track.is-playing img")?.src;
+
+    const metadata = {
+      title,
+      artist: subtitle,
+      album: "Open MMI",
+    };
+
+    if (art) {
+      metadata.artwork = [
+        { src: art, sizes: "96x96", type: "image/jpeg" },
+        { src: art, sizes: "256x256", type: "image/jpeg" },
+        { src: art, sizes: "512x512", type: "image/jpeg" },
+      ];
+    }
+
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata(metadata);
+    } catch (_) {
+      // Metadata is nice-to-have; media-key handlers are the important part.
+    }
+  }
+
+  function updateMediaSessionPlaybackState() {
+    if (!("mediaSession" in navigator)) return;
+    const audio = mediaAudio();
+    try {
+      navigator.mediaSession.playbackState = audio && !audio.paused ? "playing" : "paused";
+    } catch (_) {}
+  }
+
+  function bindMediaSession() {
+    if (!("mediaSession" in navigator)) return;
+
+    const handlers = {
+      play: mediaPlay,
+      pause: mediaPause,
+      stop: mediaStop,
+      previoustrack: mediaPrev,
+      nexttrack: mediaNext,
+    };
+
+    for (const [action, handler] of Object.entries(handlers)) {
+      try {
+        navigator.mediaSession.setActionHandler(action, handler);
+      } catch (_) {
+        // Some browsers omit specific actions; ignore unsupported ones.
+      }
+    }
+
+    updateMediaSessionMetadata();
+    updateMediaSessionPlaybackState();
+  }
+
+  function bindKeyboardMediaKeys() {
+    if (window.__openMmiMediaKeyKeyboardBound) return;
+    window.__openMmiMediaKeyKeyboardBound = true;
+
+    document.addEventListener("keydown", (event) => {
+      switch (event.key) {
+        case "MediaTrackNext":
+          event.preventDefault();
+          mediaNext();
+          break;
+        case "MediaTrackPrevious":
+          event.preventDefault();
+          mediaPrev();
+          break;
+        case "MediaPlayPause":
+          event.preventDefault();
+          mediaPlayPause();
+          break;
+        case "MediaStop":
+          event.preventDefault();
+          mediaStop();
+          break;
+        default:
+          break;
+      }
+    }, true);
+  }
+
+  function bindAudioEvents() {
+    const audio = mediaAudio();
+    if (!audio || audio.__openMmiMediaKeysBound) return;
+    audio.__openMmiMediaKeysBound = true;
+
+    for (const eventName of ["play", "pause", "ended", "loadedmetadata", "durationchange"]) {
+      audio.addEventListener(eventName, () => {
+        updateMediaSessionMetadata();
+        updateMediaSessionPlaybackState();
+      });
+    }
+  }
+
+  function bootMediaKeys() {
+    bindKeyboardMediaKeys();
+    bindMediaSession();
+    bindAudioEvents();
+  }
+
+  document.addEventListener("DOMContentLoaded", bootMediaKeys);
+  if (document.readyState !== "loading") bootMediaKeys();
+
+  // The Media page is created dynamically, so retry lightly until its audio
+  // element exists. This is deliberately cheap and stops rebinding once bound.
+  setInterval(bootMediaKeys, 1500);
+})();
+// --- Open MMI Jellyfin media keys fix end ---
+
