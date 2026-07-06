@@ -1805,10 +1805,7 @@ body,
 }
 /* --- Open MMI media footer scoped repair end --- */
 
-/* --- Open MMI stable footer tell-tales start --- */
-/* One stable footer tell-tale renderer. The slots always exist; only opacity and
-   active state changes. This prevents footer icons from recentering/jumping on
-   every 500 ms status poll. */
+/* --- Open MMI proper light tell-tales start --- */
 .openmmi-footer-black,
 .status-strip.openmmi-footer-black,
 footer.openmmi-footer-black,
@@ -1828,8 +1825,8 @@ footer.openmmi-footer-black,
 
 #openMmiFooterTelltales.openmmi-stable-footer-telltales-strip,
 .openmmi-stable-footer-telltales-strip {
-  --ommi-footer-icon-size: clamp(1.18rem, 2.15vw, 1.95rem);
-  --ommi-footer-icon-gap: clamp(.36rem, 1.05vw, .78rem);
+  --ommi-footer-icon-size: clamp(1.02rem, 1.72vw, 1.58rem);
+  --ommi-footer-icon-gap: clamp(.22rem, .68vw, .46rem);
   position: absolute !important;
   left: 50% !important;
   top: 50% !important;
@@ -1839,10 +1836,9 @@ footer.openmmi-footer-black,
   justify-content: center !important;
   gap: var(--ommi-footer-icon-gap) !important;
   width: auto !important;
-  min-width: calc((var(--ommi-footer-icon-size) * 7) + (var(--ommi-footer-icon-gap) * 6)) !important;
   height: calc(var(--ommi-footer-icon-size) + .2rem) !important;
   margin: 0 !important;
-  padding: 0 clamp(.35rem, .9vw, .7rem) !important;
+  padding: 0 clamp(.18rem, .5vw, .36rem) !important;
   z-index: 6 !important;
   pointer-events: none !important;
   background: transparent !important;
@@ -1869,6 +1865,21 @@ footer.openmmi-footer-black,
   transform: none !important;
 }
 
+#openMmiFooterTelltales .openmmi-footer-telltale-wide {
+  width: calc(var(--ommi-footer-icon-size) * 1.44) !important;
+  flex-basis: calc(var(--ommi-footer-icon-size) * 1.44) !important;
+}
+
+#openMmiFooterTelltales .openmmi-footer-telltale-position-lights {
+  width: calc(var(--ommi-footer-icon-size) * 1.72) !important;
+  flex-basis: calc(var(--ommi-footer-icon-size) * 1.72) !important;
+}
+
+#openMmiFooterTelltales .openmmi-footer-telltale-rear-fog {
+  width: calc(var(--ommi-footer-icon-size) * 1.1) !important;
+  flex-basis: calc(var(--ommi-footer-icon-size) * 1.1) !important;
+}
+
 #openMmiFooterTelltales .openmmi-footer-telltale img,
 #openMmiFooterTelltales .openmmi-footer-telltale svg {
   display: block !important;
@@ -1890,34 +1901,17 @@ footer.openmmi-footer-black,
   visibility: hidden !important;
 }
 
-#openMmiFooterTelltales .openmmi-footer-telltale-left-turn,
-#openMmiFooterTelltales .openmmi-footer-telltale-right-turn,
-#openMmiFooterTelltales .openmmi-footer-telltale-hazard,
-#openMmiFooterTelltales .openmmi-footer-telltale-headlamp {
-  color: #39ff75 !important;
+/* Only forced/demo indicators blink using CSS. Real indicator state follows the
+   status payload so it can mirror the vehicle bulb phase if the snapshot has it. */
+#openMmiFooterTelltales .openmmi-footer-telltale-left-turn.is-forced-blink,
+#openMmiFooterTelltales .openmmi-footer-telltale-right-turn.is-forced-blink,
+#openMmiFooterTelltales .openmmi-footer-telltale-hazard.is-forced-blink {
+  animation: openmmiForcedIndicatorBlink .92s steps(1, end) infinite !important;
 }
 
-#openMmiFooterTelltales .openmmi-footer-telltale-parking-brake {
-  color: #ff4a4a !important;
-}
-
-#openMmiFooterTelltales .openmmi-footer-telltale-bulb-failure {
-  color: #ffb72e !important;
-}
-
-#openMmiFooterTelltales .openmmi-footer-telltale-high-beam {
-  color: #4aa3ff !important;
-}
-
-#openMmiFooterTelltales .openmmi-footer-telltale-left-turn.is-active,
-#openMmiFooterTelltales .openmmi-footer-telltale-right-turn.is-active,
-#openMmiFooterTelltales .openmmi-footer-telltale-hazard.is-active {
-  animation: openmmiClusterBlink 1.08s steps(1, end) infinite !important;
-}
-
-@keyframes openmmiClusterBlink {
-  0%, 47% { opacity: 1; visibility: visible; }
-  48%, 100% { opacity: 0; visibility: hidden; }
+@keyframes openmmiForcedIndicatorBlink {
+  0%, 49% { opacity: 1; visibility: visible; }
+  50%, 100% { opacity: 0; visibility: hidden; }
 }
 
 .openmmi-footer-telltale-sr {
@@ -1966,12 +1960,10 @@ footer.openmmi-footer-black,
 @media (max-width: 720px), (max-height: 520px) {
   #openMmiFooterTelltales.openmmi-stable-footer-telltales-strip,
   .openmmi-stable-footer-telltales-strip {
-    --ommi-footer-icon-size: clamp(1.02rem, 3.65vw, 1.55rem);
-    --ommi-footer-icon-gap: clamp(.22rem, .8vw, .48rem);
+    --ommi-footer-icon-size: clamp(.82rem, 2.8vw, 1.22rem);
+    --ommi-footer-icon-gap: clamp(.12rem, .46vw, .28rem);
   }
-
-  .openmmi-telltale-test-badge {
-    display: none !important;
-  }
+  .openmmi-telltale-test-badge { display: none !important; }
 }
-/* --- Open MMI stable footer tell-tales end --- */
+/* --- Open MMI proper light tell-tales end --- */
+
