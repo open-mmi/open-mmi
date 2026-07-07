@@ -10,7 +10,7 @@ Open vehicle MMI integration framework for Linux.
 
 ## Current status
 
-`open-mmi` is currently an **alpha/backend project**.
+`open-mmi` is currently an **alpha vehicle integration project** with a working local web dashboard and backend/status layer.
 
 The current maintainer-tested reference vehicle is:
 
@@ -30,11 +30,49 @@ safe user configuration
 vehicle-profile contribution workflow
 ```
 
-This is **not yet** a polished infotainment replacement, final tablet UI, or multi-vehicle supported product.
+This is **not yet** a finished infotainment replacement or multi-vehicle supported product, but the dashboard is now a real development target rather than only a terminal/status prototype.
 
 The goal is to build a reusable open foundation so vehicle-specific CAN knowledge can live in shareable profiles instead of being rediscovered privately.
 
 See [`docs/project-philosophy.md`](docs/project-philosophy.md) for the project goals and community philosophy.
+
+<!-- OPEN_MMI_WEB_DASHBOARD_START -->
+## Factory web dashboard
+
+Open MMI now includes a local, read-only, tablet-friendly web dashboard that consumes the same persistent vehicle status snapshot as the diagnostic tools.
+It is intended to make decoded vehicle state visible as a practical in-car interface, not just as raw CAN frames or terminal output.
+
+<p align="center">
+  <img src="docs/images/web-dashboard-drive.png" alt="Open MMI Drive page showing speed, RPM, coolant, voltage and footer tell-tales" width="900">
+</p>
+
+| Media | Climate |
+|---|---|
+| ![Open MMI Media page with privacy-respecting demo track](docs/images/web-dashboard-media-demo.png) | ![Open MMI Climate page showing blower load and climate state](docs/images/web-dashboard-climate.png) |
+| Vehicle | Diagnostics/status |
+| ![Open MMI Vehicle page showing door and reverse status](docs/images/web-dashboard-vehicle.png) | ![Open MMI status dashboard active](docs/images/status-dashboard-active.png) |
+
+Current web dashboard pages:
+
+* **Drive** — speed, RPM, coolant, voltage, range/odometer, outside temperature, and OEM-style footer tell-tales.
+* **Media** — optional Jellyfin music search/playback using a server-side API token and local browser audio playback.
+* **Climate** — blower load, outside temperature, demist/compressor/heater/intake state where available from the status snapshot.
+* **Vehicle** — doors, reverse, dimmer and body-state information where available from the status snapshot.
+
+Run it from a checkout:
+
+```bash
+python3 ui/web_dashboard/server.py
+```
+
+Try the dashboard away from the car with dynamic demo data:
+
+```bash
+python3 ui/web_dashboard/server.py --demo --demo-scenario traffic
+```
+
+More details, including Jellyfin configuration, tell-tale test mode, media keys, demo scenarios, and icon attribution notes, are in [`ui/web_dashboard/README.md`](ui/web_dashboard/README.md).
+<!-- OPEN_MMI_WEB_DASHBOARD_END -->
 
 ---
 
@@ -88,12 +126,12 @@ Current capabilities include:
 * modular actions
 * profile-driven status/state mappings
 * persistent status snapshot output
-* CLI dashboard / future UI consumers
+* CLI diagnostic dashboard and local web dashboard consumers
 * hot-reload configuration
 * off-car safe mode
 * systemd + udev integration
 * explicit opt-in user override directory under `~/.config/open-mmi`
-* optional Linux desktop launcher assets for the diagnostic status dashboard
+* local web dashboard files plus optional Linux desktop launcher assets for the diagnostic status dashboard
 
 ---
 
@@ -210,26 +248,33 @@ sudo ./scripts/manage.sh logs
 
 Press `Ctrl+C` to exit logs.
 
-## 5. Run the status dashboard
+## 5. Run the web dashboard
 
 From the installed copy:
 
 ```bash
 cd /opt/open-mmi
-./venv/bin/python ui/dashboard/status_cli.py
+./venv/bin/python ui/web_dashboard/server.py
 ```
 
-Useful alternatives:
+Or from a development checkout:
+
+```bash
+python3 ui/web_dashboard/server.py --demo --demo-scenario traffic
+```
+
+The CLI diagnostic dashboard is still available when you want raw status inspection:
 
 ```bash
 cd /opt/open-mmi
+./venv/bin/python ui/dashboard/status_cli.py
 ./venv/bin/python ui/dashboard/status_cli.py --once
 ./venv/bin/python ui/dashboard/status_cli.py --raw
 ```
 
 ## 6. Optional desktop launcher
 
-Open MMI includes optional Linux desktop launcher assets for the diagnostic status dashboard.
+Open MMI includes local web dashboard files plus optional Linux desktop launcher assets for the diagnostic status dashboard.
 
 The launcher is **not installed by default**. To install it for the current user:
 
@@ -893,7 +938,7 @@ packaging/linux-desktop/
     └── open-mmi-light/
 ```
 
-The desktop launcher is intentionally opt-in. Open MMI is primarily the integration/backend layer, and users may later choose a separate UI package.
+The desktop launcher is intentionally opt-in. Open MMI includes the integration/backend layer and a local web dashboard. The diagnostic desktop launcher remains optional and development-focused.
 
 The diagnostic launcher is useful for development, testing, and quick local status checks.
 
@@ -1086,11 +1131,11 @@ Vehicle coding, installed modules, equipment level, and capture point may affect
 
 # Current limitations
 
-`open-mmi` is currently an alpha/backend project.
+`open-mmi` is currently an alpha vehicle integration project with a working local web dashboard and backend/status layer.
 
 Known limitations:
 
-* the dashboard is currently a CLI diagnostic prototype
+* the web dashboard is still experimental and should be treated as a beta UI
 * only the included Seat 1P / VAG PQ35 profile has been real-car tested by the maintainer
 * vehicle profiles may require manual CAN discovery
 * CAN interface and bitrate assumptions may need adjustment for other vehicles or adapters
@@ -1098,8 +1143,8 @@ Known limitations:
 * automated tests are still minimal
 * replay/demo tooling is not yet complete
 * Open MMI currently focuses on passive CAN receive and local Linux actions
-* this is not yet a polished end-user infotainment system
-* graphical, tablet, and vehicle-specific UI packages are not yet part of the core install
+* this is not yet a finished end-user infotainment replacement
+* the included web dashboard is local/read-only and still evolving; additional vehicle-specific UI packages may appear later
 
 Decoded status is informational and should not be treated as a replacement for OEM safety warnings or diagnostics.
 
