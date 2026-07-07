@@ -1489,20 +1489,36 @@ try {
     return patterns.some((pattern) => pattern.test(value));
   }
 
+  function lightingMode(lighting) {
+    return String((lighting && lighting.mode) || "").trim().toLowerCase();
+  }
+
   function sideLightsOn(lighting) {
-    return truthy(lighting.side_lights) || truthy(lighting.sidelights) || truthy(lighting.position_lights) || truthy(lighting.parking_lights) || textIncludes(lighting.mode, [/\bside\b/, /sidelight/, /position/, /parking light/, /park light/]);
+    const mode = lightingMode(lighting);
+    return truthy(lighting.side_lights) || truthy(lighting.sidelights) || truthy(lighting.position_lights) || truthy(lighting.parking_lights) ||
+      ["sides", "dip", "rear_fog", "main_beam_sides", "main_beam_dip", "main_beam_rear_fog", "sides_with_reverse", "reverse_with_dip", "rear_fog_with_reverse"].includes(mode) ||
+      textIncludes(mode, [/\bsides?\b/, /sidelight/, /position/, /parking light/, /park light/]);
   }
 
   function dippedBeamOn(lighting) {
-    return truthy(lighting.dipped_beam) || truthy(lighting.low_beam) || truthy(lighting.dip_beam) || truthy(lighting.headlights) || truthy(lighting.head_lights) || textIncludes(lighting.mode, [/dipped/, /\bdip\b/, /low beam/, /headlight/, /headlamp/]);
+    const mode = lightingMode(lighting);
+    return truthy(lighting.dipped_beam) || truthy(lighting.low_beam) || truthy(lighting.dip_beam) || truthy(lighting.headlights) || truthy(lighting.head_lights) ||
+      ["dip", "main_beam_dip", "reverse_with_dip"].includes(mode) ||
+      textIncludes(mode, [/dipped/, /\bdip\b/, /low beam/, /headlight/, /headlamp/]);
   }
 
   function highBeamOn(lighting) {
-    return truthy(lighting.high_beam) || truthy(lighting.main_beam) || truthy(lighting.full_beam) || textIncludes(lighting.mode, [/high beam/, /main beam/, /full beam/]);
+    const mode = lightingMode(lighting);
+    return truthy(lighting.high_beam) || truthy(lighting.main_beam) || truthy(lighting.full_beam) ||
+      ["main_beam_lights_off", "main_beam_sides", "main_beam_dip", "main_beam_rear_fog"].includes(mode) ||
+      textIncludes(mode, [/high beam/, /main beam/, /full beam/]);
   }
 
   function rearFogOn(lighting) {
-    return truthy(lighting.rear_fog) || truthy(lighting.rear_fog_light) || truthy(lighting.fog_rear) || truthy(lighting.fog_lights_rear) || textIncludes(lighting.mode, [/rear fog/, /fog rear/]);
+    const mode = lightingMode(lighting);
+    return truthy(lighting.rear_fog) || truthy(lighting.rear_fog_light) || truthy(lighting.fog_rear) || truthy(lighting.fog_lights_rear) ||
+      ["rear_fog", "main_beam_rear_fog", "rear_fog_with_reverse"].includes(mode) ||
+      textIncludes(mode, [/rear fog/, /fog rear/]);
   }
 
   function knownAny(lighting, keys, forcedKey) {
