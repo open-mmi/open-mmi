@@ -1503,7 +1503,7 @@ try {
   function dippedBeamOn(lighting) {
     const mode = lightingMode(lighting);
     return truthy(lighting.dipped_beam) || truthy(lighting.low_beam) || truthy(lighting.dip_beam) || truthy(lighting.headlights) || truthy(lighting.head_lights) ||
-      ["dip", "main_beam_dip", "reverse_with_dip"].includes(mode) ||
+      ["dip", "rear_fog", "main_beam_dip", "main_beam_rear_fog", "reverse_with_dip", "rear_fog_with_reverse"].includes(mode) ||
       textIncludes(mode, [/dipped/, /\bdip\b/, /low beam/, /headlight/, /headlamp/]);
   }
 
