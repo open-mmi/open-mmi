@@ -113,7 +113,7 @@ def _wave(t: float, period: float, phase: float = 0.0) -> float:
 def demo_status(scenario: str, started_at: float) -> Dict[str, Any]:
     """Return a synthetic, changing status payload for UI work away from the car.
 
-    The real dashboard polls /api/status every 500 ms. By generating values from
+    The real dashboard polls /api/status regularly. By generating values from
     elapsed time here, demo mode exercises the existing frontend without a fake
     CAN source, browser framework, or status writer process.
     """
