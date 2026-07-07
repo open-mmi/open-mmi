@@ -1474,83 +1474,35 @@ try {
   }
 
   function truthy(value) {
-    // Vehicle decode snapshots are not always clean booleans. Some decoded
-    // lamp states arrive as numeric bit/state values such as 2, 4, 8, etc.
-    // The forced tell-tale test path uses booleans, so it can work while the
-    // live vehicle path stays dark unless we accept non-zero numeric values.
     if (value === true) return true;
     if (value === false || value == null) return false;
-    if (typeof value === "number") return Number.isFinite(value) && value !== 0;
     const text = String(value).trim().toLowerCase();
-    if (!text) return false;
-    if (["0", "false", "no", "off", "inactive", "disabled", "none", "null", "undefined", "closed"].includes(text)) return false;
-    if (["1", "true", "yes", "on", "active", "enabled", "set", "open"].includes(text)) return true;
-    if (/^-?\d+(\.\d+)?$/.test(text)) return Number(text) !== 0;
-    return false;
+    return ["1", "true", "yes", "on", "active", "enabled"].includes(text);
   }
 
   function hasOwn(object, key) {
     return !!object && Object.prototype.hasOwnProperty.call(object, key);
   }
 
-  function textIncludes(value, patterns) {
-    const text = scalarText(value).toLowerCase().replace(/[._-]+/g, " ");
-    if (!text) return false;
-    return patterns.some((pattern) => pattern.test(text));
+  function textIncludes(text, patterns) {
+    const value = String(text || "").toLowerCase();
+    return patterns.some((pattern) => pattern.test(value));
   }
 
   function sideLightsOn(lighting) {
-    return truthy(lighting.side_lights) ||
-      truthy(lighting.sidelights) ||
-      truthy(lighting.side_light) ||
-      truthy(lighting.position_lights) ||
-      truthy(lighting.position_light) ||
-      truthy(lighting.position) ||
-      truthy(lighting.parking_lights) ||
-      truthy(lighting.parking_light) ||
-      truthy(lighting.standing_lights) ||
-      truthy(lighting.terminal58) ||
-      truthy(lighting.terminal_58) ||
-      textIncludes(lighting, [/\bside\b/, /sidelight/, /position/, /parking light/, /park light/, /standing light/, /terminal\s*58/]);
+    return truthy(lighting.side_lights) || truthy(lighting.sidelights) || truthy(lighting.position_lights) || truthy(lighting.parking_lights) || textIncludes(lighting.mode, [/\bside\b/, /sidelight/, /position/, /parking light/, /park light/]);
   }
 
   function dippedBeamOn(lighting) {
-    return truthy(lighting.dipped_beam) ||
-      truthy(lighting.dipped) ||
-      truthy(lighting.low_beam) ||
-      truthy(lighting.lowbeam) ||
-      truthy(lighting.dip_beam) ||
-      truthy(lighting.dipbeam) ||
-      truthy(lighting.headlights) ||
-      truthy(lighting.head_lights) ||
-      truthy(lighting.headlamp) ||
-      truthy(lighting.headlamps) ||
-      textIncludes(lighting, [/dipped/, /\bdip\b/, /low beam/, /headlight/, /headlamp/]);
+    return truthy(lighting.dipped_beam) || truthy(lighting.low_beam) || truthy(lighting.dip_beam) || truthy(lighting.headlights) || truthy(lighting.head_lights) || textIncludes(lighting.mode, [/dipped/, /\bdip\b/, /low beam/, /headlight/, /headlamp/]);
   }
 
   function highBeamOn(lighting) {
-    return truthy(lighting.high_beam) ||
-      truthy(lighting.highbeam) ||
-      truthy(lighting.high_beams) ||
-      truthy(lighting.main_beam) ||
-      truthy(lighting.mainbeam) ||
-      truthy(lighting.full_beam) ||
-      truthy(lighting.fullbeam) ||
-      truthy(lighting.main_beam_flash) ||
-      truthy(lighting.flash_to_pass) ||
-      textIncludes(lighting, [/high beam/, /main beam/, /full beam/, /flash to pass/, /\bmain\b/]);
+    return truthy(lighting.high_beam) || truthy(lighting.main_beam) || truthy(lighting.full_beam) || textIncludes(lighting.mode, [/high beam/, /main beam/, /full beam/]);
   }
 
   function rearFogOn(lighting) {
-    return truthy(lighting.rear_fog) ||
-      truthy(lighting.rearfog) ||
-      truthy(lighting.rear_fog_light) ||
-      truthy(lighting.rear_fog_lamp) ||
-      truthy(lighting.fog_rear) ||
-      truthy(lighting.fog_light_rear) ||
-      truthy(lighting.fog_lights_rear) ||
-      truthy(lighting.rear_fog_on) ||
-      textIncludes(lighting, [/rear fog/, /fog rear/]);
+    return truthy(lighting.rear_fog) || truthy(lighting.rear_fog_light) || truthy(lighting.fog_rear) || truthy(lighting.fog_lights_rear) || textIncludes(lighting.mode, [/rear fog/, /fog rear/]);
   }
 
   function knownAny(lighting, keys, forcedKey) {
@@ -1681,10 +1633,12 @@ try {
     setSlot(strip, "park", vehicle.handbrake === true, vehicle.handbrake !== undefined && vehicle.handbrake !== null, "Parking brake");
     setSlot(strip, "hazard", hazards === true, lighting.hazards !== undefined || forced("hazard"), "Hazard warning", { forcedBlink: testBlink && forced("hazard") });
     setSlot(strip, "bulb", lighting.bulb_out === true, lighting.bulb_out !== undefined && lighting.bulb_out !== null, "Exterior bulb failure");
-    setSlot(strip, "sidelights", sideLightsOn(lighting), sideLightsOn(lighting) || knownAny(lighting, ["side_lights", "sidelights", "side_light", "position_lights", "position_light", "position", "parking_lights", "parking_light", "standing_lights", "terminal58", "terminal_58"], "sidelights"), "Side/position lights");
-    setSlot(strip, "dipped", dippedBeamOn(lighting), dippedBeamOn(lighting) || knownAny(lighting, ["dipped_beam", "dipped", "low_beam", "lowbeam", "dip_beam", "dipbeam", "headlights", "head_lights", "headlamp", "headlamps"], "dipped"), "Dipped beam");
-    setSlot(strip, "highbeam", highBeamOn(lighting), highBeamOn(lighting) || knownAny(lighting, ["high_beam", "highbeam", "high_beams", "main_beam", "mainbeam", "full_beam", "fullbeam", "main_beam_flash", "flash_to_pass"], "highbeam"), "High beam");
-    setSlot(strip, "rearfog", rearFogOn(lighting), rearFogOn(lighting) || knownAny(lighting, ["rear_fog", "rearfog", "rear_fog_light", "rear_fog_lamp", "fog_rear", "fog_light_rear", "fog_lights_rear", "rear_fog_on"], "rearfog"), "Rear fog light");
+
+    setSlot(strip, "sidelights", sideLightsOn(lighting), knownAny(lighting, ["side_lights", "sidelights", "position_lights", "parking_lights"], "sidelights"), "Side/position lights");
+    setSlot(strip, "dipped", dippedBeamOn(lighting), knownAny(lighting, ["dipped_beam", "low_beam", "dip_beam", "headlights", "head_lights"], "dipped"), "Dipped beam");
+    setSlot(strip, "highbeam", highBeamOn(lighting), knownAny(lighting, ["high_beam", "main_beam", "full_beam"], "highbeam"), "High beam");
+    setSlot(strip, "rearfog", rearFogOn(lighting), knownAny(lighting, ["rear_fog", "rear_fog_light", "fog_rear", "fog_lights_rear"], "rearfog"), "Rear fog light");
+
     hideMovedPageTelltales();
     hideOldFooterItems();
     updateTestBadge();
