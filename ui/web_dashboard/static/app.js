@@ -381,7 +381,7 @@ function init() {
   });
   setPage(0);
   fetchStatus();
-  setInterval(fetchStatus, 500);
+  setInterval(fetchStatus, 200);
 }
 
 init();
