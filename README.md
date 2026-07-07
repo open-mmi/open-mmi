@@ -1295,6 +1295,23 @@ GPL-3.0-only. See `LICENSE`.
 
 ## Web dashboard
 
+
+<!-- OPEN-MMI-WEB-DASHBOARD-PREVIEW-START -->
+## Dashboard preview
+
+Open MMI includes a tablet-friendly local dashboard powered by decoded vehicle state. It can run against a live vehicle status snapshot or in demo mode without a car.
+
+![Open MMI media dashboard demo](docs/images/web-dashboard-media-demo.png)
+
+Try the web dashboard without a car:
+
+```bash
+python3 ui/web_dashboard/server.py --demo --demo-scenario traffic
+```
+
+The dashboard currently includes Drive, Media, Climate and Vehicle status pages, local Jellyfin playback support, OEM-style tell-tales, and a read-only status pipeline.
+<!-- OPEN-MMI-WEB-DASHBOARD-PREVIEW-END -->
+
 Open MMI includes a local, read-only web dashboard for displaying the current vehicle status snapshot and companion in-car pages.
 
 Current dashboard pages:
