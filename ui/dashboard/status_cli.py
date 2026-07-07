@@ -200,6 +200,7 @@ def _render_dashboard(payload: Dict[str, Any], path: Path=STATUS_PATH, theme: Op
     vehicle = state.get('vehicle', {}) if isinstance(state.get('vehicle', {}), dict) else {}
     lighting = state.get('lighting', {}) if isinstance(state.get('lighting', {}), dict) else {}
     climate = state.get('climate', {}) if isinstance(state.get('climate', {}), dict) else {}
+    fuel = state.get('fuel', {}) if isinstance(state.get('fuel', {}), dict) else {}
     engine = state.get('engine', {}) if isinstance(state.get('engine', {}), dict) else {}
     electrical = state.get('electrical', {}) if isinstance(state.get('electrical', {}), dict) else {}
     steering = state.get('steering', {}) if isinstance(state.get('steering', {}), dict) else {}
@@ -231,7 +232,14 @@ def _render_dashboard(payload: Dict[str, Any], path: Path=STATUS_PATH, theme: Op
     print(_line('Vehicle'))
     print(_pair(f'{theme.sym('reverse', 'R')} Reverse', _state_label(vehicle.get('reverse'), theme, true_text='ON', false_text='OFF', true_colour='amber'), f'{theme.sym('park', 'P')} Handbrake', _state_label(vehicle.get('handbrake'), theme, true_text='ON', false_text='OFF', true_colour='amber')))
     print(_pair('Speed', _speed_label(vehicle.get('speed_kmh')), 'Speed raw', vehicle.get('speed_raw', '-')))
+    print(_pair('Odometer', _distance_label(vehicle.get('odometer_km'), decimals=0), 'Odo raw', vehicle.get('odometer_raw', '-')))
     print(_pair('Reverse raw', vehicle.get('reverse_raw', '-'), 'Handbrake raw', vehicle.get('handbrake_raw', '-')))
+    print()
+    print(_line('Fuel'))
+    range_km = fuel.get('range_km_candidate', fuel.get('range_km_rounded_candidate', '-'))
+    range_raw = fuel.get('range_raw_candidate', fuel.get('range_km_rounded_raw_candidate', '-'))
+    print(_pair('Range', _distance_label(range_km, decimals=0), 'Range raw', range_raw))
+    print(_pair('Range rounded', _distance_label(fuel.get('range_km_rounded_candidate', '-'), decimals=0), 'Rounded raw', fuel.get('range_km_rounded_raw_candidate', '-')))
     print()
     engine_speed = engine.get("speed_rpm")
     supply_voltage = electrical.get("supply_voltage_v", electrical.get("terminal30_voltage_v"))
@@ -247,6 +255,7 @@ def _render_dashboard(payload: Dict[str, Any], path: Path=STATUS_PATH, theme: Op
     print(_pair("Outside reg", _temperature_label(climate.get("outside_temp_regulation_c")), "Outside raw", climate.get("outside_temp_regulation_raw", "-")))
     print(_pair("Outside unfiltered", _temperature_label(climate.get("outside_temp_unfiltered_c")), "Unfiltered raw", climate.get("outside_temp_unfiltered_raw", "-")))
     print(_pair("Rear heater", _bool_label(climate.get("rear_window_heater_requested")), "Klima raw", climate.get("klima_status_raw", "-")))
+    print(_pair('Front demist air', _bool_label(climate.get('front_demist_air_request')), 'Demist raw', climate.get('front_demist_air_request_raw', '-')))
     print(_pair("Compressor", _bool_label(climate.get("compressor_active")), "Front screen", _bool_label(climate.get("front_windscreen_heater_requested"))))
     print()
     print(_line('Steering'))
@@ -329,6 +338,21 @@ def _speed_label(speed_kmh: Any) -> str:
     if unit == 'both':
         return f'{mph:.1f} mph / {kmh:.1f} km/h'
     return f'{mph:.1f} mph'
+
+def _distance_label(distance_km: Any, decimals: int=0) -> str:
+    if distance_km is None or distance_km == '-':
+        return '-'
+    try:
+        km = float(distance_km)
+    except (TypeError, ValueError):
+        return str(distance_km)
+    miles = km * 0.621371192
+    unit = _speed_unit()
+    if unit == 'kmh':
+        return f'{km:,.{decimals}f} km'
+    if unit == 'both':
+        return f'{miles:,.{decimals}f} mi / {km:,.{decimals}f} km'
+    return f'{miles:,.{decimals}f} mi'
 
 def _format_value(value: Any) -> str:
     if isinstance(value, bool):

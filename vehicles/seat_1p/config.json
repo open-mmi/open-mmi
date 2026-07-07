@@ -340,6 +340,46 @@
       "offset": 0.0,
       "round": 0,
       "raw_path": "climate.debug_555_b4_raw"
+    },
+    {
+      "id": "0x65D",
+      "type": "u24le",
+      "start_byte": 1,
+      "path": "vehicle.odometer_km",
+      "scale": 1.0,
+      "offset": 0.0,
+      "round": 0,
+      "raw_path": "vehicle.odometer_raw"
+    },
+    {
+      "id": "0x655",
+      "type": "u16le",
+      "start_byte": 3,
+      "path": "fuel.range_km_candidate",
+      "scale": 0.01,
+      "offset": 0.0,
+      "round": 1,
+      "raw_path": "fuel.range_raw_candidate"
+    },
+    {
+      "id": "0x651",
+      "byte": 5,
+      "type": "scaled",
+      "path": "fuel.range_km_rounded_candidate",
+      "scale": 1.0,
+      "offset": 0.0,
+      "round": 0,
+      "raw_path": "fuel.range_rounded_raw_candidate"
+    },
+    {
+      "id": "0x3E3",
+      "byte": 4,
+      "type": "bool",
+      "path": "climate.front_demist_air_request",
+      "mask": "0x80",
+      "true": "0x80",
+      "false": "0x00",
+      "raw_path": "climate.front_demist_air_request_raw"
     }
   ]
 }

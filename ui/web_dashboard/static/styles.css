@@ -1,0 +1,1969 @@
+:root {
+  --bg: #020407;
+  --panel: rgba(21, 24, 30, 0.88);
+  --line: rgba(255, 255, 255, 0.16);
+  --text: #f2f4f7;
+  --muted: #a8adb6;
+  --dim: #666d78;
+  --red: #ff3c38;
+  --amber: #ffb13b;
+  --green: #52d878;
+  --blue: #55baff;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+body { overflow: hidden; }
+
+.screen {
+  min-height: 100svh;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: clamp(10px, 1.8vh, 22px);
+  padding: clamp(12px, 2.4vh, 26px) clamp(14px, 2.8vw, 46px);
+  background:
+    radial-gradient(circle at 52% 38%, rgba(85, 95, 110, .18), transparent 44%),
+    linear-gradient(180deg, #07090d, #010203 72%);
+}
+
+.screen::before {
+  content: "";
+  position: fixed;
+  inset: 10px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  pointer-events: none;
+}
+
+.topbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid var(--line);
+  padding: 0 0 clamp(10px, 1.4vh, 18px);
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(2rem, 4.2vw, 4.25rem);
+  font-weight: 300;
+  letter-spacing: -0.055em;
+  line-height: 1;
+}
+
+.subline {
+  margin-top: .35rem;
+  color: var(--muted);
+  font-size: clamp(.75rem, 1.1vw, 1rem);
+  opacity: .75;
+}
+
+.health-pill {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  padding: .55rem .85rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255,255,255,.035);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.health-dot {
+  width: .72rem;
+  height: .72rem;
+  border-radius: 50%;
+  background: var(--amber);
+  box-shadow: 0 0 14px currentColor;
+}
+.health-dot.live { background: var(--green); color: var(--green); }
+.health-dot.stale, .health-dot.error { background: var(--red); color: var(--red); }
+.health-dot.waiting { background: var(--amber); color: var(--amber); }
+
+.page {
+  display: none;
+  min-height: 0;
+  gap: clamp(12px, 2vw, 28px);
+  align-items: stretch;
+}
+
+.page.active {
+  display: grid;
+  grid-template-columns: minmax(15rem, 1fr) minmax(22rem, 1.6fr) minmax(15rem, 1fr);
+}
+
+.panel-stack {
+  min-width: 0;
+  display: grid;
+  gap: clamp(10px, 1.8vh, 20px);
+  align-content: center;
+}
+
+.tile {
+  min-width: 0;
+  min-height: clamp(6.2rem, 14vh, 10rem);
+  display: flex;
+  align-items: center;
+  gap: clamp(.75rem, 1.4vw, 1.5rem);
+  padding: clamp(.9rem, 1.8vh, 1.35rem) clamp(.9rem, 1.6vw, 1.65rem);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background:
+    linear-gradient(145deg, rgba(255,255,255,.055), transparent 50%),
+    var(--panel);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.025), 0 20px 45px rgba(0,0,0,.25);
+  overflow: hidden;
+}
+
+.tile.compact {
+  min-height: clamp(4.7rem, 9vh, 6.8rem);
+  display: block;
+}
+
+.icon {
+  flex: 0 0 clamp(2.4rem, 4.2vw, 4.4rem);
+  text-align: center;
+  color: #d9dde5;
+  font-size: clamp(2rem, 3.7vw, 4rem);
+  line-height: 1;
+}
+
+.icon.danger, .danger { color: var(--red); }
+
+.label {
+  color: var(--muted);
+  font-size: clamp(.95rem, 1.45vw, 1.65rem);
+  line-height: 1.05;
+}
+
+.value, .state {
+  margin-top: .3rem;
+  font-size: clamp(2rem, 4.6vw, 4.75rem);
+  font-weight: 300;
+  letter-spacing: -.055em;
+  line-height: .98;
+  text-transform: none;
+  word-break: keep-all;
+}
+
+.state { text-transform: uppercase; }
+.value small { margin-left: .45rem; font-size: .43em; letter-spacing: 0; }
+
+.full { width: 100%; min-width: 0; }
+
+.temp-bar {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 2fr 1fr;
+  height: .7rem;
+  margin-top: .9rem;
+  border: 1px solid rgba(255,255,255,.38);
+  background: #222;
+}
+.temp-bar .blue { background: linear-gradient(90deg, #198ee9, #b2dcff); }
+.temp-bar .white { background: linear-gradient(90deg, #b9bdc4, #fff, #b9bdc4); }
+.temp-bar .red { background: linear-gradient(90deg, #ff8585, #d70c0c); }
+.temp-bar b {
+  position: absolute;
+  left: 52%;
+  top: -.45rem;
+  bottom: -.45rem;
+  width: 3px;
+  background: #fff;
+  box-shadow: 0 0 10px rgba(255,255,255,.7);
+}
+.temp-scale {
+  display: flex;
+  justify-content: space-between;
+  margin-top: .28rem;
+  color: #e3e5e9;
+  font-size: clamp(.8rem, 1.2vw, 1.15rem);
+}
+
+.hero-card, .blower-card, .vehicle-card {
+  min-width: 0;
+  min-height: clamp(24rem, 62vh, 43rem);
+  border: 1px solid rgba(255,255,255,.10);
+  border-radius: 16px;
+  background: radial-gradient(circle at 50% 45%, rgba(255,255,255,.075), transparent 55%), rgba(10,12,16,.55);
+  display: grid;
+  place-items: center;
+  padding: clamp(1rem, 2vw, 2rem);
+  overflow: hidden;
+}
+
+.speed {
+  align-self: end;
+  font-size: clamp(4rem, 8.5vw, 8rem);
+  font-weight: 300;
+  letter-spacing: -.07em;
+  line-height: 1;
+}
+.speed small {
+  margin-left: .65rem;
+  font-size: .32em;
+  letter-spacing: 0;
+}
+
+.tach {
+  position: relative;
+  width: min(100%, 46rem);
+  aspect-ratio: 1.9 / 1;
+  border: clamp(6px, .7vw, 10px) solid rgba(220,225,234,.21);
+  border-bottom: 0;
+  border-radius: 100vw 100vw 0 0;
+  background: radial-gradient(ellipse at 50% 100%, rgba(255,255,255,.08), transparent 45%);
+}
+
+.tach.compact { width: min(100%, 40rem); }
+
+.tach-labels {
+  position: absolute;
+  inset: 8% 7% 0;
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  color: #eaedf2;
+  font-size: clamp(1.8rem, 3.6vw, 4rem);
+}
+.hot { color: var(--red); }
+
+.needle {
+  position: absolute;
+  z-index: 3;
+  left: 14%;
+  bottom: 22%;
+  width: 23%;
+  height: clamp(.45rem, 1.2vh, .8rem);
+  transform-origin: right center;
+  transform: rotate(var(--rpm-rotation, 0deg));
+  border-radius: 99px;
+  background: linear-gradient(90deg, var(--red), #fff);
+  box-shadow: 0 0 16px rgba(255,50,50,.62);
+}
+
+.tach-centre {
+  position: absolute;
+  inset: 43% 0 auto;
+  text-align: center;
+  font-size: clamp(4rem, 7vw, 8rem);
+  font-weight: 300;
+  letter-spacing: -.07em;
+}
+.tach-centre small {
+  display: block;
+  margin-top: .15rem;
+  color: #d4d8df;
+  font-size: .27em;
+  letter-spacing: 0;
+}
+
+.blower-card {
+  border-radius: 50%;
+  width: min(100%, 40rem);
+  aspect-ratio: 1 / 1;
+  min-height: auto;
+  justify-self: center;
+}
+.fan { font-size: clamp(3rem, 6vw, 6.5rem); }
+.blower-value {
+  margin-top: -16%;
+  font-size: clamp(5rem, 10vw, 10rem);
+  font-weight: 300;
+  letter-spacing: -.08em;
+}
+.blower-value small { font-size: .44em; }
+.dial-label {
+  margin-top: -18%;
+  color: #d0d4da;
+  font-size: clamp(1.2rem, 2vw, 2rem);
+}
+
+.vehicle-card {
+  grid-template-columns: minmax(12rem, 16rem) minmax(12rem, 18rem);
+  gap: clamp(1rem, 2vw, 2rem);
+  align-content: center;
+}
+
+.car-shell {
+  position: relative;
+  width: clamp(9rem, 17vw, 14rem);
+  height: clamp(20rem, 47vh, 31rem);
+  border: 1px solid rgba(255,255,255,.22);
+  border-radius: 45% 45% 18% 18% / 17% 17% 20% 20%;
+  background:
+    linear-gradient(90deg, rgba(255,255,255,.18), transparent 15%, transparent 85%, rgba(255,255,255,.16)),
+    linear-gradient(180deg, #30353c, #090b0f 43%, #252a31);
+  box-shadow: 0 18px 75px rgba(0,0,0,.55), inset 0 0 32px rgba(255,255,255,.07);
+}
+.car-shell::before {
+  content: "";
+  position: absolute;
+  inset: 20% 17% 47%;
+  border-radius: 38% 38% 12% 12%;
+  background: #020304;
+}
+.car-shell::after {
+  content: "";
+  position: absolute;
+  left: 18%;
+  right: 18%;
+  bottom: 7%;
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--red), transparent 30%, transparent 70%, var(--red));
+  box-shadow: 0 0 13px rgba(255,0,0,.55);
+}
+
+.door-mark {
+  position: absolute;
+  opacity: .18;
+  background: #848c98;
+  transition: .18s ease;
+}
+.door-mark.open {
+  opacity: 1;
+  background: var(--amber);
+  box-shadow: 0 0 20px var(--amber);
+}
+.door-mark.fl, .door-mark.rl { left: -14px; }
+.door-mark.fr, .door-mark.rr { right: -14px; }
+.door-mark.fl, .door-mark.fr { top: 27%; }
+.door-mark.rl, .door-mark.rr { top: 55%; }
+.door-mark.fl, .door-mark.fr, .door-mark.rl, .door-mark.rr { width: 8px; height: 28%; }
+.door-mark.boot { left: 25%; right: 25%; bottom: -12px; height: 8px; }
+.door-mark.bonnet { left: 25%; right: 25%; top: -12px; height: 8px; }
+
+.door-list {
+  display: grid;
+  gap: .65rem;
+  width: 100%;
+}
+.door-row {
+  display: flex;
+  justify-content: space-between;
+  gap: .8rem;
+  padding: .65rem .8rem;
+  border: 1px solid rgba(255,255,255,.10);
+  border-radius: 10px;
+  background: rgba(255,255,255,.035);
+  color: var(--muted);
+}
+.door-row strong { color: var(--text); }
+.door-row.open {
+  border-color: rgba(255,177,59,.55);
+  color: var(--amber);
+}
+.door-row.open strong { color: var(--amber); }
+
+.actual-note {
+  color: var(--muted);
+  align-self: end;
+  font-size: clamp(.9rem, 1.3vw, 1.3rem);
+}
+
+.status-strip {
+  min-height: clamp(4.5rem, 11vh, 7.5rem);
+  border-top: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  gap: clamp(1rem, 4vw, 5rem);
+  padding: clamp(.7rem, 1.4vh, 1rem) clamp(1rem, 4vw, 4rem) 0;
+  background: linear-gradient(180deg, rgba(24,28,34,.90), rgba(10,12,15,.96));
+}
+
+.footer-item {
+  display: flex;
+  align-items: center;
+  gap: .9rem;
+  min-width: min(18rem, 32vw);
+}
+.footer-item span {
+  display: block;
+  color: var(--muted);
+}
+.footer-item strong {
+  display: block;
+  font-size: clamp(1.6rem, 2.8vw, 3rem);
+  font-weight: 300;
+  text-transform: uppercase;
+}
+.footer-item.alert strong { color: var(--red); }
+
+.round-alert {
+  display: grid !important;
+  place-items: center;
+  width: clamp(2.4rem, 3.8vw, 4rem);
+  aspect-ratio: 1 / 1;
+  border: 4px solid var(--red);
+  border-radius: 50%;
+  color: var(--red) !important;
+  font-weight: 800;
+}
+
+.pager {
+  margin-left: auto;
+  display: flex;
+  gap: clamp(.8rem, 1.5vw, 1.5rem);
+}
+.pager button {
+  width: clamp(.75rem, 1.2vw, 1rem);
+  aspect-ratio: 1 / 1;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255,255,255,.18);
+  cursor: pointer;
+}
+.pager button.active {
+  background: #fff;
+  box-shadow: 0 0 18px rgba(255,255,255,.45);
+}
+
+@media (max-width: 1180px) {
+  body { overflow: auto; }
+  .screen { min-height: 100vh; }
+  .page.active {
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+  }
+  .hero-card, .blower-card, .vehicle-card, .technical {
+    grid-column: 1 / -1;
+    order: -1;
+    min-height: 24rem;
+  }
+  .blower-card { width: min(25rem, 80vw); }
+}
+
+@media (max-width: 720px) {
+  .topbar { flex-direction: column; align-items: stretch; }
+  .health-pill { justify-content: space-between; }
+  .page.active { grid-template-columns: 1fr; }
+  .vehicle-card { grid-template-columns: 1fr; justify-items: center; }
+  .status-strip { flex-wrap: wrap; height: auto; }
+  .pager { margin-left: 0; width: 100%; justify-content: center; }
+  .tile { min-height: 5.8rem; }
+}
+
+/* open-mmi dashboard ui pass 2: digital rpm gauge */
+:root {
+  --rpm-scale: 0;
+  --rpm-colour: var(--blue);
+}
+
+:root.rpm-unknown { --rpm-colour: var(--dim); }
+:root.rpm-idle { --rpm-colour: var(--blue); }
+:root.rpm-normal { --rpm-colour: var(--green); }
+:root.rpm-high { --rpm-colour: var(--amber); }
+:root.rpm-redline { --rpm-colour: var(--red); }
+
+.speed,
+.value,
+.state,
+.tach-centre,
+.footer-item strong {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+.tach {
+  --rpm-bar-pad: clamp(1rem, 3vw, 2rem);
+  --rpm-bar-bottom: clamp(1.15rem, 2.5vh, 1.85rem);
+  position: relative;
+  width: min(100%, 42rem);
+  min-height: clamp(13rem, 32vh, 22rem);
+  aspect-ratio: auto;
+  display: grid;
+  place-items: center;
+  padding: clamp(1rem, 2.4vw, 2rem);
+  border: 1px solid rgba(255, 255, 255, .16);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 50% 42%, color-mix(in srgb, var(--rpm-colour) 22%, transparent), transparent 44%),
+    linear-gradient(180deg, rgba(255, 255, 255, .075), rgba(255, 255, 255, .025)),
+    rgba(8, 10, 14, .78);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, .035),
+    0 24px 70px rgba(0, 0, 0, .32);
+  overflow: hidden;
+}
+
+.tach.compact {
+  width: min(100%, 34rem);
+  min-height: clamp(11.5rem, 26vh, 17rem);
+}
+
+.tach::before,
+.tach::after {
+  content: "";
+  position: absolute;
+  left: var(--rpm-bar-pad);
+  right: var(--rpm-bar-pad);
+  bottom: var(--rpm-bar-bottom);
+  height: clamp(.75rem, 1.7vh, 1.1rem);
+  border-radius: 999px;
+  pointer-events: none;
+}
+
+.tach::before {
+  border: 1px solid rgba(255, 255, 255, .20);
+  background:
+    linear-gradient(90deg,
+      rgba(82, 216, 120, .35) 0 64%,
+      rgba(255, 177, 59, .42) 64% 86%,
+      rgba(255, 60, 56, .55) 86% 100%),
+    rgba(255, 255, 255, .055);
+  box-shadow: inset 0 0 12px rgba(0, 0, 0, .45);
+}
+
+.tach::after {
+  right: var(--rpm-bar-pad);
+  background: linear-gradient(90deg, rgba(255, 255, 255, .92), var(--rpm-colour));
+  box-shadow: 0 0 18px color-mix(in srgb, var(--rpm-colour) 70%, transparent);
+  transform: scaleX(var(--rpm-scale));
+  transform-origin: left center;
+  transition:
+    transform 220ms cubic-bezier(.22, .61, .36, 1),
+    background-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.needle {
+  display: none !important;
+}
+
+.tach-labels {
+  position: absolute;
+  left: var(--rpm-bar-pad);
+  right: var(--rpm-bar-pad);
+  bottom: calc(var(--rpm-bar-bottom) + clamp(1.05rem, 2.4vh, 1.65rem));
+  inset-block-start: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: rgba(234, 237, 242, .66);
+  font-size: clamp(.85rem, 1.45vw, 1.35rem);
+  letter-spacing: .04em;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.tach-labels .hot,
+.hot {
+  color: var(--red);
+}
+
+.tach-centre {
+  position: relative;
+  inset: auto;
+  z-index: 2;
+  width: 100%;
+  margin: 0 0 clamp(2.1rem, 6vh, 4.3rem);
+  text-align: center;
+  color: var(--rpm-colour);
+  font-size: clamp(4.7rem, 10vw, 9.4rem);
+  font-weight: 300;
+  letter-spacing: -.075em;
+  line-height: .86;
+  text-shadow:
+    0 0 22px color-mix(in srgb, var(--rpm-colour) 52%, transparent),
+    0 0 64px color-mix(in srgb, var(--rpm-colour) 24%, transparent);
+  transition: color 160ms ease, text-shadow 160ms ease;
+}
+
+.tach.compact .tach-centre {
+  font-size: clamp(3.5rem, 7.5vw, 6.3rem);
+}
+
+.tach-centre::before {
+  content: "ENGINE SPEED";
+  display: block;
+  margin-bottom: .55rem;
+  color: var(--muted);
+  font-size: clamp(.78rem, 1.3vw, 1.1rem);
+  font-weight: 600;
+  letter-spacing: .18em;
+  line-height: 1;
+}
+
+.tach-centre small {
+  display: block;
+  margin-top: .45rem;
+  color: rgba(242, 244, 247, .78);
+  font-size: .18em;
+  font-weight: 600;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+}
+
+:root.rpm-redline .tach {
+  animation: rpmRedlinePulse 700ms ease-in-out infinite alternate;
+}
+
+@keyframes rpmRedlinePulse {
+  from {
+    border-color: rgba(255, 60, 56, .38);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .035), 0 24px 70px rgba(0, 0, 0, .32);
+  }
+  to {
+    border-color: rgba(255, 60, 56, .78);
+    box-shadow: inset 0 0 0 1px rgba(255, 60, 56, .20), 0 0 42px rgba(255, 60, 56, .18);
+  }
+}
+
+@media (max-width: 720px) {
+  .tach {
+    min-height: clamp(11rem, 35vh, 17rem);
+    border-radius: 14px;
+  }
+
+  .tach-centre {
+    font-size: clamp(4rem, 20vw, 6.4rem);
+  }
+
+  .tach-labels {
+    font-size: clamp(.72rem, 3.4vw, 1rem);
+  }
+}
+
+@media (max-height: 620px) and (orientation: landscape) {
+  .tach {
+    min-height: 11rem;
+  }
+
+  .tach-centre {
+    margin-bottom: 2.4rem;
+    font-size: clamp(3.6rem, 9vw, 5.8rem);
+  }
+}
+/* end open-mmi dashboard ui pass 2 */
+
+/* open-mmi dashboard ui pass 2b: toned rpm glow */
+.tach {
+  background:
+    radial-gradient(circle at 50% 42%, color-mix(in srgb, var(--rpm-colour) 9%, transparent), transparent 42%),
+    linear-gradient(180deg, rgba(255, 255, 255, .065), rgba(255, 255, 255, .022)),
+    rgba(8, 10, 14, .78);
+}
+
+.tach::after {
+  box-shadow: 0 0 8px color-mix(in srgb, var(--rpm-colour) 34%, transparent);
+}
+
+.tach-centre {
+  text-shadow:
+    0 0 9px color-mix(in srgb, var(--rpm-colour) 28%, transparent),
+    0 0 26px color-mix(in srgb, var(--rpm-colour) 10%, transparent);
+}
+
+:root.rpm-redline .tach {
+  animation-duration: 1100ms;
+}
+
+@keyframes rpmRedlinePulse {
+  from {
+    border-color: rgba(255, 60, 56, .30);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .03), 0 20px 58px rgba(0, 0, 0, .28);
+  }
+  to {
+    border-color: rgba(255, 60, 56, .54);
+    box-shadow: inset 0 0 0 1px rgba(255, 60, 56, .12), 0 0 22px rgba(255, 60, 56, .10);
+  }
+}
+/* end open-mmi dashboard ui pass 2b */
+
+/* open-mmi dashboard ui pass 11: inline data tell-tales */
+.openmmi-telltale-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.openmmi-telltale-value {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(.55rem, 1.4vw, 1.1rem);
+  min-height: clamp(2.4rem, 5vw, 4.8rem);
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.openmmi-indicator-pair {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(.65rem, 1.8vw, 1.45rem);
+}
+
+.openmmi-telltale {
+  --telltale-size: clamp(2.75rem, 5.25vw, 5.5rem);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--telltale-size);
+  height: var(--telltale-size);
+  flex: 0 0 var(--telltale-size);
+  opacity: .13;
+  background: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  filter: none !important;
+  transform: translateZ(0);
+}
+
+.footer-item .openmmi-telltale {
+  --telltale-size: clamp(1.75rem, 3.2vw, 3rem);
+}
+
+.openmmi-telltale img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  filter: none !important;
+}
+
+.openmmi-telltale.is-active { opacity: 1; }
+.openmmi-telltale.is-inactive { opacity: .13; }
+.openmmi-telltale.is-unknown { opacity: .22; }
+
+.openmmi-telltale-left-turn.is-active,
+.openmmi-telltale-right-turn.is-active,
+.openmmi-telltale-hazard.is-active {
+  animation: openMmiTelltaleFlash 850ms steps(1, end) infinite;
+}
+
+@keyframes openMmiTelltaleFlash {
+  0%, 48% { opacity: 1; }
+  49%, 100% { opacity: .14; }
+}
+
+.openmmi-telltale.icon-load-failed::after {
+  content: "⚠";
+  color: #ffb84d;
+  font-size: calc(var(--telltale-size) * .62);
+}
+
+.openmmi-telltale.icon-load-failed img {
+  display: none;
+}
+
+.openmmi-telltale-host.tile {
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+}
+
+.openmmi-telltale-host.tile > .icon,
+.openmmi-telltale-host.tile > .tile-icon,
+.openmmi-telltale-host.tile .label,
+.openmmi-telltale-host.footer-item > span:not(.openmmi-telltale):not(.openmmi-telltale-sr),
+.openmmi-telltale-host.footer-item div > span,
+.openmmi-telltale-host.footer-item .label {
+  display: none !important;
+}
+
+/* Keep the digital RPM glow subdued after tell-tale CSS is appended. */
+.tach::after {
+  box-shadow: 0 0 3px rgba(255, 255, 255, .08) !important;
+}
+
+.tach-centre,
+.digital-rpm-value,
+.rpm-readout,
+.rpm-number {
+  text-shadow: 0 0 4px rgba(255, 255, 255, .06) !important;
+  filter: none !important;
+}
+
+.digital-rpm-panel,
+.rpm-panel,
+.tach.digital,
+.tach {
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.025), 0 10px 24px rgba(0,0,0,.24) !important;
+}
+
+@media (max-width: 720px) {
+  .openmmi-telltale {
+    --telltale-size: clamp(2.35rem, 11vw, 4.5rem);
+  }
+
+  .footer-item .openmmi-telltale {
+    --telltale-size: clamp(1.55rem, 7vw, 2.65rem);
+  }
+}
+/* end open-mmi dashboard ui pass 11 */
+
+/* open-mmi dashboard ui pass 12: coolant and voltage fixes */
+.openmmi-voltage-field {
+  display: inline-block;
+}
+
+.openmmi-voltage-readout {
+  display: inline-flex;
+  align-items: center;
+  gap: .18em;
+  color: rgba(233, 238, 245, .86);
+  line-height: .95;
+}
+
+.openmmi-voltage-readout .openmmi-voltage-icon {
+  width: .72em;
+  height: .72em;
+  flex: 0 0 .72em;
+  opacity: .92;
+  transform: translateY(.035em);
+  filter: none !important;
+}
+
+.openmmi-voltage-readout.is-normal {
+  color: rgba(233, 238, 245, .86);
+}
+
+.openmmi-voltage-readout.is-warn {
+  color: var(--amber);
+}
+
+.openmmi-voltage-readout.is-danger {
+  color: var(--red);
+}
+
+.openmmi-voltage-readout.is-unknown {
+  color: var(--dim);
+}
+
+.tile.openmmi-voltage-warn,
+.tile.openmmi-voltage-danger {
+  border-color: color-mix(in srgb, currentColor 28%, rgba(255,255,255,.14));
+}
+
+.openmmi-coolant-gauge b {
+  left: var(--coolant-pos, 52%) !important;
+  transform: translateX(-50%);
+  transition: left 180ms linear, background-color 180ms linear, box-shadow 180ms linear;
+}
+
+.openmmi-coolant-gauge.is-cold b {
+  background: #9bd7ff !important;
+  box-shadow: 0 0 10px rgba(155, 215, 255, .65) !important;
+}
+
+.openmmi-coolant-gauge.is-normal b {
+  background: #fff !important;
+  box-shadow: 0 0 10px rgba(255,255,255,.6) !important;
+}
+
+.openmmi-coolant-gauge.is-hot b {
+  background: var(--red) !important;
+  box-shadow: 0 0 14px rgba(255, 60, 56, .72) !important;
+}
+
+.openmmi-coolant-gauge.is-unknown b {
+  opacity: .32;
+}
+/* end open-mmi dashboard ui pass 12 */
+
+/* open-mmi dashboard ui pass 13: voltage tile icon fix */
+.openmmi-voltage-tile-icon {
+  color: rgba(233, 238, 245, .88);
+  display: grid;
+  place-items: center;
+}
+
+.openmmi-voltage-tile-icon svg {
+  width: 1.38em;
+  height: 1.38em;
+  display: block;
+  filter: none !important;
+}
+
+.tile.openmmi-voltage-warn .openmmi-voltage-tile-icon,
+.tile:has(.openmmi-voltage-readout.is-warn) .openmmi-voltage-tile-icon {
+  color: var(--amber);
+}
+
+.tile.openmmi-voltage-danger .openmmi-voltage-tile-icon,
+.tile:has(.openmmi-voltage-readout.is-danger) .openmmi-voltage-tile-icon {
+  color: var(--red);
+}
+
+/* Pass 12 put a small battery next to the number. The tell-tale now lives in the
+   tile icon position, so hide that duplicate while keeping the readout wrapper. */
+.openmmi-voltage-readout .openmmi-voltage-icon {
+  display: none !important;
+}
+
+.openmmi-voltage-readout {
+  gap: 0 !important;
+}
+/* end open-mmi dashboard ui pass 13 */
+
+
+/* --- Open MMI Jellyfin real Bootstrap media v5 start --- */
+/* Keep Bootstrap as the layout engine; these rules only skin it for the dashboard and enforce containment. */
+#pageElectrical.page-media:not(.active),
+.page-media:not(.active) {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+#pageElectrical.page-media.active {
+  display: block !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  width: 100% !important;
+  overflow: hidden !important;
+}
+
+#openMmiMediaRoot.open-mmi-media-v5 {
+  min-width: 0 !important;
+  min-height: 0 !important;
+  width: 100% !important;
+  overflow: hidden !important;
+  color: var(--text, #f3f6fb);
+}
+
+#openMmiMediaRoot,
+#openMmiMediaRoot * {
+  box-sizing: border-box;
+}
+
+#openMmiMediaRoot .min-h-0 { min-height: 0 !important; }
+#openMmiMediaRoot .min-w-0 { min-width: 0 !important; }
+
+#openMmiMediaRoot .ommi-media-card {
+  border: 1px solid rgba(255,255,255,.11) !important;
+  border-radius: 16px !important;
+  background: linear-gradient(145deg, rgba(16, 24, 38, .96), rgba(6, 9, 15, .96)) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.055), 0 12px 28px rgba(0,0,0,.26) !important;
+}
+
+#openMmiMediaRoot .card-body {
+  padding: clamp(8px, 1.45vh, 14px) !important;
+}
+
+#openMmiMediaRoot .bi,
+#openMmiMediaRoot .ommi-icon-btn svg,
+#openMmiMediaRoot .ommi-search-btn svg,
+#openMmiMediaRoot .ommi-recent-btn svg {
+  width: 1.35em;
+  height: 1.35em;
+  vertical-align: -.18em;
+}
+
+#openMmiMediaRoot .ommi-art {
+  width: 100%;
+  height: clamp(72px, 21vh, 165px);
+  min-height: 0;
+  border-radius: 14px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 32% 20%, rgba(80, 210, 255, .15), rgba(255,255,255,.045) 56%, rgba(0,0,0,.28));
+  border: 1px solid rgba(255,255,255,.10);
+  color: rgba(255,255,255,.55);
+}
+
+#openMmiMediaRoot .ommi-art.has-art { background: rgba(255,255,255,.055); }
+#openMmiMediaRoot .ommi-art img,
+#openMmiMediaRoot .ommi-track-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+#openMmiMediaRoot .ommi-art-icon { width: 2.4rem; height: 2.4rem; opacity: .75; }
+
+#openMmiMediaRoot .ommi-kicker {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  letter-spacing: .12em;
+  color: var(--muted, rgba(255,255,255,.58)) !important;
+}
+
+#openMmiMediaRoot .ommi-now-title {
+  font-size: clamp(1.28rem, 3.55vh, 2.45rem);
+  line-height: 1;
+  letter-spacing: -.04em;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+#openMmiMediaRoot .ommi-now-subtitle {
+  font-size: clamp(.82rem, 1.72vh, 1.05rem);
+  line-height: 1.12;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+#openMmiMediaRoot .ommi-message {
+  min-height: 1.1em;
+  font-size: clamp(.68rem, 1.35vh, .84rem);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#openMmiMediaRoot .ommi-progress {
+  height: clamp(.45rem, 1.15vh, .68rem);
+  background: rgba(255,255,255,.12) !important;
+  cursor: pointer;
+}
+#openMmiMediaRoot .ommi-progress-fill {
+  background: linear-gradient(90deg, rgba(52,211,255,.95), rgba(80,235,165,.92)) !important;
+}
+
+#openMmiMediaRoot .ommi-icon-btn {
+  min-height: clamp(40px, 6.2vh, 54px);
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  font-size: clamp(1rem, 2.6vh, 1.35rem);
+  box-shadow: none !important;
+}
+#openMmiMediaRoot .ommi-play-btn { color: #031018 !important; }
+
+#openMmiMediaRoot .form-control {
+  min-height: clamp(40px, 6vh, 52px);
+  color: var(--text, #f3f6fb) !important;
+  background: rgba(255,255,255,.08) !important;
+  border-color: rgba(255,255,255,.15) !important;
+  box-shadow: none !important;
+}
+#openMmiMediaRoot .form-control::placeholder { color: rgba(255,255,255,.52) !important; }
+#openMmiMediaRoot .input-group .btn { min-width: clamp(44px, 7vh, 58px); box-shadow: none !important; }
+
+#openMmiMediaRoot .ommi-list-heading {
+  color: var(--muted, rgba(255,255,255,.58));
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  font-size: .72rem;
+}
+#openMmiMediaRoot .ommi-remote-state {
+  max-width: min(38vw, 240px);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+#openMmiMediaRoot .ommi-results {
+  min-height: 0 !important;
+  overscroll-behavior: contain;
+  padding-right: 2px;
+}
+
+#openMmiMediaRoot .ommi-track {
+  grid-template-columns: clamp(38px, 6.2vh, 52px) minmax(0, 1fr) auto;
+  gap: .65rem;
+  align-items: center;
+  min-height: clamp(48px, 7.8vh, 66px);
+  margin-bottom: .45rem;
+  border: 1px solid rgba(255,255,255,.08) !important;
+  border-radius: 13px !important;
+  color: var(--text, #f3f6fb) !important;
+  background: rgba(255,255,255,.055) !important;
+  text-align: left;
+}
+#openMmiMediaRoot .ommi-track:hover,
+#openMmiMediaRoot .ommi-track:focus-visible,
+#openMmiMediaRoot .ommi-track.active,
+#openMmiMediaRoot .ommi-track.is-playing {
+  border-color: rgba(84,217,255,.42) !important;
+  background: rgba(70,198,255,.16) !important;
+}
+
+#openMmiMediaRoot .ommi-track-art {
+  width: clamp(38px, 6.2vh, 52px);
+  height: clamp(38px, 6.2vh, 52px);
+  border-radius: 10px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: rgba(255,255,255,.08);
+  color: rgba(255,255,255,.58);
+}
+#openMmiMediaRoot .ommi-track-art svg { width: 1.35rem; height: 1.35rem; }
+#openMmiMediaRoot .ommi-track-copy { min-width: 0; }
+#openMmiMediaRoot .ommi-track-copy strong,
+#openMmiMediaRoot .ommi-track-copy small {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+#openMmiMediaRoot .ommi-track-copy strong { font-size: clamp(.82rem, 1.75vh, 1rem); }
+#openMmiMediaRoot .ommi-track-copy small,
+#openMmiMediaRoot .ommi-track-duration { color: var(--muted, rgba(255,255,255,.58)); }
+#openMmiMediaRoot .ommi-track-duration { font-variant-numeric: tabular-nums; font-size: clamp(.68rem, 1.45vh, .82rem); }
+
+#openMmiMediaRoot .ommi-empty {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  color: var(--muted, rgba(255,255,255,.62));
+  padding: 1rem;
+}
+
+@media (min-width: 768px) {
+  #openMmiMediaRoot .ommi-media-row { flex-wrap: nowrap !important; }
+}
+
+@media (max-width: 767.98px) {
+  #openMmiMediaRoot.open-mmi-media-v5 {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+  #pageElectrical.page-media.active {
+    overflow: auto !important;
+  }
+  #openMmiMediaRoot .ommi-media-row,
+  #openMmiMediaRoot .ommi-player-col,
+  #openMmiMediaRoot .ommi-browser-col {
+    height: auto !important;
+    overflow: visible !important;
+  }
+  #openMmiMediaRoot .ommi-results { max-height: 45vh; }
+}
+
+@media (max-height: 580px) and (min-width: 768px) {
+  #openMmiMediaRoot .card-body { padding: 8px !important; gap: .4rem !important; }
+  #openMmiMediaRoot .ommi-art { display: none !important; }
+  #openMmiMediaRoot .ommi-kicker { display: none !important; }
+  #openMmiMediaRoot .ommi-message { display: none !important; }
+  #openMmiMediaRoot .ommi-now-title { font-size: clamp(1.05rem, 3.1vh, 1.7rem); -webkit-line-clamp: 1; }
+  #openMmiMediaRoot .ommi-now-subtitle { -webkit-line-clamp: 1; }
+  #openMmiMediaRoot .ommi-icon-btn { min-height: 36px; }
+  #openMmiMediaRoot .form-control,
+  #openMmiMediaRoot .input-group .btn { min-height: 36px; }
+  #openMmiMediaRoot .ommi-track { min-height: 42px; grid-template-columns: 34px minmax(0, 1fr) auto; }
+  #openMmiMediaRoot .ommi-track-art { width: 34px; height: 34px; }
+}
+/* --- Open MMI Jellyfin real Bootstrap media v5 end --- */
+
+
+/* --- Open MMI Jellyfin viewport v6 start --- */
+/*
+  Stop the Media page being clipped at the bottom.
+  Keep the rounded cards inside the measured viewport and make only the track
+  list scroll. This deliberately does not pretend CDN Bootstrap is doing the
+  work; these rules are the containment layer the dashboard itself needs.
+*/
+#pageElectrical.page-media.active {
+  display: flex !important;
+  flex-direction: column !important;
+  width: 100% !important;
+  height: var(--ommi-media-viewport-height, auto) !important;
+  max-height: var(--ommi-media-viewport-height, none) !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  padding-bottom: 0 !important;
+}
+
+#openMmiMediaRoot.open-mmi-media-v5,
+#openMmiMediaRoot.open-mmi-media-v4,
+#openMmiMediaRoot {
+  flex: 1 1 auto !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-height: 100% !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  padding: 0 !important;
+}
+
+#openMmiMediaRoot .ommi-media-row {
+  height: 100% !important;
+  max-height: 100% !important;
+  min-height: 0 !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  overflow: hidden !important;
+  align-items: stretch !important;
+}
+
+#openMmiMediaRoot .ommi-player-col,
+#openMmiMediaRoot .ommi-browser-col {
+  height: 100% !important;
+  max-height: 100% !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+}
+
+#openMmiMediaRoot .ommi-media-card {
+  height: 100% !important;
+  max-height: 100% !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  border-radius: 16px !important;
+}
+
+#openMmiMediaRoot .ommi-player-body,
+#openMmiMediaRoot .ommi-browser-body,
+#openMmiMediaRoot .card-body {
+  min-height: 0 !important;
+  max-height: 100% !important;
+  overflow: hidden !important;
+}
+
+#openMmiMediaRoot .ommi-results {
+  flex: 1 1 0 !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 2px !important;
+}
+
+/* Compact landscape panels before they clip. Many car/tablet browsers have
+   enough width for two columns but limited vertical height. */
+@media (min-width: 700px) and (max-height: 740px) {
+  #openMmiMediaRoot .card-body {
+    padding: 7px !important;
+    gap: .35rem !important;
+  }
+  #openMmiMediaRoot .ommi-art {
+    height: clamp(46px, 12vh, 88px) !important;
+    border-radius: 12px !important;
+  }
+  #openMmiMediaRoot .ommi-kicker,
+  #openMmiMediaRoot .ommi-message {
+    display: none !important;
+  }
+  #openMmiMediaRoot .ommi-now-title {
+    font-size: clamp(1rem, 3vh, 1.55rem) !important;
+    line-height: 1 !important;
+    -webkit-line-clamp: 1 !important;
+    margin-bottom: 0 !important;
+  }
+  #openMmiMediaRoot .ommi-now-subtitle {
+    font-size: clamp(.72rem, 1.7vh, .9rem) !important;
+    line-height: 1.05 !important;
+    -webkit-line-clamp: 1 !important;
+  }
+  #openMmiMediaRoot .ommi-progress {
+    height: .42rem !important;
+  }
+  #openMmiMediaRoot .ommi-time,
+  #openMmiMediaRoot .ommi-list-heading {
+    font-size: .68rem !important;
+  }
+  #openMmiMediaRoot .ommi-icon-btn,
+  #openMmiMediaRoot .form-control,
+  #openMmiMediaRoot .input-group .btn {
+    min-height: 34px !important;
+  }
+  #openMmiMediaRoot .ommi-icon-btn svg,
+  #openMmiMediaRoot .ommi-search-btn svg,
+  #openMmiMediaRoot .ommi-recent-btn svg {
+    width: 1.12em !important;
+    height: 1.12em !important;
+  }
+  #openMmiMediaRoot .ommi-track {
+    min-height: 38px !important;
+    margin-bottom: .32rem !important;
+    grid-template-columns: 32px minmax(0, 1fr) auto !important;
+    gap: .5rem !important;
+    border-radius: 10px !important;
+  }
+  #openMmiMediaRoot .ommi-track-art {
+    width: 32px !important;
+    height: 32px !important;
+    border-radius: 8px !important;
+  }
+  #openMmiMediaRoot .ommi-track-copy strong {
+    font-size: .82rem !important;
+  }
+  #openMmiMediaRoot .ommi-track-copy small,
+  #openMmiMediaRoot .ommi-track-duration {
+    font-size: .68rem !important;
+  }
+}
+
+@media (min-width: 700px) and (max-height: 610px) {
+  #openMmiMediaRoot .ommi-art {
+    display: none !important;
+  }
+}
+/* --- Open MMI Jellyfin viewport v6 end --- */
+
+
+/* --- Open MMI Jellyfin render stability v8b start --- */
+/* Stabilise the Media page without relying on exact JS function names. */
+#pageElectrical.page-media.active.page-media-v8b,
+#pageElectrical.page-media-v8b.active {
+  overflow: hidden !important;
+  min-height: 0 !important;
+  box-sizing: border-box !important;
+  contain: layout paint !important;
+}
+
+#pageElectrical.page-media:not(.active),
+.page-media:not(.active) {
+  display: none !important;
+}
+
+#openMmiMediaRoot.open-mmi-media-v8b,
+#openMmiMediaRoot {
+  min-height: 0 !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+
+/* Cover both the early custom-card layout and the later Bootstrap-card layout. */
+#openMmiMediaRoot.open-mmi-media-v8b .ommi-media-row,
+#openMmiMediaRoot.open-mmi-media-v8b .row,
+#openMmiMediaRoot.open-mmi-media-v8b .container-fluid {
+  min-height: 0 !important;
+  max-height: 100% !important;
+  overflow: hidden !important;
+}
+
+#openMmiMediaRoot.open-mmi-media-v8b .ommi-player-col,
+#openMmiMediaRoot.open-mmi-media-v8b .ommi-browser-col,
+#openMmiMediaRoot.open-mmi-media-v8b [class*="col-"] {
+  min-height: 0 !important;
+  max-height: 100% !important;
+  overflow: hidden !important;
+}
+
+#openMmiMediaRoot.open-mmi-media-v8b .ommi-player-card,
+#openMmiMediaRoot.open-mmi-media-v8b .ommi-browser-card,
+#openMmiMediaRoot.open-mmi-media-v8b .ommi-media-card,
+#openMmiMediaRoot.open-mmi-media-v8b .card {
+  min-height: 0 !important;
+  max-height: 100% !important;
+  overflow: hidden !important;
+}
+
+#openMmiMediaRoot.open-mmi-media-v8b .ommi-browser-card,
+#openMmiMediaRoot.open-mmi-media-v8b .ommi-browser-body,
+#openMmiMediaRoot.open-mmi-media-v8b .card-body {
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+#openMmiMediaRoot.open-mmi-media-v8b .ommi-browser-card,
+#openMmiMediaRoot.open-mmi-media-v8b .ommi-browser-body {
+  display: grid !important;
+  grid-template-rows: auto auto auto minmax(0, 1fr) !important;
+}
+
+#openMmiMediaRoot.open-mmi-media-v8b #ommiMediaResults,
+#openMmiMediaRoot.open-mmi-media-v8b .ommi-results {
+  min-height: 0 !important;
+  height: auto !important;
+  max-height: 100% !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  overscroll-behavior: contain !important;
+  scrollbar-gutter: stable !important;
+  contain: content !important;
+  padding-bottom: max(.25rem, env(safe-area-inset-bottom)) !important;
+}
+
+#openMmiMediaRoot.open-mmi-media-v8b .ommi-track,
+#openMmiMediaRoot.open-mmi-media-v8b .list-group-item {
+  flex: 0 0 auto !important;
+  box-sizing: border-box !important;
+}
+
+#openMmiMediaRoot.open-mmi-media-v8b .ommi-track-art,
+#openMmiMediaRoot.open-mmi-media-v8b .ommi-track-art img {
+  flex: 0 0 auto !important;
+}
+
+#openMmiMediaRoot.open-mmi-media-v8b .ommi-track-skeleton-v8b {
+  pointer-events: none !important;
+  cursor: default !important;
+  opacity: .72;
+}
+
+#openMmiMediaRoot.open-mmi-media-v8b .ommi-skeleton-box-v8b,
+#openMmiMediaRoot.open-mmi-media-v8b .ommi-skeleton-line-v8b {
+  display: block;
+  position: relative;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255,255,255,.11);
+}
+
+#openMmiMediaRoot.open-mmi-media-v8b .ommi-skeleton-line-v8b {
+  height: .82em;
+  width: min(100%, 18rem);
+  margin: .12rem 0;
+}
+
+#openMmiMediaRoot.open-mmi-media-v8b .ommi-skeleton-line-v8b.is-short { width: min(72%, 13rem); }
+#openMmiMediaRoot.open-mmi-media-v8b .ommi-skeleton-line-v8b.is-tiny { width: min(54%, 10rem); }
+#openMmiMediaRoot.open-mmi-media-v8b .ommi-skeleton-line-v8b.is-time { width: 2.7rem; height: .7em; justify-self: end; }
+
+#openMmiMediaRoot.open-mmi-media-v8b .ommi-skeleton-box-v8b::after,
+#openMmiMediaRoot.open-mmi-media-v8b .ommi-skeleton-line-v8b::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.14), transparent);
+  animation: ommiMediaV8bSkeleton 1.25s ease-in-out infinite;
+}
+
+@keyframes ommiMediaV8bSkeleton {
+  100% { transform: translateX(100%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #openMmiMediaRoot.open-mmi-media-v8b .ommi-skeleton-box-v8b::after,
+  #openMmiMediaRoot.open-mmi-media-v8b .ommi-skeleton-line-v8b::after {
+    animation: none;
+  }
+}
+/* --- Open MMI Jellyfin render stability v8b end --- */
+
+
+/* --- Open MMI dashboard shell footer containment start --- */
+/*
+  The old dashboard used .screen::before as a fixed viewport border. On the
+  tablet that makes the page pager/status strip look visually outside the
+  rounded dashboard square. Make the real .screen element the shell instead,
+  then keep the footer as its bottom grid row.
+*/
+html,
+body {
+  width: 100%;
+  height: 100%;
+}
+
+body {
+  overflow: hidden !important;
+  padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left)) !important;
+}
+
+.screen {
+  position: relative !important;
+  height: calc(100svh - max(20px, env(safe-area-inset-top) + env(safe-area-inset-bottom))) !important;
+  min-height: 0 !important;
+  max-height: calc(100svh - max(20px, env(safe-area-inset-top) + env(safe-area-inset-bottom))) !important;
+  grid-template-rows: auto minmax(0, 1fr) auto !important;
+  overflow: hidden !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 16px !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, .025),
+    0 28px 70px rgba(0, 0, 0, .34) !important;
+}
+
+.screen::before {
+  display: none !important;
+}
+
+.screen > .page,
+.screen > .page.active,
+.screen > .page-media,
+.screen > .page-media.active {
+  min-height: 0 !important;
+  overflow: hidden;
+}
+
+.status-strip {
+  min-height: clamp(4.1rem, 9.5vh, 6.8rem) !important;
+  align-self: end !important;
+  margin: 0 calc(-1 * clamp(14px, 2.8vw, 46px)) calc(-1 * clamp(12px, 2.4vh, 26px)) !important;
+  padding:
+    clamp(.65rem, 1.2vh, .95rem)
+    clamp(1rem, 4vw, 4rem)
+    max(clamp(.65rem, 1.2vh, .95rem), env(safe-area-inset-bottom)) !important;
+  border-top: 1px solid var(--line) !important;
+  border-bottom-left-radius: 15px !important;
+  border-bottom-right-radius: 15px !important;
+  overflow: hidden !important;
+}
+
+.status-strip .pager,
+.pager {
+  flex: 0 0 auto !important;
+  align-items: center !important;
+  padding: .2rem .35rem !important;
+  border-radius: 999px !important;
+  background: rgba(0, 0, 0, .16) !important;
+  border: 1px solid rgba(255, 255, 255, .08) !important;
+}
+
+.status-strip .pager button,
+.pager button {
+  flex: 0 0 auto !important;
+}
+
+@media (max-width: 720px) {
+  body {
+    padding: 8px !important;
+  }
+
+  .screen {
+    height: calc(100svh - 16px) !important;
+    max-height: calc(100svh - 16px) !important;
+  }
+
+  .status-strip {
+    margin: 0 calc(-1 * clamp(14px, 2.8vw, 46px)) calc(-1 * clamp(12px, 2.4vh, 26px)) !important;
+    min-height: clamp(4.8rem, 13vh, 7.2rem) !important;
+    padding-bottom: max(.8rem, env(safe-area-inset-bottom)) !important;
+  }
+}
+/* --- Open MMI dashboard shell footer containment end --- */
+
+
+/* --- Open MMI shell regression fix start --- */
+/*
+  Regression fixes after moving the footer inside the real shell:
+  - prevent Bootstrap/browser defaults from exposing white backgrounds,
+  - restore bright telemetry/readout text,
+  - keep Media contained from first paint while Jellyfin content loads.
+*/
+:root {
+  color-scheme: dark !important;
+  --ommi-bg-0: #05070b;
+  --ommi-bg-1: #090f18;
+  --ommi-bg-2: #0d1622;
+  --ommi-text-strong: #f7fbff;
+  --ommi-text: #eaf2ff;
+  --ommi-text-soft: #b8c7d8;
+}
+
+html,
+body {
+  background: radial-gradient(circle at 50% -25%, #152238 0%, var(--ommi-bg-1) 34%, var(--ommi-bg-0) 100%) !important;
+  color: var(--ommi-text) !important;
+}
+
+body,
+.screen,
+.page,
+.page.active,
+.page-media,
+.page-media.active {
+  background-color: transparent !important;
+}
+
+.screen {
+  background:
+    radial-gradient(circle at 18% 0%, rgba(75, 149, 255, .075), transparent 34%),
+    linear-gradient(180deg, rgba(17, 28, 43, .96), rgba(7, 11, 17, .98)) !important;
+  color: var(--ommi-text) !important;
+}
+
+/* Bootstrap cards/lists/inputs can otherwise leak a white theme into Media. */
+.card,
+.card-body,
+.list-group,
+.list-group-item,
+.form-control,
+.input-group-text,
+.btn,
+.ommi-media-card,
+.ommi-player-card,
+.ommi-browser-card,
+.tile,
+.stat,
+.panel,
+.status-strip {
+  color: var(--ommi-text) !important;
+}
+
+.card,
+.ommi-media-card,
+.ommi-player-card,
+.ommi-browser-card {
+  background: rgba(8, 14, 22, .78) !important;
+  border-color: rgba(255, 255, 255, .10) !important;
+}
+
+.list-group-item,
+.ommi-track {
+  background: rgba(255, 255, 255, .035) !important;
+  color: var(--ommi-text) !important;
+  border-color: rgba(255, 255, 255, .075) !important;
+}
+
+.form-control,
+.input-group-text {
+  background: rgba(0, 0, 0, .24) !important;
+  color: var(--ommi-text-strong) !important;
+  border-color: rgba(255, 255, 255, .14) !important;
+}
+
+.form-control::placeholder {
+  color: rgba(234, 242, 255, .55) !important;
+}
+
+/* Restore high-contrast vehicle telemetry after Bootstrap/text-muted overrides. */
+.value,
+.readout,
+.speed-value,
+.speed .value,
+.stat .value,
+.tile .value,
+.tile strong,
+.big-number,
+.rpm-digital-value,
+.drive-speed,
+#speedValue,
+#rpmValue,
+[data-field="speed_mph"],
+[data-field="speed_kmh"],
+[data-field="odometer_mi"],
+[data-field="odometer_km"],
+[data-field="outside_temp_c"],
+[data-field="coolant_temp_c"],
+[data-field="voltage_v"],
+[data-field="range_mi"],
+[data-field="range_km"] {
+  color: var(--ommi-text-strong) !important;
+  opacity: 1 !important;
+  text-shadow: 0 0 12px rgba(140, 190, 255, .12) !important;
+}
+
+.label,
+.unit,
+.subvalue,
+.meta,
+.text-muted,
+.small,
+.tile .label,
+.stat .label,
+.footer-item span,
+.ommi-track small,
+.ommi-media-subtitle,
+.ommi-session,
+.ommi-nowplaying-meta {
+  color: var(--ommi-text-soft) !important;
+  opacity: 1 !important;
+}
+
+/* Keep Media out of the footer from first paint. The JS guard below refines
+   the exact height, but these rules prevent the one-second overlap race. */
+#pageElectrical.page-media,
+#pageElectrical.page-media.active,
+.page-media.active {
+  min-height: 0 !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+
+#openMmiMediaRoot,
+#openMmiMediaRoot.open-mmi-media-v8b {
+  height: 100% !important;
+  max-height: 100% !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+
+#openMmiMediaRoot .container-fluid,
+#openMmiMediaRoot .row,
+#openMmiMediaRoot [class*="col-"],
+#openMmiMediaRoot .card,
+#openMmiMediaRoot .card-body,
+#openMmiMediaRoot .ommi-media-row,
+#openMmiMediaRoot .ommi-player-col,
+#openMmiMediaRoot .ommi-browser-col,
+#openMmiMediaRoot .ommi-player-card,
+#openMmiMediaRoot .ommi-browser-card {
+  min-height: 0 !important;
+  max-height: 100% !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+
+#ommiMediaResults,
+#openMmiMediaRoot .ommi-results,
+#openMmiMediaRoot .list-group {
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  overscroll-behavior: contain !important;
+  padding-bottom: .45rem !important;
+}
+
+/* On short tablet landscape screens, trim the Media chrome before it clips. */
+@media (max-height: 620px) {
+  #openMmiMediaRoot .card-body,
+  #openMmiMediaRoot .ommi-player-card,
+  #openMmiMediaRoot .ommi-browser-card {
+    padding-top: .55rem !important;
+    padding-bottom: .55rem !important;
+  }
+
+  #openMmiMediaRoot .ommi-art,
+  #openMmiMediaRoot .ommi-cover,
+  #openMmiMediaRoot .ommi-album-art {
+    max-height: 34vh !important;
+  }
+
+  #openMmiMediaRoot h1,
+  #openMmiMediaRoot h2,
+  #openMmiMediaRoot h3,
+  #openMmiMediaRoot .card-title {
+    margin-bottom: .35rem !important;
+    line-height: 1.05 !important;
+  }
+}
+/* --- Open MMI shell regression fix end --- */
+
+
+/* --- Open MMI media footer scoped repair start --- */
+/*
+  Repair for the current working tree after the broad first-paint grid patch.
+  These rules are intentionally Media-scoped. They do not change .screen,
+  .page, Drive, Climate, or Vehicle layout globally.
+*/
+#pageElectrical.page-media:not(.active) {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+#pageElectrical.page-media.active.ommi-media-footer-scoped {
+  height: var(--ommi-media-page-height) !important;
+  max-height: var(--ommi-media-page-height) !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+  contain: layout paint !important;
+}
+
+#pageElectrical.page-media.active.ommi-media-footer-scoped #openMmiMediaRoot,
+#pageElectrical.page-media.active #openMmiMediaRoot {
+  height: var(--ommi-media-root-height, 100%) !important;
+  max-height: var(--ommi-media-root-height, 100%) !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+
+#pageElectrical.page-media.active #openMmiMediaRoot .container-fluid,
+#pageElectrical.page-media.active #openMmiMediaRoot .row,
+#pageElectrical.page-media.active #openMmiMediaRoot .ommi-media-row,
+#pageElectrical.page-media.active #openMmiMediaRoot [class*="col-"],
+#pageElectrical.page-media.active #openMmiMediaRoot .card,
+#pageElectrical.page-media.active #openMmiMediaRoot .card-body,
+#pageElectrical.page-media.active #openMmiMediaRoot .ommi-player-card,
+#pageElectrical.page-media.active #openMmiMediaRoot .ommi-browser-card,
+#pageElectrical.page-media.active #openMmiMediaRoot .ommi-browser-body {
+  min-height: 0 !important;
+  max-height: 100% !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+
+#pageElectrical.page-media.active #openMmiMediaRoot .ommi-browser-card,
+#pageElectrical.page-media.active #openMmiMediaRoot .ommi-browser-body {
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+#pageElectrical.page-media.active #ommiMediaResults,
+#pageElectrical.page-media.active #openMmiMediaRoot .ommi-results,
+#pageElectrical.page-media.active #openMmiMediaRoot .list-group {
+  min-height: 0 !important;
+  flex: 1 1 auto !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  overscroll-behavior: contain !important;
+  scrollbar-gutter: stable !important;
+}
+/* --- Open MMI media footer scoped repair end --- */
+
+/* --- Open MMI proper light tell-tales start --- */
+.openmmi-footer-black,
+.status-strip.openmmi-footer-black,
+footer.openmmi-footer-black,
+.screen > footer.openmmi-footer-black,
+.footer.openmmi-footer-black,
+.bottom-bar.openmmi-footer-black {
+  position: relative !important;
+  background: #000 !important;
+  background-color: #000 !important;
+  background-image: none !important;
+  backdrop-filter: none !important;
+}
+
+.openmmi-footer-with-telltales {
+  overflow: hidden !important;
+}
+
+#openMmiFooterTelltales.openmmi-stable-footer-telltales-strip,
+.openmmi-stable-footer-telltales-strip {
+  --ommi-footer-icon-size: clamp(1.02rem, 1.72vw, 1.58rem);
+  --ommi-footer-icon-gap: clamp(.22rem, .68vw, .46rem);
+  position: absolute !important;
+  left: 50% !important;
+  top: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: var(--ommi-footer-icon-gap) !important;
+  width: auto !important;
+  height: calc(var(--ommi-footer-icon-size) + .2rem) !important;
+  margin: 0 !important;
+  padding: 0 clamp(.18rem, .5vw, .36rem) !important;
+  z-index: 6 !important;
+  pointer-events: none !important;
+  background: transparent !important;
+}
+
+#openMmiFooterTelltales .openmmi-footer-telltale,
+.openmmi-stable-footer-telltales-strip .openmmi-footer-telltale {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: var(--ommi-footer-icon-size) !important;
+  height: var(--ommi-footer-icon-size) !important;
+  flex: 0 0 var(--ommi-footer-icon-size) !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  filter: none !important;
+  text-shadow: none !important;
+  line-height: 1 !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  transform: none !important;
+}
+
+#openMmiFooterTelltales .openmmi-footer-telltale-wide {
+  width: calc(var(--ommi-footer-icon-size) * 1.44) !important;
+  flex-basis: calc(var(--ommi-footer-icon-size) * 1.44) !important;
+}
+
+#openMmiFooterTelltales .openmmi-footer-telltale-position-lights {
+  width: calc(var(--ommi-footer-icon-size) * 1.72) !important;
+  flex-basis: calc(var(--ommi-footer-icon-size) * 1.72) !important;
+}
+
+#openMmiFooterTelltales .openmmi-footer-telltale-rear-fog {
+  width: calc(var(--ommi-footer-icon-size) * 1.1) !important;
+  flex-basis: calc(var(--ommi-footer-icon-size) * 1.1) !important;
+}
+
+#openMmiFooterTelltales .openmmi-footer-telltale img,
+#openMmiFooterTelltales .openmmi-footer-telltale svg {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain !important;
+  flex: 0 0 auto !important;
+  filter: none !important;
+}
+
+#openMmiFooterTelltales .openmmi-footer-telltale.is-active {
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+#openMmiFooterTelltales .openmmi-footer-telltale.is-inactive,
+#openMmiFooterTelltales .openmmi-footer-telltale.is-unknown {
+  opacity: 0 !important;
+  visibility: hidden !important;
+}
+
+/* Only forced/demo indicators blink using CSS. Real indicator state follows the
+   status payload so it can mirror the vehicle bulb phase if the snapshot has it. */
+#openMmiFooterTelltales .openmmi-footer-telltale-left-turn.is-forced-blink,
+#openMmiFooterTelltales .openmmi-footer-telltale-right-turn.is-forced-blink,
+#openMmiFooterTelltales .openmmi-footer-telltale-hazard.is-forced-blink {
+  animation: openmmiForcedIndicatorBlink .92s steps(1, end) infinite !important;
+}
+
+@keyframes openmmiForcedIndicatorBlink {
+  0%, 49% { opacity: 1; visibility: visible; }
+  50%, 100% { opacity: 0; visibility: hidden; }
+}
+
+.openmmi-footer-telltale-sr {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+.openmmi-telltale-moved-to-footer,
+.openmmi-telltale-moved-to-footer *,
+.openmmi-light-state-moved-to-footer,
+.openmmi-light-state-moved-to-footer *,
+.openmmi-footer-duplicate-hidden,
+.openmmi-footer-duplicate-hidden *,
+.openmmi-footer-reverse-hidden,
+.openmmi-footer-reverse-hidden *,
+.openmmi-footer-park-duplicate-hidden,
+.openmmi-footer-park-duplicate-hidden * {
+  display: none !important;
+}
+
+.openmmi-telltale-test-badge {
+  position: absolute !important;
+  right: clamp(.45rem, 1.2vw, .9rem) !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  color: #ffd15c !important;
+  background: rgba(255, 170, 0, .13) !important;
+  border: 1px solid rgba(255, 209, 92, .35) !important;
+  border-radius: 999px !important;
+  padding: .12rem .45rem !important;
+  font-size: clamp(.58rem, 1vw, .72rem) !important;
+  letter-spacing: .08em !important;
+  text-transform: uppercase !important;
+  white-space: nowrap !important;
+  pointer-events: none !important;
+  z-index: 8 !important;
+}
+
+@media (max-width: 720px), (max-height: 520px) {
+  #openMmiFooterTelltales.openmmi-stable-footer-telltales-strip,
+  .openmmi-stable-footer-telltales-strip {
+    --ommi-footer-icon-size: clamp(.82rem, 2.8vw, 1.22rem);
+    --ommi-footer-icon-gap: clamp(.12rem, .46vw, .28rem);
+  }
+  .openmmi-telltale-test-badge { display: none !important; }
+}
+/* --- Open MMI proper light tell-tales end --- */
+

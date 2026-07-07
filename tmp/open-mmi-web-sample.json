@@ -1,0 +1,51 @@
+{
+  "updated_at": 9999999999,
+  "state": {
+    "vehicle": {
+      "present": true,
+      "reverse": false,
+      "handbrake": true,
+      "speed_kmh": 0,
+      "odometer_km": 318088
+    },
+    "fuel": {
+      "range_km_candidate": 72.3,
+      "range_raw_candidate": 7231,
+      "range_km_rounded_candidate": 72
+    },
+    "engine": {
+      "speed_rpm": 800,
+      "coolant_temp_c": 80
+    },
+    "electrical": {
+      "supply_voltage_v": 13.9
+    },
+    "climate": {
+      "blower_load_percent": 13.6,
+      "outside_temp_regulation_c": 20.5,
+      "outside_temp_unfiltered_c": 22.5,
+      "front_demist_air_request": true,
+      "rear_window_heater_requested": false,
+      "compressor_active": false
+    },
+    "doors": {
+      "front_left": false,
+      "front_right": true,
+      "rear_left": false,
+      "rear_right": false,
+      "boot": false,
+      "bonnet": false,
+      "any_open": true
+    },
+    "lighting": {
+      "mode": "off",
+      "dimmer_percent": 100,
+      "lights_on": false,
+      "bulb_out": false,
+      "left_indicator": false,
+      "right_indicator": false,
+      "hazards": false
+    },
+    "steering": {}
+  }
+}

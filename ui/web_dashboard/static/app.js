@@ -1,0 +1,1726 @@
+const PAGE_NAMES = ["Drive", "Climate", "Vehicle", "Media"];
+const PAGE_IDS = ["pageDrive", "pageClimate", "pageVehicle", "pageElectrical"];
+const DOORS = ["front_left", "front_right", "rear_left", "rear_right", "boot", "bonnet"];
+
+let activePage = 0;
+
+const $ = (selector) => document.querySelector(selector);
+const $$ = (selector) => Array.from(document.querySelectorAll(selector));
+
+function get(obj, dotted, fallback = undefined) {
+  return dotted.split(".").reduce((cur, key) => {
+    if (cur && Object.prototype.hasOwnProperty.call(cur, key)) return cur[key];
+    return fallback;
+  }, obj);
+}
+
+function setField(name, value) {
+  $$(`[data-field="${name}"]`).forEach((node) => { node.textContent = value; });
+}
+
+function fmtNum(value, decimals = 0) {
+  if (value === null || value === undefined || value === "-") return "--";
+  const n = Number(value);
+  if (!Number.isFinite(n)) return String(value);
+  return n.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+}
+
+function kmToMi(km, decimals = 0) {
+  const n = Number(km);
+  if (!Number.isFinite(n)) return "--";
+  return fmtNum(n * 0.621371192, decimals);
+}
+
+function boolText(value) {
+  if (value === true) return "ON";
+  if (value === false) return "OFF";
+  return "--";
+}
+
+function boolNoText(value) {
+  if (value === true) return "Yes";
+  if (value === false) return "No";
+  return "--";
+}
+
+function setBool(name, value) {
+  $$(`[data-bool="${name}"]`).forEach((node) => { node.textContent = boolText(value); });
+}
+
+function setBoolNo(name, value) {
+  $$(`[data-bool-no="${name}"]`).forEach((node) => { node.textContent = boolNoText(value); });
+}
+
+function updateDoor(name, value) {
+  const isOpen = value === true;
+  const text = value === true ? "Open" : value === false ? "Closed" : "--";
+  $$(`[data-door-text="${name}"]`).forEach((node) => { node.textContent = text; });
+  $$(`[data-door-row="${name}"]`).forEach((node) => { node.classList.toggle("open", isOpen); });
+  $$(`[data-door-mark="${name}"]`).forEach((node) => { node.classList.toggle("open", isOpen); });
+}
+
+function updateHealth(payload) {
+  const health = payload.health || {};
+  const dot = $("#healthDot");
+  dot.className = `health-dot ${health.status || "waiting"}`;
+  $("#healthText").textContent = health.status || "waiting";
+  $("#ageText").textContent = typeof health.age_seconds === "number" ? `${health.age_seconds.toFixed(1)}s ago` : "--";
+}
+
+function indicatorLabel(lighting) {
+  if (lighting.hazards === true) return "Hazards";
+  if (lighting.left_indicator === true && lighting.right_indicator === true) return "Both";
+  if (lighting.left_indicator === true) return "Left";
+  if (lighting.right_indicator === true) return "Right";
+  if (lighting.left_indicator === false || lighting.right_indicator === false) return "Off";
+  return "--";
+}
+
+function lightsLabel(value) {
+  if (value === true) return "ON";
+  if (value === false) return "OFF";
+  return "--";
+}
+
+function updateTach(rpm) {
+  const n = Number(rpm);
+  const isKnown = Number.isFinite(n);
+  const clamped = isKnown ? Math.max(0, Math.min(6000, n)) : 0;
+  const progress = clamped / 6000;
+  const root = document.documentElement;
+
+  root.style.setProperty("--rpm-scale", progress.toFixed(4));
+  root.classList.remove("rpm-unknown", "rpm-idle", "rpm-normal", "rpm-high", "rpm-redline");
+
+  let state = "rpm-unknown";
+  if (isKnown) {
+    if (clamped < 900) state = "rpm-idle";
+    else if (clamped < 4200) state = "rpm-normal";
+    else if (clamped < 5200) state = "rpm-high";
+    else state = "rpm-redline";
+  }
+
+  root.classList.add(state);
+} function render(payload) {
+  updateHealth(payload);
+  const state = payload.state || {};
+  const vehicle = state.vehicle || {};
+  const engine = state.engine || {};
+  const electrical = state.electrical || {};
+  const climate = state.climate || {};
+  const lighting = state.lighting || {};
+  const fuel = state.fuel || {};
+  const doors = state.doors || {};
+
+  setField("speed_mph", kmToMi(vehicle.speed_kmh, 0));
+  setField("rpm", fmtNum(engine.speed_rpm, 0));
+  setField("odo_mi", kmToMi(vehicle.odometer_km, 0));
+  setField("range_mi", kmToMi(fuel.range_km_candidate ?? fuel.range_km_rounded_candidate, 0));
+  setField("coolant_c", fmtNum(engine.coolant_temp_c, 0));
+  setField("outside_reg_c", fmtNum(climate.outside_temp_regulation_c, 1));
+  setField("outside_unfiltered_c", fmtNum(climate.outside_temp_unfiltered_c, 1));
+  setField("voltage_v", fmtNum(electrical.supply_voltage_v ?? electrical.terminal30_voltage_v, 1));
+  setField("blower_pct", fmtNum(climate.blower_load_percent, 1));
+  setField("dimmer_pct", fmtNum(lighting.dimmer_percent ?? lighting.dimmer_percent_mirror, 0));
+  setField("lighting_mode", lighting.mode || "--");
+  setField("lights_on", lightsLabel(lighting.lights_on));
+  setField("indicators", indicatorLabel(lighting));
+  setField("air_intake", climate.air_intake || "Normal");
+
+  setBool("handbrake", vehicle.handbrake);
+  setBool("reverse", vehicle.reverse);
+  setBool("rear_heater", climate.rear_window_heater_requested);
+  setBool("front_demist", climate.front_demist_air_request);
+  setBool("compressor", climate.compressor_active);
+  setBool("hazards", lighting.hazards);
+  setBoolNo("bulb_out", lighting.bulb_out);
+
+  DOORS.forEach((name) => updateDoor(name, doors[name]));
+  $("#carShell")?.classList.toggle("any-open", doors.any_open === true);
+
+  updateTach(engine.speed_rpm);
+}
+
+
+/* open-mmi dashboard ui pass 11: inline data tell-tales */
+(function installInlineDataTelltales() {
+  "use strict";
+
+  const ICONS = Object.freeze({
+    "leftTurn": "data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiIHN0YW5kYWxvbmU9Im5vIj8+CjwhLS0gQ3JlYXRlZCB3aXRoIElua3NjYXBlIChodHRwOi8vd3d3Lmlua3NjYXBlLm9yZy8pIC0tPgoKPHN2ZwogICB4bWxuczpkYz0iaHR0cDovL3B1cmwub3JnL2RjL2VsZW1lbnRzLzEuMS8iCiAgIHhtbG5zOmNjPSJodHRwOi8vY3JlYXRpdmVjb21tb25zLm9yZy9ucyMiCiAgIHhtbG5zOnJkZj0iaHR0cDovL3d3dy53My5vcmcvMTk5OS8wMi8yMi1yZGYtc3ludGF4LW5zIyIKICAgeG1sbnM6c3ZnPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIKICAgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIgogICB4bWxuczpzb2RpcG9kaT0iaHR0cDovL3NvZGlwb2RpLnNvdXJjZWZvcmdlLm5ldC9EVEQvc29kaXBvZGktMC5kdGQiCiAgIHhtbG5zOmlua3NjYXBlPSJodHRwOi8vd3d3Lmlua3NjYXBlLm9yZy9uYW1lc3BhY2VzL2lua3NjYXBlIgogICB3aWR0aD0iMTg1LjEyMzc1IgogICBoZWlnaHQ9IjIwNy45OTk5NSIKICAgaWQ9InN2ZzQzMjkiCiAgIHZlcnNpb249IjEuMSIKICAgaW5rc2NhcGU6dmVyc2lvbj0iMC40OC40IHI5OTM5IgogICBzb2RpcG9kaTpkb2NuYW1lPSJBMTZMLnN2ZyI+CiAgPGRlZnMKICAgICBpZD0iZGVmczQzMzEiIC8+CiAgPHNvZGlwb2RpOm5hbWVkdmlldwogICAgIGlkPSJiYXNlIgogICAgIHBhZ2Vjb2xvcj0iI2ZmZmZmZiIKICAgICBib3JkZXJjb2xvcj0iIzY2NjY2NiIKICAgICBib3JkZXJvcGFjaXR5PSIxLjAiCiAgICAgaW5rc2NhcGU6cGFnZW9wYWNpdHk9IjAuMCIKICAgICBpbmtzY2FwZTpwYWdlc2hhZG93PSIyIgogICAgIGlua3NjYXBlOnpvb209IjIuOCIKICAgICBpbmtzY2FwZTpjeD0iNjIuMTA3MzAxIgogICAgIGlua3NjYXBlOmN5PSI3Ni4yODI0ODMiCiAgICAgaW5rc2NhcGU6ZG9jdW1lbnQtdW5pdHM9InB4IgogICAgIGlua3NjYXBlOmN1cnJlbnQtbGF5ZXI9ImxheWVyMSIKICAgICBzaG93Z3JpZD0iZmFsc2UiCiAgICAgZml0LW1hcmdpbi10b3A9IjQiCiAgICAgZml0LW1hcmdpbi1sZWZ0PSI0IgogICAgIGZpdC1tYXJnaW4tcmlnaHQ9IjQiCiAgICAgZml0LW1hcmdpbi1ib3R0b209IjQiCiAgICAgaW5rc2NhcGU6d2luZG93LXdpZHRoPSIxOTIwIgogICAgIGlua3NjYXBlOndpbmRvdy1oZWlnaHQ9IjExNTMiCiAgICAgaW5rc2NhcGU6d2luZG93LXg9IjEyNzYiCiAgICAgaW5rc2NhcGU6d2luZG93LXk9Ii00IgogICAgIGlua3NjYXBlOndpbmRvdy1tYXhpbWl6ZWQ9IjEiIC8+CiAgPG1ldGFkYXRhCiAgICAgaWQ9Im1ldGFkYXRhNDMzNCI+CiAgICA8cmRmOlJERj4KICAgICAgPGNjOldvcmsKICAgICAgICAgcmRmOmFib3V0PSIiPgogICAgICAgIDxkYzpmb3JtYXQ+aW1hZ2Uvc3ZnK3htbDwvZGM6Zm9ybWF0PgogICAgICAgIDxkYzp0eXBlCiAgICAgICAgICAgcmRmOnJlc291cmNlPSJodHRwOi8vcHVybC5vcmcvZGMvZGNtaXR5cGUvU3RpbGxJbWFnZSIgLz4KICAgICAgICA8ZGM6dGl0bGU+PC9kYzp0aXRsZT4KICAgICAgPC9jYzpXb3JrPgogICAgPC9yZGY6UkRGPgogIDwvbWV0YWRhdGE+CiAgPGcKICAgICBpbmtzY2FwZTpsYWJlbD0iTGF5ZXIgMSIKICAgICBpbmtzY2FwZTpncm91cG1vZGU9ImxheWVyIgogICAgIGlkPSJsYXllcjEiCiAgICAgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoLTExNS42NTY0OCwtMzczLjA5NDQ1KSI+CiAgICA8ZwogICAgICAgaWQ9Imc1Mjk1IgogICAgICAgdHJhbnNmb3JtPSJtYXRyaXgoMS45NDE3NDcxLDAsMCwxLjk0MTc0NzEsLTE2Mi42MjUsLTQ1NS40Mjk2MikiPgogICAgICA8cmVjdAogICAgICAgICB5PSI0MzAuMTMxMDQiCiAgICAgICAgIHg9IjE0Ni43NDcwMiIKICAgICAgICAgaGVpZ2h0PSIxMDAuMjY0OTUiCiAgICAgICAgIHdpZHRoPSI4OC40NzkyMSIKICAgICAgICAgaWQ9InJlY3Q1MjkzIgogICAgICAgICBzdHlsZT0iZmlsbDojMDBhMDAwO2ZpbGwtb3BhY2l0eToxO2ZpbGwtcnVsZTpldmVub2RkO3N0cm9rZTojMDAwMDAwO3N0cm9rZS13aWR0aDoyLjczNTA3MjE0O3N0cm9rZS1taXRlcmxpbWl0OjQ7c3Ryb2tlLW9wYWNpdHk6MTtzdHJva2UtZGFzaGFycmF5Om5vbmUiIC8+CiAgICAgIDxwYXRoCiAgICAgICAgIGlua3NjYXBlOmNvbm5lY3Rvci1jdXJ2YXR1cmU9IjAiCiAgICAgICAgIGlkPSJwYXRoMzM1MSIKICAgICAgICAgZD0ibSAxNDcuNjYzODksNTA1LjkxMTY4IDAsLTIzLjg1MTkgMTUuNzY5MTUsMTUuNjAxOSBjIDguNjczMDMsOC41ODEgMTkuNDczMDMsMTkuMTM5NiAyNCwyMy40NjM2IDQuNTI2OTcsNC4zMjM5IDguMjMwODUsOC4wMzY0IDguMjMwODUsOC4yNSAwLDAuMjEzNSAtMTAuOCwwLjM4ODIgLTI0LDAuMzg4MiBsIC0yNCwwIDAsLTIzLjg1MTggeiBtIDUxLjgzNDA3LDEwLjYwMzIgYyAwLjE4Mzc0LC03LjI4ODMgMC40MTUzLC0xMy4zMzMgMC41MTQ1OCwtMTMuNDMyNiAwLjA5OTMsLTAuMSA3LjkzNzA0LC0wLjMyNDcgMTcuNDE3MjQsLTAuNSBsIDE3LjIzNjczLC0wLjMxODggLTEwZS00LDEzLjc1IC0wLjAwMSwxMy43NSAtMTcuNzUsMCAtMTcuNzUsMCAwLjMzNDA3LC0xMy4yNTE0IHogbSAtMjUuMzM5OTMsLTI0Ljc1NzMgLTEwLjk3MTc1LC0xMS4wMDU5IDExLjczODgxLC0xMS43Mzg4IDExLjczODgsLTExLjczODggMCw1LjE3MzMgYyAwLDguMTU2OSAwLjM3NDc4LDguMzE2MSAxOS41NzE0Myw4LjMxNjEgbCAxNi40Mjg1NywwIDAsMTAgMCwxMCAtMTYuNDI4NTcsMCBjIC0xOC44ODE2MywwIC0xOS41NzE0MywwLjI2NjkgLTE5LjU3MTQzLDcuNTcxNCAwLDIuNDM1NyAtMC4zNDUxNyw0LjQyODYgLTAuNzY3MDUsNC40Mjg2IC0wLjQyMTg4LDAgLTUuNzA0MzUsLTQuOTUyNiAtMTEuNzM4ODEsLTExLjAwNTkgeiBtIC0yNi40OTQxNCwtMzYuNTE3NiAwLC0yNC40NzY1IDI0LjQ3NjM5LDAgMjQuNDc2MzgsMCAtMTYuNDY5NCwxNi4xMzYzIGMgLTkuMDU4MTgsOC44NzQ5IC0yMC4wNzI1NSwxOS44ODk0IC0yNC40NzYzOSwyNC40NzY1IGwgLTguMDA2OTgsOC4zNDAzIDAsLTI0LjQ3NjYgeiBtIDY4Ljc1LDMuNzc1MiAtMTYuNzUsLTAuMzAwMSAwLC0xMi4zOTQgYyAwLC02LjgxNjcgLTAuMjczMTUsLTEzLjEwNTggLTAuNjA2OTksLTEzLjk3NTggLTAuNTM5NzIsLTEuNDA2NSAxLjM5OTY0LC0xLjU4MTggMTcuNSwtMS41ODE4IGwgMTguMTA2OTksMCAwLDE0LjUgYyAwLDcuOTc1IC0wLjMzNzUsMTQuMzk5MSAtMC43NSwxNC4yNzU5IC0wLjQxMjUsLTAuMTIzMyAtOC4yODc1LC0wLjM1OTIgLTE3LjUsLTAuNTI0MiB6IgogICAgICAgICBzdHlsZT0iZmlsbDojMDAwMDAwIiAvPgogICAgPC9nPgogIDwvZz4KPC9zdmc+Cg==",
+    "rightTurn": "data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiIHN0YW5kYWxvbmU9Im5vIj8+CjwhLS0gQ3JlYXRlZCB3aXRoIElua3NjYXBlIChodHRwOi8vd3d3Lmlua3NjYXBlLm9yZy8pIC0tPgoKPHN2ZwogICB4bWxuczpkYz0iaHR0cDovL3B1cmwub3JnL2RjL2VsZW1lbnRzLzEuMS8iCiAgIHhtbG5zOmNjPSJodHRwOi8vY3JlYXRpdmVjb21tb25zLm9yZy9ucyMiCiAgIHhtbG5zOnJkZj0iaHR0cDovL3d3dy53My5vcmcvMTk5OS8wMi8yMi1yZGYtc3ludGF4LW5zIyIKICAgeG1sbnM6c3ZnPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIKICAgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIgogICB4bWxuczpzb2RpcG9kaT0iaHR0cDovL3NvZGlwb2RpLnNvdXJjZWZvcmdlLm5ldC9EVEQvc29kaXBvZGktMC5kdGQiCiAgIHhtbG5zOmlua3NjYXBlPSJodHRwOi8vd3d3Lmlua3NjYXBlLm9yZy9uYW1lc3BhY2VzL2lua3NjYXBlIgogICB3aWR0aD0iMTgzLjk2MDg5IgogICBoZWlnaHQ9IjIwNy45ODI4NSIKICAgaWQ9InN2ZzQzMjkiCiAgIHZlcnNpb249IjEuMSIKICAgaW5rc2NhcGU6dmVyc2lvbj0iMC40OC40IHI5OTM5IgogICBzb2RpcG9kaTpkb2NuYW1lPSJBMTZSLnN2ZyI+CiAgPGRlZnMKICAgICBpZD0iZGVmczQzMzEiIC8+CiAgPHNvZGlwb2RpOm5hbWVkdmlldwogICAgIGlkPSJiYXNlIgogICAgIHBhZ2Vjb2xvcj0iI2ZmZmZmZiIKICAgICBib3JkZXJjb2xvcj0iIzY2NjY2NiIKICAgICBib3JkZXJvcGFjaXR5PSIxLjAiCiAgICAgaW5rc2NhcGU6cGFnZW9wYWNpdHk9IjAuMCIKICAgICBpbmtzY2FwZTpwYWdlc2hhZG93PSIyIgogICAgIGlua3NjYXBlOnpvb209IjIuOCIKICAgICBpbmtzY2FwZTpjeD0iNjEuNTQ0OTAzIgogICAgIGlua3NjYXBlOmN5PSI3NS43MDk4NDkiCiAgICAgaW5rc2NhcGU6ZG9jdW1lbnQtdW5pdHM9InB4IgogICAgIGlua3NjYXBlOmN1cnJlbnQtbGF5ZXI9ImxheWVyMSIKICAgICBzaG93Z3JpZD0iZmFsc2UiCiAgICAgZml0LW1hcmdpbi10b3A9IjQiCiAgICAgZml0LW1hcmdpbi1sZWZ0PSI0IgogICAgIGZpdC1tYXJnaW4tcmlnaHQ9IjQiCiAgICAgZml0LW1hcmdpbi1ib3R0b209IjQiCiAgICAgaW5rc2NhcGU6d2luZG93LXdpZHRoPSIxOTIwIgogICAgIGlua3NjYXBlOndpbmRvdy1oZWlnaHQ9IjExNTMiCiAgICAgaW5rc2NhcGU6d2luZG93LXg9IjEyNzYiCiAgICAgaW5rc2NhcGU6d2luZG93LXk9Ii00IgogICAgIGlua3NjYXBlOndpbmRvdy1tYXhpbWl6ZWQ9IjEiIC8+CiAgPG1ldGFkYXRhCiAgICAgaWQ9Im1ldGFkYXRhNDMzNCI+CiAgICA8cmRmOlJERj4KICAgICAgPGNjOldvcmsKICAgICAgICAgcmRmOmFib3V0PSIiPgogICAgICAgIDxkYzpmb3JtYXQ+aW1hZ2Uvc3ZnK3htbDwvZGM6Zm9ybWF0PgogICAgICAgIDxkYzp0eXBlCiAgICAgICAgICAgcmRmOnJlc291cmNlPSJodHRwOi8vcHVybC5vcmcvZGMvZGNtaXR5cGUvU3RpbGxJbWFnZSIgLz4KICAgICAgICA8ZGM6dGl0bGU+PC9kYzp0aXRsZT4KICAgICAgPC9jYzpXb3JrPgogICAgPC9yZGY6UkRGPgogIDwvbWV0YWRhdGE+CiAgPGcKICAgICBpbmtzY2FwZTpsYWJlbD0iTGF5ZXIgMSIKICAgICBpbmtzY2FwZTpncm91cG1vZGU9ImxheWVyIgogICAgIGlkPSJsYXllcjEiCiAgICAgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoLTExNi4yMTg4OCwtMzcyLjUzODkyKSI+CiAgICA8ZwogICAgICAgaWQ9Imc1MzE5IgogICAgICAgdHJhbnNmb3JtPSJtYXRyaXgoMS45MjE3NTcxLDAsMCwxLjkyMTc1NzEsLTE0NS44MjQzNywtNDQ2Ljk5NDA1KSI+CiAgICAgIDxyZWN0CiAgICAgICAgIHk9IjQyOS44NzMwMiIKICAgICAgICAgeD0iMTM5Ljc5MjI4IgogICAgICAgICBoZWlnaHQ9IjEwMS4zNzEyNyIKICAgICAgICAgd2lkdGg9Ijg4Ljg3MTI2OSIKICAgICAgICAgaWQ9InJlY3Q1MzE3IgogICAgICAgICBzdHlsZT0iZmlsbDojMDBhMDAwO2ZpbGwtb3BhY2l0eToxO2ZpbGwtcnVsZTpldmVub2RkO3N0cm9rZTojMDAwMDAwO3N0cm9rZS13aWR0aDoyLjcwMDE1NzE3O3N0cm9rZS1taXRlcmxpbWl0OjQ7c3Ryb2tlLW9wYWNpdHk6MTtzdHJva2UtZGFzaGFycmF5Om5vbmUiIC8+CiAgICAgIDxwYXRoCiAgICAgICAgIGlua3NjYXBlOmNvbm5lY3Rvci1jdXJ2YXR1cmU9IjAiCiAgICAgICAgIGlkPSJwYXRoMzM0OSIKICAgICAgICAgZD0ibSAxNDAuNzI3OTEsNTE1Ljg4MDEyIDAsLTE0LjUgMTYuOCwwIGMgMTEuNzMzMzMsMCAxNy4xNjE5LDAuMzYxOSAxOCwxLjIgMC44MTMwMywwLjgxMyAxLjIsNS40ODg5IDEuMiwxNC41IGwgMCwxMy4zIC0xOCwwIC0xOCwwIDAsLTE0LjUgeiBtIDM3LjEwMDkxLDE0LjI1IGMgMC4yMzg4MywtMC4xMzc1IDExLjU2MzgzLC0xMS4yNjI4IDI1LjE2NjY2LC0yNC43MjI5IGwgMjQuNzMyNDMsLTI0LjQ3MjkgMCwyNC43MjI5IDAsMjQuNzIyOSAtMjUuMTY2NjcsMCBjIC0xMy44NDE2NiwwIC0yNC45NzEyNSwtMC4xMTI1IC0yNC43MzI0MiwtMC4yNSB6IG0gMTAuNTIwMTcsLTI5LjI5NTEgYyAtMC4zNDE1OSwtMC44OTAxIC0wLjYyMTA4LC0zLjM4MTcgLTAuNjIxMDgsLTUuNTM2NyBsIDAsLTMuOTE4MiAtMTYuOCwwIGMgLTExLjczMzMzLDAgLTE3LjE2MTkxLC0wLjM2MTkgLTE4LC0xLjIgLTEuNjIwNjksLTEuNjIwNyAtMS42MjA2OSwtMTcuOTc5MyAwLC0xOS42IDAuODM4MDksLTAuODM4MSA2LjI2NjY3LC0xLjIgMTgsLTEuMiBsIDE2LjgsMCAwLC00Ljk0MSBjIDAsLTIuNzE3NSAwLjM5MDU4LC01LjE4MjQgMC44Njc5NiwtNS40Nzc0IDAuNDc3MzgsLTAuMjk1IDUuOTUyNyw0LjMzMDIgMTIuMTY3MzcsMTAuMjc4MyBsIDExLjI5OTQxLDEwLjgxNDYgLTUuOTE3MzcsNS44MDQxIGMgLTE1LjkyNjE2LDE1LjYyMTQgLTE3LjE1MjY4LDE2LjY1MzYgLTE3Ljc5NjI5LDE0Ljk3NjMgeiBtIDMyLjg1OTEyLC0yNy43NzM1IGMgLTMuMzEwODksLTMuMzk5OCAtMTQuMzg1ODUsLTE0LjM5MzkgLTI0LjYxMTAzLC0yNC40MzE0IGwgLTE4LjU5MTIzLC0xOC4yNSAyNC44NjEwMywwIDI0Ljg2MTAzLDAgMCwyNC41IGMgMCwxMy40NzUgLTAuMTEyNSwyNC40NjkxIC0wLjI1LDI0LjQzMTQgLTAuMTM3NSwtMC4wMzggLTIuOTU4OTEsLTIuODUwMiAtNi4yNjk4LC02LjI1IHogbSAtODAuNDgwMiwtMjguMTgxNCAwLC0xNC41IDE4LDAgMTgsMCAwLDEzLjMgYyAwLDkuMDExMSAtMC4zODY5NywxMy42ODcgLTEuMiwxNC41IC0wLjgzODEsMC44MzgxIC02LjI2NjY3LDEuMiAtMTgsMS4yIGwgLTE2LjgsMCAwLC0xNC41IHoiCiAgICAgICAgIHN0eWxlPSJmaWxsOiMwMDAwMDAiIC8+CiAgICA8L2c+CiAgPC9nPgo8L3N2Zz4K",
+    "bulbFailure": "data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiIHN0YW5kYWxvbmU9Im5vIj8+CjwhLS0gQ3JlYXRlZCB3aXRoIElua3NjYXBlIChodHRwOi8vd3d3Lmlua3NjYXBlLm9yZy8pIC0tPgoKPHN2ZwogICB4bWxuczpkYz0iaHR0cDovL3B1cmwub3JnL2RjL2VsZW1lbnRzLzEuMS8iCiAgIHhtbG5zOmNjPSJodHRwOi8vY3JlYXRpdmVjb21tb25zLm9yZy9ucyMiCiAgIHhtbG5zOnJkZj0iaHR0cDovL3d3dy53My5vcmcvMTk5OS8wMi8yMi1yZGYtc3ludGF4LW5zIyIKICAgeG1sbnM6c3ZnPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIKICAgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIgogICB4bWxuczpzb2RpcG9kaT0iaHR0cDovL3NvZGlwb2RpLnNvdXJjZWZvcmdlLm5ldC9EVEQvc29kaXBvZGktMC5kdGQiCiAgIHhtbG5zOmlua3NjYXBlPSJodHRwOi8vd3d3Lmlua3NjYXBlLm9yZy9uYW1lc3BhY2VzL2lua3NjYXBlIgogICB3aWR0aD0iMjA4IgogICBoZWlnaHQ9IjE5Mi43OTM2NCIKICAgaWQ9InN2ZzQzMjkiCiAgIHZlcnNpb249IjEuMSIKICAgaW5rc2NhcGU6dmVyc2lvbj0iMC40OC40IHI5OTM5IgogICBzb2RpcG9kaTpkb2NuYW1lPSJBMTQuc3ZnIj4KICA8ZGVmcwogICAgIGlkPSJkZWZzNDMzMSIgLz4KICA8c29kaXBvZGk6bmFtZWR2aWV3CiAgICAgaWQ9ImJhc2UiCiAgICAgcGFnZWNvbG9yPSIjZmZmZmZmIgogICAgIGJvcmRlcmNvbG9yPSIjNjY2NjY2IgogICAgIGJvcmRlcm9wYWNpdHk9IjEuMCIKICAgICBpbmtzY2FwZTpwYWdlb3BhY2l0eT0iMC4wIgogICAgIGlua3NjYXBlOnBhZ2VzaGFkb3c9IjIiCiAgICAgaW5rc2NhcGU6em9vbT0iMi44IgogICAgIGlua3NjYXBlOmN4PSI3NC41MjU3NzUiCiAgICAgaW5rc2NhcGU6Y3k9Ijg2LjU5ODc3MiIKICAgICBpbmtzY2FwZTpkb2N1bWVudC11bml0cz0icHgiCiAgICAgaW5rc2NhcGU6Y3VycmVudC1sYXllcj0ibGF5ZXIxIgogICAgIHNob3dncmlkPSJmYWxzZSIKICAgICBmaXQtbWFyZ2luLXRvcD0iNCIKICAgICBmaXQtbWFyZ2luLWxlZnQ9IjQiCiAgICAgZml0LW1hcmdpbi1yaWdodD0iNCIKICAgICBmaXQtbWFyZ2luLWJvdHRvbT0iNCIKICAgICBpbmtzY2FwZTp3aW5kb3ctd2lkdGg9IjE5MjAiCiAgICAgaW5rc2NhcGU6d2luZG93LWhlaWdodD0iMTE1MyIKICAgICBpbmtzY2FwZTp3aW5kb3cteD0iMTI3NiIKICAgICBpbmtzY2FwZTp3aW5kb3cteT0iLTQiCiAgICAgaW5rc2NhcGU6d2luZG93LW1heGltaXplZD0iMSIgLz4KICA8bWV0YWRhdGEKICAgICBpZD0ibWV0YWRhdGE0MzM0Ij4KICAgIDxyZGY6UkRGPgogICAgICA8Y2M6V29yawogICAgICAgICByZGY6YWJvdXQ9IiI+CiAgICAgICAgPGRjOmZvcm1hdD5pbWFnZS9zdmcreG1sPC9kYzpmb3JtYXQ+CiAgICAgICAgPGRjOnR5cGUKICAgICAgICAgICByZGY6cmVzb3VyY2U9Imh0dHA6Ly9wdXJsLm9yZy9kYy9kY21pdHlwZS9TdGlsbEltYWdlIiAvPgogICAgICAgIDxkYzp0aXRsZT48L2RjOnRpdGxlPgogICAgICA8L2NjOldvcms+CiAgICA8L3JkZjpSREY+CiAgPC9tZXRhZGF0YT4KICA8ZwogICAgIGlua3NjYXBlOmxhYmVsPSJMYXllciAxIgogICAgIGlua3NjYXBlOmdyb3VwbW9kZT0ibGF5ZXIiCiAgICAgaWQ9ImxheWVyMSIKICAgICB0cmFuc2Zvcm09InRyYW5zbGF0ZSgtMTAzLjIzODAxLC0zOTguNjE3MDUpIj4KICAgIDxnCiAgICAgICBpZD0iZzUyMjMiCiAgICAgICB0cmFuc2Zvcm09Im1hdHJpeCgxLjAxMzc1ODIsMCwwLDEuMDEzNzU4MiwtMS40NzUzOTc4LC04LjA4MTY5MDkpIj4KICAgICAgPHJlY3QKICAgICAgICAgeT0iNDA2LjQ5MiIKICAgICAgICAgeD0iMTA4LjYwNTA2IgogICAgICAgICBoZWlnaHQ9IjE3OS41NTE2MSIKICAgICAgICAgd2lkdGg9IjE5NC41NTE2MSIKICAgICAgICAgaWQ9InJlY3Q1MjIxIgogICAgICAgICBzdHlsZT0iZmlsbDojZTBiMzAwO2ZpbGwtb3BhY2l0eToxO2ZpbGwtcnVsZTpldmVub2RkO3N0cm9rZTojMDAwMDAwO3N0cm9rZS13aWR0aDoyLjczNDEwNjA2O3N0cm9rZS1taXRlcmxpbWl0OjQ7c3Ryb2tlLW9wYWNpdHk6MTtzdHJva2UtZGFzaGFycmF5Om5vbmUiIC8+CiAgICAgIDxwYXRoCiAgICAgICAgIGlua3NjYXBlOmNvbm5lY3Rvci1jdXJ2YXR1cmU9IjAiCiAgICAgICAgIGlkPSJwYXRoMzI5OSIKICAgICAgICAgZD0ibSAxMDkuMzgwODgsNTQwLjE1MTA3IDAsLTQ1LjQ3NCAxNS4yNSwtMC4yNzYwNCAxNS4yNSwtMC4yNzYwNSAwLC01IDAsLTUgLTE1LjI1LC0wLjI3NjA1IC0xNS4yNSwtMC4yNzYwNCAwLC0zNy45NzM5NiAwLC0zNy45NzM5NSAzNSwwIDM1LDAgMCwxNy4wMDY2MSAwLDE3LjAwNjYyIC0yLjc1LDIuMjI3OTUgYyAtMS41MTI1LDEuMjI1MzggLTUuNDc1MzUsNC45MzU0MyAtOC44MDYzNSw4LjI0NDU3IC0xMC45MzAxNiwxMC44NTg0MyAtMTYuNDk0LDI2LjMwMzAzIC0xNS4wNTQ2NCw0MS43ODk5NyAyLjAxNjY2LDIxLjY5ODUzIDE1LjU2NjU1LDM4Ljk2MTExIDM2LjMzNDg1LDQ2LjI5MDY3IDUuNDk2NTYsMS45Mzk4IDguNzU4OTIsMi4zOTE0IDE3LjI3NjE0LDIuMzkxNCA4LjU5MTM2LDAgMTEuNzY0MjgsLTAuNDQ2MSAxNy40NTUxNywtMi40NTQgMjYuNTkzMTQsLTkuMzgyODMgNDEuMjk5MzcsLTM3LjE5NzAzIDM0LjM2OTUzLC02NS4wMDM3OSAtMS4zMTM3NCwtNS4yNzE1NiAtNi4yNzQ5OSwtMTUuMDE4MTMgLTEwLjEwODE4LC0xOS44NTc5MyAtMS42ODcwOSwtMi4xMzAxMiAtNS4zNTA5OCwtNS42MjQ3IC04LjE0MTk4LC03Ljc2NTczIC0yLjc5MSwtMi4xNDEwMyAtNS42MzcwNCwtNC4zNTY4MyAtNi4zMjQ1NCwtNC45MjM5OSAtMC45MTAzMywtMC43NTA5OSAtMS4yNSwtNS42Mzk5NiAtMS4yNSwtMTcuOTkxNzggbCAwLC0xNi45NjA1NyAzNSwwIDM1LDAgMCwzNy45NzMyNyAwLDM3Ljk3MzI2IC0xNC43NSwwLjI3Njc0IC0xNC43NSwwLjI3NjczIDAsNSAwLDUgMTQuNzUsMC4yNzY3MyAxNC43NSwwLjI3Njc0IDAsNDUuNDczMjIgMCw0NS40NzMzIC00NS40NzMyNywwIC00NS40NzMyNiwwIC0wLjI3Njc0LC0xNC43NSAtMC4yNzY3MywtMTQuNzUgLTUsMCAtNSwwIC0wLjI3NjczLDE0Ljc1IC0wLjI3Njc0LDE0Ljc1IC00NS40NzMyNiwwIC00NS40NzMyNywwIDAsLTQ1LjQ3MzkgeiBtIDQzLjk4MTc3LDkuOTkyMiAxMC40NDYwMywtMTAuNDgxNyAtMy40MTAwNywtMy41MTgzIGMgLTEuODc1NTMsLTEuOTM1MSAtMy44OTIzMywtMy41MTgyOSAtNC40ODE3NiwtMy41MTgyOSAtMC41ODk0NCwwIC01Ljc3MjQyLDQuNzE2NzkgLTExLjUxNzc0LDEwLjQ4MTY5IGwgLTEwLjQ0NjAzLDEwLjQ4MTcgMy40MTAwNywzLjUxODMgYyAxLjg3NTUzLDEuOTM1MSAzLjg5MjMzLDMuNTE4MyA0LjQ4MTc2LDMuNTE4MyAwLjU4OTQ0LDAgNS43NzI0MiwtNC43MTY4IDExLjUxNzc0LC0xMC40ODE3IHogbSAxMjEuMjEzNTEsNy43OTQ2IGMgMS41NDI2LC0xLjQ3NzkgMi44MDQ3MiwtMy4yNTI5IDIuODA0NzIsLTMuOTQ0NCAwLC0xLjI5ODIgLTE5LjYyNTE4LC0yMS4zNjg0OSAtMjAuODk0NjQsLTIxLjM2ODQ5IC0wLjM5MjE3LDAgLTIuMjQ3NTYsMS41ODMxOSAtNC4xMjMwOSwzLjUxODI5IGwgLTMuNDEwMDcsMy41MTgzIDEwLjQ0NjAzLDEwLjQ4MTcgYyA1Ljc0NTMyLDUuNzY0OSAxMC44Nzk0NSwxMC40ODE3IDExLjQwOTE4LDEwLjQ4MTcgMC41Mjk3NCwwIDIuMjI1MjgsLTEuMjA5MiAzLjc2Nzg3LC0yLjY4NzEgeiBtIC0xMTUsLTExNC45OTk5OCBjIDEuNTQyNiwtMS40Nzc5IDIuODA0NzIsLTMuMjU2MzIgMi44MDQ3MiwtMy45NTIwNCAwLC0xLjYwMzk0IC0xOS4wNTQ5OCwtMjAuMzYwODcgLTIwLjY4NDQsLTIwLjM2MDg3IC0xLjcwNTExLDAgLTYuMzE1Niw0LjQ1MDc1IC02LjMxNTYsNi4wOTY3OCAwLDEuNTM2NzkgMTguOTI0NzgsMjAuOTAzMjIgMjAuNDI2NTIsMjAuOTAzMjIgMC41MzAyMiwwIDIuMjI2MTcsLTEuMjA5MTkgMy43Njg3NiwtMi42ODcwOSB6IG0gMTA4LjAzNjgzLC03LjA0NDE1IGMgNS4zNzIzNCwtNS4zNTIxOCA5Ljc2Nzg5LC0xMC4yMTM5IDkuNzY3ODksLTEwLjgwMzgzIDAsLTAuNTg5OTMgLTEuNTg1OTcsLTIuNjA5NzggLTMuNTI0MzgsLTQuNDg4NTcgbCAtMy41MjQzOSwtMy40MTU5NiAtMTAuNjk1NDIsMTAuNjk1NDEgLTEwLjY5NTQxLDEwLjY5NTQyIDMuNDE1OTcsMy41MjQzOCBjIDEuODc4NzgsMS45Mzg0MiAzLjg4MjE0LDMuNTI0MzkgNC40NTE5MSwzLjUyNDM5IDAuNTY5NzYsMCA1LjQzMTQ5LC00LjM3OTA2IDEwLjgwMzgzLC05LjczMTI0IHogbSAtNzIuNDg2MTksOTUuNzA3NDkgYyAtMTAuNzcwMDIsLTIuNzE1OTUgLTIyLjg3NzQzLC0xMi42NTkxOCAtMjcuOTc3MTIsLTIyLjk3NjI1IC0xLjQ5NTI1LC0zLjAyNSAtMy4yNzA4MSwtOC43NTgzNyAtMy45NDU2OSwtMTIuNzQwODEgLTAuOTczNjksLTUuNzQ1NzEgLTAuOTcwMDEsLTguNTMzMjQgMC4wMTc4LC0xMy41IDEuNzM0MzIsLTguNzIwMDggNi42NDYzMywtMTguMzQxNyAxMi4xOTc5NywtMjMuODkzMzQgNy43MDE2OSwtNy43MDE2OSAxOS44NjgwNiwtMTIuODI4OTQgMzAuNTAwOTksLTEyLjg1Mzk4IDYuNTI0OSwtMC4wMTU0IDE1LjUzMzQ3LDIuMzU4OTcgMjEuNzE0NzEsNS43MjMyMiA1LjY4NjQ3LDMuMDk0OTcgMTQuODUwMzgsMTIuNTkwMjIgMTcuODc3NTQsMTguNTIzOTUgMS4xNTEyNCwyLjI1NjYgMi42OTk2Myw3LjU3NjkxIDMuNDQwODgsMTEuODIyOTEgMC45OTU5Myw1LjcwNDgxIDEuMDg5ODQsOS4zNzczIDAuMzU5NzYsMTQuMDY5MDIgLTIuMTg5MjMsMTQuMDY4NzMgLTExLjg4NjM0LDI3LjEyNDYzIC0yNC41NDY5LDMzLjA0OTIyIC01Ljc1Mjg4LDIuNjkyMSAtNy45NzMxNywzLjE1ODcxIC0xNi4yNzM4MywzLjQyMDA5IC01LjI4NjYzLDAuMTY2NDcgLTExLjMwMTM5LC0wLjEyMzM0IC0xMy4zNjYxMywtMC42NDQwMyB6IG0gMTYuNTA0MDgsLTEwLjEyOTY4IGMgMC45NjI1LC0xLjEzNzQ3IDEuNzUsLTMuMTYzNzQgMS43NSwtNC41MDI4MSAwLC0zLjE4MTgxIC00LjIyNDczLC03LjM0Mzc2IC03LjQ1NDU1LC03LjM0Mzc2IC0zLjYyMzQ5LDAgLTYuNTQ1NDUsMy4zMTU2NyAtNi41NDU0NSw3LjQyNzQyIDAsMi41MzQ2NSAwLjcwNTA0LDMuOTgyMDEgMi43MDY3Miw1LjU1NjUyIDMuMTY2MDksMi40OTA0NiA2Ljg0NDQ4LDIuMDUyMDcgOS41NDMyOCwtMS4xMzczNyB6IG0gLTAuNzA0NTUsLTE4LjMwMTEyIDIuNDU0NTUsLTIuNDU0NTQgMCwtMjEuOTM0NjcgYyAwLC0xOS44MjY4OCAtMC4xNzcyMSwtMjIuMTUzNTIgLTEuODQ0MTcsLTI0LjIxMjEyIC0yLjUwNzI3LC0zLjA5NjM2IC03LjgwNDM5LC0zLjA5NjM2IC0xMC4zMTE2NiwwIC0xLjY2OTEsMi4wNjEyNSAtMS44NDQxNyw0LjM5NiAtMS44NDQxNywyNC41OTQwOCBsIDAsMjIuMzE2NjQgMi42MzQ4NiwyLjA3MjU4IGMgMS40NDkxNywxLjEzOTkyIDMuNDk0NjMsMi4wNzI1OCA0LjU0NTQ1LDIuMDcyNTggMS4wNTA4MywwIDMuMDE1MTQsLTEuMTA0NTUgNC4zNjUxNCwtMi40NTQ1NSB6IG0gNC45NTQ1NSwtNjYuNzM4IGMgLTIuMjI1MTEsLTAuNTQ1NjEgLTguNzg2NzksLTAuNzExNjEgLTE0Ljc4Nzc5LC0wLjM3NDA5IGwgLTEwLjc4Nzc5LDAuNjA2NzMgMC4yODc3OSwtOS4yNzAwNCAwLjI4Nzc5LC05LjI3MDA1IDE1LjUsMCAxNS41LDAgMCw5LjQxNjY3IGMgMCw1LjQ1OTQ2IC0wLjQyMDIzLDkuNTEyMjYgLTEsOS42NDQxNCAtMC41NSwwLjEyNTExIC0yLjgsLTAuMjEzOSAtNSwtMC43NTMzNiB6IgogICAgICAgICBzdHlsZT0iZmlsbDojMDAwMDAwIiAvPgogICAgPC9nPgogIDwvZz4KPC9zdmc+Cg==",
+    "hazard": "data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiIHN0YW5kYWxvbmU9Im5vIj8+CjwhLS0gQ3JlYXRlZCB3aXRoIElua3NjYXBlIChodHRwOi8vd3d3Lmlua3NjYXBlLm9yZy8pIC0tPgoKPHN2ZwogICB4bWxuczpkYz0iaHR0cDovL3B1cmwub3JnL2RjL2VsZW1lbnRzLzEuMS8iCiAgIHhtbG5zOmNjPSJodHRwOi8vY3JlYXRpdmVjb21tb25zLm9yZy9ucyMiCiAgIHhtbG5zOnJkZj0iaHR0cDovL3d3dy53My5vcmcvMTk5OS8wMi8yMi1yZGYtc3ludGF4LW5zIyIKICAgeG1sbnM6c3ZnPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIKICAgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIgogICB4bWxuczpzb2RpcG9kaT0iaHR0cDovL3NvZGlwb2RpLnNvdXJjZWZvcmdlLm5ldC9EVEQvc29kaXBvZGktMC5kdGQiCiAgIHhtbG5zOmlua3NjYXBlPSJodHRwOi8vd3d3Lmlua3NjYXBlLm9yZy9uYW1lc3BhY2VzL2lua3NjYXBlIgogICB3aWR0aD0iMjA4IgogICBoZWlnaHQ9IjE3Ny43MDk3IgogICBpZD0ic3ZnNDMyOSIKICAgdmVyc2lvbj0iMS4xIgogICBpbmtzY2FwZTp2ZXJzaW9uPSIwLjQ4LjQgcjk5MzkiCiAgIHNvZGlwb2RpOmRvY25hbWU9IkExOS5zdmciPgogIDxkZWZzCiAgICAgaWQ9ImRlZnM0MzMxIiAvPgogIDxzb2RpcG9kaTpuYW1lZHZpZXcKICAgICBpZD0iYmFzZSIKICAgICBwYWdlY29sb3I9IiNmZmZmZmYiCiAgICAgYm9yZGVyY29sb3I9IiM2NjY2NjYiCiAgICAgYm9yZGVyb3BhY2l0eT0iMS4wIgogICAgIGlua3NjYXBlOnBhZ2VvcGFjaXR5PSIwLjAiCiAgICAgaW5rc2NhcGU6cGFnZXNoYWRvdz0iMiIKICAgICBpbmtzY2FwZTp6b29tPSIyLjgiCiAgICAgaW5rc2NhcGU6Y3g9IjU4LjExNjM0MiIKICAgICBpbmtzY2FwZTpjeT0iNDUuNDk1NTM3IgogICAgIGlua3NjYXBlOmRvY3VtZW50LXVuaXRzPSJweCIKICAgICBpbmtzY2FwZTpjdXJyZW50LWxheWVyPSJsYXllcjEiCiAgICAgc2hvd2dyaWQ9ImZhbHNlIgogICAgIGZpdC1tYXJnaW4tdG9wPSI0IgogICAgIGZpdC1tYXJnaW4tbGVmdD0iNCIKICAgICBmaXQtbWFyZ2luLXJpZ2h0PSI0IgogICAgIGZpdC1tYXJnaW4tYm90dG9tPSI0IgogICAgIGlua3NjYXBlOndpbmRvdy13aWR0aD0iMTkyMCIKICAgICBpbmtzY2FwZTp3aW5kb3ctaGVpZ2h0PSIxMTUzIgogICAgIGlua3NjYXBlOndpbmRvdy14PSIxMjc2IgogICAgIGlua3NjYXBlOndpbmRvdy15PSItNCIKICAgICBpbmtzY2FwZTp3aW5kb3ctbWF4aW1pemVkPSIxIiAvPgogIDxtZXRhZGF0YQogICAgIGlkPSJtZXRhZGF0YTQzMzQiPgogICAgPHJkZjpSREY+CiAgICAgIDxjYzpXb3JrCiAgICAgICAgIHJkZjphYm91dD0iIj4KICAgICAgICA8ZGM6Zm9ybWF0PmltYWdlL3N2Zyt4bWw8L2RjOmZvcm1hdD4KICAgICAgICA8ZGM6dHlwZQogICAgICAgICAgIHJkZjpyZXNvdXJjZT0iaHR0cDovL3B1cmwub3JnL2RjL2RjbWl0eXBlL1N0aWxsSW1hZ2UiIC8+CiAgICAgICAgPGRjOnRpdGxlPjwvZGM6dGl0bGU+CiAgICAgIDwvY2M6V29yaz4KICAgIDwvcmRmOlJERj4KICA8L21ldGFkYXRhPgogIDxnCiAgICAgaW5rc2NhcGU6bGFiZWw9IkxheWVyIDEiCiAgICAgaW5rc2NhcGU6Z3JvdXBtb2RlPSJsYXllciIKICAgICBpZD0ibGF5ZXIxIgogICAgIHRyYW5zZm9ybT0idHJhbnNsYXRlKC0xMTkuNjQ3NDQsLTM3Mi41OTc3NSkiPgogICAgPGcKICAgICAgIGlkPSJnNTM1NCIKICAgICAgIHRyYW5zZm9ybT0ibWF0cml4KDEuMTc3OTU1NSwwLDAsMS4xNzc5NTU1LC0yMi4wMDM3NCwtOTcuMjE4NDA2KSI+CiAgICAgIDxyZWN0CiAgICAgICAgIHk9IjQwMy42MzM4MiIKICAgICAgICAgeD0iMTI1LjA0NTIyIgogICAgICAgICBoZWlnaHQ9IjE0MS4yNzU4NSIKICAgICAgICAgd2lkdGg9IjE2Ni45OTAxNCIKICAgICAgICAgaWQ9InJlY3Q1MzQxIgogICAgICAgICBzdHlsZT0iZmlsbDojY2YwMDAwO2ZpbGwtb3BhY2l0eToxO2ZpbGwtcnVsZTpldmVub2RkO3N0cm9rZTojMDAwMDAwO3N0cm9rZS13aWR0aDoyLjc5NTU2MDM2O3N0cm9rZS1taXRlcmxpbWl0OjQ7c3Ryb2tlLW9wYWNpdHk6MTtzdHJva2UtZGFzaGFycmF5Om5vbmUiIC8+CiAgICAgIDxwYXRoCiAgICAgICAgIGlua3NjYXBlOmNvbm5lY3Rvci1jdXJ2YXR1cmU9IjAiCiAgICAgICAgIGlkPSJwYXRoMzM3NyIKICAgICAgICAgZD0ibSAyODguNDkxOTksNTQxLjc1NzUyIGMgLTEuMDkzMSwtMS40NDE3NiAtMTAuMzU0MSwtMTcuMDc5MjYgLTIwLjU4LC0zNC43NSAtMTAuMjI1OSwtMTcuNjcwNzMgLTIwLjYyNTEsLTM1LjUwMzYxIC0yMy4xMDkyLC0zOS42Mjg2MSAtMi40ODQyLC00LjEyNSAtMTEuNjEzMSwtMTkuNzgwNjYgLTIwLjI4NjQsLTM0Ljc5MDM1IC04LjY3MzMsLTE1LjAwOTY5IC0xNi4yMjY5LC0yNy4xMzc5NSAtMTYuNzg1NywtMjYuOTUxNjkgLTAuNTU4OCwwLjE4NjI2IC04LjgyNzgsMTMuODE2OTIgLTE4LjM3NTcsMzAuMjkwMzUgLTkuNTQ3OCwxNi40NzM0MyAtMTkuMzIzLDMzLjEwMTY5IC0yMS43MjI3LDM2Ljk1MTY5IC0yLjM5OTYsMy44NSAtMTIuMTM2NCwyMC41IC0yMS42MzczLDM3IC05LjUwMDgsMTYuNSAtMTguMTEwNCwzMC44MDUwMyAtMTkuMTMyMywzMS43ODg5NiAtMS44MTAxLDEuNzQyNzcgLTEuODU4MSwtMC4wMzE5IC0xLjg1ODEsLTY4Ljc1MDAxIGwgMCwtNzAuNTM4OTUgNDEsMCBjIDI2LjY2NjcsMCA0MSwwLjM0OTU5IDQxLDEgMCwwLjU1IDAuNDc2NiwxIDEuMDU5LDEgMC41ODI1LDAgMC43ODA5LC0wLjQ1IDAuNDQxLC0xIC0wLjQwODIsLTAuNjYwNTQgMTMuNDg5NiwtMSA0MC45NDEsLTEgbCA0MS41NTksMCAwLDcxIGMgMCwzOS4wNSAtMC4xMTgyLDcxIC0wLjI2MjYsNzEgLTAuMTQ0NSwwIC0xLjE1NywtMS4xNzk2MiAtMi4yNSwtMi42MjEzOSB6IG0gLTE0NS45NjkyLC02LjM0OTI0IGMgLTAuMzMsLTAuNTMzODUgMC4wNDksLTIuMjIxMzUgMC44NDIyLC0zLjc1IDEuODM2MSwtMy41Mzg1OSAzMC42MjEyLC01Mi44NjU1OSAzNy44MDI0LC02NC43NzkzNyAyLjk4MzcsLTQuOTUgOS44ODc2LC0xNi43NjI1IDE1LjM0MiwtMjYuMjUgNS40NTQ0LC05LjQ4NzUgMTAuNDkwOCwtMTcuMjUgMTEuMTkyLC0xNy4yNSAxLjU2OTIsMCAzLjM1MDcsMi43ODY0NiAxNi4zMDMyLDI1LjUgNS42NDU1LDkuOSAxMS40MTUyLDE5LjggMTIuODIxNiwyMiA3LjczNTUsMTIuMTAwODYgMzYuMTc4NCw2Mi4xODc3NSAzNi4xNzg0LDYzLjcwODkgMCwxLjcwMzA4IC0zLjE5MTQsMS43OTExIC02NC45NDEsMS43OTExIC00MC45MDU0LDAgLTY1LjE2MywtMC4zNTkyNSAtNjUuNTQwOCwtMC45NzA2MyB6IG0gMTEwLjQ4MTgsLTExLjk2NDg5IGMgMCwtMS4wNDcwMyAtMjQuNzc2MSwtNDQuMzIwODcgLTI4Ljk1MDMsLTUwLjU2NDQ4IC0zLjYyMDEsLTUuNDE0ODEgLTEzLjgxMTQsLTIyLjcxNTQ4IC0xNC42MTU3LC0yNC44MTE0MiAtMC4zNTY0LC0wLjkyODcyIC0xLjAwNSwtMS42ODg1OCAtMS40NDEzLC0xLjY4ODU4IC0wLjQzNjQsMCAtMy44Mzk4LDUuMjg3NSAtNy41NjMxLDExLjc1IC0zLjcyMzQsNi40NjI1IC03LjY5NTEsMTMuMDg3NTQgLTguODI2MSwxNC43MjIzMiAtNC4zODk1LDYuMzQ0ODcgLTI5LjMyNyw1MC40NzA4OSAtMjguODEzNCw1MC45ODQ0MyAwLjk4MjYsMC45ODI2NCA5MC4yMDk5LDAuNTk0NjUgOTAuMjA5OSwtMC4zOTIyNyB6IG0gLTc0LjUzLC05LjExMjk5IGMgLTEuMDk1NCwtMS43NzIzOSAyNy4yMzcsLTQ5Ljk1MTQ5IDI5LjM3NDYsLTQ5Ljk1MTQ5IDEuMjM3OSwwIDQuMjkwNCw0Ljc4NDk3IDE4LjE2MDYsMjguNDY3ODQgNi42MzcyLDExLjMzMjg1IDExLjc5OTcsMjEuMDM4NzYgMTEuNDcyMiwyMS41Njg2OCAtMC44NDc3LDEuMzcxNjcgLTU4LjE1ODEsMS4yODkxIC01OS4wMDc0LC0wLjA4NSB6IgogICAgICAgICBzdHlsZT0iZmlsbDojMDAwMDAwIiAvPgogICAgPC9nPgogIDwvZz4KPC9zdmc+Cg==",
+    "parkingBrake": "data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiIHN0YW5kYWxvbmU9Im5vIj8+CjxzdmcKICAgeG1sbnM6ZGM9Imh0dHA6Ly9wdXJsLm9yZy9kYy9lbGVtZW50cy8xLjEvIgogICB4bWxuczpjYz0iaHR0cDovL2NyZWF0aXZlY29tbW9ucy5vcmcvbnMjIgogICB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiCiAgIHhtbG5zOnN2Zz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciCiAgIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIKICAgeG1sbnM6c29kaXBvZGk9Imh0dHA6Ly9zb2RpcG9kaS5zb3VyY2Vmb3JnZS5uZXQvRFREL3NvZGlwb2RpLTAuZHRkIgogICB4bWxuczppbmtzY2FwZT0iaHR0cDovL3d3dy5pbmtzY2FwZS5vcmcvbmFtZXNwYWNlcy9pbmtzY2FwZSIKICAgdmVyc2lvbj0iMS4wIgogICB3aWR0aD0iMjA4IgogICBoZWlnaHQ9IjE2My4xMTI1MiIKICAgdmlld0JveD0iMCAwIDE2Ni40IDEzMC40OTAwMSIKICAgcHJlc2VydmVBc3BlY3RSYXRpbz0ieE1pZFlNaWQgbWVldCIKICAgaWQ9InN2ZzIiCiAgIGlua3NjYXBlOnZlcnNpb249IjAuNDguNCByOTkzOSIKICAgc29kaXBvZGk6ZG9jbmFtZT0iQjAyLnN2ZyI+CiAgPGRlZnMKICAgICBpZD0iZGVmczE4IiAvPgogIDxzb2RpcG9kaTpuYW1lZHZpZXcKICAgICBwYWdlY29sb3I9IiNmZmZmZmYiCiAgICAgYm9yZGVyY29sb3I9IiM2NjY2NjYiCiAgICAgYm9yZGVyb3BhY2l0eT0iMSIKICAgICBvYmplY3R0b2xlcmFuY2U9IjEwIgogICAgIGdyaWR0b2xlcmFuY2U9IjEwIgogICAgIGd1aWRldG9sZXJhbmNlPSIxMCIKICAgICBpbmtzY2FwZTpwYWdlb3BhY2l0eT0iMCIKICAgICBpbmtzY2FwZTpwYWdlc2hhZG93PSIyIgogICAgIGlua3NjYXBlOndpbmRvdy13aWR0aD0iMTkyMCIKICAgICBpbmtzY2FwZTp3aW5kb3ctaGVpZ2h0PSIxMTUzIgogICAgIGlkPSJuYW1lZHZpZXcxNiIKICAgICBzaG93Z3JpZD0iZmFsc2UiCiAgICAgZml0LW1hcmdpbi10b3A9IjQiCiAgICAgZml0LW1hcmdpbi1sZWZ0PSI0IgogICAgIGZpdC1tYXJnaW4tcmlnaHQ9IjQiCiAgICAgZml0LW1hcmdpbi1ib3R0b209IjQiCiAgICAgaW5rc2NhcGU6em9vbT0iMy4zMzU3OTQ1IgogICAgIGlua3NjYXBlOmN4PSIxMjMuNDY1NjQiCiAgICAgaW5rc2NhcGU6Y3k9IjEwNy4xNjE4MiIKICAgICBpbmtzY2FwZTp3aW5kb3cteD0iMTI3NiIKICAgICBpbmtzY2FwZTp3aW5kb3cteT0iLTQiCiAgICAgaW5rc2NhcGU6d2luZG93LW1heGltaXplZD0iMSIKICAgICBpbmtzY2FwZTpjdXJyZW50LWxheWVyPSJzdmcyIiAvPgogIDxtZXRhZGF0YQogICAgIGlkPSJtZXRhZGF0YTQiPgpDcmVhdGVkIGJ5IHBvdHJhY2UgMS4xMSwgd3JpdHRlbiBieSBQZXRlciBTZWxpbmdlciAyMDAxLTIwMTMKPHJkZjpSREY+CiAgPGNjOldvcmsKICAgICByZGY6YWJvdXQ9IiI+CiAgICA8ZGM6Zm9ybWF0PmltYWdlL3N2Zyt4bWw8L2RjOmZvcm1hdD4KICAgIDxkYzp0eXBlCiAgICAgICByZGY6cmVzb3VyY2U9Imh0dHA6Ly9wdXJsLm9yZy9kYy9kY21pdHlwZS9TdGlsbEltYWdlIiAvPgogICAgPGRjOnRpdGxlPjwvZGM6dGl0bGU+CiAgPC9jYzpXb3JrPgo8L3JkZjpSREY+CjwvbWV0YWRhdGE+CiAgPHJlY3QKICAgICBzdHlsZT0iZmlsbDojY2YwMDAwO2ZpbGwtb3BhY2l0eToxO2ZpbGwtcnVsZTpldmVub2RkO3N0cm9rZTojMDAwMDAwO3N0cm9rZS13aWR0aDoxLjg1MDU4NzAxO3N0cm9rZS1saW5lam9pbjptaXRlcjtzdHJva2UtbWl0ZXJsaW1pdDo0O3N0cm9rZS1vcGFjaXR5OjE7c3Ryb2tlLWRhc2hhcnJheTpub25lIgogICAgIGlkPSJyZWN0Mjk5NSIKICAgICB3aWR0aD0iMTU4LjE0OTQxIgogICAgIGhlaWdodD0iMTIyLjIzOTQzIgogICAgIHg9IjQuMTI1MjkzNyIKICAgICB5PSI0LjEyNTI5MTMiIC8+CiAgPGcKICAgICB0cmFuc2Zvcm09Im1hdHJpeCgwLjA4MTM3Nzk5LDAsMCwtMC4wODEzNzc5OSw0LjE1ODk1ODQsMTI2LjMzMTA0KSIKICAgICBpZD0iZzYiCiAgICAgc3R5bGU9ImZpbGw6IzAwMDAwMDtzdHJva2U6bm9uZSI+CiAgICA8cGF0aAogICAgICAgZD0iTSAxLDExNzMgQyAyLDk5MiA1LDg1OSA3LDg3NSBjIDI0LDE5MyAxMTksMzk3IDI1Miw1MzggbCAzNSwzNyAzOCwtMzcgYyAyMSwtMjAgMzgsLTQwIDM4LC00NCAwLC01IC0xNiwtMjUgLTM2LC00NiBDIDExMiwxMDg2IDUzLDcwNSAxOTEsNDAyIDIyNywzMjEgMjc0LDI1MCAzMzUsMTgyIEwgMzgxLDEzMSAzNDksOTAgQyAzMzEsNjggMzEzLDUwIDMwOSw1MCAyOTIsNTAgMTgyLDE4NSAxMzMsMjY2IDc4LDM1OCAyNiw1MDQgMTEsNjA1IDUsNjQ3IDIsNTYzIDEsMzMzIEwgMCwwIDQ0MywxIGMgMjU3LDEgNDIyLDUgMzk1LDkgLTIyNCwzOCAtNDI3LDE4OCAtNTM2LDM5NSAtNjMsMTE5IC03NywxODQgLTc3LDM1MCAxLDEzNSAzLDE1OCAyNywyMjggMzcsMTExIDEwMCwyMTEgMTg3LDI5OCAxMTEsMTExIDIzNSwxNzggMzg2LDIwOSAyMyw0IC0xNDAsOCAtMzkyLDkgbCAtNDMzLDEgMSwtMzI3IHoiCiAgICAgICBpZD0icGF0aDgiCiAgICAgICBpbmtzY2FwZTpjb25uZWN0b3ItY3VydmF0dXJlPSIwIiAvPgogICAgPHBhdGgKICAgICAgIGQ9Im0gMTEwMCwxNDkzIGMgNDQsLTcgMTUzLC00NSAyMDUsLTcxIDE3OSwtODggMzE3LC0yNTAgMzgyLC00NDcgMjMsLTcxIDI2LC05NiAyNywtMjIwIDAsLTExOSAtMywtMTUxIC0yMywtMjE1IEMgMTYwNywyNjcgMTM3Myw1NiAxMTAyLDEwIDEwNzUsNiAxMjQwLDIgMTQ5OCwxIGwgNDQyLC0xIC0xLDM1MyBjIC0xLDIyMyAtNCwzMjggLTksMjg2IEMgMTkwNyw0NDIgMTgxNiwyNDUgMTY4MSw5OSBsIC00OSwtNTQgLTI3LDI1IGMgLTUyLDQ4IC01MSw1NCAxNCwxMzIgMjczLDMyNCAyNjcsODAzIC0xMywxMTE1IGwgLTQ1LDUwIDQzLDQyIDQzLDQyIDQzLC00OCBjIDEyOSwtMTQ1IDIxNywtMzQyIDI0MCwtNTMyIDUsLTQyIDgsNjAgOSwyODIgbCAxLDM0NyAtNDMyLC0xIGMgLTIzOCwtMSAtNDIyLC00IC00MDgsLTYgeiIKICAgICAgIGlkPSJwYXRoMTAiCiAgICAgICBpbmtzY2FwZTpjb25uZWN0b3ItY3VydmF0dXJlPSIwIiAvPgogICAgPHBhdGgKICAgICAgIGQ9Ik0gODEwLDEzNzQgQyA1ODAsMTMxNSAzOTIsMTEyMCAzNDAsODkwIDMyNSw4MjIgMzI4LDY2MiAzNDUsNTk1IDM5NCw0MDQgNTQ1LDIyOSA3MjYsMTU2IGMgMTg1LC03NSA0MTUsLTU2IDU4MSw0OSAxMjUsNzkgMjI3LDIwOSAyNzQsMzUwIDIxLDYwIDI0LDg4IDIzLDIwMCAtMSwxMTQgLTQsMTM5IC0yNywyMDQgLTc0LDIwNyAtMjQyLDM2MSAtNDUyLDQxNiAtNzQsMTkgLTI0MSwxOSAtMzE1LC0xIHogbSAzMDUsLTE5NiBjIDgxLC0xNiAxNDMsLTYwIDE3OCwtMTI4IDI3LC01MSAyOSwtNjIgMjUsLTE0MCAtNSwtMTE0IC00NCwtMTc3IC0xNDMsLTIyOCAtNDUsLTI0IC02MywtMjYgLTE5MiwtMzAgbCAtMTQzLC00IDAsLTE2NCAwLC0xNjQgLTU1LDAgLTU1LDAgMCw0MzUgMCw0MzUgMTYzLDAgYyA5MCwwIDE5MCwtNSAyMjIsLTEyIHoiCiAgICAgICBpZD0icGF0aDEyIgogICAgICAgaW5rc2NhcGU6Y29ubmVjdG9yLWN1cnZhdHVyZT0iMCIgLz4KICAgIDxwYXRoCiAgICAgICBkPSJtIDg0MCw5MjAgMCwtMTYwIDEyMCwwIGMgMTM5LDAgMTY0LDkgMjEwLDcyIDU3LDc4IDMzLDE4OSAtNTAsMjMwIC0yOCwxNCAtNjEsMTggLTE1NywxOCBsIC0xMjMsMCAwLC0xNjAgeiIKICAgICAgIGlkPSJwYXRoMTQiCiAgICAgICBpbmtzY2FwZTpjb25uZWN0b3ItY3VydmF0dXJlPSIwIiAvPgogIDwvZz4KPC9zdmc+Cg=="
+});
+
+  function qsa(selector) {
+    return Array.from(document.querySelectorAll(selector));
+  }
+
+  function stateClass(value) {
+    if (value === true) return "is-active";
+    if (value === false) return "is-inactive";
+    return "is-unknown";
+  }
+
+  function stateText(value) {
+    if (value === true) return "on";
+    if (value === false) return "off";
+    return "unknown";
+  }
+
+  function sr(text) {
+    return `<span class="openmmi-telltale-sr">${text}</span>`;
+  }
+
+  function icon(kind, value, label, src) {
+    const status = stateText(value);
+    const title = `${label}: ${status}`;
+    return `<span class="openmmi-telltale openmmi-telltale-${kind} ${stateClass(value)}" role="img" aria-label="${title}" title="${title}">` +
+      `<img src="${src}" alt="" aria-hidden="true" loading="eager" decoding="async" draggable="false" onerror="this.closest('.openmmi-telltale').classList.add('icon-load-failed')">` +
+      sr(title) +
+      `</span>`;
+  }
+
+  function markHost(node, kind, label) {
+    node.classList.add("openmmi-telltale-value", `openmmi-telltale-value-${kind}`);
+    node.setAttribute("aria-label", label);
+    const host = node.closest(".tile, .footer-item");
+    if (host) {
+      host.classList.add("openmmi-telltale-host", `openmmi-telltale-host-${kind}`);
+      host.setAttribute("title", label);
+    }
+  }
+
+  function setNodeIcon(selector, kind, value, label, src) {
+    qsa(selector).forEach((node) => {
+      node.innerHTML = icon(kind, value, label, src);
+      markHost(node, kind, `${label}: ${stateText(value)}`);
+    });
+  }
+
+  function indicatorLabel(lighting) {
+    if (lighting.hazards === true) return "Hazard warning lights";
+    if (lighting.left_indicator === true && lighting.right_indicator === true) return "Both direction indicators";
+    if (lighting.left_indicator === true) return "Left direction indicator";
+    if (lighting.right_indicator === true) return "Right direction indicator";
+    if (lighting.left_indicator === false || lighting.right_indicator === false) return "Direction indicators off";
+    return "Direction indicators unknown";
+  }
+
+  function setIndicators(lighting) {
+    const hazards = lighting.hazards === true;
+    const left = hazards ? true : lighting.left_indicator;
+    const right = hazards ? true : lighting.right_indicator;
+    const label = indicatorLabel(lighting);
+
+    qsa('[data-field="indicators"]').forEach((node) => {
+      node.innerHTML =
+        `<span class="openmmi-indicator-pair ${hazards ? "is-hazard" : ""}">` +
+          icon("left-turn", left, "Left direction indicator", ICONS.leftTurn) +
+          icon("right-turn", right, "Right direction indicator", ICONS.rightTurn) +
+        `</span>` + sr(label);
+      markHost(node, "indicators", label);
+    });
+  }
+
+  function applyInlineDataTelltales(payload) {
+    const state = (payload && payload.state) || {};
+    const vehicle = state.vehicle || {};
+    const lighting = state.lighting || {};
+
+    setIndicators(lighting);
+    setNodeIcon('[data-bool="handbrake"]', "parking-brake", vehicle.handbrake, "Parking brake", ICONS.parkingBrake);
+    setNodeIcon('[data-bool="hazards"]', "hazard", lighting.hazards, "Hazard warning", ICONS.hazard);
+    setNodeIcon('[data-bool-no="bulb_out"]', "bulb-failure", lighting.bulb_out, "Exterior bulb failure", ICONS.bulbFailure);
+  }
+
+  if (typeof render !== "function") {
+    console.warn("Open MMI tell-tale patch: render() was not found");
+    return;
+  }
+
+  const previousRender = render;
+  render = function renderWithInlineDataTelltales(payload) {
+    previousRender(payload);
+    applyInlineDataTelltales(payload || {});
+  };
+
+  window.openMmiApplyInlineDataTelltales = applyInlineDataTelltales;
+})();
+/* end open-mmi dashboard ui pass 11 */
+
+/* open-mmi dashboard ui pass 12: coolant and voltage fixes */
+(function installCoolantAndVoltageFixes() {
+  "use strict";
+
+  function qsa(selector) {
+    return Array.from(document.querySelectorAll(selector));
+  }
+
+  function asNumber(value) {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+  }
+
+  function voltageState(voltage) {
+    if (voltage === null) return "unknown";
+    if (voltage < 11.8 || voltage > 15.2) return "danger";
+    if (voltage < 12.2 || voltage > 14.9) return "warn";
+    return "normal";
+  }
+
+  function coolantState(tempC) {
+    if (tempC === null) return "unknown";
+    if (tempC >= 112) return "hot";
+    if (tempC <= 60) return "cold";
+    return "normal";
+  }
+
+  function batterySvg() {
+    return '' +
+      '<svg class="openmmi-voltage-icon" viewBox="0 0 96 64" role="img" aria-hidden="true" focusable="false">' +
+        '<path d="M18 18H78c4.4 0 8 3.6 8 8v12c4.4 0 8 3.6 8 8s-3.6 8-8 8v-2c0 4.4-3.6 8-8 8H18c-4.4 0-8-3.6-8-8V26c0-4.4 3.6-8 8-8Z" fill="none" stroke="currentColor" stroke-width="7" stroke-linejoin="round"/>' +
+        '<path d="M31 32v14M24 39h14M61 39h14" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round"/>' +
+      '</svg>';
+  }
+
+  function updateVoltageTellTale(payload) {
+    const state = (payload && payload.state) || {};
+    const electrical = state.electrical || {};
+    const voltage = asNumber(electrical.supply_voltage_v ?? electrical.terminal30_voltage_v);
+    const status = voltageState(voltage);
+
+    qsa('[data-field="voltage_v"]').forEach((node) => {
+      const text = node.textContent && node.textContent.trim() ? node.textContent.trim() : "--";
+      node.classList.add("openmmi-voltage-field");
+      node.innerHTML =
+        '<span class="openmmi-voltage-readout is-' + status + '" title="Supply voltage: ' + text + ' V">' +
+          batterySvg() +
+          '<span class="openmmi-voltage-number">' + text + '</span>' +
+        '</span>';
+
+      const tile = node.closest('.tile');
+      if (tile) {
+        tile.classList.toggle('openmmi-voltage-warn', status === 'warn');
+        tile.classList.toggle('openmmi-voltage-danger', status === 'danger');
+      }
+    });
+  }
+
+  function updateCoolantGauge(payload) {
+    const state = (payload && payload.state) || {};
+    const engine = state.engine || {};
+    const tempC = asNumber(engine.coolant_temp_c);
+    const status = coolantState(tempC);
+
+    qsa('.temp-bar').forEach((bar) => {
+      bar.classList.add('openmmi-coolant-gauge');
+      bar.classList.remove('is-cold', 'is-normal', 'is-hot', 'is-unknown');
+      bar.classList.add('is-' + status);
+
+      if (tempC === null) {
+        bar.style.removeProperty('--coolant-pos');
+        bar.setAttribute('title', 'Coolant temperature: unknown');
+        return;
+      }
+
+      // The printed scale is 50 / 90 / 130 °C, so map the marker to that range.
+      const percent = clamp(((tempC - 50) / 80) * 100, 0, 100);
+      bar.style.setProperty('--coolant-pos', percent.toFixed(1) + '%');
+      bar.setAttribute('title', 'Coolant temperature: ' + tempC.toFixed(0) + ' °C');
+    });
+  }
+
+  function applyCoolantAndVoltageFixes(payload) {
+    updateVoltageTellTale(payload || {});
+    updateCoolantGauge(payload || {});
+  }
+
+  if (typeof render !== "function") {
+    console.warn("Open MMI coolant/voltage patch: render() was not found");
+    return;
+  }
+
+  const previousRender = render;
+  render = function renderWithCoolantAndVoltageFixes(payload) {
+    previousRender(payload);
+    applyCoolantAndVoltageFixes(payload || {});
+  };
+
+  window.openMmiApplyCoolantAndVoltageFixes = applyCoolantAndVoltageFixes;
+})();
+/* end open-mmi dashboard ui pass 12 */
+
+async function fetchStatus() {
+  try {
+    const response = await fetch("/api/status", { cache: "no-store" });
+    render(await response.json());
+  } catch (err) {
+    updateHealth({ health: { status: "error", age_seconds: null } });
+  }
+}
+
+function setPage(index) {
+  activePage = (index + PAGE_IDS.length) % PAGE_IDS.length;
+  PAGE_IDS.forEach((id, idx) => $("#" + id).classList.toggle("active", idx === activePage));
+  $$(".pager button").forEach((button, idx) => button.classList.toggle("active", idx === activePage));
+  $("#pageTitle").textContent = PAGE_NAMES[activePage];
+}
+
+function init() {
+  $$(".pager button").forEach((button) => button.addEventListener("click", () => setPage(Number(button.dataset.page))));
+  window.addEventListener("keydown", (event) => {
+    if (event.key === "ArrowRight") setPage(activePage + 1);
+    if (event.key === "ArrowLeft") setPage(activePage - 1);
+  });
+  setPage(0);
+  fetchStatus();
+  setInterval(fetchStatus, 200);
+}
+
+init();
+
+
+// --- Open MMI Jellyfin real Bootstrap media v5 start ---
+/*
+  Jellyfin Media v5
+  - actual Bootstrap classes for layout: container-fluid/row/col/card/d-flex/overflow/list-group/input-group/btn/progress
+  - Bootstrap Icons-style inline SVG controls, so controls are icons again and do not rely on icon font loading
+  - measured viewport height so the Media page fits above the dashboard footer/status strip
+  - local browser audio is primary; remote Jellyfin Web session is secondary status only
+*/
+try {
+  if (Array.isArray(PAGE_NAMES)) PAGE_NAMES[3] = "Media";
+  if (Array.isArray(PAGE_IDS)) PAGE_IDS[3] = "pageElectrical";
+} catch (_) {}
+
+const openMmiMedia = {
+  queue: [],
+  index: -1,
+  current: null,
+  bound: false,
+  lastQuery: "",
+};
+
+function ommiMediaEsc(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function ommiMediaText(value, fallback = "--") {
+  return value === null || value === undefined || value === "" ? fallback : String(value);
+}
+
+function ommiMediaTime(seconds) {
+  const n = Number(seconds);
+  if (!Number.isFinite(n) || n < 0) return "--:--";
+  const total = Math.floor(n);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function ommiMediaIcon(name, cls = "") {
+  // Bootstrap Icons SVG paths, embedded inline so the controls work offline after the page loads.
+  const paths = {
+    "play-fill": '<path d="m11.596 8.697-6.363 3.692C4.693 12.702 4 12.323 4 11.692V4.308c0-.631.693-1.01 1.233-.697l6.363 3.692a.802.802 0 0 1 0 1.394z"/>',
+    "pause-fill": '<path d="M5.5 3.5A1.5 1.5 0 0 1 7 5v6a1.5 1.5 0 0 1-3 0V5a1.5 1.5 0 0 1 1.5-1.5zm5 0A1.5 1.5 0 0 1 12 5v6a1.5 1.5 0 0 1-3 0V5a1.5 1.5 0 0 1 1.5-1.5z"/>',
+    "skip-start-fill": '<path d="M4 4a.5.5 0 0 1 1 0v3.248l6.267-3.636c.54-.313 1.233.066 1.233.696v7.384c0 .63-.693 1.009-1.233.696L5 8.752V12a.5.5 0 0 1-1 0V4z"/>',
+    "skip-end-fill": '<path d="M12.5 4a.5.5 0 0 0-1 0v3.248L5.233 3.612C4.693 3.299 4 3.678 4 4.308v7.384c0 .63.693 1.009 1.233.696L11.5 8.752V12a.5.5 0 0 0 1 0V4z"/>',
+    "stop-fill": '<path d="M5 3.5h6A1.5 1.5 0 0 1 12.5 5v6A1.5 1.5 0 0 1 11 12.5H5A1.5 1.5 0 0 1 3.5 11V5A1.5 1.5 0 0 1 5 3.5z"/>',
+    "search": '<path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.099zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z"/>',
+    "clock-history": '<path d="M8.515 1.019A7 7 0 1 1 1.004 8.5.5.5 0 0 1 2 8a6 6 0 1 0 1.76-4.243l-.04.04h1.533a.5.5 0 0 1 0 1H2.5a.5.5 0 0 1-.5-.5V1.543a.5.5 0 0 1 1 0v1.52A6.974 6.974 0 0 1 8.515 1.019z"/><path d="M7.5 3a.5.5 0 0 1 .5.5v5.21l3.248 1.856a.5.5 0 0 1-.496.868l-3.5-2A.5.5 0 0 1 7 9V3.5a.5.5 0 0 1 .5-.5z"/>',
+    "music-note-beamed": '<path d="M6 13c0 1.105-1.12 2-2.5 2S1 14.105 1 13s1.12-2 2.5-2 2.5.895 2.5 2z"/><path fill-rule="evenodd" d="M11 11V2h1v9h-1z"/><path d="M11 11c0 1.105-1.12 2-2.5 2S6 12.105 6 11s1.12-2 2.5-2 2.5.895 2.5 2z"/><path fill-rule="evenodd" d="M6 3v10H5V3h1z"/><path d="M5 2.905a1 1 0 0 1 .9-.995l6-.6a1 1 0 0 1 1.1.995V4L5 4.905v-2z"/>',
+    "volume-up-fill": '<path d="M11.536 14.01A8.473 8.473 0 0 0 14.026 8a8.473 8.473 0 0 0-2.49-6.01l-.708.707A7.476 7.476 0 0 1 13.025 8c0 2.071-.84 3.946-2.197 5.303l.708.707z"/><path d="M10.121 12.596A6.48 6.48 0 0 0 12.025 8a6.48 6.48 0 0 0-1.904-4.596l-.707.707A5.48 5.48 0 0 1 11.025 8a5.48 5.48 0 0 1-1.61 3.89l.706.706z"/><path d="M8.707 11.182A4.486 4.486 0 0 0 10.025 8a4.486 4.486 0 0 0-1.318-3.182L8 5.525A3.489 3.489 0 0 1 9.025 8 3.49 3.49 0 0 1 8 10.475l.707.707zM6.717 3.55A.5.5 0 0 1 7 4v8a.5.5 0 0 1-.812.39L3.825 10.5H1.5A.5.5 0 0 1 1 10V6a.5.5 0 0 1 .5-.5h2.325l2.363-1.89a.5.5 0 0 1 .529-.06z"/>',
+  };
+  return `<svg class="bi ${cls}" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true" focusable="false">${paths[name] || paths["music-note-beamed"]}</svg>`;
+}
+
+function ommiMediaPage() {
+  let page = document.querySelector("#pageElectrical") || Array.from(document.querySelectorAll(".page"))[3];
+  if (!page) {
+    page = document.createElement("section");
+    const footer = document.querySelector("footer.status-strip") || document.querySelector("footer");
+    (footer?.parentNode || document.body).insertBefore(page, footer || null);
+  }
+  const active = page.classList.contains("active");
+  page.id = "pageElectrical";
+  page.className = `page page-media${active ? " active" : ""}`;
+  page.setAttribute("aria-label", "Media page");
+
+  document.querySelectorAll(".media-shell, .open-mmi-media-v2, .open-mmi-media-v3, .open-mmi-media-v4, .open-mmi-media-v5").forEach((node) => {
+    if (!page.contains(node)) node.remove();
+  });
+
+  if (!page.querySelector("#openMmiMediaRoot")) {
+    page.replaceChildren(ommiMediaBuildRoot());
+    openMmiMedia.bound = false;
+  }
+  ommiMediaUpdatePagerLabels();
+  ommiMediaBind();
+  ommiMediaFitViewport();
+  return page;
+}
+
+function ommiMediaBuildRoot() {
+  const root = document.createElement("div");
+  root.id = "openMmiMediaRoot";
+  root.dataset.bootstrap = "true";
+  root.className = "open-mmi-media-v5 container-fluid p-0 overflow-hidden";
+  root.innerHTML = `
+    <div class="row gx-2 gy-0 h-100 min-h-0 overflow-hidden ommi-media-row align-items-stretch">
+      <section class="col-12 col-md-5 col-xl-4 h-100 min-h-0 d-flex overflow-hidden ommi-player-col" aria-label="Local Jellyfin player">
+        <div class="card flex-fill h-100 min-h-0 overflow-hidden ommi-media-card">
+          <div class="card-body d-flex flex-column min-h-0 h-100 gap-2 ommi-player-body">
+            <div id="ommiMediaArt" class="ommi-art flex-shrink-0" aria-hidden="true"><span>${ommiMediaIcon("music-note-beamed", "ommi-art-icon")}</span></div>
+            <div class="min-w-0 flex-shrink-0 ommi-now-copy">
+              <div class="text-uppercase small text-secondary ommi-kicker">${ommiMediaIcon("volume-up-fill")} Local player</div>
+              <h2 id="ommiMediaTitle" class="ommi-now-title mb-1">Select music</h2>
+              <div id="ommiMediaSubtitle" class="ommi-now-subtitle text-secondary">Tap a track to play through this dashboard</div>
+              <div id="ommiMediaMessage" class="ommi-message text-secondary" role="status"></div>
+            </div>
+            <audio id="ommiMediaAudio" preload="metadata"></audio>
+            <div id="ommiMediaProgressTrack" class="progress ommi-progress flex-shrink-0" role="slider" aria-label="Playback progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+              <div id="ommiMediaProgressFill" class="progress-bar ommi-progress-fill" style="width:0%"></div>
+            </div>
+            <div class="d-flex justify-content-between small text-secondary ommi-time flex-shrink-0">
+              <span id="ommiMediaElapsed">--:--</span><span id="ommiMediaDuration">--:--</span>
+            </div>
+            <div class="btn-group w-100 flex-shrink-0 ommi-controls" role="group" aria-label="Playback controls">
+              <button type="button" id="ommiMediaPrev" class="btn btn-outline-light ommi-icon-btn" aria-label="Previous track">${ommiMediaIcon("skip-start-fill")}</button>
+              <button type="button" id="ommiMediaPlay" class="btn btn-info ommi-icon-btn ommi-play-btn" aria-label="Play">${ommiMediaIcon("play-fill")}</button>
+              <button type="button" id="ommiMediaNext" class="btn btn-outline-light ommi-icon-btn" aria-label="Next track">${ommiMediaIcon("skip-end-fill")}</button>
+              <button type="button" id="ommiMediaStop" class="btn btn-outline-secondary ommi-icon-btn" aria-label="Stop">${ommiMediaIcon("stop-fill")}</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="col-12 col-md-7 col-xl-8 h-100 min-h-0 d-flex overflow-hidden ommi-browser-col" aria-label="Jellyfin music browser">
+        <div class="card flex-fill h-100 min-h-0 overflow-hidden ommi-media-card">
+          <div class="card-body d-flex flex-column min-h-0 h-100 gap-2 ommi-browser-body">
+            <div class="input-group input-group-lg flex-shrink-0 ommi-search">
+              <input id="ommiMediaSearch" type="search" class="form-control" autocomplete="off" placeholder="Search songs, artists, albums" aria-label="Search Jellyfin music">
+              <button type="button" id="ommiMediaSearchBtn" class="btn btn-outline-light ommi-search-btn" aria-label="Search">${ommiMediaIcon("search")}</button>
+              <button type="button" id="ommiMediaRecentBtn" class="btn btn-outline-secondary ommi-recent-btn" aria-label="Recent music">${ommiMediaIcon("clock-history")}</button>
+            </div>
+            <div class="d-flex justify-content-between align-items-center flex-shrink-0 ommi-list-heading">
+              <span id="ommiMediaListTitle">Recent music</span>
+              <span class="d-inline-flex align-items-center gap-2"><small id="ommiMediaRemoteState" class="text-secondary ommi-remote-state">--</small><span id="ommiMediaCount" class="badge rounded-pill text-bg-secondary">--</span></span>
+            </div>
+            <div id="ommiMediaResults" class="list-group list-group-flush flex-grow-1 min-h-0 overflow-auto ommi-results" role="list" aria-label="Tracks"></div>
+          </div>
+        </div>
+      </section>
+    </div>`;
+  return root;
+}
+
+function ommiMediaFitViewport() {
+  const page = document.querySelector("#pageElectrical.page-media");
+  const root = document.querySelector("#openMmiMediaRoot");
+  if (!page || !root) return;
+
+  const pageRect = page.getBoundingClientRect();
+  let bottom = window.innerHeight;
+  const candidates = Array.from(document.querySelectorAll("footer, .footer, .status-strip, .nav-dots, .pager, .page-dots, .dashboard-footer, .bottom-bar"));
+  for (const el of candidates) {
+    if (page.contains(el) || !el.getClientRects().length) continue;
+    const rect = el.getBoundingClientRect();
+    if (rect.top > pageRect.top + 20 && rect.top < bottom) bottom = rect.top;
+  }
+
+  const safeGap = 8;
+  const height = Math.max(220, Math.floor(bottom - pageRect.top - safeGap));
+  root.style.height = `${height}px`;
+  root.style.maxHeight = `${height}px`;
+  root.style.minHeight = "0";
+}
+
+function ommiMediaUpdatePagerLabels() {
+  document.querySelectorAll('[data-page="3"]').forEach((button) => {
+    button.title = "Media";
+    button.setAttribute("aria-label", "Media");
+  });
+  if (document.querySelector('[data-page="3"].active')) {
+    const title = document.querySelector("#pageTitle");
+    if (title) title.textContent = "Media";
+  }
+}
+
+function ommiMediaSetMessage(text, kind = "") {
+  const el = document.querySelector("#ommiMediaMessage");
+  if (!el) return;
+  el.textContent = text || "";
+  el.className = `ommi-message ${kind === "error" ? "text-danger" : "text-secondary"}`;
+}
+
+function ommiMediaSetArtwork(track) {
+  const art = document.querySelector("#ommiMediaArt");
+  if (!art) return;
+  if (track?.image_url) {
+    art.classList.add("has-art");
+    art.innerHTML = `<img src="${ommiMediaEsc(track.image_url)}" alt="">`;
+  } else {
+    art.classList.remove("has-art");
+    art.innerHTML = `<span>${ommiMediaIcon("music-note-beamed", "ommi-art-icon")}</span>`;
+  }
+}
+
+function ommiMediaSetNowPlaying(track) {
+  const title = document.querySelector("#ommiMediaTitle");
+  const subtitle = document.querySelector("#ommiMediaSubtitle");
+  if (!title || !subtitle) return;
+  if (!track) {
+    title.textContent = "Select music";
+    subtitle.textContent = "Tap a track to play through this dashboard";
+    ommiMediaSetArtwork(null);
+    return;
+  }
+  title.textContent = ommiMediaText(track.name, "Untitled");
+  subtitle.textContent = [track.artist, track.album].filter(Boolean).join(" · ") || "Jellyfin music";
+  ommiMediaSetArtwork(track);
+}
+
+function ommiMediaUpdateProgress() {
+  const audio = document.querySelector("#ommiMediaAudio");
+  const elapsed = document.querySelector("#ommiMediaElapsed");
+  const duration = document.querySelector("#ommiMediaDuration");
+  const fill = document.querySelector("#ommiMediaProgressFill");
+  const track = document.querySelector("#ommiMediaProgressTrack");
+  if (!audio || !elapsed || !duration || !fill) return;
+  const dur = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : Number(openMmiMedia.current?.duration_seconds || 0);
+  const pct = dur > 0 ? Math.max(0, Math.min(100, (audio.currentTime / dur) * 100)) : 0;
+  elapsed.textContent = ommiMediaTime(audio.currentTime);
+  duration.textContent = ommiMediaTime(dur);
+  fill.style.width = `${pct}%`;
+  track?.setAttribute("aria-valuenow", String(Math.round(pct)));
+}
+
+function ommiMediaUpdatePlayState() {
+  const audio = document.querySelector("#ommiMediaAudio");
+  const play = document.querySelector("#ommiMediaPlay");
+  if (play && audio) {
+    play.innerHTML = audio.paused ? ommiMediaIcon("play-fill") : ommiMediaIcon("pause-fill");
+    play.setAttribute("aria-label", audio.paused ? "Play" : "Pause");
+  }
+}
+
+async function ommiMediaFetchJson(path) {
+  const response = await fetch(path, { cache: "no-store" });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return response.json();
+}
+
+function ommiMediaRenderResults(items) {
+  const results = document.querySelector("#ommiMediaResults");
+  const count = document.querySelector("#ommiMediaCount");
+  if (!results) return;
+
+  openMmiMedia.queue = Array.isArray(items) ? items.filter((item) => item && item.id) : [];
+  if (count) count.textContent = String(openMmiMedia.queue.length);
+
+  if (!openMmiMedia.queue.length) {
+    results.innerHTML = `<div class="ommi-empty">No tracks found. Try search, or check <code>/api/jellyfin/search?limit=5</code>.</div>`;
+    return;
+  }
+
+  results.innerHTML = openMmiMedia.queue.map((item, index) => `
+    <button type="button" class="list-group-item list-group-item-action d-grid ommi-track" data-open-mmi-track="${index}" role="listitem" aria-label="Play ${ommiMediaEsc(item.name || "track")}">
+      <span class="ommi-track-art">${item.image_url ? `<img src="${ommiMediaEsc(item.image_url)}" alt="">` : ommiMediaIcon("music-note-beamed")}</span>
+      <span class="ommi-track-copy"><strong>${ommiMediaEsc(item.name || "Untitled")}</strong><small>${ommiMediaEsc([item.artist, item.album].filter(Boolean).join(" · ") || "Unknown artist")}</small></span>
+      <span class="ommi-track-duration">${ommiMediaTime(item.duration_seconds)}</span>
+    </button>`).join("");
+}
+
+async function ommiMediaLoadLibrary(query = "") {
+  ommiMediaPage();
+  const listTitle = document.querySelector("#ommiMediaListTitle");
+  const q = String(query || "").trim();
+  openMmiMedia.lastQuery = q;
+  if (listTitle) listTitle.textContent = q ? "Search results" : "Recent music";
+  ommiMediaSetMessage(q ? "Searching…" : "Loading music…");
+  try {
+    const payload = await ommiMediaFetchJson(`/api/jellyfin/search?q=${encodeURIComponent(q)}&limit=60`);
+    if (payload.error) ommiMediaSetMessage(payload.error, "error");
+    else ommiMediaSetMessage("Tap any track to play locally.");
+    ommiMediaRenderResults(payload.items || []);
+  } catch (err) {
+    ommiMediaSetMessage(`Could not load library: ${err.message}`, "error");
+    ommiMediaRenderResults([]);
+  }
+  ommiMediaFitViewport();
+}
+
+async function ommiMediaRefreshStatus() {
+  ommiMediaPage();
+  try {
+    const status = await ommiMediaFetchJson("/api/jellyfin/status");
+    const remote = document.querySelector("#ommiMediaRemoteState");
+    if (remote) {
+      const label = status?.configured ? (status?.state_label || status?.status || "ready") : "not configured";
+      remote.textContent = String(label).toUpperCase();
+      remote.title = status?.subtitle || "";
+    }
+    if (!status?.configured) ommiMediaSetMessage(status.subtitle || "Jellyfin is not configured", "error");
+  } catch (err) {
+    const remote = document.querySelector("#ommiMediaRemoteState");
+    if (remote) remote.textContent = "ERROR";
+    ommiMediaSetMessage(`Jellyfin status failed: ${err.message}`, "error");
+  }
+}
+
+async function ommiMediaPlayIndex(index) {
+  ommiMediaPage();
+  const audio = document.querySelector("#ommiMediaAudio");
+  const item = openMmiMedia.queue[Number(index)];
+  if (!audio || !item) return;
+
+  openMmiMedia.index = Number(index);
+  openMmiMedia.current = item;
+  ommiMediaSetNowPlaying(item);
+  ommiMediaSetMessage("Loading audio…");
+
+  document.querySelectorAll(".ommi-track.is-playing").forEach((node) => node.classList.remove("is-playing", "active"));
+  document.querySelector(`[data-open-mmi-track="${openMmiMedia.index}"]`)?.classList.add("is-playing", "active");
+
+  audio.src = `/api/jellyfin/stream/${encodeURIComponent(item.id)}`;
+  audio.load();
+  try {
+    await audio.play();
+    ommiMediaSetMessage("Playing locally on this dashboard.");
+  } catch (err) {
+    ommiMediaSetMessage(`Tap play to start audio: ${err.message}`, "error");
+  }
+  ommiMediaUpdatePlayState();
+  ommiMediaFitViewport();
+}
+
+function ommiMediaNext() {
+  if (!openMmiMedia.queue.length) return;
+  const next = openMmiMedia.index < 0 ? 0 : (openMmiMedia.index + 1) % openMmiMedia.queue.length;
+  ommiMediaPlayIndex(next);
+}
+
+function ommiMediaPrev() {
+  if (!openMmiMedia.queue.length) return;
+  const prev = openMmiMedia.index <= 0 ? openMmiMedia.queue.length - 1 : openMmiMedia.index - 1;
+  ommiMediaPlayIndex(prev);
+}
+
+function ommiMediaBind() {
+  if (openMmiMedia.bound) return;
+  const root = document.querySelector("#openMmiMediaRoot");
+  const audio = document.querySelector("#ommiMediaAudio");
+  if (!root || !audio) return;
+
+  root.addEventListener("click", async (event) => {
+    const trackButton = event.target.closest?.("[data-open-mmi-track]");
+    if (trackButton) {
+      event.preventDefault();
+      await ommiMediaPlayIndex(trackButton.dataset.openMmiTrack);
+      return;
+    }
+    if (event.target.closest?.("#ommiMediaSearchBtn")) return ommiMediaLoadLibrary(document.querySelector("#ommiMediaSearch")?.value || "");
+    if (event.target.closest?.("#ommiMediaRecentBtn")) {
+      const input = document.querySelector("#ommiMediaSearch");
+      if (input) input.value = "";
+      return ommiMediaLoadLibrary("");
+    }
+    if (event.target.closest?.("#ommiMediaPrev")) return ommiMediaPrev();
+    if (event.target.closest?.("#ommiMediaNext")) return ommiMediaNext();
+    if (event.target.closest?.("#ommiMediaStop")) {
+      audio.pause();
+      audio.currentTime = 0;
+      openMmiMedia.current = null;
+      openMmiMedia.index = -1;
+      ommiMediaSetNowPlaying(null);
+      document.querySelectorAll(".ommi-track.is-playing").forEach((node) => node.classList.remove("is-playing", "active"));
+      ommiMediaUpdateProgress();
+      ommiMediaUpdatePlayState();
+      ommiMediaSetMessage("Stopped.");
+      return;
+    }
+    if (event.target.closest?.("#ommiMediaPlay")) {
+      if (!openMmiMedia.current && openMmiMedia.queue.length) return ommiMediaPlayIndex(0);
+      if (audio.paused) {
+        try { await audio.play(); ommiMediaSetMessage("Playing locally on this dashboard."); }
+        catch (err) { ommiMediaSetMessage(`Could not start audio: ${err.message}`, "error"); }
+      } else {
+        audio.pause();
+      }
+      ommiMediaUpdatePlayState();
+      return;
+    }
+    const progress = event.target.closest?.("#ommiMediaProgressTrack");
+    if (progress && Number.isFinite(audio.duration) && audio.duration > 0) {
+      const rect = progress.getBoundingClientRect();
+      const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+      audio.currentTime = ratio * audio.duration;
+      ommiMediaUpdateProgress();
+    }
+  });
+
+  root.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && event.target?.id === "ommiMediaSearch") ommiMediaLoadLibrary(event.target.value || "");
+  });
+
+  audio.addEventListener("timeupdate", ommiMediaUpdateProgress);
+  audio.addEventListener("durationchange", ommiMediaUpdateProgress);
+  audio.addEventListener("play", ommiMediaUpdatePlayState);
+  audio.addEventListener("pause", ommiMediaUpdatePlayState);
+  audio.addEventListener("ended", ommiMediaNext);
+  audio.addEventListener("error", () => ommiMediaSetMessage("Audio stream failed. Check Jellyfin access and codec support.", "error"));
+
+  window.addEventListener("resize", ommiMediaFitViewport);
+  window.addEventListener("orientationchange", () => setTimeout(ommiMediaFitViewport, 100));
+  openMmiMedia.bound = true;
+}
+
+function ommiMediaBoot() {
+  ommiMediaPage();
+  ommiMediaSetNowPlaying(openMmiMedia.current);
+  ommiMediaRefreshStatus();
+  if (!openMmiMedia.queue.length) ommiMediaLoadLibrary("");
+}
+
+ommiMediaBoot();
+document.addEventListener("DOMContentLoaded", ommiMediaBoot);
+setInterval(() => { ommiMediaPage(); ommiMediaUpdatePagerLabels(); ommiMediaFitViewport(); }, 1000);
+setInterval(ommiMediaRefreshStatus, 7000);
+// --- Open MMI Jellyfin real Bootstrap media v5 end ---
+
+
+// --- Open MMI Jellyfin viewport v6 start ---
+/*
+  Corrective viewport fit for the Media page.
+  The previous Bootstrap pass measured the available height but then put a
+  height:100% row with vertical gutters and full-height cards inside it, which
+  caused the bottom of the player/card to be clipped. This wrapper replaces the
+  fit function without touching the Jellyfin API/audio code.
+*/
+try {
+  const ommiPreviousMediaFitViewport = typeof ommiMediaFitViewport === "function" ? ommiMediaFitViewport : null;
+  ommiMediaFitViewport = function ommiMediaFitViewportV6() {
+    const page = document.querySelector("#pageElectrical.page-media");
+    const root = document.querySelector("#openMmiMediaRoot");
+    if (!page || !root) {
+      if (ommiPreviousMediaFitViewport) ommiPreviousMediaFitViewport();
+      return;
+    }
+
+    const pageRect = page.getBoundingClientRect();
+    let bottom = window.innerHeight;
+    const selectors = [
+      "footer", ".footer", ".status-strip", ".nav-dots", ".pager", ".page-dots",
+      ".dashboard-footer", ".bottom-bar", ".footer-status", ".status-row"
+    ].join(",");
+
+    for (const el of Array.from(document.querySelectorAll(selectors))) {
+      if (page.contains(el) || !el.getClientRects().length) continue;
+      const style = window.getComputedStyle(el);
+      if (style.display === "none" || style.visibility === "hidden") continue;
+      const rect = el.getBoundingClientRect();
+      if (rect.top > pageRect.top + 16 && rect.top < bottom) bottom = rect.top;
+    }
+
+    // Leave enough gap for the page/card rounded corners to be visible instead
+    // of ending exactly at the footer boundary and looking clipped.
+    const safeGap = 14;
+    const height = Math.max(220, Math.floor(bottom - pageRect.top - safeGap));
+    page.style.setProperty("--ommi-media-viewport-height", `${height}px`);
+    page.style.height = `${height}px`;
+    page.style.maxHeight = `${height}px`;
+    root.style.height = "100%";
+    root.style.maxHeight = "100%";
+    root.style.minHeight = "0";
+  };
+
+  window.addEventListener("resize", () => requestAnimationFrame(ommiMediaFitViewport));
+  window.addEventListener("orientationchange", () => setTimeout(ommiMediaFitViewport, 150));
+  requestAnimationFrame(ommiMediaFitViewport);
+} catch (error) {
+  console.warn("Open MMI Media viewport v6 failed", error);
+}
+// --- Open MMI Jellyfin viewport v6 end ---
+
+
+// --- Open MMI Jellyfin render stability v8b start ---
+/*
+  Tolerant Media layout stabiliser.
+
+  This patch intentionally avoids replacing the Jellyfin player functions; the
+  current app.js has drifted through several small fixes, so exact function-name
+  matching is fragile. Instead it stabilises the rendered Media DOM:
+    - marks the active Media page/root with v8b classes,
+    - reserves the track-list slot immediately with skeleton rows,
+    - keeps page/root scroll at the top,
+    - lets only #ommiMediaResults scroll,
+    - reruns the existing viewport fit hook when the list mutates.
+*/
+(function () {
+  const PAGE_SELECTOR = "#pageElectrical.page-media, #pageElectrical";
+  const ROOT_SELECTOR = "#openMmiMediaRoot";
+  const RESULTS_SELECTOR = "#ommiMediaResults";
+
+  function fit() {
+    const page = document.querySelector(PAGE_SELECTOR);
+    const root = document.querySelector(ROOT_SELECTOR);
+    const results = document.querySelector(RESULTS_SELECTOR);
+
+    if (page) {
+      page.classList.add("page-media-v8b");
+      if (page.classList.contains("active")) page.scrollTop = 0;
+    }
+    if (root) {
+      root.classList.add("open-mmi-media-v8b");
+      root.scrollTop = 0;
+    }
+    if (results) {
+      results.classList.add("ommi-results-v8b");
+      if (!results.dataset.openMmiUserScrolled) results.scrollTop = 0;
+    }
+
+    if (typeof window.ommiMediaFitViewport === "function") {
+      try { window.ommiMediaFitViewport(); } catch (_) {}
+    } else if (typeof ommiMediaFitViewport === "function") {
+      try { ommiMediaFitViewport(); } catch (_) {}
+    }
+  }
+
+  function skeleton() {
+    const results = document.querySelector(RESULTS_SELECTOR);
+    if (!results) return;
+    const hasRealRows = results.querySelector(".ommi-track:not(.ommi-track-skeleton-v8b), .list-group-item:not(.ommi-track-skeleton-v8b)");
+    const hasChildren = results.children.length > 0;
+    if (hasRealRows || hasChildren) return;
+
+    results.dataset.openMmiState = "loading";
+    results.innerHTML = Array.from({ length: 8 }, (_, index) => `
+      <div class="ommi-track ommi-track-skeleton-v8b" aria-hidden="true">
+        <span class="ommi-track-art ommi-skeleton-box-v8b"></span>
+        <span class="ommi-track-copy">
+          <strong class="ommi-skeleton-line-v8b ${index % 3 === 0 ? "is-short" : ""}"></strong>
+          <small class="ommi-skeleton-line-v8b ${index % 2 === 0 ? "is-tiny" : ""}"></small>
+        </span>
+        <span class="ommi-track-duration ommi-skeleton-line-v8b is-time"></span>
+      </div>`).join("");
+  }
+
+  function stabilise() {
+    skeleton();
+    fit();
+    requestAnimationFrame(fit);
+  }
+
+  function bindResultsScroll() {
+    const results = document.querySelector(RESULTS_SELECTOR);
+    if (!results || results.__openMmiV8bScrollBound) return;
+    results.addEventListener("scroll", () => {
+      if (results.scrollTop > 8) results.dataset.openMmiUserScrolled = "1";
+    }, { passive: true });
+    results.__openMmiV8bScrollBound = true;
+  }
+
+  function observe() {
+    const root = document.querySelector(ROOT_SELECTOR) || document.body;
+    if (root.__openMmiV8bObserverBound) return;
+    const observer = new MutationObserver(() => {
+      bindResultsScroll();
+      requestAnimationFrame(stabilise);
+    });
+    observer.observe(root, { childList: true, subtree: true });
+    root.__openMmiV8bObserverBound = true;
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    bindResultsScroll();
+    observe();
+    stabilise();
+    setTimeout(stabilise, 250);
+    setTimeout(stabilise, 1000);
+  });
+
+  window.addEventListener("resize", () => requestAnimationFrame(stabilise));
+  window.addEventListener("orientationchange", () => setTimeout(stabilise, 150));
+
+  // If this script is appended after DOMContentLoaded, run immediately too.
+  if (document.readyState !== "loading") {
+    bindResultsScroll();
+    observe();
+    stabilise();
+    setTimeout(stabilise, 250);
+    setTimeout(stabilise, 1000);
+  }
+})();
+// --- Open MMI Jellyfin render stability v8b end ---
+
+
+// --- Open MMI media early footer guard start ---
+/*
+  Keep the Media page inside the content row immediately, before the Jellyfin
+  library request completes. This avoids the brief first-paint overlap where the
+  Media player can cover the bottom status/nav strip and then snap back.
+*/
+(function () {
+  function clampMediaToContentRow() {
+    const page = document.querySelector("#pageElectrical.page-media, #pageElectrical");
+    const root = document.querySelector("#openMmiMediaRoot");
+    const screen = document.querySelector(".screen");
+    const footer = document.querySelector(".status-strip");
+    if (!page || !screen) return;
+
+    const screenRect = screen.getBoundingClientRect();
+    const pageRect = page.getBoundingClientRect();
+    const footerRect = footer ? footer.getBoundingClientRect() : null;
+    const bottom = footerRect ? footerRect.top : screenRect.bottom;
+    const available = Math.max(180, Math.floor(bottom - pageRect.top));
+
+    page.style.height = `${available}px`;
+    page.style.maxHeight = `${available}px`;
+    page.style.minHeight = "0";
+    page.style.overflow = "hidden";
+
+    if (root) {
+      root.style.height = "100%";
+      root.style.maxHeight = "100%";
+      root.style.minHeight = "0";
+      root.style.overflow = "hidden";
+    }
+
+    const results = document.querySelector("#ommiMediaResults");
+    if (results) {
+      results.style.minHeight = "0";
+      results.style.overflowY = "auto";
+      results.style.overflowX = "hidden";
+    }
+  }
+
+  function scheduleClamp() {
+    clampMediaToContentRow();
+    requestAnimationFrame(clampMediaToContentRow);
+    setTimeout(clampMediaToContentRow, 80);
+    setTimeout(clampMediaToContentRow, 300);
+  }
+
+  document.addEventListener("DOMContentLoaded", scheduleClamp);
+  window.addEventListener("resize", scheduleClamp);
+  window.addEventListener("orientationchange", () => setTimeout(scheduleClamp, 150));
+
+  const observer = new MutationObserver(scheduleClamp);
+  if (document.readyState !== "loading") scheduleClamp();
+  document.addEventListener("DOMContentLoaded", () => {
+    const target = document.querySelector("#pageElectrical") || document.body;
+    observer.observe(target, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "style"] });
+  });
+})();
+// --- Open MMI media early footer guard end ---
+
+
+// --- Open MMI media footer scoped repair start ---
+/*
+  Media-only footer clamp.
+
+  The previous first-paint fix used global .screen/.page grid rules, which could
+  break Drive/Climate/Vehicle. This repair measures the actual distance from the
+  active Media page top to the status/footer strip and applies that height only
+  to #pageElectrical.page-media and #openMmiMediaRoot.
+*/
+(function () {
+  const PAGE_SELECTOR = "#pageElectrical.page-media, #pageElectrical";
+  const ROOT_SELECTOR = "#openMmiMediaRoot";
+  const FOOTER_SELECTOR = ".status-strip, footer.status-strip, .screen > footer";
+
+  let raf = 0;
+
+  function getMediaPage() {
+    const page = document.querySelector(PAGE_SELECTOR);
+    if (!page) return null;
+    // Only clamp the Jellyfin/Media page. If the old id exists on a non-media
+    // page, require the Media root to be present before changing dimensions.
+    const root = page.querySelector(ROOT_SELECTOR) || document.querySelector(ROOT_SELECTOR);
+    if (!root) return null;
+    return { page, root };
+  }
+
+  function clearWhenInactive(page, root) {
+    if (page.classList.contains("active")) return false;
+    page.classList.remove("ommi-media-footer-scoped");
+    page.style.removeProperty("--ommi-media-page-height");
+    root.style.removeProperty("--ommi-media-root-height");
+    return true;
+  }
+
+  function clampMediaFooter() {
+    raf = 0;
+    const media = getMediaPage();
+    if (!media) return;
+    const { page, root } = media;
+    if (clearWhenInactive(page, root)) return;
+
+    const footer = document.querySelector(FOOTER_SELECTOR);
+    const screen = document.querySelector(".screen") || document.body;
+    if (!footer || !screen) return;
+
+    const pageRect = page.getBoundingClientRect();
+    const footerRect = footer.getBoundingClientRect();
+    const screenRect = screen.getBoundingClientRect();
+
+    // Use the earlier of footer top and screen bottom, so the media root cannot
+    // cover the footer even during Jellyfin/library first paint.
+    const bottomLimit = Math.min(footerRect.top, screenRect.bottom);
+    const available = Math.floor(bottomLimit - pageRect.top - 6);
+
+    // Ignore impossible measurements during the earliest layout ticks; retry
+    // shortly instead of writing nonsense dimensions.
+    if (!Number.isFinite(available) || available < 180) {
+      setTimeout(requestClamp, 40);
+      return;
+    }
+
+    const px = `${available}px`;
+    page.classList.add("ommi-media-footer-scoped");
+    page.style.setProperty("--ommi-media-page-height", px);
+    root.style.setProperty("--ommi-media-root-height", px);
+
+    const results = document.querySelector("#ommiMediaResults");
+    if (results) results.classList.add("ommi-media-results-scoped");
+  }
+
+  function requestClamp() {
+    if (raf) return;
+    raf = requestAnimationFrame(clampMediaFooter);
+  }
+
+  function scheduleStartupClamps() {
+    requestClamp();
+    requestAnimationFrame(requestClamp);
+    setTimeout(requestClamp, 50);
+    setTimeout(requestClamp, 200);
+    setTimeout(requestClamp, 800);
+  }
+
+  document.addEventListener("DOMContentLoaded", scheduleStartupClamps);
+  window.addEventListener("resize", requestClamp, { passive: true });
+  window.addEventListener("orientationchange", () => setTimeout(requestClamp, 120), { passive: true });
+
+  // Page changes and Jellyfin list loads can alter the active page/content.
+  const observer = new MutationObserver(requestClamp);
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", () => observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["class", "style"]
+    }));
+  } else if (document.body) {
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["class", "style"]
+    });
+    scheduleStartupClamps();
+  }
+
+  window.openMmiClampMediaFooter = requestClamp;
+})();
+// --- Open MMI media footer scoped repair end ---
+
+
+// --- Open MMI Jellyfin media keys fix start ---
+/*
+  System media-key integration for the local Jellyfin player.
+
+  Browsers often handle play/pause automatically for an <audio> element, but
+  next/previous track usually require Media Session action handlers. The helper
+  functions below delegate to the existing Jellyfin player functions when they
+  exist, and fall back to clicking the visible dashboard controls otherwise.
+*/
+(function () {
+  const AUDIO_SELECTORS = ["#ommiMediaAudio", "#mediaAudio"];
+
+  function mediaAudio() {
+    for (const selector of AUDIO_SELECTORS) {
+      const audio = document.querySelector(selector);
+      if (audio) return audio;
+    }
+    return null;
+  }
+
+  function clickFirst(selectors) {
+    for (const selector of selectors) {
+      const element = document.querySelector(selector);
+      if (element) {
+        element.click();
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function callIfFunction(name) {
+    const fn = window[name] || (typeof globalThis !== "undefined" ? globalThis[name] : null);
+    if (typeof fn === "function") {
+      fn();
+      return true;
+    }
+    return false;
+  }
+
+  function mediaNext() {
+    if (callIfFunction("openMmiMediaNext")) return;
+    if (callIfFunction("mediaNextTrack")) return;
+    clickFirst(["#ommiMediaNext", "#mediaNext", '[aria-label="Next"]', '[aria-label="Next track"]']);
+  }
+
+  function mediaPrev() {
+    if (callIfFunction("openMmiMediaPrev")) return;
+    if (callIfFunction("mediaPreviousTrack")) return;
+    clickFirst(["#ommiMediaPrev", "#mediaPrev", '[aria-label="Previous"]', '[aria-label="Previous track"]']);
+  }
+
+  async function mediaPlay() {
+    const audio = mediaAudio();
+    if (!audio) {
+      clickFirst(["#ommiMediaPlay", "#mediaPlayPause", '[aria-label="Play or pause"]']);
+      return;
+    }
+    try {
+      if (audio.paused) await audio.play();
+    } catch (_) {
+      clickFirst(["#ommiMediaPlay", "#mediaPlayPause", '[aria-label="Play or pause"]']);
+    }
+  }
+
+  function mediaPause() {
+    const audio = mediaAudio();
+    if (audio && !audio.paused) audio.pause();
+  }
+
+  function mediaPlayPause() {
+    const audio = mediaAudio();
+    if (!audio) {
+      clickFirst(["#ommiMediaPlay", "#mediaPlayPause", '[aria-label="Play or pause"]']);
+      return;
+    }
+    if (audio.paused) mediaPlay();
+    else audio.pause();
+  }
+
+  function mediaStop() {
+    const audio = mediaAudio();
+    if (clickFirst(["#ommiMediaStop", "#mediaStop", '[aria-label="Stop"]'])) return;
+    if (audio) {
+      audio.pause();
+      audio.currentTime = 0;
+    }
+  }
+
+  function updateMediaSessionMetadata() {
+    if (!("mediaSession" in navigator) || !("MediaMetadata" in window)) return;
+
+    const title = document.querySelector("#ommiMediaTitle, #mediaTitle")?.textContent?.trim() || "Open MMI";
+    const subtitle = document.querySelector("#ommiMediaSubtitle, #mediaSubtitle")?.textContent?.trim() || "Jellyfin";
+    const art = document.querySelector("#ommiMediaArt img, #mediaArt img, .ommi-track.is-playing img")?.src;
+
+    const metadata = {
+      title,
+      artist: subtitle,
+      album: "Open MMI",
+    };
+
+    if (art) {
+      metadata.artwork = [
+        { src: art, sizes: "96x96", type: "image/jpeg" },
+        { src: art, sizes: "256x256", type: "image/jpeg" },
+        { src: art, sizes: "512x512", type: "image/jpeg" },
+      ];
+    }
+
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata(metadata);
+    } catch (_) {
+      // Metadata is nice-to-have; media-key handlers are the important part.
+    }
+  }
+
+  function updateMediaSessionPlaybackState() {
+    if (!("mediaSession" in navigator)) return;
+    const audio = mediaAudio();
+    try {
+      navigator.mediaSession.playbackState = audio && !audio.paused ? "playing" : "paused";
+    } catch (_) {}
+  }
+
+  function bindMediaSession() {
+    if (!("mediaSession" in navigator)) return;
+
+    const handlers = {
+      play: mediaPlay,
+      pause: mediaPause,
+      stop: mediaStop,
+      previoustrack: mediaPrev,
+      nexttrack: mediaNext,
+    };
+
+    for (const [action, handler] of Object.entries(handlers)) {
+      try {
+        navigator.mediaSession.setActionHandler(action, handler);
+      } catch (_) {
+        // Some browsers omit specific actions; ignore unsupported ones.
+      }
+    }
+
+    updateMediaSessionMetadata();
+    updateMediaSessionPlaybackState();
+  }
+
+  function bindKeyboardMediaKeys() {
+    if (window.__openMmiMediaKeyKeyboardBound) return;
+    window.__openMmiMediaKeyKeyboardBound = true;
+
+    document.addEventListener("keydown", (event) => {
+      switch (event.key) {
+        case "MediaTrackNext":
+          event.preventDefault();
+          mediaNext();
+          break;
+        case "MediaTrackPrevious":
+          event.preventDefault();
+          mediaPrev();
+          break;
+        case "MediaPlayPause":
+          event.preventDefault();
+          mediaPlayPause();
+          break;
+        case "MediaStop":
+          event.preventDefault();
+          mediaStop();
+          break;
+        default:
+          break;
+      }
+    }, true);
+  }
+
+  function bindAudioEvents() {
+    const audio = mediaAudio();
+    if (!audio || audio.__openMmiMediaKeysBound) return;
+    audio.__openMmiMediaKeysBound = true;
+
+    for (const eventName of ["play", "pause", "ended", "loadedmetadata", "durationchange"]) {
+      audio.addEventListener(eventName, () => {
+        updateMediaSessionMetadata();
+        updateMediaSessionPlaybackState();
+      });
+    }
+  }
+
+  function bootMediaKeys() {
+    bindKeyboardMediaKeys();
+    bindMediaSession();
+    bindAudioEvents();
+  }
+
+  document.addEventListener("DOMContentLoaded", bootMediaKeys);
+  if (document.readyState !== "loading") bootMediaKeys();
+
+  // The Media page is created dynamically, so retry lightly until its audio
+  // element exists. This is deliberately cheap and stops rebinding once bound.
+  setInterval(bootMediaKeys, 1500);
+})();
+// --- Open MMI Jellyfin media keys fix end ---
+
+// --- Open MMI proper light tell-tales start ---
+(function installProperLightTelltales() {
+  "use strict";
+
+  const ICONS = Object.freeze({
+    "leftTurn": "data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiIHN0YW5kYWxvbmU9Im5vIj8+CjwhLS0gQ3JlYXRlZCB3aXRoIElua3NjYXBlIChodHRwOi8vd3d3Lmlua3NjYXBlLm9yZy8pIC0tPgoKPHN2ZwogICB4bWxuczpkYz0iaHR0cDovL3B1cmwub3JnL2RjL2VsZW1lbnRzLzEuMS8iCiAgIHhtbG5zOmNjPSJodHRwOi8vY3JlYXRpdmVjb21tb25zLm9yZy9ucyMiCiAgIHhtbG5zOnJkZj0iaHR0cDovL3d3dy53My5vcmcvMTk5OS8wMi8yMi1yZGYtc3ludGF4LW5zIyIKICAgeG1sbnM6c3ZnPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIKICAgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIgogICB4bWxuczpzb2RpcG9kaT0iaHR0cDovL3NvZGlwb2RpLnNvdXJjZWZvcmdlLm5ldC9EVEQvc29kaXBvZGktMC5kdGQiCiAgIHhtbG5zOmlua3NjYXBlPSJodHRwOi8vd3d3Lmlua3NjYXBlLm9yZy9uYW1lc3BhY2VzL2lua3NjYXBlIgogICB3aWR0aD0iMTg1LjEyMzc1IgogICBoZWlnaHQ9IjIwNy45OTk5NSIKICAgaWQ9InN2ZzQzMjkiCiAgIHZlcnNpb249IjEuMSIKICAgaW5rc2NhcGU6dmVyc2lvbj0iMC40OC40IHI5OTM5IgogICBzb2RpcG9kaTpkb2NuYW1lPSJBMTZMLnN2ZyI+CiAgPGRlZnMKICAgICBpZD0iZGVmczQzMzEiIC8+CiAgPHNvZGlwb2RpOm5hbWVkdmlldwogICAgIGlkPSJiYXNlIgogICAgIHBhZ2Vjb2xvcj0iI2ZmZmZmZiIKICAgICBib3JkZXJjb2xvcj0iIzY2NjY2NiIKICAgICBib3JkZXJvcGFjaXR5PSIxLjAiCiAgICAgaW5rc2NhcGU6cGFnZW9wYWNpdHk9IjAuMCIKICAgICBpbmtzY2FwZTpwYWdlc2hhZG93PSIyIgogICAgIGlua3NjYXBlOnpvb209IjIuOCIKICAgICBpbmtzY2FwZTpjeD0iNjIuMTA3MzAxIgogICAgIGlua3NjYXBlOmN5PSI3Ni4yODI0ODMiCiAgICAgaW5rc2NhcGU6ZG9jdW1lbnQtdW5pdHM9InB4IgogICAgIGlua3NjYXBlOmN1cnJlbnQtbGF5ZXI9ImxheWVyMSIKICAgICBzaG93Z3JpZD0iZmFsc2UiCiAgICAgZml0LW1hcmdpbi10b3A9IjQiCiAgICAgZml0LW1hcmdpbi1sZWZ0PSI0IgogICAgIGZpdC1tYXJnaW4tcmlnaHQ9IjQiCiAgICAgZml0LW1hcmdpbi1ib3R0b209IjQiCiAgICAgaW5rc2NhcGU6d2luZG93LXdpZHRoPSIxOTIwIgogICAgIGlua3NjYXBlOndpbmRvdy1oZWlnaHQ9IjExNTMiCiAgICAgaW5rc2NhcGU6d2luZG93LXg9IjEyNzYiCiAgICAgaW5rc2NhcGU6d2luZG93LXk9Ii00IgogICAgIGlua3NjYXBlOndpbmRvdy1tYXhpbWl6ZWQ9IjEiIC8+CiAgPG1ldGFkYXRhCiAgICAgaWQ9Im1ldGFkYXRhNDMzNCI+CiAgICA8cmRmOlJERj4KICAgICAgPGNjOldvcmsKICAgICAgICAgcmRmOmFib3V0PSIiPgogICAgICAgIDxkYzpmb3JtYXQ+aW1hZ2Uvc3ZnK3htbDwvZGM6Zm9ybWF0PgogICAgICAgIDxkYzp0eXBlCiAgICAgICAgICAgcmRmOnJlc291cmNlPSJodHRwOi8vcHVybC5vcmcvZGMvZGNtaXR5cGUvU3RpbGxJbWFnZSIgLz4KICAgICAgICA8ZGM6dGl0bGU+PC9kYzp0aXRsZT4KICAgICAgPC9jYzpXb3JrPgogICAgPC9yZGY6UkRGPgogIDwvbWV0YWRhdGE+CiAgPGcKICAgICBpbmtzY2FwZTpsYWJlbD0iTGF5ZXIgMSIKICAgICBpbmtzY2FwZTpncm91cG1vZGU9ImxheWVyIgogICAgIGlkPSJsYXllcjEiCiAgICAgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoLTExNS42NTY0OCwtMzczLjA5NDQ1KSI+CiAgICA8ZwogICAgICAgaWQ9Imc1Mjk1IgogICAgICAgdHJhbnNmb3JtPSJtYXRyaXgoMS45NDE3NDcxLDAsMCwxLjk0MTc0NzEsLTE2Mi42MjUsLTQ1NS40Mjk2MikiPgogICAgICA8cmVjdAogICAgICAgICB5PSI0MzAuMTMxMDQiCiAgICAgICAgIHg9IjE0Ni43NDcwMiIKICAgICAgICAgaGVpZ2h0PSIxMDAuMjY0OTUiCiAgICAgICAgIHdpZHRoPSI4OC40NzkyMSIKICAgICAgICAgaWQ9InJlY3Q1MjkzIgogICAgICAgICBzdHlsZT0iZmlsbDojMDBhMDAwO2ZpbGwtb3BhY2l0eToxO2ZpbGwtcnVsZTpldmVub2RkO3N0cm9rZTojMDAwMDAwO3N0cm9rZS13aWR0aDoyLjczNTA3MjE0O3N0cm9rZS1taXRlcmxpbWl0OjQ7c3Ryb2tlLW9wYWNpdHk6MTtzdHJva2UtZGFzaGFycmF5Om5vbmUiIC8+CiAgICAgIDxwYXRoCiAgICAgICAgIGlua3NjYXBlOmNvbm5lY3Rvci1jdXJ2YXR1cmU9IjAiCiAgICAgICAgIGlkPSJwYXRoMzM1MSIKICAgICAgICAgZD0ibSAxNDcuNjYzODksNTA1LjkxMTY4IDAsLTIzLjg1MTkgMTUuNzY5MTUsMTUuNjAxOSBjIDguNjczMDMsOC41ODEgMTkuNDczMDMsMTkuMTM5NiAyNCwyMy40NjM2IDQuNTI2OTcsNC4zMjM5IDguMjMwODUsOC4wMzY0IDguMjMwODUsOC4yNSAwLDAuMjEzNSAtMTAuOCwwLjM4ODIgLTI0LDAuMzg4MiBsIC0yNCwwIDAsLTIzLjg1MTggeiBtIDUxLjgzNDA3LDEwLjYwMzIgYyAwLjE4Mzc0LC03LjI4ODMgMC40MTUzLC0xMy4zMzMgMC41MTQ1OCwtMTMuNDMyNiAwLjA5OTMsLTAuMSA3LjkzNzA0LC0wLjMyNDcgMTcuNDE3MjQsLTAuNSBsIDE3LjIzNjczLC0wLjMxODggLTEwZS00LDEzLjc1IC0wLjAwMSwxMy43NSAtMTcuNzUsMCAtMTcuNzUsMCAwLjMzNDA3LC0xMy4yNTE0IHogbSAtMjUuMzM5OTMsLTI0Ljc1NzMgLTEwLjk3MTc1LC0xMS4wMDU5IDExLjczODgxLC0xMS43Mzg4IDExLjczODgsLTExLjczODggMCw1LjE3MzMgYyAwLDguMTU2OSAwLjM3NDc4LDguMzE2MSAxOS41NzE0Myw4LjMxNjEgbCAxNi40Mjg1NywwIDAsMTAgMCwxMCAtMTYuNDI4NTcsMCBjIC0xOC44ODE2MywwIC0xOS41NzE0MywwLjI2NjkgLTE5LjU3MTQzLDcuNTcxNCAwLDIuNDM1NyAtMC4zNDUxNyw0LjQyODYgLTAuNzY3MDUsNC40Mjg2IC0wLjQyMTg4LDAgLTUuNzA0MzUsLTQuOTUyNiAtMTEuNzM4ODEsLTExLjAwNTkgeiBtIC0yNi40OTQxNCwtMzYuNTE3NiAwLC0yNC40NzY1IDI0LjQ3NjM5LDAgMjQuNDc2MzgsMCAtMTYuNDY5NCwxNi4xMzYzIGMgLTkuMDU4MTgsOC44NzQ5IC0yMC4wNzI1NSwxOS44ODk0IC0yNC40NzYzOSwyNC40NzY1IGwgLTguMDA2OTgsOC4zNDAzIDAsLTI0LjQ3NjYgeiBtIDY4Ljc1LDMuNzc1MiAtMTYuNzUsLTAuMzAwMSAwLC0xMi4zOTQgYyAwLC02LjgxNjcgLTAuMjczMTUsLTEzLjEwNTggLTAuNjA2OTksLTEzLjk3NTggLTAuNTM5NzIsLTEuNDA2NSAxLjM5OTY0LC0xLjU4MTggMTcuNSwtMS41ODE4IGwgMTguMTA2OTksMCAwLDE0LjUgYyAwLDcuOTc1IC0wLjMzNzUsMTQuMzk5MSAtMC43NSwxNC4yNzU5IC0wLjQxMjUsLTAuMTIzMyAtOC4yODc1LC0wLjM1OTIgLTE3LjUsLTAuNTI0MiB6IgogICAgICAgICBzdHlsZT0iZmlsbDojMDAwMDAwIiAvPgogICAgPC9nPgogIDwvZz4KPC9zdmc+Cg==",
+    "rightTurn": "data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiIHN0YW5kYWxvbmU9Im5vIj8+CjwhLS0gQ3JlYXRlZCB3aXRoIElua3NjYXBlIChodHRwOi8vd3d3Lmlua3NjYXBlLm9yZy8pIC0tPgoKPHN2ZwogICB4bWxuczpkYz0iaHR0cDovL3B1cmwub3JnL2RjL2VsZW1lbnRzLzEuMS8iCiAgIHhtbG5zOmNjPSJodHRwOi8vY3JlYXRpdmVjb21tb25zLm9yZy9ucyMiCiAgIHhtbG5zOnJkZj0iaHR0cDovL3d3dy53My5vcmcvMTk5OS8wMi8yMi1yZGYtc3ludGF4LW5zIyIKICAgeG1sbnM6c3ZnPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIKICAgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIgogICB4bWxuczpzb2RpcG9kaT0iaHR0cDovL3NvZGlwb2RpLnNvdXJjZWZvcmdlLm5ldC9EVEQvc29kaXBvZGktMC5kdGQiCiAgIHhtbG5zOmlua3NjYXBlPSJodHRwOi8vd3d3Lmlua3NjYXBlLm9yZy9uYW1lc3BhY2VzL2lua3NjYXBlIgogICB3aWR0aD0iMTgzLjk2MDg5IgogICBoZWlnaHQ9IjIwNy45ODI4NSIKICAgaWQ9InN2ZzQzMjkiCiAgIHZlcnNpb249IjEuMSIKICAgaW5rc2NhcGU6dmVyc2lvbj0iMC40OC40IHI5OTM5IgogICBzb2RpcG9kaTpkb2NuYW1lPSJBMTZSLnN2ZyI+CiAgPGRlZnMKICAgICBpZD0iZGVmczQzMzEiIC8+CiAgPHNvZGlwb2RpOm5hbWVkdmlldwogICAgIGlkPSJiYXNlIgogICAgIHBhZ2Vjb2xvcj0iI2ZmZmZmZiIKICAgICBib3JkZXJjb2xvcj0iIzY2NjY2NiIKICAgICBib3JkZXJvcGFjaXR5PSIxLjAiCiAgICAgaW5rc2NhcGU6cGFnZW9wYWNpdHk9IjAuMCIKICAgICBpbmtzY2FwZTpwYWdlc2hhZG93PSIyIgogICAgIGlua3NjYXBlOnpvb209IjIuOCIKICAgICBpbmtzY2FwZTpjeD0iNjEuNTQ0OTAzIgogICAgIGlua3NjYXBlOmN5PSI3NS43MDk4NDkiCiAgICAgaW5rc2NhcGU6ZG9jdW1lbnQtdW5pdHM9InB4IgogICAgIGlua3NjYXBlOmN1cnJlbnQtbGF5ZXI9ImxheWVyMSIKICAgICBzaG93Z3JpZD0iZmFsc2UiCiAgICAgZml0LW1hcmdpbi10b3A9IjQiCiAgICAgZml0LW1hcmdpbi1sZWZ0PSI0IgogICAgIGZpdC1tYXJnaW4tcmlnaHQ9IjQiCiAgICAgZml0LW1hcmdpbi1ib3R0b209IjQiCiAgICAgaW5rc2NhcGU6d2luZG93LXdpZHRoPSIxOTIwIgogICAgIGlua3NjYXBlOndpbmRvdy1oZWlnaHQ9IjExNTMiCiAgICAgaW5rc2NhcGU6d2luZG93LXg9IjEyNzYiCiAgICAgaW5rc2NhcGU6d2luZG93LXk9Ii00IgogICAgIGlua3NjYXBlOndpbmRvdy1tYXhpbWl6ZWQ9IjEiIC8+CiAgPG1ldGFkYXRhCiAgICAgaWQ9Im1ldGFkYXRhNDMzNCI+CiAgICA8cmRmOlJERj4KICAgICAgPGNjOldvcmsKICAgICAgICAgcmRmOmFib3V0PSIiPgogICAgICAgIDxkYzpmb3JtYXQ+aW1hZ2Uvc3ZnK3htbDwvZGM6Zm9ybWF0PgogICAgICAgIDxkYzp0eXBlCiAgICAgICAgICAgcmRmOnJlc291cmNlPSJodHRwOi8vcHVybC5vcmcvZGMvZGNtaXR5cGUvU3RpbGxJbWFnZSIgLz4KICAgICAgICA8ZGM6dGl0bGU+PC9kYzp0aXRsZT4KICAgICAgPC9jYzpXb3JrPgogICAgPC9yZGY6UkRGPgogIDwvbWV0YWRhdGE+CiAgPGcKICAgICBpbmtzY2FwZTpsYWJlbD0iTGF5ZXIgMSIKICAgICBpbmtzY2FwZTpncm91cG1vZGU9ImxheWVyIgogICAgIGlkPSJsYXllcjEiCiAgICAgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoLTExNi4yMTg4OCwtMzcyLjUzODkyKSI+CiAgICA8ZwogICAgICAgaWQ9Imc1MzE5IgogICAgICAgdHJhbnNmb3JtPSJtYXRyaXgoMS45MjE3NTcxLDAsMCwxLjkyMTc1NzEsLTE0NS44MjQzNywtNDQ2Ljk5NDA1KSI+CiAgICAgIDxyZWN0CiAgICAgICAgIHk9IjQyOS44NzMwMiIKICAgICAgICAgeD0iMTM5Ljc5MjI4IgogICAgICAgICBoZWlnaHQ9IjEwMS4zNzEyNyIKICAgICAgICAgd2lkdGg9Ijg4Ljg3MTI2OSIKICAgICAgICAgaWQ9InJlY3Q1MzE3IgogICAgICAgICBzdHlsZT0iZmlsbDojMDBhMDAwO2ZpbGwtb3BhY2l0eToxO2ZpbGwtcnVsZTpldmVub2RkO3N0cm9rZTojMDAwMDAwO3N0cm9rZS13aWR0aDoyLjcwMDE1NzE3O3N0cm9rZS1taXRlcmxpbWl0OjQ7c3Ryb2tlLW9wYWNpdHk6MTtzdHJva2UtZGFzaGFycmF5Om5vbmUiIC8+CiAgICAgIDxwYXRoCiAgICAgICAgIGlua3NjYXBlOmNvbm5lY3Rvci1jdXJ2YXR1cmU9IjAiCiAgICAgICAgIGlkPSJwYXRoMzM0OSIKICAgICAgICAgZD0ibSAxNDAuNzI3OTEsNTE1Ljg4MDEyIDAsLTE0LjUgMTYuOCwwIGMgMTEuNzMzMzMsMCAxNy4xNjE5LDAuMzYxOSAxOCwxLjIgMC44MTMwMywwLjgxMyAxLjIsNS40ODg5IDEuMiwxNC41IGwgMCwxMy4zIC0xOCwwIC0xOCwwIDAsLTE0LjUgeiBtIDM3LjEwMDkxLDE0LjI1IGMgMC4yMzg4MywtMC4xMzc1IDExLjU2MzgzLC0xMS4yNjI4IDI1LjE2NjY2LC0yNC43MjI5IGwgMjQuNzMyNDMsLTI0LjQ3MjkgMCwyNC43MjI5IDAsMjQuNzIyOSAtMjUuMTY2NjcsMCBjIC0xMy44NDE2NiwwIC0yNC45NzEyNSwtMC4xMTI1IC0yNC43MzI0MiwtMC4yNSB6IG0gMTAuNTIwMTcsLTI5LjI5NTEgYyAtMC4zNDE1OSwtMC44OTAxIC0wLjYyMTA4LC0zLjM4MTcgLTAuNjIxMDgsLTUuNTM2NyBsIDAsLTMuOTE4MiAtMTYuOCwwIGMgLTExLjczMzMzLDAgLTE3LjE2MTkxLC0wLjM2MTkgLTE4LC0xLjIgLTEuNjIwNjksLTEuNjIwNyAtMS42MjA2OSwtMTcuOTc5MyAwLC0xOS42IDAuODM4MDksLTAuODM4MSA2LjI2NjY3LC0xLjIgMTgsLTEuMiBsIDE2LjgsMCAwLC00Ljk0MSBjIDAsLTIuNzE3NSAwLjM5MDU4LC01LjE4MjQgMC44Njc5NiwtNS40Nzc0IDAuNDc3MzgsLTAuMjk1IDUuOTUyNyw0LjMzMDIgMTIuMTY3MzcsMTAuMjc4MyBsIDExLjI5OTQxLDEwLjgxNDYgLTUuOTE3MzcsNS44MDQxIGMgLTE1LjkyNjE2LDE1LjYyMTQgLTE3LjE1MjY4LDE2LjY1MzYgLTE3Ljc5NjI5LDE0Ljk3NjMgeiBtIDMyLjg1OTEyLC0yNy43NzM1IGMgLTMuMzEwODksLTMuMzk5OCAtMTQuMzg1ODUsLTE0LjM5MzkgLTI0LjYxMTAzLC0yNC40MzE0IGwgLTE4LjU5MTIzLC0xOC4yNSAyNC44NjEwMywwIDI0Ljg2MTAzLDAgMCwyNC41IGMgMCwxMy40NzUgLTAuMTEyNSwyNC40NjkxIC0wLjI1LDI0LjQzMTQgLTAuMTM3NSwtMC4wMzggLTIuOTU4OTEsLTIuODUwMiAtNi4yNjk4LC02LjI1IHogbSAtODAuNDgwMiwtMjguMTgxNCAwLC0xNC41IDE4LDAgMTgsMCAwLDEzLjMgYyAwLDkuMDExMSAtMC4zODY5NywxMy42ODcgLTEuMiwxNC41IC0wLjgzODEsMC44MzgxIC02LjI2NjY3LDEuMiAtMTgsMS4yIGwgLTE2LjgsMCAwLC0xNC41IHoiCiAgICAgICAgIHN0eWxlPSJmaWxsOiMwMDAwMDAiIC8+CiAgICA8L2c+CiAgPC9nPgo8L3N2Zz4K",
+    "hazard": "data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiIHN0YW5kYWxvbmU9Im5vIj8+CjwhLS0gQ3JlYXRlZCB3aXRoIElua3NjYXBlIChodHRwOi8vd3d3Lmlua3NjYXBlLm9yZy8pIC0tPgoKPHN2ZwogICB4bWxuczpkYz0iaHR0cDovL3B1cmwub3JnL2RjL2VsZW1lbnRzLzEuMS8iCiAgIHhtbG5zOmNjPSJodHRwOi8vY3JlYXRpdmVjb21tb25zLm9yZy9ucyMiCiAgIHhtbG5zOnJkZj0iaHR0cDovL3d3dy53My5vcmcvMTk5OS8wMi8yMi1yZGYtc3ludGF4LW5zIyIKICAgeG1sbnM6c3ZnPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIKICAgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIgogICB4bWxuczpzb2RpcG9kaT0iaHR0cDovL3NvZGlwb2RpLnNvdXJjZWZvcmdlLm5ldC9EVEQvc29kaXBvZGktMC5kdGQiCiAgIHhtbG5zOmlua3NjYXBlPSJodHRwOi8vd3d3Lmlua3NjYXBlLm9yZy9uYW1lc3BhY2VzL2lua3NjYXBlIgogICB3aWR0aD0iMjA4IgogICBoZWlnaHQ9IjE3Ny43MDk3IgogICBpZD0ic3ZnNDMyOSIKICAgdmVyc2lvbj0iMS4xIgogICBpbmtzY2FwZTp2ZXJzaW9uPSIwLjQ4LjQgcjk5MzkiCiAgIHNvZGlwb2RpOmRvY25hbWU9IkExOS5zdmciPgogIDxkZWZzCiAgICAgaWQ9ImRlZnM0MzMxIiAvPgogIDxzb2RpcG9kaTpuYW1lZHZpZXcKICAgICBpZD0iYmFzZSIKICAgICBwYWdlY29sb3I9IiNmZmZmZmYiCiAgICAgYm9yZGVyY29sb3I9IiM2NjY2NjYiCiAgICAgYm9yZGVyb3BhY2l0eT0iMS4wIgogICAgIGlua3NjYXBlOnBhZ2VvcGFjaXR5PSIwLjAiCiAgICAgaW5rc2NhcGU6cGFnZXNoYWRvdz0iMiIKICAgICBpbmtzY2FwZTp6b29tPSIyLjgiCiAgICAgaW5rc2NhcGU6Y3g9IjU4LjExNjM0MiIKICAgICBpbmtzY2FwZTpjeT0iNDUuNDk1NTM3IgogICAgIGlua3NjYXBlOmRvY3VtZW50LXVuaXRzPSJweCIKICAgICBpbmtzY2FwZTpjdXJyZW50LWxheWVyPSJsYXllcjEiCiAgICAgc2hvd2dyaWQ9ImZhbHNlIgogICAgIGZpdC1tYXJnaW4tdG9wPSI0IgogICAgIGZpdC1tYXJnaW4tbGVmdD0iNCIKICAgICBmaXQtbWFyZ2luLXJpZ2h0PSI0IgogICAgIGZpdC1tYXJnaW4tYm90dG9tPSI0IgogICAgIGlua3NjYXBlOndpbmRvdy13aWR0aD0iMTkyMCIKICAgICBpbmtzY2FwZTp3aW5kb3ctaGVpZ2h0PSIxMTUzIgogICAgIGlua3NjYXBlOndpbmRvdy14PSIxMjc2IgogICAgIGlua3NjYXBlOndpbmRvdy15PSItNCIKICAgICBpbmtzY2FwZTp3aW5kb3ctbWF4aW1pemVkPSIxIiAvPgogIDxtZXRhZGF0YQogICAgIGlkPSJtZXRhZGF0YTQzMzQiPgogICAgPHJkZjpSREY+CiAgICAgIDxjYzpXb3JrCiAgICAgICAgIHJkZjphYm91dD0iIj4KICAgICAgICA8ZGM6Zm9ybWF0PmltYWdlL3N2Zyt4bWw8L2RjOmZvcm1hdD4KICAgICAgICA8ZGM6dHlwZQogICAgICAgICAgIHJkZjpyZXNvdXJjZT0iaHR0cDovL3B1cmwub3JnL2RjL2RjbWl0eXBlL1N0aWxsSW1hZ2UiIC8+CiAgICAgICAgPGRjOnRpdGxlPjwvZGM6dGl0bGU+CiAgICAgIDwvY2M6V29yaz4KICAgIDwvcmRmOlJERj4KICA8L21ldGFkYXRhPgogIDxnCiAgICAgaW5rc2NhcGU6bGFiZWw9IkxheWVyIDEiCiAgICAgaW5rc2NhcGU6Z3JvdXBtb2RlPSJsYXllciIKICAgICBpZD0ibGF5ZXIxIgogICAgIHRyYW5zZm9ybT0idHJhbnNsYXRlKC0xMTkuNjQ3NDQsLTM3Mi41OTc3NSkiPgogICAgPGcKICAgICAgIGlkPSJnNTM1NCIKICAgICAgIHRyYW5zZm9ybT0ibWF0cml4KDEuMTc3OTU1NSwwLDAsMS4xNzc5NTU1LC0yMi4wMDM3NCwtOTcuMjE4NDA2KSI+CiAgICAgIDxyZWN0CiAgICAgICAgIHk9IjQwMy42MzM4MiIKICAgICAgICAgeD0iMTI1LjA0NTIyIgogICAgICAgICBoZWlnaHQ9IjE0MS4yNzU4NSIKICAgICAgICAgd2lkdGg9IjE2Ni45OTAxNCIKICAgICAgICAgaWQ9InJlY3Q1MzQxIgogICAgICAgICBzdHlsZT0iZmlsbDojY2YwMDAwO2ZpbGwtb3BhY2l0eToxO2ZpbGwtcnVsZTpldmVub2RkO3N0cm9rZTojMDAwMDAwO3N0cm9rZS13aWR0aDoyLjc5NTU2MDM2O3N0cm9rZS1taXRlcmxpbWl0OjQ7c3Ryb2tlLW9wYWNpdHk6MTtzdHJva2UtZGFzaGFycmF5Om5vbmUiIC8+CiAgICAgIDxwYXRoCiAgICAgICAgIGlua3NjYXBlOmNvbm5lY3Rvci1jdXJ2YXR1cmU9IjAiCiAgICAgICAgIGlkPSJwYXRoMzM3NyIKICAgICAgICAgZD0ibSAyODguNDkxOTksNTQxLjc1NzUyIGMgLTEuMDkzMSwtMS40NDE3NiAtMTAuMzU0MSwtMTcuMDc5MjYgLTIwLjU4LC0zNC43NSAtMTAuMjI1OSwtMTcuNjcwNzMgLTIwLjYyNTEsLTM1LjUwMzYxIC0yMy4xMDkyLC0zOS42Mjg2MSAtMi40ODQyLC00LjEyNSAtMTEuNjEzMSwtMTkuNzgwNjYgLTIwLjI4NjQsLTM0Ljc5MDM1IC04LjY3MzMsLTE1LjAwOTY5IC0xNi4yMjY5LC0yNy4xMzc5NSAtMTYuNzg1NywtMjYuOTUxNjkgLTAuNTU4OCwwLjE4NjI2IC04LjgyNzgsMTMuODE2OTIgLTE4LjM3NTcsMzAuMjkwMzUgLTkuNTQ3OCwxNi40NzM0MyAtMTkuMzIzLDMzLjEwMTY5IC0yMS43MjI3LDM2Ljk1MTY5IC0yLjM5OTYsMy44NSAtMTIuMTM2NCwyMC41IC0yMS42MzczLDM3IC05LjUwMDgsMTYuNSAtMTguMTEwNCwzMC44MDUwMyAtMTkuMTMyMywzMS43ODg5NiAtMS44MTAxLDEuNzQyNzcgLTEuODU4MSwtMC4wMzE5IC0xLjg1ODEsLTY4Ljc1MDAxIGwgMCwtNzAuNTM4OTUgNDEsMCBjIDI2LjY2NjcsMCA0MSwwLjM0OTU5IDQxLDEgMCwwLjU1IDAuNDc2NiwxIDEuMDU5LDEgMC41ODI1LDAgMC43ODA5LC0wLjQ1IDAuNDQxLC0xIC0wLjQwODIsLTAuNjYwNTQgMTMuNDg5NiwtMSA0MC45NDEsLTEgbCA0MS41NTksMCAwLDcxIGMgMCwzOS4wNSAtMC4xMTgyLDcxIC0wLjI2MjYsNzEgLTAuMTQ0NSwwIC0xLjE1NywtMS4xNzk2MiAtMi4yNSwtMi42MjEzOSB6IG0gLTE0NS45NjkyLC02LjM0OTI0IGMgLTAuMzMsLTAuNTMzODUgMC4wNDksLTIuMjIxMzUgMC44NDIyLC0zLjc1IDEuODM2MSwtMy41Mzg1OSAzMC42MjEyLC01Mi44NjU1OSAzNy44MDI0LC02NC43NzkzNyAyLjk4MzcsLTQuOTUgOS44ODc2LC0xNi43NjI1IDE1LjM0MiwtMjYuMjUgNS40NTQ0LC05LjQ4NzUgMTAuNDkwOCwtMTcuMjUgMTEuMTkyLC0xNy4yNSAxLjU2OTIsMCAzLjM1MDcsMi43ODY0NiAxNi4zMDMyLDI1LjUgNS42NDU1LDkuOSAxMS40MTUyLDE5LjggMTIuODIxNiwyMiA3LjczNTUsMTIuMTAwODYgMzYuMTc4NCw2Mi4xODc3NSAzNi4xNzg0LDYzLjcwODkgMCwxLjcwMzA4IC0zLjE5MTQsMS43OTExIC02NC45NDEsMS43OTExIC00MC45MDU0LDAgLTY1LjE2MywtMC4zNTkyNSAtNjUuNTQwOCwtMC45NzA2MyB6IG0gMTEwLjQ4MTgsLTExLjk2NDg5IGMgMCwtMS4wNDcwMyAtMjQuNzc2MSwtNDQuMzIwODcgLTI4Ljk1MDMsLTUwLjU2NDQ4IC0zLjYyMDEsLTUuNDE0ODEgLTEzLjgxMTQsLTIyLjcxNTQ4IC0xNC42MTU3LC0yNC44MTE0MiAtMC4zNTY0LC0wLjkyODcyIC0xLjAwNSwtMS42ODg1OCAtMS40NDEzLC0xLjY4ODU4IC0wLjQzNjQsMCAtMy44Mzk4LDUuMjg3NSAtNy41NjMxLDExLjc1IC0zLjcyMzQsNi40NjI1IC03LjY5NTEsMTMuMDg3NTQgLTguODI2MSwxNC43MjIzMiAtNC4zODk1LDYuMzQ0ODcgLTI5LjMyNyw1MC40NzA4OSAtMjguODEzNCw1MC45ODQ0MyAwLjk4MjYsMC45ODI2NCA5MC4yMDk5LDAuNTk0NjUgOTAuMjA5OSwtMC4zOTIyNyB6IG0gLTc0LjUzLC05LjExMjk5IGMgLTEuMDk1NCwtMS43NzIzOSAyNy4yMzcsLTQ5Ljk1MTQ5IDI5LjM3NDYsLTQ5Ljk1MTQ5IDEuMjM3OSwwIDQuMjkwNCw0Ljc4NDk3IDE4LjE2MDYsMjguNDY3ODQgNi42MzcyLDExLjMzMjg1IDExLjc5OTcsMjEuMDM4NzYgMTEuNDcyMiwyMS41Njg2OCAtMC44NDc3LDEuMzcxNjcgLTU4LjE1ODEsMS4yODkxIC01OS4wMDc0LC0wLjA4NSB6IgogICAgICAgICBzdHlsZT0iZmlsbDojMDAwMDAwIiAvPgogICAgPC9nPgogIDwvZz4KPC9zdmc+Cg==",
+    "parkingBrake": "data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiIHN0YW5kYWxvbmU9Im5vIj8+CjxzdmcKICAgeG1sbnM6ZGM9Imh0dHA6Ly9wdXJsLm9yZy9kYy9lbGVtZW50cy8xLjEvIgogICB4bWxuczpjYz0iaHR0cDovL2NyZWF0aXZlY29tbW9ucy5vcmcvbnMjIgogICB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiCiAgIHhtbG5zOnN2Zz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciCiAgIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIKICAgeG1sbnM6c29kaXBvZGk9Imh0dHA6Ly9zb2RpcG9kaS5zb3VyY2Vmb3JnZS5uZXQvRFREL3NvZGlwb2RpLTAuZHRkIgogICB4bWxuczppbmtzY2FwZT0iaHR0cDovL3d3dy5pbmtzY2FwZS5vcmcvbmFtZXNwYWNlcy9pbmtzY2FwZSIKICAgdmVyc2lvbj0iMS4wIgogICB3aWR0aD0iMjA4IgogICBoZWlnaHQ9IjE2My4xMTI1MiIKICAgdmlld0JveD0iMCAwIDE2Ni40IDEzMC40OTAwMSIKICAgcHJlc2VydmVBc3BlY3RSYXRpbz0ieE1pZFlNaWQgbWVldCIKICAgaWQ9InN2ZzIiCiAgIGlua3NjYXBlOnZlcnNpb249IjAuNDguNCByOTkzOSIKICAgc29kaXBvZGk6ZG9jbmFtZT0iQjAyLnN2ZyI+CiAgPGRlZnMKICAgICBpZD0iZGVmczE4IiAvPgogIDxzb2RpcG9kaTpuYW1lZHZpZXcKICAgICBwYWdlY29sb3I9IiNmZmZmZmYiCiAgICAgYm9yZGVyY29sb3I9IiM2NjY2NjYiCiAgICAgYm9yZGVyb3BhY2l0eT0iMSIKICAgICBvYmplY3R0b2xlcmFuY2U9IjEwIgogICAgIGdyaWR0b2xlcmFuY2U9IjEwIgogICAgIGd1aWRldG9sZXJhbmNlPSIxMCIKICAgICBpbmtzY2FwZTpwYWdlb3BhY2l0eT0iMCIKICAgICBpbmtzY2FwZTpwYWdlc2hhZG93PSIyIgogICAgIGlua3NjYXBlOndpbmRvdy13aWR0aD0iMTkyMCIKICAgICBpbmtzY2FwZTp3aW5kb3ctaGVpZ2h0PSIxMTUzIgogICAgIGlkPSJuYW1lZHZpZXcxNiIKICAgICBzaG93Z3JpZD0iZmFsc2UiCiAgICAgZml0LW1hcmdpbi10b3A9IjQiCiAgICAgZml0LW1hcmdpbi1sZWZ0PSI0IgogICAgIGZpdC1tYXJnaW4tcmlnaHQ9IjQiCiAgICAgZml0LW1hcmdpbi1ib3R0b209IjQiCiAgICAgaW5rc2NhcGU6em9vbT0iMy4zMzU3OTQ1IgogICAgIGlua3NjYXBlOmN4PSIxMjMuNDY1NjQiCiAgICAgaW5rc2NhcGU6Y3k9IjEwNy4xNjE4MiIKICAgICBpbmtzY2FwZTp3aW5kb3cteD0iMTI3NiIKICAgICBpbmtzY2FwZTp3aW5kb3cteT0iLTQiCiAgICAgaW5rc2NhcGU6d2luZG93LW1heGltaXplZD0iMSIKICAgICBpbmtzY2FwZTpjdXJyZW50LWxheWVyPSJzdmcyIiAvPgogIDxtZXRhZGF0YQogICAgIGlkPSJtZXRhZGF0YTQiPgpDcmVhdGVkIGJ5IHBvdHJhY2UgMS4xMSwgd3JpdHRlbiBieSBQZXRlciBTZWxpbmdlciAyMDAxLTIwMTMKPHJkZjpSREY+CiAgPGNjOldvcmsKICAgICByZGY6YWJvdXQ9IiI+CiAgICA8ZGM6Zm9ybWF0PmltYWdlL3N2Zyt4bWw8L2RjOmZvcm1hdD4KICAgIDxkYzp0eXBlCiAgICAgICByZGY6cmVzb3VyY2U9Imh0dHA6Ly9wdXJsLm9yZy9kYy9kY21pdHlwZS9TdGlsbEltYWdlIiAvPgogICAgPGRjOnRpdGxlPjwvZGM6dGl0bGU+CiAgPC9jYzpXb3JrPgo8L3JkZjpSREY+CjwvbWV0YWRhdGE+CiAgPHJlY3QKICAgICBzdHlsZT0iZmlsbDojY2YwMDAwO2ZpbGwtb3BhY2l0eToxO2ZpbGwtcnVsZTpldmVub2RkO3N0cm9rZTojMDAwMDAwO3N0cm9rZS13aWR0aDoxLjg1MDU4NzAxO3N0cm9rZS1saW5lam9pbjptaXRlcjtzdHJva2UtbWl0ZXJsaW1pdDo0O3N0cm9rZS1vcGFjaXR5OjE7c3Ryb2tlLWRhc2hhcnJheTpub25lIgogICAgIGlkPSJyZWN0Mjk5NSIKICAgICB3aWR0aD0iMTU4LjE0OTQxIgogICAgIGhlaWdodD0iMTIyLjIzOTQzIgogICAgIHg9IjQuMTI1MjkzNyIKICAgICB5PSI0LjEyNTI5MTMiIC8+CiAgPGcKICAgICB0cmFuc2Zvcm09Im1hdHJpeCgwLjA4MTM3Nzk5LDAsMCwtMC4wODEzNzc5OSw0LjE1ODk1ODQsMTI2LjMzMTA0KSIKICAgICBpZD0iZzYiCiAgICAgc3R5bGU9ImZpbGw6IzAwMDAwMDtzdHJva2U6bm9uZSI+CiAgICA8cGF0aAogICAgICAgZD0iTSAxLDExNzMgQyAyLDk5MiA1LDg1OSA3LDg3NSBjIDI0LDE5MyAxMTksMzk3IDI1Miw1MzggbCAzNSwzNyAzOCwtMzcgYyAyMSwtMjAgMzgsLTQwIDM4LC00NCAwLC01IC0xNiwtMjUgLTM2LC00NiBDIDExMiwxMDg2IDUzLDcwNSAxOTEsNDAyIDIyNywzMjEgMjc0LDI1MCAzMzUsMTgyIEwgMzgxLDEzMSAzNDksOTAgQyAzMzEsNjggMzEzLDUwIDMwOSw1MCAyOTIsNTAgMTgyLDE4NSAxMzMsMjY2IDc4LDM1OCAyNiw1MDQgMTEsNjA1IDUsNjQ3IDIsNTYzIDEsMzMzIEwgMCwwIDQ0MywxIGMgMjU3LDEgNDIyLDUgMzk1LDkgLTIyNCwzOCAtNDI3LDE4OCAtNTM2LDM5NSAtNjMsMTE5IC03NywxODQgLTc3LDM1MCAxLDEzNSAzLDE1OCAyNywyMjggMzcsMTExIDEwMCwyMTEgMTg3LDI5OCAxMTEsMTExIDIzNSwxNzggMzg2LDIwOSAyMyw0IC0xNDAsOCAtMzkyLDkgbCAtNDMzLDEgMSwtMzI3IHoiCiAgICAgICBpZD0icGF0aDgiCiAgICAgICBpbmtzY2FwZTpjb25uZWN0b3ItY3VydmF0dXJlPSIwIiAvPgogICAgPHBhdGgKICAgICAgIGQ9Im0gMTEwMCwxNDkzIGMgNDQsLTcgMTUzLC00NSAyMDUsLTcxIDE3OSwtODggMzE3LC0yNTAgMzgyLC00NDcgMjMsLTcxIDI2LC05NiAyNywtMjIwIDAsLTExOSAtMywtMTUxIC0yMywtMjE1IEMgMTYwNywyNjcgMTM3Myw1NiAxMTAyLDEwIDEwNzUsNiAxMjQwLDIgMTQ5OCwxIGwgNDQyLC0xIC0xLDM1MyBjIC0xLDIyMyAtNCwzMjggLTksMjg2IEMgMTkwNyw0NDIgMTgxNiwyNDUgMTY4MSw5OSBsIC00OSwtNTQgLTI3LDI1IGMgLTUyLDQ4IC01MSw1NCAxNCwxMzIgMjczLDMyNCAyNjcsODAzIC0xMywxMTE1IGwgLTQ1LDUwIDQzLDQyIDQzLDQyIDQzLC00OCBjIDEyOSwtMTQ1IDIxNywtMzQyIDI0MCwtNTMyIDUsLTQyIDgsNjAgOSwyODIgbCAxLDM0NyAtNDMyLC0xIGMgLTIzOCwtMSAtNDIyLC00IC00MDgsLTYgeiIKICAgICAgIGlkPSJwYXRoMTAiCiAgICAgICBpbmtzY2FwZTpjb25uZWN0b3ItY3VydmF0dXJlPSIwIiAvPgogICAgPHBhdGgKICAgICAgIGQ9Ik0gODEwLDEzNzQgQyA1ODAsMTMxNSAzOTIsMTEyMCAzNDAsODkwIDMyNSw4MjIgMzI4LDY2MiAzNDUsNTk1IDM5NCw0MDQgNTQ1LDIyOSA3MjYsMTU2IGMgMTg1LC03NSA0MTUsLTU2IDU4MSw0OSAxMjUsNzkgMjI3LDIwOSAyNzQsMzUwIDIxLDYwIDI0LDg4IDIzLDIwMCAtMSwxMTQgLTQsMTM5IC0yNywyMDQgLTc0LDIwNyAtMjQyLDM2MSAtNDUyLDQxNiAtNzQsMTkgLTI0MSwxOSAtMzE1LC0xIHogbSAzMDUsLTE5NiBjIDgxLC0xNiAxNDMsLTYwIDE3OCwtMTI4IDI3LC01MSAyOSwtNjIgMjUsLTE0MCAtNSwtMTE0IC00NCwtMTc3IC0xNDMsLTIyOCAtNDUsLTI0IC02MywtMjYgLTE5MiwtMzAgbCAtMTQzLC00IDAsLTE2NCAwLC0xNjQgLTU1LDAgLTU1LDAgMCw0MzUgMCw0MzUgMTYzLDAgYyA5MCwwIDE5MCwtNSAyMjIsLTEyIHoiCiAgICAgICBpZD0icGF0aDEyIgogICAgICAgaW5rc2NhcGU6Y29ubmVjdG9yLWN1cnZhdHVyZT0iMCIgLz4KICAgIDxwYXRoCiAgICAgICBkPSJtIDg0MCw5MjAgMCwtMTYwIDEyMCwwIGMgMTM5LDAgMTY0LDkgMjEwLDcyIDU3LDc4IDMzLDE4OSAtNTAsMjMwIC0yOCwxNCAtNjEsMTggLTE1NywxOCBsIC0xMjMsMCAwLC0xNjAgeiIKICAgICAgIGlkPSJwYXRoMTQiCiAgICAgICBpbmtzY2FwZTpjb25uZWN0b3ItY3VydmF0dXJlPSIwIiAvPgogIDwvZz4KPC9zdmc+Cg==",
+    "bulbFailure": "data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiIHN0YW5kYWxvbmU9Im5vIj8+CjwhLS0gQ3JlYXRlZCB3aXRoIElua3NjYXBlIChodHRwOi8vd3d3Lmlua3NjYXBlLm9yZy8pIC0tPgoKPHN2ZwogICB4bWxuczpkYz0iaHR0cDovL3B1cmwub3JnL2RjL2VsZW1lbnRzLzEuMS8iCiAgIHhtbG5zOmNjPSJodHRwOi8vY3JlYXRpdmVjb21tb25zLm9yZy9ucyMiCiAgIHhtbG5zOnJkZj0iaHR0cDovL3d3dy53My5vcmcvMTk5OS8wMi8yMi1yZGYtc3ludGF4LW5zIyIKICAgeG1sbnM6c3ZnPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIKICAgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIgogICB4bWxuczpzb2RpcG9kaT0iaHR0cDovL3NvZGlwb2RpLnNvdXJjZWZvcmdlLm5ldC9EVEQvc29kaXBvZGktMC5kdGQiCiAgIHhtbG5zOmlua3NjYXBlPSJodHRwOi8vd3d3Lmlua3NjYXBlLm9yZy9uYW1lc3BhY2VzL2lua3NjYXBlIgogICB3aWR0aD0iMjA4IgogICBoZWlnaHQ9IjE5Mi43OTM2NCIKICAgaWQ9InN2ZzQzMjkiCiAgIHZlcnNpb249IjEuMSIKICAgaW5rc2NhcGU6dmVyc2lvbj0iMC40OC40IHI5OTM5IgogICBzb2RpcG9kaTpkb2NuYW1lPSJBMTQuc3ZnIj4KICA8ZGVmcwogICAgIGlkPSJkZWZzNDMzMSIgLz4KICA8c29kaXBvZGk6bmFtZWR2aWV3CiAgICAgaWQ9ImJhc2UiCiAgICAgcGFnZWNvbG9yPSIjZmZmZmZmIgogICAgIGJvcmRlcmNvbG9yPSIjNjY2NjY2IgogICAgIGJvcmRlcm9wYWNpdHk9IjEuMCIKICAgICBpbmtzY2FwZTpwYWdlb3BhY2l0eT0iMC4wIgogICAgIGlua3NjYXBlOnBhZ2VzaGFkb3c9IjIiCiAgICAgaW5rc2NhcGU6em9vbT0iMi44IgogICAgIGlua3NjYXBlOmN4PSI3NC41MjU3NzUiCiAgICAgaW5rc2NhcGU6Y3k9Ijg2LjU5ODc3MiIKICAgICBpbmtzY2FwZTpkb2N1bWVudC11bml0cz0icHgiCiAgICAgaW5rc2NhcGU6Y3VycmVudC1sYXllcj0ibGF5ZXIxIgogICAgIHNob3dncmlkPSJmYWxzZSIKICAgICBmaXQtbWFyZ2luLXRvcD0iNCIKICAgICBmaXQtbWFyZ2luLWxlZnQ9IjQiCiAgICAgZml0LW1hcmdpbi1yaWdodD0iNCIKICAgICBmaXQtbWFyZ2luLWJvdHRvbT0iNCIKICAgICBpbmtzY2FwZTp3aW5kb3ctd2lkdGg9IjE5MjAiCiAgICAgaW5rc2NhcGU6d2luZG93LWhlaWdodD0iMTE1MyIKICAgICBpbmtzY2FwZTp3aW5kb3cteD0iMTI3NiIKICAgICBpbmtzY2FwZTp3aW5kb3cteT0iLTQiCiAgICAgaW5rc2NhcGU6d2luZG93LW1heGltaXplZD0iMSIgLz4KICA8bWV0YWRhdGEKICAgICBpZD0ibWV0YWRhdGE0MzM0Ij4KICAgIDxyZGY6UkRGPgogICAgICA8Y2M6V29yawogICAgICAgICByZGY6YWJvdXQ9IiI+CiAgICAgICAgPGRjOmZvcm1hdD5pbWFnZS9zdmcreG1sPC9kYzpmb3JtYXQ+CiAgICAgICAgPGRjOnR5cGUKICAgICAgICAgICByZGY6cmVzb3VyY2U9Imh0dHA6Ly9wdXJsLm9yZy9kYy9kY21pdHlwZS9TdGlsbEltYWdlIiAvPgogICAgICAgIDxkYzp0aXRsZT48L2RjOnRpdGxlPgogICAgICA8L2NjOldvcms+CiAgICA8L3JkZjpSREY+CiAgPC9tZXRhZGF0YT4KICA8ZwogICAgIGlua3NjYXBlOmxhYmVsPSJMYXllciAxIgogICAgIGlua3NjYXBlOmdyb3VwbW9kZT0ibGF5ZXIiCiAgICAgaWQ9ImxheWVyMSIKICAgICB0cmFuc2Zvcm09InRyYW5zbGF0ZSgtMTAzLjIzODAxLC0zOTguNjE3MDUpIj4KICAgIDxnCiAgICAgICBpZD0iZzUyMjMiCiAgICAgICB0cmFuc2Zvcm09Im1hdHJpeCgxLjAxMzc1ODIsMCwwLDEuMDEzNzU4MiwtMS40NzUzOTc4LC04LjA4MTY5MDkpIj4KICAgICAgPHJlY3QKICAgICAgICAgeT0iNDA2LjQ5MiIKICAgICAgICAgeD0iMTA4LjYwNTA2IgogICAgICAgICBoZWlnaHQ9IjE3OS41NTE2MSIKICAgICAgICAgd2lkdGg9IjE5NC41NTE2MSIKICAgICAgICAgaWQ9InJlY3Q1MjIxIgogICAgICAgICBzdHlsZT0iZmlsbDojZTBiMzAwO2ZpbGwtb3BhY2l0eToxO2ZpbGwtcnVsZTpldmVub2RkO3N0cm9rZTojMDAwMDAwO3N0cm9rZS13aWR0aDoyLjczNDEwNjA2O3N0cm9rZS1taXRlcmxpbWl0OjQ7c3Ryb2tlLW9wYWNpdHk6MTtzdHJva2UtZGFzaGFycmF5Om5vbmUiIC8+CiAgICAgIDxwYXRoCiAgICAgICAgIGlua3NjYXBlOmNvbm5lY3Rvci1jdXJ2YXR1cmU9IjAiCiAgICAgICAgIGlkPSJwYXRoMzI5OSIKICAgICAgICAgZD0ibSAxMDkuMzgwODgsNTQwLjE1MTA3IDAsLTQ1LjQ3NCAxNS4yNSwtMC4yNzYwNCAxNS4yNSwtMC4yNzYwNSAwLC01IDAsLTUgLTE1LjI1LC0wLjI3NjA1IC0xNS4yNSwtMC4yNzYwNCAwLC0zNy45NzM5NiAwLC0zNy45NzM5NSAzNSwwIDM1LDAgMCwxNy4wMDY2MSAwLDE3LjAwNjYyIC0yLjc1LDIuMjI3OTUgYyAtMS41MTI1LDEuMjI1MzggLTUuNDc1MzUsNC45MzU0MyAtOC44MDYzNSw4LjI0NDU3IC0xMC45MzAxNiwxMC44NTg0MyAtMTYuNDk0LDI2LjMwMzAzIC0xNS4wNTQ2NCw0MS43ODk5NyAyLjAxNjY2LDIxLjY5ODUzIDE1LjU2NjU1LDM4Ljk2MTExIDM2LjMzNDg1LDQ2LjI5MDY3IDUuNDk2NTYsMS45Mzk4IDguNzU4OTIsMi4zOTE0IDE3LjI3NjE0LDIuMzkxNCA4LjU5MTM2LDAgMTEuNzY0MjgsLTAuNDQ2MSAxNy40NTUxNywtMi40NTQgMjYuNTkzMTQsLTkuMzgyODMgNDEuMjk5MzcsLTM3LjE5NzAzIDM0LjM2OTUzLC02NS4wMDM3OSAtMS4zMTM3NCwtNS4yNzE1NiAtNi4yNzQ5OSwtMTUuMDE4MTMgLTEwLjEwODE4LC0xOS44NTc5MyAtMS42ODcwOSwtMi4xMzAxMiAtNS4zNTA5OCwtNS42MjQ3IC04LjE0MTk4LC03Ljc2NTczIC0yLjc5MSwtMi4xNDEwMyAtNS42MzcwNCwtNC4zNTY4MyAtNi4zMjQ1NCwtNC45MjM5OSAtMC45MTAzMywtMC43NTA5OSAtMS4yNSwtNS42Mzk5NiAtMS4yNSwtMTcuOTkxNzggbCAwLC0xNi45NjA1NyAzNSwwIDM1LDAgMCwzNy45NzMyNyAwLDM3Ljk3MzI2IC0xNC43NSwwLjI3Njc0IC0xNC43NSwwLjI3NjczIDAsNSAwLDUgMTQuNzUsMC4yNzY3MyAxNC43NSwwLjI3Njc0IDAsNDUuNDczMjIgMCw0NS40NzMzIC00NS40NzMyNywwIC00NS40NzMyNiwwIC0wLjI3Njc0LC0xNC43NSAtMC4yNzY3MywtMTQuNzUgLTUsMCAtNSwwIC0wLjI3NjczLDE0Ljc1IC0wLjI3Njc0LDE0Ljc1IC00NS40NzMyNiwwIC00NS40NzMyNywwIDAsLTQ1LjQ3MzkgeiBtIDQzLjk4MTc3LDkuOTkyMiAxMC40NDYwMywtMTAuNDgxNyAtMy40MTAwNywtMy41MTgzIGMgLTEuODc1NTMsLTEuOTM1MSAtMy44OTIzMywtMy41MTgyOSAtNC40ODE3NiwtMy41MTgyOSAtMC41ODk0NCwwIC01Ljc3MjQyLDQuNzE2NzkgLTExLjUxNzc0LDEwLjQ4MTY5IGwgLTEwLjQ0NjAzLDEwLjQ4MTcgMy40MTAwNywzLjUxODMgYyAxLjg3NTUzLDEuOTM1MSAzLjg5MjMzLDMuNTE4MyA0LjQ4MTc2LDMuNTE4MyAwLjU4OTQ0LDAgNS43NzI0MiwtNC43MTY4IDExLjUxNzc0LC0xMC40ODE3IHogbSAxMjEuMjEzNTEsNy43OTQ2IGMgMS41NDI2LC0xLjQ3NzkgMi44MDQ3MiwtMy4yNTI5IDIuODA0NzIsLTMuOTQ0NCAwLC0xLjI5ODIgLTE5LjYyNTE4LC0yMS4zNjg0OSAtMjAuODk0NjQsLTIxLjM2ODQ5IC0wLjM5MjE3LDAgLTIuMjQ3NTYsMS41ODMxOSAtNC4xMjMwOSwzLjUxODI5IGwgLTMuNDEwMDcsMy41MTgzIDEwLjQ0NjAzLDEwLjQ4MTcgYyA1Ljc0NTMyLDUuNzY0OSAxMC44Nzk0NSwxMC40ODE3IDExLjQwOTE4LDEwLjQ4MTcgMC41Mjk3NCwwIDIuMjI1MjgsLTEuMjA5MiAzLjc2Nzg3LC0yLjY4NzEgeiBtIC0xMTUsLTExNC45OTk5OCBjIDEuNTQyNiwtMS40Nzc5IDIuODA0NzIsLTMuMjU2MzIgMi44MDQ3MiwtMy45NTIwNCAwLC0xLjYwMzk0IC0xOS4wNTQ5OCwtMjAuMzYwODcgLTIwLjY4NDQsLTIwLjM2MDg3IC0xLjcwNTExLDAgLTYuMzE1Niw0LjQ1MDc1IC02LjMxNTYsNi4wOTY3OCAwLDEuNTM2NzkgMTguOTI0NzgsMjAuOTAzMjIgMjAuNDI2NTIsMjAuOTAzMjIgMC41MzAyMiwwIDIuMjI2MTcsLTEuMjA5MTkgMy43Njg3NiwtMi42ODcwOSB6IG0gMTA4LjAzNjgzLC03LjA0NDE1IGMgNS4zNzIzNCwtNS4zNTIxOCA5Ljc2Nzg5LC0xMC4yMTM5IDkuNzY3ODksLTEwLjgwMzgzIDAsLTAuNTg5OTMgLTEuNTg1OTcsLTIuNjA5NzggLTMuNTI0MzgsLTQuNDg4NTcgbCAtMy41MjQzOSwtMy40MTU5NiAtMTAuNjk1NDIsMTAuNjk1NDEgLTEwLjY5NTQxLDEwLjY5NTQyIDMuNDE1OTcsMy41MjQzOCBjIDEuODc4NzgsMS45Mzg0MiAzLjg4MjE0LDMuNTI0MzkgNC40NTE5MSwzLjUyNDM5IDAuNTY5NzYsMCA1LjQzMTQ5LC00LjM3OTA2IDEwLjgwMzgzLC05LjczMTI0IHogbSAtNzIuNDg2MTksOTUuNzA3NDkgYyAtMTAuNzcwMDIsLTIuNzE1OTUgLTIyLjg3NzQzLC0xMi42NTkxOCAtMjcuOTc3MTIsLTIyLjk3NjI1IC0xLjQ5NTI1LC0zLjAyNSAtMy4yNzA4MSwtOC43NTgzNyAtMy45NDU2OSwtMTIuNzQwODEgLTAuOTczNjksLTUuNzQ1NzEgLTAuOTcwMDEsLTguNTMzMjQgMC4wMTc4LC0xMy41IDEuNzM0MzIsLTguNzIwMDggNi42NDYzMywtMTguMzQxNyAxMi4xOTc5NywtMjMuODkzMzQgNy43MDE2OSwtNy43MDE2OSAxOS44NjgwNiwtMTIuODI4OTQgMzAuNTAwOTksLTEyLjg1Mzk4IDYuNTI0OSwtMC4wMTU0IDE1LjUzMzQ3LDIuMzU4OTcgMjEuNzE0NzEsNS43MjMyMiA1LjY4NjQ3LDMuMDk0OTcgMTQuODUwMzgsMTIuNTkwMjIgMTcuODc3NTQsMTguNTIzOTUgMS4xNTEyNCwyLjI1NjYgMi42OTk2Myw3LjU3NjkxIDMuNDQwODgsMTEuODIyOTEgMC45OTU5Myw1LjcwNDgxIDEuMDg5ODQsOS4zNzczIDAuMzU5NzYsMTQuMDY5MDIgLTIuMTg5MjMsMTQuMDY4NzMgLTExLjg4NjM0LDI3LjEyNDYzIC0yNC41NDY5LDMzLjA0OTIyIC01Ljc1Mjg4LDIuNjkyMSAtNy45NzMxNywzLjE1ODcxIC0xNi4yNzM4MywzLjQyMDA5IC01LjI4NjYzLDAuMTY2NDcgLTExLjMwMTM5LC0wLjEyMzM0IC0xMy4zNjYxMywtMC42NDQwMyB6IG0gMTYuNTA0MDgsLTEwLjEyOTY4IGMgMC45NjI1LC0xLjEzNzQ3IDEuNzUsLTMuMTYzNzQgMS43NSwtNC41MDI4MSAwLC0zLjE4MTgxIC00LjIyNDczLC03LjM0Mzc2IC03LjQ1NDU1LC03LjM0Mzc2IC0zLjYyMzQ5LDAgLTYuNTQ1NDUsMy4zMTU2NyAtNi41NDU0NSw3LjQyNzQyIDAsMi41MzQ2NSAwLjcwNTA0LDMuOTgyMDEgMi43MDY3Miw1LjU1NjUyIDMuMTY2MDksMi40OTA0NiA2Ljg0NDQ4LDIuMDUyMDcgOS41NDMyOCwtMS4xMzczNyB6IG0gLTAuNzA0NTUsLTE4LjMwMTEyIDIuNDU0NTUsLTIuNDU0NTQgMCwtMjEuOTM0NjcgYyAwLC0xOS44MjY4OCAtMC4xNzcyMSwtMjIuMTUzNTIgLTEuODQ0MTcsLTI0LjIxMjEyIC0yLjUwNzI3LC0zLjA5NjM2IC03LjgwNDM5LC0zLjA5NjM2IC0xMC4zMTE2NiwwIC0xLjY2OTEsMi4wNjEyNSAtMS44NDQxNyw0LjM5NiAtMS44NDQxNywyNC41OTQwOCBsIDAsMjIuMzE2NjQgMi42MzQ4NiwyLjA3MjU4IGMgMS40NDkxNywxLjEzOTkyIDMuNDk0NjMsMi4wNzI1OCA0LjU0NTQ1LDIuMDcyNTggMS4wNTA4MywwIDMuMDE1MTQsLTEuMTA0NTUgNC4zNjUxNCwtMi40NTQ1NSB6IG0gNC45NTQ1NSwtNjYuNzM4IGMgLTIuMjI1MTEsLTAuNTQ1NjEgLTguNzg2NzksLTAuNzExNjEgLTE0Ljc4Nzc5LC0wLjM3NDA5IGwgLTEwLjc4Nzc5LDAuNjA2NzMgMC4yODc3OSwtOS4yNzAwNCAwLjI4Nzc5LC05LjI3MDA1IDE1LjUsMCAxNS41LDAgMCw5LjQxNjY3IGMgMCw1LjQ1OTQ2IC0wLjQyMDIzLDkuNTEyMjYgLTEsOS42NDQxNCAtMC41NSwwLjEyNTExIC0yLjgsLTAuMjEzOSAtNSwtMC43NTMzNiB6IgogICAgICAgICBzdHlsZT0iZmlsbDojMDAwMDAwIiAvPgogICAgPC9nPgogIDwvZz4KPC9zdmc+Cg==",
+    "highBeam": "data:image/png;base64,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",
+    "dippedBeam": "data:image/png;base64,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",
+    "rearFog": "data:image/png;base64,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",
+    "positionLights": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAHgAAABCCAYAAACchRIZAAAOd0lEQVR4nO1dWWxc1Rn+7jJzx7N57HiZ8TK2A1lIyG6HmBAaCqEI0ULVhVagtnQRES1qpe5VoQ9QKoSqlgJqUYX61FaopWoBIShLG5LgOCEkBJwQp/Ey3u3YnsWz3Jm59/Rh6vHc8Zwzd65nocGf5IfxWeY/5z/Lf/5tOAAKAB6ruByhcgBIpalYRemwunMvc+RlcO3N6yE1OctByyp0gjcLcO72ou7TW/LWFVmFZo8Tnm/sAQDEp0IInRxFsGcYkfMzAFk92csJXhJh2+KGs7sdzq5W8FUmEJXA//oFJIMxajvmHVx3x9VovGvnsv8ngzEsnB5HsGcIC6fHQZJqUQaxCi0EuwTHrhY4u9tg3+oBZxKW1Rn/7VuYf+M/1D6YO9jZ1Zq7kdMC1/Vr4bp+LVQ5ifD7kwj2DCN43Ac1mihwGKvIhOi0wL6jOcXU7U3gBPYt6rjGa4zBoqsKVevq8hLESyIcu1rg2NWCpsQeRM5NI3RyFIGeYSTnI3nbrwIw1dvg7PLC2d0G64Z6gON0t7Vv8YCvMlE3FpXBVVfWgagEnKD/yziTANtWD2xbPXB/pROR8zMInRhBsNeH+FRIdz8fBUitLjiv8cJ5jReW9lrD/SQDMZg9DsQG5nKWM+9gwWaGbasHjs7W9MVuFFohbfoj+fqWWl2o7m6D89p2SM3VhvuJTy8g9PaIrrnUrejgTAKsVzXAsasF1d3tEGuqDBGXmIug/+BfLz8Gc4Btsxu2zW6osQSCx7JOLY7Dhqc/A7HGaqh7eTSAYM8QQm+PIjowWwhZBqaa41DVUQtHZwucezsKeifPvXweE8/0LnUl8qi7/WpU7+sAbzEh3DeJuZfOIXpR/yAqCU7kUX1dB9Z8chMs3pr0/0lCwdiTRxF4ayj9P8/Xr0HtJzbo7nuRqYEjg5DHg8boQxH2ktTqSgta1g0NqV4pGHroVYTPTKQ/t3x7H6qv61hWL3x2CrMv9CF0cuxD+eYWbGbUHFiPNbdupO5KNZZE/33PQQnJAADbFg/aHzxA7ZOoBNH+mdSLpHcYidmVC6nMZ5JeyCN+yCN+XPr7+zDV2WDf3gxHZ8syMV8JxxE5O5X+bFlbm5O5AGDb1AjbpkbIYwHMvngW/kMDIAmlGOSuCLwkov5zW1H7iY3gLezp4y0inLu9mH/9AgAg0jcJJSRDcEjpOplMDbw1hKQ/WlR6S2psEOwSbFvcaSEteGIEY08cSZc33Lkd9Z/dqquvxGwYE7/vRejkaKnIzQvbpkY0HeyG2aP/SgodH4HvsX+lPzffdy2cezsQfm8CwZ5hhE6MQInES0EugBIzOBO8JIK3mjVv4ysevQ2WtYU9EQJHBjH5hxNM9VyxIdjMcN/TBdfHrii4rRpL4oOvPps+fURXFdRoAqqcLDaZOVE2a5IqJzXMFWussHQU/v6rvq4DV/76djh2thSTPCrMbgc6HrnVEHOB1DFt29yY/pz0R8vGXKCC5kLHrmamMMaC4JDQ+sMbsObWq4pLVBYs3hqsfeTWFVvTyrUYc6FyDN6xskFzPAf3PV1Yc9umIlGkhdnjRNuDBzQCEQssg4tti6dYZBWMyjCYA6xXNVCLF94d1y14uL/UCdd+Y8cnDbwkwvu9/RCrLXnrxieCGHvyKAZ/9gq1jtTshGA1F5NE3SjKM6lQmN1O+s4gwNgTR6DGFdR9ajPq7rganMhYh1xKgRAdmIXs8xeFPveXOyF5Xcw6RFEx+3wfpv9yJiVAcRzUaCK3OpfjULWuDgvvjheFvkJQkR1sZVip4tMhJAMxqNEEpp89jYs/fBHR/hlmf7wkouX+feB4g5d6Biwdtai5aR2zTnwqhIEfvYSpP51aepsTguiFS9Q2eixzpUBFGFy1rp5als1M2efH4AMvY/alc8w+Le01qDYo6Wai8e5dTHNdbHAOAz9+CbGh5dabyAX6QrQyxlxKVIbB6+mrOdK/fBcQlWDyDycw87f3mP02fG5bQbbUbJg9TtgZAlFiJozhh19Lqx6zEc1B+yIsHTXUslKiIgyWmuimMtZxPP3nUwgcGaSWm+ptsG81LrG69l9Bf7oRYPTxN5kKluhFOoNFlxW8VH6Rp+wMFl1VdB0uIYiN+JntJ545DiVMl7Crr19rmDbHjmZqWaBnKOVsyMCi7JATHGBqsBumzSjKzmBzI32QibloXoOCsiBjjnEf2zY1UstY4CURkpd+jM7/s19XP/GpBWoZa+ylQgUY7KCW6XXr8R8aoJaZ6myGjOpSWw3VPUmVk4icm8pZlg3WGMwN9LGXCmVnsInB4IROBsenQkxbqaW1cHcYc72NWhYbmgdR9dlkEtP0HSzWGvOCWQmKfusLNq3GRo0mNJMj2OkancSlsO7vkUfmYVqTe6ea6ujMooHVphCHQWUht4QNALykVYJwAgfBaQFvXmIDbxE1NnQ+Y744gdfIL7xZ1PhKC1YT5l45rzFmaBhsqrej/YGbgCyFAW8WwJm1a4HjOV1OeBe/+wJivvmMAdDbKBH9PtWJS/QdLK4xwGBGm+Ss/oWnxuiWomzhsmpdPToeukV333rgPzxAZzAn8gUZs3Uh6xJgPRVIXL8ZLcGYdJOBo5C30hdeYl6/l4Uaoy/SbAbrPfYLAcdrJ1z7qQRfuOw0YDCYtfqzwToKc4V45AMn0tsU4irEsvUuex6WIOQnW2+v+UTUEnxh9oqS6BOpxvVPJEnSF2O+cI/cbegasIJir1iatCySiVKC+c4aR8l3cLYBgCTog2JajbLAmhwjDGYxppD+WI542SdUKRiMLFo11KiyknZpVZMKiKzdUYQQqDnstEoksWxxqHISJKkuuysVRnCawLgHl9VlCHhGJi4ZoN+zNGk9F1iCZ/bYk/4Ypv74DoDU3Z15KinhpSuIKKpmcZC4ApJx2inRpfnPnm8Ng5UFGUMPvap7MEbAFkL0M5il9ivkuZVuw3i/mur1a6BYY8hWYyoLMi79/X3dfRtB2RUdrPDSQmKfmCrPGTqz6G3oi6Jq7Rrd/YguuhdIJUJry85gZYFuKDAxtEmZ4AQO1o10l5/4dOE7WJ6gh4ZIrS7dwWIS45lp5GRZKcrOYJZWiGVGzISjywvBTnf5iQ3nDqVkITY0T7XzggMavrBdVz9mxhjk8UDBdK0UZWcwa5BmHe6pvEWE+0u7qOWxkXkkC1BMpEEIQu/Qoyace9pQvY9tiuQtIky1dIEsbjCAbCUo/w4eD1JjKQSbme3JyAFNB69lCj3Bo0OGaZt/7QKzvOnePahaT3e9sXhrqA4DSjiOZKB80RiLKL+QFUsiwUjtQPXX4gDP1/egem87tS1Jqsx8FfkQ+WBaExyXDV4S0faTG6kuv9bNbmrb+Fj5j2egQi478vA8tSwzzGMRnMCj6eC1qL15PbPf2RfPrjg6b/z3x5iaK8FmRvsDB1JRFVm71XY1ncHhD6ZXRJdRVITB4b5Jaln2JJndDnQ8fAtqPn4ls8/4ZAgzf3l3xbTJowFMP3uaWYczCXDf04W2H92Ydi7gRD6VQIUC1phLiYo4vof76Megpa0GgkOCGomj5uYNaPzijrzvY5JQMPKrQwXpslm49I/3YV1XD8fu3GmkFmHf2Yx1j9+OmefOIObzUw0pRCGInKvMDq4Ig2MDs1Ai8dzhHByHhs9vg3VToyYlAhWEYPx3PdQsM4ZAgNHfHEbbT29ivreBlHKm8e5dIApdjx8bmK1Y/rCKHNFEJYicpa/o2ls26mIuUQnGnjwK/5t0Hy2jUOUkfL94gyl0ZYJljapEyMoiKhZdGDrhW1F7ohKMP1Ua5i5CicQx9PBrCBxe2XewfLlLjbIxmJe0/kPBXp/hnBtJfxS+n79WUuYugiQUjP7mCMaeOlqQQ8IiogOzkDOeSLxZKKsDfEm/SZMhdbcX40/3pFezEo4jdHIUzj1tBfW5cGYCY08eMaatWgH8/76IyPkZNH9rL6wMZUc2Aoe1u9fZ3Y6me/dg4cwEQm+PInTCV1IFSNFzdAgOCY6d/8uQuq1JY8QPHhvGyC8PpT87drfC+/0bdPWrhGRM/ekU5l/vr2wSNS6ltnR/uZPpqAcAIAT9B59DYm5JsdP6/f1w7vYuVflflp3QydFUykeG0cMIirKDTWtssO/InTopE/YdzeAlMe23tHBqHMlgDKKTrp4kKsH8P/sx/expph9W2UCAYM8wFk6Po+5Tm+H6+JVU/bP/zQENc3mzAPu2Jk0djk9ZxqwbG9B4107DGe1oMLyDzQ32VHqk7ra8yc8yMfLYvxE8viRgVe9bi5b7r1vWPjEbQeDwAObf+E/RV3UxwfEcbFs9cH3sCji6WlP3KyEIHBnE+NPHNE54jq5WeH+g78QClnJShk6OItI3yXyKUelDAQzWZLTL8z6kwf/mgCZXFgDYtzWh9paNEGurII/4ETg8iPB7EyVxKy0leEmE2eNAYjaS0/TY/M29htNNKCEZoVNjqSTs707oFlDZDOZSaYVTaW/bYHYbj62RxwII9voQ7BnOGTz9UYClvQbOPW1wdnnzpohgQY0mEDo1hlCvD6FTY0wlCpXB1o0NaPnO9QU5nGUjNjCH4HEfgr3DkEcrY035sMLsdsC52wtHV2vBScAzQRIKfI/+i6pMoQpZ8Ylg4SmDCUF0cA4LJ0fhPzz4ob47K434ZAiXnu/Dpef7tC8Pym8zUCHwTGGMyuBkIIZo/0zeu1aTIfXYsEZqXIU+KCEZ/kMX4T90UaM7cHS25E2/FDk7RXc1Qp5nUrDXl5PBJKEs/TbD0cGKeCpcrlDlZEoB8vYoOJ5D1fp6OLvbUN3dljPuOfNFkgtMIctUb8P6pz4DcKmwksUMqau/rlIBZCZhz/hJgP77/pbXTZiw/hru3E4cna2EMwnMeqt/5f2TvC5Sc2B93nqrP055mWP1xykvc6wy+DIHB+BrAAqPmF7F/wOU/wJG6iezaBbB1gAAAABJRU5ErkJggg=="
+});
+
+  const FORCED_FROM_URL = parseForcedTokens();
+  const forcedFromKeyboard = new Set();
+  let lastPayload = null;
+  let renderRaf = 0;
+
+  const SLOT_DEFS = [
+    { key: "left", label: "Left indicator", kind: "left-turn", src: ICONS.leftTurn },
+    { key: "right", label: "Right indicator", kind: "right-turn", src: ICONS.rightTurn },
+    { key: "park", label: "Parking brake", kind: "parking-brake", src: ICONS.parkingBrake },
+    { key: "hazard", label: "Hazard warning", kind: "hazard", src: ICONS.hazard },
+    { key: "bulb", label: "Exterior bulb failure", kind: "bulb-failure", src: ICONS.bulbFailure },
+    { key: "sidelights", label: "Side/position lights", kind: "position-lights wide", src: ICONS.positionLights },
+    { key: "dipped", label: "Dipped beam", kind: "dipped-beam wide", src: ICONS.dippedBeam },
+    { key: "highbeam", label: "High beam", kind: "high-beam wide", src: ICONS.highBeam },
+    { key: "rearfog", label: "Rear fog light", kind: "rear-fog square", src: ICONS.rearFog },
+  ];
+
+  const KEY_BINDINGS = new Map([
+    ["1", "left"],
+    ["2", "right"],
+    ["3", "hazard"],
+    ["4", "park"],
+    ["5", "bulb"],
+    ["6", "sidelights"],
+    ["7", "dipped"],
+    ["8", "highbeam"],
+    ["9", "rearfog"],
+    ["0", "all"],
+  ]);
+
+  function esc(text) {
+    return String(text == null ? "" : text)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function normaliseToken(token) {
+    const clean = String(token || "").trim().toLowerCase().replace(/_/g, "-");
+    const compact = clean.replace(/[-\s]/g, "");
+    const aliases = new Map([
+      ["parking", "park"], ["handbrake", "park"], ["parkingbrake", "park"], ["parking-brake", "park"],
+      ["l", "left"], ["leftindicator", "left"], ["left-indicator", "left"],
+      ["r", "right"], ["rightindicator", "right"], ["right-indicator", "right"],
+      ["hazards", "hazard"],
+      ["lamp", "sidelights"], ["light", "sidelights"], ["lights", "sidelights"], ["side", "sidelights"], ["sidelight", "sidelights"], ["side-light", "sidelights"], ["position", "sidelights"], ["positionlights", "sidelights"], ["position-lights", "sidelights"], ["parkinglights", "sidelights"], ["parking-lights", "sidelights"],
+      ["dip", "dipped"], ["dippedbeam", "dipped"], ["dipped-beam", "dipped"], ["lowbeam", "dipped"], ["low-beam", "dipped"], ["headlamp", "dipped"], ["headlight", "dipped"], ["headlights", "dipped"],
+      ["mainbeam", "highbeam"], ["main-beam", "highbeam"], ["high-beam", "highbeam"], ["fullbeam", "highbeam"], ["full-beam", "highbeam"],
+      ["rear", "rearfog"], ["rear-fog", "rearfog"], ["rearfoglight", "rearfog"], ["rear-fog-light", "rearfog"], ["fogrear", "rearfog"], ["fog-rear", "rearfog"],
+      ["bulbout", "bulb"], ["bulb-out", "bulb"], ["bulbfault", "bulb"], ["bulb-fault", "bulb"],
+      ["lowvoltage", "voltage"], ["low-voltage", "voltage"], ["battery", "voltage"],
+      ["hot", "coolant"], ["overheat", "coolant"], ["dooropen", "door"], ["door-open", "door"],
+      ["all", "all"],
+    ]);
+    return aliases.get(clean) || aliases.get(compact) || clean;
+  }
+
+  function parseForcedTokens() {
+    const params = new URLSearchParams(window.location.search || "");
+    const raw = [
+      params.get("force"),
+      params.get("telltale"),
+      params.get("telltales"),
+      params.get("warn"),
+      params.get("warnings"),
+    ].filter(Boolean).join(",");
+    const tokens = new Set();
+    raw.split(/[\s,;+|]+/).map(normaliseToken).filter(Boolean).forEach((token) => tokens.add(token));
+    return tokens;
+  }
+
+  function forced(token) {
+    return FORCED_FROM_URL.has("all") || forcedFromKeyboard.has("all") || FORCED_FROM_URL.has(token) || forcedFromKeyboard.has(token);
+  }
+
+  function anyForced() {
+    return FORCED_FROM_URL.size > 0 || forcedFromKeyboard.size > 0;
+  }
+
+  function clonePayload(payload) {
+    try { return JSON.parse(JSON.stringify(payload || {})); }
+    catch (_error) { return Object.assign({}, payload || {}); }
+  }
+
+  function applyTestOverrides(payload) {
+    if (!anyForced()) return payload;
+    const copy = clonePayload(payload);
+    copy.state = copy.state || {};
+    const state = copy.state;
+    state.vehicle = state.vehicle || {};
+    state.lighting = state.lighting || {};
+    state.electrical = state.electrical || {};
+    state.engine = state.engine || {};
+    state.doors = state.doors || {};
+    const lighting = state.lighting;
+
+    if (forced("left")) lighting.left_indicator = true;
+    if (forced("right")) lighting.right_indicator = true;
+    if (forced("hazard")) { lighting.hazards = true; lighting.left_indicator = true; lighting.right_indicator = true; }
+    if (forced("park")) state.vehicle.handbrake = true;
+    if (forced("bulb")) lighting.bulb_out = true;
+    if (forced("sidelights")) { lighting.side_lights = true; lighting.position_lights = true; lighting.lights_on = true; lighting.mode = "side lights"; }
+    if (forced("dipped")) { lighting.dipped_beam = true; lighting.low_beam = true; lighting.lights_on = true; lighting.mode = "dipped beam"; }
+    if (forced("highbeam")) { lighting.high_beam = true; lighting.main_beam = true; lighting.lights_on = true; lighting.mode = "high beam"; }
+    if (forced("rearfog")) { lighting.rear_fog = true; lighting.rear_fog_light = true; }
+    if (forced("door")) { state.doors.any_open = true; state.doors.driver_open = true; }
+    if (forced("voltage")) { state.electrical.voltage_v = 11.4; state.electrical.low_voltage = true; }
+    if (forced("coolant")) { state.engine.coolant_temp_c = 118; state.engine.coolant_warning = true; }
+    copy.test_mode = true;
+    copy.test_telltales = Array.from(new Set([...FORCED_FROM_URL, ...forcedFromKeyboard]));
+    return copy;
+  }
+
+  function truthy(value) {
+    if (value === true) return true;
+    if (value === false || value == null) return false;
+    const text = String(value).trim().toLowerCase();
+    return ["1", "true", "yes", "on", "active", "enabled"].includes(text);
+  }
+
+  function hasOwn(object, key) {
+    return !!object && Object.prototype.hasOwnProperty.call(object, key);
+  }
+
+  function textIncludes(text, patterns) {
+    const value = String(text || "").toLowerCase();
+    return patterns.some((pattern) => pattern.test(value));
+  }
+
+  function lightingMode(lighting) {
+    return String((lighting && lighting.mode) || "").trim().toLowerCase();
+  }
+
+  function sideLightsOn(lighting) {
+    const mode = lightingMode(lighting);
+    return truthy(lighting.side_lights) || truthy(lighting.sidelights) || truthy(lighting.position_lights) || truthy(lighting.parking_lights) ||
+      ["sides", "dip", "rear_fog", "main_beam_sides", "main_beam_dip", "main_beam_rear_fog", "sides_with_reverse", "reverse_with_dip", "rear_fog_with_reverse"].includes(mode) ||
+      textIncludes(mode, [/\bsides?\b/, /sidelight/, /position/, /parking light/, /park light/]);
+  }
+
+  function dippedBeamOn(lighting) {
+    const mode = lightingMode(lighting);
+    return truthy(lighting.dipped_beam) || truthy(lighting.low_beam) || truthy(lighting.dip_beam) || truthy(lighting.headlights) || truthy(lighting.head_lights) ||
+      ["dip", "rear_fog", "main_beam_dip", "main_beam_rear_fog", "reverse_with_dip", "rear_fog_with_reverse"].includes(mode) ||
+      textIncludes(mode, [/dipped/, /\bdip\b/, /low beam/, /headlight/, /headlamp/]);
+  }
+
+  function highBeamOn(lighting) {
+    const mode = lightingMode(lighting);
+    return truthy(lighting.high_beam) || truthy(lighting.main_beam) || truthy(lighting.full_beam) ||
+      ["main_beam_lights_off", "main_beam_sides", "main_beam_dip", "main_beam_rear_fog"].includes(mode) ||
+      textIncludes(mode, [/high beam/, /main beam/, /full beam/]);
+  }
+
+  function rearFogOn(lighting) {
+    const mode = lightingMode(lighting);
+    return truthy(lighting.rear_fog) || truthy(lighting.rear_fog_light) || truthy(lighting.fog_rear) || truthy(lighting.fog_lights_rear) ||
+      ["rear_fog", "main_beam_rear_fog", "rear_fog_with_reverse"].includes(mode) ||
+      textIncludes(mode, [/rear fog/, /fog rear/]);
+  }
+
+  function knownAny(lighting, keys, forcedKey) {
+    return forced(forcedKey) || keys.some((key) => hasOwn(lighting, key)) || !!String(lighting.mode || "").trim();
+  }
+
+  function findFooter() {
+    return document.querySelector(".status-strip") ||
+      document.querySelector("footer.status-strip") ||
+      document.querySelector(".screen > footer") ||
+      document.querySelector("footer") ||
+      document.querySelector(".footer") ||
+      document.querySelector(".bottom-bar");
+  }
+
+  function ensureStrip() {
+    const footer = findFooter();
+    if (!footer) return null;
+    footer.classList.add("openmmi-footer-black", "openmmi-footer-with-telltales", "openmmi-footer-centred-telltales", "openmmi-stable-footer-telltales");
+    let strip = footer.querySelector("#openMmiFooterTelltales");
+    if (!strip) {
+      strip = document.createElement("div");
+      strip.id = "openMmiFooterTelltales";
+      strip.className = "openmmi-footer-telltales openmmi-footer-telltales-centred openmmi-stable-footer-telltales-strip";
+      footer.insertBefore(strip, footer.firstChild);
+    }
+    if (strip.dataset.openMmiSlotVersion !== "proper-light-v1") {
+      strip.innerHTML = SLOT_DEFS.map(slotMarkup).join("");
+      strip.dataset.openMmiSlotVersion = "proper-light-v1";
+    }
+    return strip;
+  }
+
+  function slotMarkup(slot) {
+    return `<span class="openmmi-footer-telltale openmmi-footer-telltale-${esc(slot.kind)} openmmi-footer-slot-${esc(slot.key)} is-inactive" data-openmmi-telltale-slot="${esc(slot.key)}" role="img" aria-label="${esc(slot.label + ': off')}" title="${esc(slot.label + ': off')}">` +
+      `<img src="${slot.src}" alt="" aria-hidden="true" loading="eager" decoding="async" draggable="false">` +
+      `<span class="openmmi-footer-telltale-sr">${esc(slot.label + ': off')}</span>` +
+      `</span>`;
+  }
+
+  function setSlot(strip, key, active, known, label, options) {
+    const slot = strip.querySelector(`[data-openmmi-telltale-slot="${key}"]`);
+    if (!slot) return;
+    const on = active === true;
+    const usable = known !== false;
+    const text = `${label}: ${on ? "on" : "off"}`;
+    slot.classList.toggle("is-active", on);
+    slot.classList.toggle("is-inactive", !on && usable);
+    slot.classList.toggle("is-unknown", !usable);
+    slot.classList.toggle("is-forced-blink", !!(options && options.forcedBlink && on));
+    slot.setAttribute("aria-label", text);
+    slot.setAttribute("title", text);
+    const sr = slot.querySelector(".openmmi-footer-telltale-sr");
+    if (sr) sr.textContent = text;
+  }
+
+  function hideMovedPageTelltales() {
+    const selectors = [
+      '[data-field="indicators"]', '[data-bool="handbrake"]', '[data-bool="hazards"]', '[data-bool-no="bulb_out"]',
+      '[data-field="lights_on"]', '[data-field="lighting_mode"]', '[data-field="lighting.mode"]',
+      '[data-field="side_lights"]', '[data-field="dipped_beam"]', '[data-field="low_beam"]', '[data-field="rear_fog"]'
+    ];
+    selectors.forEach((selector) => {
+      document.querySelectorAll(selector).forEach((node) => {
+        if (node.closest("#openMmiFooterTelltales, .status-strip, footer, .footer, .bottom-bar")) return;
+        const host = node.closest(".tile, .footer-item, article, .card") || node;
+        host.classList.add("openmmi-telltale-moved-to-footer", "openmmi-light-state-moved-to-footer");
+        host.setAttribute("aria-hidden", "true");
+      });
+    });
+  }
+
+  function hideOldFooterItems() {
+    const footer = findFooter();
+    if (!footer) return;
+    footer.querySelectorAll('[data-bool="reverse"], [data-field="reverse"], [data-bool="handbrake"], [data-field="handbrake"], [data-key="handbrake"]').forEach((node) => {
+      if (node.closest("#openMmiFooterTelltales")) return;
+      const host = node.closest(".footer-item, .status-item, .tile, article, li, div") || node;
+      host.classList.add("openmmi-footer-duplicate-hidden");
+      host.setAttribute("aria-hidden", "true");
+    });
+    footer.querySelectorAll(".footer-item, .status-item, .tile, article, li").forEach((node) => {
+      if (node.closest("#openMmiFooterTelltales")) return;
+      const text = (node.textContent || "").trim().toLowerCase();
+      if (/\b(reverse|handbrake|parking brake|park brake|parking|brake)\b/.test(text)) {
+        node.classList.add("openmmi-footer-duplicate-hidden");
+        node.setAttribute("aria-hidden", "true");
+      }
+    });
+  }
+
+  function updateTestBadge() {
+    const footer = findFooter();
+    if (!footer) return;
+    let badge = footer.querySelector("#openMmiTelltaleTestBadge");
+    if (!anyForced()) {
+      if (badge) badge.remove();
+      document.documentElement.classList.remove("openmmi-telltale-test-active");
+      return;
+    }
+    document.documentElement.classList.add("openmmi-telltale-test-active");
+    if (!badge) {
+      badge = document.createElement("span");
+      badge.id = "openMmiTelltaleTestBadge";
+      badge.className = "openmmi-telltale-test-badge";
+      footer.appendChild(badge);
+    }
+    badge.textContent = `TEST ${Array.from(new Set([...FORCED_FROM_URL, ...forcedFromKeyboard])).join(" ")}`;
+  }
+
+  function renderStableFooterTelltales(payload) {
+    lastPayload = payload || lastPayload || {};
+    const state = (lastPayload && lastPayload.state) || {};
+    const vehicle = state.vehicle || {};
+    const lighting = state.lighting || {};
+    const strip = ensureStrip();
+    if (!strip) return;
+
+    const hazards = lighting.hazards === true || forced("hazard");
+    const left = hazards ? true : lighting.left_indicator;
+    const right = hazards ? true : lighting.right_indicator;
+    const leftForced = forced("left") || forced("hazard");
+    const rightForced = forced("right") || forced("hazard");
+    const testBlink = anyForced();
+
+    setSlot(strip, "left", left === true, left !== undefined && left !== null, "Left indicator", { forcedBlink: testBlink && leftForced });
+    setSlot(strip, "right", right === true, right !== undefined && right !== null, "Right indicator", { forcedBlink: testBlink && rightForced });
+    setSlot(strip, "park", vehicle.handbrake === true, vehicle.handbrake !== undefined && vehicle.handbrake !== null, "Parking brake");
+    setSlot(strip, "hazard", hazards === true, lighting.hazards !== undefined || forced("hazard"), "Hazard warning", { forcedBlink: testBlink && forced("hazard") });
+    setSlot(strip, "bulb", lighting.bulb_out === true, lighting.bulb_out !== undefined && lighting.bulb_out !== null, "Exterior bulb failure");
+
+    setSlot(strip, "sidelights", sideLightsOn(lighting), knownAny(lighting, ["side_lights", "sidelights", "position_lights", "parking_lights"], "sidelights"), "Side/position lights");
+    setSlot(strip, "dipped", dippedBeamOn(lighting), knownAny(lighting, ["dipped_beam", "low_beam", "dip_beam", "headlights", "head_lights"], "dipped"), "Dipped beam");
+    setSlot(strip, "highbeam", highBeamOn(lighting), knownAny(lighting, ["high_beam", "main_beam", "full_beam"], "highbeam"), "High beam");
+    setSlot(strip, "rearfog", rearFogOn(lighting), knownAny(lighting, ["rear_fog", "rear_fog_light", "fog_rear", "fog_lights_rear"], "rearfog"), "Rear fog light");
+
+    hideMovedPageTelltales();
+    hideOldFooterItems();
+    updateTestBadge();
+  }
+
+  function scheduleStableFooterTelltales(payload) {
+    lastPayload = payload || lastPayload;
+    if (renderRaf) return;
+    renderRaf = requestAnimationFrame(() => {
+      renderRaf = 0;
+      try { renderStableFooterTelltales(lastPayload || {}); }
+      catch (error) { console.warn("Open MMI proper light tell-tales failed", error); }
+    });
+  }
+
+  function refreshAfterForceChange() {
+    if (window.openMmiLastStatusPayload && typeof render === "function") render(window.openMmiLastStatusPayload);
+    else scheduleStableFooterTelltales(lastPayload);
+  }
+
+  function toggleForcedToken(token) {
+    if (forcedFromKeyboard.has(token)) forcedFromKeyboard.delete(token);
+    else forcedFromKeyboard.add(token);
+    refreshAfterForceChange();
+  }
+
+  document.addEventListener("keydown", (event) => {
+    if (!event.altKey || event.ctrlKey || event.metaKey) return;
+    const token = KEY_BINDINGS.get(event.key);
+    if (!token) return;
+    event.preventDefault();
+    if (token === "all") {
+      ["left", "right", "hazard", "park", "bulb", "sidelights", "dipped", "highbeam", "rearfog"].forEach((item) => forcedFromKeyboard.add(item));
+      refreshAfterForceChange();
+      return;
+    }
+    toggleForcedToken(token);
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (!event.altKey || event.key.toLowerCase() !== "c") return;
+    event.preventDefault();
+    forcedFromKeyboard.clear();
+    refreshAfterForceChange();
+  });
+
+  if (typeof render === "function" && !render.__openMmiProperLightTelltalesWrapped) {
+    const previousRender = render;
+    render = function renderWithProperLightTelltales(payload) {
+      window.openMmiLastStatusPayload = payload;
+      const patched = applyTestOverrides(payload);
+      previousRender(patched);
+      scheduleStableFooterTelltales(patched);
+    };
+    render.__openMmiProperLightTelltalesWrapped = true;
+  }
+
+  document.addEventListener("DOMContentLoaded", () => scheduleStableFooterTelltales(lastPayload));
+  if (document.readyState !== "loading") scheduleStableFooterTelltales(lastPayload);
+
+  window.openMmiRenderFooterTelltales = renderStableFooterTelltales;
+  window.openMmiTelltaleTest = {
+    toggle: toggleForcedToken,
+    clear: () => { forcedFromKeyboard.clear(); refreshAfterForceChange(); },
+    active: () => Array.from(new Set([...FORCED_FROM_URL, ...forcedFromKeyboard])),
+  };
+})();
+// --- Open MMI proper light tell-tales end ---
+
