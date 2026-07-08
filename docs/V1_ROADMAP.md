@@ -169,3 +169,6 @@ Settings now persist simple dashboard preferences in browser localStorage withou
 ### Settings wiring stability
 Raw/debug visibility controls now live outside the diagnostics refresh target, so status updates can refresh live values without rebuilding the toggle itself.
 
+
+- Settings Display tell-tale visual test: frontend-only icon strip for safe local verification.
+- Settings Display tell-tale test uses existing footer tell-tale icons only; no backend or CAN state changes.
