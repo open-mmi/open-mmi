@@ -2416,3 +2416,73 @@ footer.openmmi-footer-black,
 }
 /* Open MMI V1 roadmap: settings shell end */
 
+/* Open MMI V1 roadmap: door overlay start */
+.openmmi-vehicle-overlay {
+  position: absolute;
+  inset: var(--content-top, 4.5rem) clamp(.75rem, 2vw, 1.5rem) var(--footer-height, 4.25rem) clamp(.75rem, 2vw, 1.5rem);
+  z-index: 35;
+  pointer-events: none;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: clamp(.5rem, 2vh, 1.2rem);
+}
+
+.openmmi-vehicle-overlay[hidden] {
+  display: none !important;
+}
+
+.openmmi-vehicle-overlay-card {
+  pointer-events: auto;
+  width: min(28rem, 92%);
+  border: 1px solid rgba(255,255,255,.16);
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(23,28,40,.96), rgba(8,10,15,.96));
+  box-shadow: 0 24px 70px rgba(0,0,0,.48), inset 0 0 0 1px rgba(255,255,255,.04);
+  padding: clamp(.95rem, 1.8vw, 1.25rem);
+  color: rgba(255,255,255,.94);
+  backdrop-filter: blur(16px);
+}
+
+.openmmi-vehicle-overlay-kicker {
+  font-size: .72rem;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: rgba(149,210,255,.78);
+  margin-bottom: .25rem;
+}
+
+.openmmi-vehicle-overlay-card h2 {
+  margin: 0 0 .75rem;
+  font-size: clamp(1.35rem, 2.6vw, 2rem);
+  line-height: 1;
+}
+
+.openmmi-vehicle-overlay-list {
+  display: grid;
+  gap: .45rem;
+  margin-bottom: .9rem;
+}
+
+.openmmi-vehicle-overlay-item {
+  border: 1px solid rgba(255,255,255,.11);
+  border-radius: 14px;
+  background: rgba(255,255,255,.055);
+  padding: .65rem .8rem;
+  font-weight: 700;
+}
+
+.openmmi-vehicle-overlay-dismiss {
+  width: 100%;
+  border: 1px solid rgba(255,255,255,.18);
+  border-radius: 14px;
+  background: rgba(69,163,255,.18);
+  color: rgba(255,255,255,.95);
+  font-weight: 800;
+  padding: .72rem .9rem;
+}
+
+.openmmi-vehicle-overlay-dismiss:active {
+  transform: translateY(1px);
+}
+/* Open MMI V1 roadmap: door overlay end */

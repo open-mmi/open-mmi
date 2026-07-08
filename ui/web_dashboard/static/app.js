@@ -2193,3 +2193,217 @@ try {
   window.addEventListener("openmmi:pagechange", bindSettingsButtons);
 })();
 // --- Open MMI V1 roadmap: settings shell end ---
+
+// --- Open MMI V1 roadmap: door overlay start ---
+(function openMmiDoorOverlayV1() {
+  if (window.__openMmiDoorOverlayV1Loaded) return;
+  window.__openMmiDoorOverlayV1Loaded = true;
+
+  const state = {
+    currentSignature: "",
+    dismissedSignature: "",
+  };
+
+  const LABELS = {
+    driver: "Driver door",
+    driver_door: "Driver door",
+    front_left: "Front left door",
+    front_left_door: "Front left door",
+    passenger: "Passenger door",
+    passenger_door: "Passenger door",
+    front_right: "Front right door",
+    front_right_door: "Front right door",
+    rear_left: "Rear left door",
+    rear_left_door: "Rear left door",
+    rear_right: "Rear right door",
+    rear_right_door: "Rear right door",
+    boot: "Boot",
+    trunk: "Boot",
+    tailgate: "Tailgate",
+    hatch: "Tailgate",
+    bonnet: "Bonnet",
+    hood: "Bonnet",
+  };
+
+  const one = (selector) => document.querySelector(selector);
+
+  function normaliseKey(key) {
+    return String(key || "")
+      .trim()
+      .toLowerCase()
+      .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+      .replace(/[\s\-.]+/g, "_")
+      .replace(/^is_/, "")
+      .replace(/^door_/, "")
+      .replace(/_status$/, "")
+      .replace(/_state$/, "")
+      .replace(/_ajar$/, "")
+      .replace(/_open$/, "")
+      .replace(/^open_/, "")
+      .replace(/^ajar_/, "");
+  }
+
+  function labelFor(path) {
+    const normalised = normaliseKey(path);
+    if (LABELS[normalised]) return LABELS[normalised];
+
+    const parts = normalised.split("_").filter(Boolean);
+    const hasDoorWord = parts.includes("door");
+    const joined = parts.filter((part) => part !== "door").join("_");
+    if (LABELS[joined]) return LABELS[joined];
+
+    if (normalised.includes("driver")) return "Driver door";
+    if (normalised.includes("passenger")) return "Passenger door";
+    if (normalised.includes("front_left") || normalised.includes("left_front")) return "Front left door";
+    if (normalised.includes("front_right") || normalised.includes("right_front")) return "Front right door";
+    if (normalised.includes("rear_left") || normalised.includes("left_rear")) return "Rear left door";
+    if (normalised.includes("rear_right") || normalised.includes("right_rear")) return "Rear right door";
+    if (normalised.includes("boot") || normalised.includes("trunk")) return "Boot";
+    if (normalised.includes("tailgate") || normalised.includes("hatch")) return "Tailgate";
+    if (normalised.includes("bonnet") || normalised.includes("hood")) return "Bonnet";
+
+    const readable = parts
+      .filter((part) => part && part !== "open" && part !== "ajar" && part !== "status" && part !== "state")
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ");
+    return hasDoorWord ? readable : `${readable || "Door"} door`;
+  }
+
+  function looksDoorRelated(path) {
+    const p = String(path || "").toLowerCase();
+    if (/(lock|locked|unlock|window|mirror|seat|module|count)/.test(p)) return false;
+    return /(door|boot|trunk|tailgate|hatch|bonnet|hood)/.test(p);
+  }
+
+  function isOpenValue(value) {
+    if (value === true) return true;
+    if (value === false || value === null || value === undefined) return false;
+    if (typeof value === "number") return Number.isFinite(value) && value !== 0;
+    const text = String(value).trim().toLowerCase();
+    if (!text) return false;
+    if (["open", "opened", "ajar", "unlatched", "active", "true", "yes", "on", "1"].includes(text)) return true;
+    if (["closed", "shut", "latched", "inactive", "false", "no", "off", "0"].includes(text)) return false;
+    return /\b(open|ajar|unlatched)\b/.test(text);
+  }
+
+  function addDoor(map, label, value) {
+    if (!isOpenValue(value)) return;
+    map.set(label, true);
+  }
+
+  function scanObject(obj, basePath, out) {
+    if (!obj || typeof obj !== "object") return;
+    if (Array.isArray(obj)) {
+      obj.forEach((item, idx) => scanObject(item, `${basePath}[${idx}]`, out));
+      return;
+    }
+
+    for (const [key, value] of Object.entries(obj)) {
+      const path = basePath ? `${basePath}.${key}` : key;
+      if (value && typeof value === "object") {
+        scanObject(value, path, out);
+        continue;
+      }
+      if (looksDoorRelated(path)) addDoor(out, labelFor(path), value);
+    }
+  }
+
+  function collectOpenDoors(payload) {
+    const root = payload || {};
+    const decoded = root.state || root.decoded || root;
+    const vehicle = decoded.vehicle || {};
+    const body = decoded.body || decoded.comfort || decoded.central_convenience || {};
+    const doors = decoded.doors || vehicle.doors || body.doors || {};
+    const out = new Map();
+
+    scanObject(doors, "doors", out);
+    scanObject(vehicle, "vehicle", out);
+    scanObject(body, "body", out);
+    scanObject(decoded.doors_status || decoded.door_status || {}, "door_status", out);
+
+    return Array.from(out.keys()).sort((a, b) => a.localeCompare(b));
+  }
+
+  function ensureOverlay() {
+    let overlay = one("#openMmiVehicleOverlay");
+    if (overlay) return overlay;
+
+    overlay = document.createElement("div");
+    overlay.id = "openMmiVehicleOverlay";
+    overlay.className = "openmmi-vehicle-overlay";
+    overlay.setAttribute("aria-live", "polite");
+    overlay.setAttribute("hidden", "");
+    overlay.innerHTML = `
+      <div class="openmmi-vehicle-overlay-card" role="status" aria-label="Vehicle status alert">
+        <div class="openmmi-vehicle-overlay-kicker">Vehicle status</div>
+        <h2>Door open</h2>
+        <div class="openmmi-vehicle-overlay-list" id="openMmiDoorOverlayList"></div>
+        <button type="button" class="openmmi-vehicle-overlay-dismiss" id="openMmiDoorOverlayDismiss">Dismiss</button>
+      </div>
+    `;
+
+    const footer = document.querySelector("footer.status-strip") || document.querySelector("footer");
+    (footer?.parentNode || document.body).insertBefore(overlay, footer || null);
+
+    overlay.querySelector("#openMmiDoorOverlayDismiss")?.addEventListener("click", () => {
+      state.dismissedSignature = state.currentSignature;
+      hideOverlay();
+    });
+
+    return overlay;
+  }
+
+  function hideOverlay() {
+    const overlay = one("#openMmiVehicleOverlay");
+    if (!overlay) return;
+    overlay.setAttribute("hidden", "");
+    overlay.classList.remove("is-visible");
+  }
+
+  function showOverlay(openDoors) {
+    const overlay = ensureOverlay();
+    const list = overlay.querySelector("#openMmiDoorOverlayList");
+    if (list) {
+      list.innerHTML = openDoors.map((door) => `<div class="openmmi-vehicle-overlay-item">${door}</div>`).join("");
+    }
+    overlay.removeAttribute("hidden");
+    overlay.classList.add("is-visible");
+  }
+
+  function updateDoorOverlay(payload) {
+    const openDoors = collectOpenDoors(payload);
+    const signature = openDoors.join("|");
+    state.currentSignature = signature;
+
+    if (!signature) {
+      state.dismissedSignature = "";
+      hideOverlay();
+      return;
+    }
+
+    if (signature === state.dismissedSignature) {
+      hideOverlay();
+      return;
+    }
+
+    showOverlay(openDoors);
+  }
+
+  function wrapRenderForDoorOverlay() {
+    try {
+      if (typeof render !== "function" || render.__openMmiDoorOverlayWrapped) return;
+      const previousRender = render;
+      const wrapped = function openMmiRenderWithDoorOverlay(payload) {
+        previousRender(payload);
+        updateDoorOverlay(payload);
+      };
+      wrapped.__openMmiDoorOverlayWrapped = true;
+      render = wrapped;
+    } catch (_) {}
+  }
+
+  ensureOverlay();
+  wrapRenderForDoorOverlay();
+  window.openMmiDoorOverlayState = state;
+})();
+// --- Open MMI V1 roadmap: door overlay end ---

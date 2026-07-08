@@ -156,3 +156,7 @@ The Settings page now uses a compact option-tree layout instead of a full page o
 ### Diagnostics panel
 
 Settings → Diagnostics now shows live decoded state such as status age, lighting mode, outside display/raw temperature, coolant, voltage, RPM, reverse, handbrake, and a link to `/api/status`. This is the first step toward moving raw/unfiltered values away from driver-facing pages.
+
+### Door overlay
+
+A global, dismissible door-open overlay now appears above any dashboard page when decoded door state reports an open door. Dismissal is tied to the current door-state signature: closing all doors resets it, and a changed door set can show the popup again. This creates the shared overlay foundation for future reverse/PDC/camera prompts.
