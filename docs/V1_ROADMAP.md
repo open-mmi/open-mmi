@@ -2,77 +2,141 @@
 
 Open MMI V1 is the first complete public shape of the project: a local, read-only vehicle dashboard/MMI built from decoded vehicle state.
 
+V1 is not a finished car operating system. It is the point where the project has a complete, usable loop:
+
+```text
+vehicle state → dashboard → media → settings → events/overlays → docs → compatibility testing path
+```
+
 ## Current baseline
 
-- Web dashboard merged as the main project face
-- Drive page
-- Media page with optional Jellyfin integration
-- Climate page
-- Vehicle/status page
-- Footer tell-tales
-- Demo mode
-- SEAT León 1P confirmed reference vehicle
+- Local web dashboard is now the main project face.
+- Drive page shows live speed, RPM, coolant, voltage, range, outside temperature and lighting state.
+- Media page supports optional Jellyfin-backed local playback and browser media keys.
+- Climate page shows decoded HVAC-related state.
+- Vehicle/status page shows doors, handbrake, reverse, indicators, hazards and related status.
+- Footer tell-tales are stable and use local icon assets.
+- Demo mode can run without a vehicle.
+- SEAT León 1P is the confirmed reference vehicle.
+- Dashboard is read-only from the vehicle side.
 
 ## Required before V1
 
-### Home/Menu navigation
+### 1. Home/Menu navigation
 
 Target layout:
 
 ```text
 Media ← Home/Menu → Drive
-Home/Menu should provide quick access to:
+```
 
-Drive
-Media
-Climate
-Settings
-Diagnostics/Vehicle
-Settings
+Home/Menu should become the neutral landing page and provide quick access to:
+
+- Drive
+- Media
+- Climate
+- Settings
+- Diagnostics/Vehicle
+
+The first implementation should keep Drive and Media internals mostly untouched. The goal is to improve navigation around the existing pages, not rewrite the working pages.
+
+### 2. Settings
 
 Initial settings should cover:
 
-units
-display preferences
-tell-tale test mode
-raw/debug visibility
-Jellyfin status
-reverse assist placeholder
-Diagnostics cleanup
+- units, such as mph/kmh and °C/°F
+- display preferences
+- tell-tale test mode
+- raw/debug visibility
+- Jellyfin status
+- reverse assist placeholder
+
+Settings that are private or security-sensitive must stay server-side or environment-based. Tokens and service credentials must not be stored in frontend code.
+
+### 3. Diagnostics cleanup
 
 Move raw/unfiltered values out of driver-facing pages where possible.
 
 Examples:
 
-outside unfiltered temperature
-snapshot age
-decoded lighting mode
-missing fields
-raw status link
-Vehicle event overlays
+- outside unfiltered temperature
+- snapshot age
+- decoded lighting mode
+- missing fields
+- raw status link
+
+Vehicle may become a Diagnostics/Status page, or parts of it may feed the Home page and event overlays.
+
+### 4. Vehicle event overlays
 
 Add a reusable overlay system for important vehicle events.
 
 Initial overlays:
 
-door open popup with dismiss
-reverse selected placeholder
-Compatibility testing
+- door-open popup with an easy dismiss action
+- reverse selected placeholder
 
-Document a temporary read-only test process for other PQ35-family vehicles.
+The overlay system should not replace the footer tell-tales. Dismissed overlays should return only when the underlying state changes or resets.
+
+### 5. Reverse assist foundation
+
+V1 does not need a working camera/PDC implementation, but it should pave the way for one.
+
+Initial setting/placeholder options:
+
+- Off
+- PDC only, placeholder
+- Camera only, placeholder
+- Camera + PDC, placeholder
+
+The dashboard must remain read-only with respect to vehicle control.
+
+### 6. Compatibility testing path
+
+Document a temporary, read-only test process for other PQ35-family vehicles.
 
 Wanted test vehicles:
 
-VW Golf Mk5
-Audi A3 8P
-Škoda Octavia 1Z
-Škoda Yeti
-V1 release docs
+- VW Golf Mk5
+- Audi A3 8P
+- Škoda Octavia 1Z
+- Škoda Yeti
+
+Compatibility claims should stay conservative until tested. The current confirmed vehicle remains SEAT León 1P.
+
+### 7. V1 release docs
 
 Before tagging V1:
 
-README screenshots current
-demo mode tested from clean clone
-no secrets or backup files
-compatibility limits clearly stated
-known limitations documented
+- README screenshots are current and privacy-respecting.
+- Demo mode works from a clean clone.
+- No secrets, backup files or local debug junk are committed.
+- Compatibility limits are clearly stated.
+- Known limitations are documented.
+- Jellyfin/media setup is optional and token-safe.
+- Tell-tale asset attributions are present.
+
+## Suggested version path
+
+```text
+v0.95
+  Current dashboard beta merged to main, with screenshots/docs good enough for public testers.
+
+v0.99
+  Roadmap feature-complete: Home/Menu, Settings, overlays, diagnostics cleanup and compatibility docs.
+
+v1.0
+  First complete Open MMI release.
+```
+
+## V1 non-goals
+
+These are explicitly after V1 unless they fall out naturally:
+
+- full rear camera/PDC implementation
+- maps/Pure Maps integration
+- multi-vehicle confirmed PQ35 support
+- event-driven SSE/WebSocket status transport
+- installer image
+- full tablet power/amp install guide
+- CAN transmit/control from the dashboard
