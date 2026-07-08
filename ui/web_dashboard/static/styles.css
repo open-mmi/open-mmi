@@ -2574,3 +2574,47 @@ footer.openmmi-footer-black,
   transform: translateY(1px);
 }
 /* Open MMI V1 roadmap: reverse overlay end */
+/* Open MMI V1 roadmap: settings stable wiring v3 start */
+.openmmi-dim-mode body,
+.openmmi-dim-mode .app,
+.openmmi-dim-mode main {
+  filter: brightness(.78) saturate(.9);
+}
+.openmmi-reduced-motion *,
+.openmmi-reduced-motion *::before,
+.openmmi-reduced-motion *::after {
+  animation-duration: .001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: .001ms !important;
+  scroll-behavior: auto !important;
+}
+.openmmi-reverse-assist-off #openMmiReverseOverlay {
+  display: none !important;
+}
+#openmmiSettingsPanel .openmmi-setting-pill {
+  cursor: pointer;
+  user-select: none;
+}
+#openmmiSettingsPanel .openmmi-setting-pill:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(85,186,255,.18);
+}
+/* Open MMI V1 roadmap: settings stable wiring v3 end */
+/* Open MMI V1 roadmap: settings wiring v4 stability start */
+.openmmi-settings-static-controls[hidden] {
+  display: none !important;
+}
+.openmmi-settings-static-controls {
+  margin-bottom: .75rem;
+}
+#openmmiSettingsStaticControls .openmmi-setting-pill,
+#openmmiSettingsPanel .openmmi-setting-pill {
+  cursor: pointer;
+  user-select: none;
+}
+#openmmiSettingsStaticControls .openmmi-setting-pill:disabled,
+#openmmiSettingsPanel .openmmi-setting-pill:disabled {
+  opacity: 1;
+  pointer-events: auto;
+}
+/* Open MMI V1 roadmap: settings wiring v4 stability end */

@@ -164,3 +164,8 @@ A global, dismissible door-open overlay now appears above any dashboard page whe
 ### Reverse overlay foundation
 
 A global reverse-selected overlay is now available as the shared foundation for later rear camera/PDC work. It is deliberately a placeholder in this pass: it appears when decoded reverse state is active, can be dismissed for the current reverse selection, and resets after leaving reverse. Future work can replace the placeholder panel with camera/PDC content and wire Settings → Reverse assist to choose the behaviour.
+### Settings local wiring
+Settings now persist simple dashboard preferences in browser localStorage without rebuilding the static settings panes on every status poll. Wired preferences currently cover speed/temperature display preference, diagnostics raw-value visibility, display dim/reduced-motion modes, and reverse-assist overlay mode.
+### Settings wiring stability
+Raw/debug visibility controls now live outside the diagnostics refresh target, so status updates can refresh live values without rebuilding the toggle itself.
+

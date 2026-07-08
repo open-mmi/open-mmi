@@ -2009,7 +2009,7 @@ try {
   }
 
   function pill(label, selected = false) {
-    return `<button type="button" class="openmmi-setting-pill${selected ? " is-selected" : ""}" disabled>${label}</button>`;
+    return `<button type="button" class="openmmi-setting-pill${selected ? " is-selected" : ""}">${label}</button>`;
   }
 
   function row(title, note, controls = "") {
@@ -2058,8 +2058,8 @@ try {
     if (section === "display") {
       return `
         <div class="openmmi-settings-panel-head"><span>Display</span><small>visual preferences</small></div>
-        ${row("Dim mode", "Future low-light dashboard theme.", pill("next"))}
-        ${row("Reduced animation", "For older tablets or distraction reduction.", pill("next"))}
+        ${row("Dim mode", "Low-light dashboard theme.", pill("off", true) + pill("on"))}
+        ${row("Reduced animation", "For older tablets or distraction reduction.", pill("off", true) + pill("on"))}
         ${row("Tell-tale test", "Move forced test states into Settings later.", pill("next"))}
       `;
     }
@@ -2080,7 +2080,7 @@ try {
     if (section === "reverse") {
       return `
         <div class="openmmi-settings-panel-head"><span>Reverse assist</span><small>placeholder</small></div>
-        ${row("Reverse popup", "Foundation for a future camera/PDC overlay.", pill("off", true) + pill("PDC") + pill("camera"))}
+        ${row("Reverse popup", "Foundation for a future camera/PDC overlay.", pill("popup", true) + pill("off") + pill("PDC") + pill("camera"))}
         ${row("Auto-dismiss", "Later: hide overlay shortly after leaving reverse.", pill("next"))}
         ${metric("Reverse selected", boolText(vehicle.reverse ?? vehicle.reverse_selected))}
       `;
@@ -2090,7 +2090,7 @@ try {
       <div class="openmmi-settings-panel-head"><span>Units</span><small>driver display</small></div>
       ${row("Speed", "Dashboard speed and distance display.", pill("mph", true) + pill("km/h"))}
       ${row("Temperature", "Climate and outside temperature display.", pill("°C", true) + pill("°F"))}
-      ${row("Raw/debug values", "Raw and unfiltered values belong in Diagnostics, not driver pages.", pill("diagnostics", true))}
+      ${row("Raw/debug values", "Raw and unfiltered values belong in Diagnostics, not driver pages.", pill("hide", true) + pill("show"))}
     `;
   }
 
@@ -2133,7 +2133,7 @@ try {
             <button type="button" data-openmmi-settings-section="reverse">Reverse assist <small>PDC/camera path</small></button>
           </nav>
         </section>
-        <section class="openmmi-settings-panel-card" id="openmmiSettingsPanel" aria-label="Selected settings"></section>
+        <section class="openmmi-settings-panel-card" aria-label="Selected settings"><div id="openmmiSettingsStaticControls" class="openmmi-settings-static-controls" hidden></div><div id="openmmiSettingsPanel"></div></section>
       </div>
     `;
 
@@ -2167,10 +2167,7 @@ try {
     });
   }
 
-  function updateSettings(payload) {
-    state.payload = payload;
-    if (one("#pageSettings.active")) renderSettingsPanel();
-  }
+  function updateSettings(payload) { state.payload = payload; if (one("#pageSettings.active") && state.section === "diagnostics") renderSettingsPanel(); window.dispatchEvent(new CustomEvent("openmmi:settingsrender")); }
 
   function wrapRenderForSettings() {
     try {
@@ -2193,6 +2190,332 @@ try {
   window.addEventListener("openmmi:pagechange", bindSettingsButtons);
 })();
 // --- Open MMI V1 roadmap: settings shell end ---
+
+
+
+// --- Open MMI V1 roadmap: settings wiring v4 stability start ---
+(function openMmiSettingsWiringV4Stability() {
+  if (window.__openMmiSettingsWiringV4Loaded) return;
+  window.__openMmiSettingsWiringV4Loaded = true;
+
+  const STORE_KEY = "openmmi.dashboard.settings.v1";
+  const defaults = {
+    speedUnit: "mph",
+    tempUnit: "c",
+    showRaw: false,
+    dimMode: false,
+    reducedMotion: false,
+    reverseAssist: "popup",
+  };
+
+  function loadPrefs() {
+    try { return Object.assign({}, defaults, JSON.parse(localStorage.getItem(STORE_KEY) || "{}")); }
+    catch (_) { return Object.assign({}, defaults); }
+  }
+
+  function savePrefs(prefs) {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(prefs)); } catch (_) {}
+  }
+
+  function setPref(key, value) {
+    const prefs = loadPrefs();
+    prefs[key] = value;
+    savePrefs(prefs);
+    applyPrefs();
+    requestAnimationFrame(syncSettingsControls);
+  }
+
+  function norm(value) {
+    return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+  }
+
+  function currentSection() {
+    const active = document.querySelector("[data-openmmi-settings-section].active");
+    return active?.dataset?.openmmiSettingsSection || "units";
+  }
+
+  function applyPrefs() {
+    const prefs = loadPrefs();
+    const root = document.documentElement;
+    root.classList.toggle("openmmi-dim-mode", !!prefs.dimMode);
+    root.classList.toggle("openmmi-reduced-motion", !!prefs.reducedMotion);
+    root.classList.toggle("openmmi-reverse-assist-off", prefs.reverseAssist === "off");
+    window.openMmiDashboardSettings = prefs;
+  }
+
+  function setPills(row, selectedLabels) {
+    if (!row) return;
+    const wanted = new Set([].concat(selectedLabels).map(norm));
+    row.querySelectorAll(".openmmi-setting-pill").forEach((pill) => {
+      pill.disabled = false;
+      const label = norm(pill.textContent);
+      const selected = wanted.has(label);
+      pill.classList.toggle("is-selected", selected);
+      pill.setAttribute("aria-pressed", selected ? "true" : "false");
+      pill.setAttribute("role", "button");
+      pill.setAttribute("tabindex", "0");
+    });
+  }
+
+  function rowTitle(row) {
+    const strong = row?.querySelector?.("strong");
+    return norm(strong ? strong.textContent : row?.textContent);
+  }
+
+  function ensureStaticControlsHost() {
+    let host = document.querySelector("#openmmiSettingsStaticControls");
+    const panel = document.querySelector("#openmmiSettingsPanel");
+    if (host || !panel) return host;
+
+    // Runtime fallback for older markup: create the static controls immediately
+    // before the live-refreshing panel.
+    host = document.createElement("div");
+    host.id = "openmmiSettingsStaticControls";
+    host.className = "openmmi-settings-static-controls";
+    host.hidden = true;
+    panel.parentNode.insertBefore(host, panel);
+    return host;
+  }
+
+  function rawToggleHtml() {
+    return '<div class="openmmi-setting-row" data-openmmi-raw-static-row="true"><div><strong>Raw/debug values</strong><small>Show low-level decoded values in this diagnostics panel.</small></div><div class="openmmi-setting-controls"><button type="button" class="openmmi-setting-pill">hide</button><button type="button" class="openmmi-setting-pill">show</button></div></div>';
+  }
+
+  function hideRawMetrics(panel, showRaw) {
+    panel?.querySelectorAll?.(".openmmi-settings-metric").forEach((metric) => {
+      const label = norm(metric.querySelector("span")?.textContent || metric.textContent);
+      const rawish = label.includes("outside raw") || label.includes("raw") || label.includes("unfiltered");
+      if (rawish) metric.hidden = !showRaw;
+    });
+  }
+
+  function syncSettingsControls() {
+    applyPrefs();
+    const prefs = loadPrefs();
+    const panel = document.querySelector("#openmmiSettingsPanel");
+    const host = ensureStaticControlsHost();
+
+    // Old v3 inserted this inside the live diagnostics panel. Remove it after
+    // every refresh so the click target does not vanish/reappear at 200 ms.
+    panel?.querySelectorAll?.("[data-openmmi-raw-toggle-row]").forEach((row) => row.remove());
+
+    if (host) {
+      if (currentSection() === "diagnostics") {
+        host.hidden = false;
+        if (!host.querySelector("[data-openmmi-raw-static-row]")) host.innerHTML = rawToggleHtml();
+        setPills(host.querySelector("[data-openmmi-raw-static-row]"), prefs.showRaw ? "show" : "hide");
+      } else {
+        host.hidden = true;
+        host.innerHTML = "";
+      }
+    }
+
+    // Make every visible settings pill interactive and selected without relying
+    // on the page being rebuilt.
+    panel?.querySelectorAll?.(".openmmi-setting-pill").forEach((pill) => { pill.disabled = false; });
+    panel?.querySelectorAll?.(".openmmi-setting-row").forEach((row) => {
+      const title = rowTitle(row);
+      if (title.includes("speed")) setPills(row, prefs.speedUnit === "kmh" ? "km/h" : "mph");
+      else if (title.includes("temperature")) setPills(row, prefs.tempUnit === "f" ? "°f" : "°c");
+      else if (title.includes("raw") || title.includes("debug")) setPills(row, prefs.showRaw ? "show" : "hide");
+      else if (title.includes("dim")) setPills(row, prefs.dimMode ? "on" : "off");
+      else if (title.includes("reduced")) setPills(row, prefs.reducedMotion ? "on" : "off");
+      else if (title.includes("reverse popup")) setPills(row, prefs.reverseAssist);
+    });
+
+    hideRawMetrics(panel, prefs.showRaw);
+  }
+
+  function handlePill(pill) {
+    const row = pill.closest(".openmmi-setting-row");
+    if (!row) return;
+    const title = rowTitle(row);
+    const label = norm(pill.textContent);
+
+    if (title.includes("speed")) setPref("speedUnit", label.includes("km") ? "kmh" : "mph");
+    else if (title.includes("temperature")) setPref("tempUnit", label.includes("f") ? "f" : "c");
+    else if (title.includes("raw") || title.includes("debug")) setPref("showRaw", label.includes("show"));
+    else if (title.includes("dim")) setPref("dimMode", label.includes("on"));
+    else if (title.includes("reduced")) setPref("reducedMotion", label.includes("on"));
+    else if (title.includes("reverse popup")) {
+      if (label.includes("off")) setPref("reverseAssist", "off");
+      else if (label.includes("camera")) setPref("reverseAssist", "camera");
+      else if (label.includes("pdc")) setPref("reverseAssist", "pdc");
+      else setPref("reverseAssist", "popup");
+    }
+  }
+
+  document.addEventListener("click", (event) => {
+    const pill = event.target.closest?.("#openmmiSettingsStaticControls .openmmi-setting-pill, #openmmiSettingsPanel .openmmi-setting-pill");
+    if (!pill) return;
+    event.preventDefault();
+    handlePill(pill);
+  }, true);
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const pill = event.target.closest?.("#openmmiSettingsStaticControls .openmmi-setting-pill, #openmmiSettingsPanel .openmmi-setting-pill");
+    if (!pill) return;
+    event.preventDefault();
+    handlePill(pill);
+  }, true);
+
+  window.addEventListener("openmmi:settingsrender", () => requestAnimationFrame(syncSettingsControls));
+  window.addEventListener("openmmi:pagechange", () => requestAnimationFrame(syncSettingsControls));
+  document.addEventListener("DOMContentLoaded", () => requestAnimationFrame(syncSettingsControls));
+
+  applyPrefs();
+  requestAnimationFrame(syncSettingsControls);
+  setTimeout(syncSettingsControls, 100);
+})();// --- Open MMI V1 roadmap: settings wiring v4 stability end ---
+
+// --- Open MMI V1 roadmap: settings stable wiring v3 start ---
+(function openMmiSettingsStableWiringV3() {
+  if (window.__openMmiSettingsStableWiringV3Loaded) return;
+  window.__openMmiSettingsStableWiringV3Loaded = true;
+
+  const STORE_KEY = "openmmi.dashboard.settings.v1";
+  const defaults = {
+    speedUnit: "mph",
+    tempUnit: "c",
+    showRaw: false,
+    dimMode: false,
+    reducedMotion: false,
+    reverseAssist: "popup",
+  };
+
+  function loadPrefs() {
+    try {
+      return Object.assign({}, defaults, JSON.parse(localStorage.getItem(STORE_KEY) || "{}"));
+    } catch (_) {
+      return Object.assign({}, defaults);
+    }
+  }
+
+  function savePrefs(prefs) {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(prefs)); } catch (_) {}
+  }
+
+  function setPref(key, value) {
+    const prefs = loadPrefs();
+    prefs[key] = value;
+    savePrefs(prefs);
+    applyPrefs();
+    updateSettingsSelection();
+  }
+
+  function norm(value) {
+    return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+  }
+
+  function rowTitle(row) {
+    const strong = row?.querySelector?.("strong");
+    return norm(strong ? strong.textContent : row?.textContent);
+  }
+
+  function currentSection() {
+    const active = document.querySelector("[data-openmmi-settings-section].active");
+    return active?.dataset?.openmmiSettingsSection || "units";
+  }
+
+  function applyPrefs() {
+    const prefs = loadPrefs();
+    const root = document.documentElement;
+    root.classList.toggle("openmmi-dim-mode", !!prefs.dimMode);
+    root.classList.toggle("openmmi-reduced-motion", !!prefs.reducedMotion);
+    root.classList.toggle("openmmi-reverse-assist-off", prefs.reverseAssist === "off");
+    window.openMmiDashboardSettings = prefs;
+  }
+
+  function setRowSelected(row, selectedLabels) {
+    if (!row) return;
+    const wanted = new Set([].concat(selectedLabels).map(norm));
+    row.querySelectorAll(".openmmi-setting-pill").forEach((pill) => {
+      const label = norm(pill.textContent);
+      pill.classList.toggle("is-selected", wanted.has(label));
+      pill.setAttribute("aria-pressed", wanted.has(label) ? "true" : "false");
+      if (!pill.hasAttribute("role")) pill.setAttribute("role", "button");
+      if (!pill.hasAttribute("tabindex")) pill.setAttribute("tabindex", "0");
+    });
+  }
+
+  function ensureRawToggleRow(panel) {
+    if (!panel || currentSection() !== "diagnostics") return;
+    if (panel.querySelector("[data-openmmi-raw-toggle-row]")) return;
+    const head = panel.querySelector(".openmmi-settings-panel-head");
+    const row = document.createElement("div");
+    row.className = "openmmi-setting-row";
+    row.dataset.openmmiRawToggleRow = "true";
+    row.innerHTML = '<div><strong>Raw/debug values</strong><small>Show low-level decoded values in this diagnostics panel.</small></div><div class="openmmi-setting-controls"><button type="button" class="openmmi-setting-pill">hide</button><button type="button" class="openmmi-setting-pill">show</button></div>';
+    if (head && head.nextSibling) head.parentNode.insertBefore(row, head.nextSibling);
+    else panel.prepend(row);
+  }
+
+  function updateSettingsSelection() {
+    const panel = document.querySelector("#openmmiSettingsPanel");
+    if (!panel) return;
+    ensureRawToggleRow(panel);
+    const prefs = loadPrefs();
+    panel.querySelectorAll(".openmmi-setting-row").forEach((row) => {
+      const title = rowTitle(row);
+      if (title.includes("speed")) setRowSelected(row, prefs.speedUnit === "kmh" ? "km/h" : "mph");
+      else if (title.includes("temperature")) setRowSelected(row, prefs.tempUnit === "f" ? "°f" : "°c");
+      else if (title.includes("raw") || title.includes("debug")) setRowSelected(row, prefs.showRaw ? "show" : "hide");
+      else if (title.includes("dim")) setRowSelected(row, prefs.dimMode ? "on" : "off");
+      else if (title.includes("reduced")) setRowSelected(row, prefs.reducedMotion ? "on" : "off");
+      else if (title.includes("reverse popup")) setRowSelected(row, prefs.reverseAssist);
+    });
+
+    panel.querySelectorAll(".openmmi-settings-metric").forEach((metric) => {
+      const label = norm(metric.querySelector("span")?.textContent || metric.textContent);
+      const rawish = label.includes("outside raw") || label.includes("raw") || label.includes("unfiltered");
+      if (rawish) metric.hidden = !prefs.showRaw;
+    });
+  }
+
+  function handlePill(pill) {
+    const row = pill.closest(".openmmi-setting-row");
+    if (!row) return;
+    const title = rowTitle(row);
+    const label = norm(pill.textContent);
+    if (title.includes("speed")) setPref("speedUnit", label.includes("km") ? "kmh" : "mph");
+    else if (title.includes("temperature")) setPref("tempUnit", label.includes("f") ? "f" : "c");
+    else if (title.includes("raw") || title.includes("debug")) setPref("showRaw", label.includes("show"));
+    else if (title.includes("dim")) setPref("dimMode", label.includes("on"));
+    else if (title.includes("reduced")) setPref("reducedMotion", label.includes("on"));
+    else if (title.includes("reverse popup")) {
+      if (label.includes("off")) setPref("reverseAssist", "off");
+      else if (label.includes("camera")) setPref("reverseAssist", "camera");
+      else if (label.includes("pdc")) setPref("reverseAssist", "pdc");
+      else setPref("reverseAssist", "popup");
+    }
+  }
+
+  document.addEventListener("click", (event) => {
+    const pill = event.target.closest?.("#openmmiSettingsPanel .openmmi-setting-pill");
+    if (!pill) return;
+    event.preventDefault();
+    handlePill(pill);
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const pill = event.target.closest?.("#openmmiSettingsPanel .openmmi-setting-pill");
+    if (!pill) return;
+    event.preventDefault();
+    handlePill(pill);
+  });
+
+  window.addEventListener("openmmi:settingsrender", () => requestAnimationFrame(updateSettingsSelection));
+  window.addEventListener("openmmi:pagechange", () => requestAnimationFrame(updateSettingsSelection));
+  document.addEventListener("DOMContentLoaded", () => {
+    applyPrefs();
+    requestAnimationFrame(updateSettingsSelection);
+  });
+  applyPrefs();
+  requestAnimationFrame(updateSettingsSelection);
+})();
+// --- Open MMI V1 roadmap: settings stable wiring v3 end ---
 
 // --- Open MMI V1 roadmap: door overlay start ---
 (function openMmiDoorOverlayV1() {
