@@ -1969,14 +1969,43 @@ try {
     return text(value);
   }
 
+  function firstValue(...values) {
+    for (const value of values) {
+      if (value !== undefined && value !== null && value !== "") return value;
+    }
+    return undefined;
+  }
+
+  function tempText(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return text(value);
+    return `${n.toFixed(1)} °C`;
+  }
+
+  function voltsText(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return text(value);
+    return `${n.toFixed(1)} V`;
+  }
+
+  function rpmText(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return text(value);
+    return `${Math.round(n)} rpm`;
+  }
+
   function statusParts(payload) {
     const root = payload || {};
     const s = root.state || {};
     const vehicle = s.vehicle || {};
     const lighting = s.lighting || {};
+    const climate = s.climate || s.hvac || {};
+    const engine = s.engine || {};
+    const electrical = s.electrical || s.power || {};
+    const media = s.media || {};
     const meta = root.meta || root.status || {};
     const ageValue = root.age_s ?? root.age_seconds ?? meta.age_s ?? meta.age_seconds ?? s.age_s;
-    return { root, s, vehicle, lighting, ageValue };
+    return { root, s, vehicle, lighting, climate, engine, electrical, media, meta, ageValue };
   }
 
   function pill(label, selected = false) {
@@ -1991,10 +2020,40 @@ try {
     return `<div class="openmmi-settings-metric"><span>${label}</span><strong>${value}</strong></div>`;
   }
 
-  function sectionTemplate(section, payload) {
-    const { vehicle, lighting, ageValue } = statusParts(payload);
+  function diagnosticsTemplate(payload) {
+    const { vehicle, lighting, climate, engine, electrical, ageValue } = statusParts(payload);
     const lightingText = text(lighting.mode).replaceAll("_", " ");
     const ageText = Number.isFinite(Number(ageValue)) ? `${fmt(ageValue, 1)} s` : "live";
+    const outsideDisplay = firstValue(climate.outside_temp_c, climate.outside_c, vehicle.outside_temp_c, vehicle.outside_temperature_c);
+    const outsideRaw = firstValue(
+      climate.outside_unfiltered_c,
+      climate.outside_raw_c,
+      climate.raw_outside_temp_c,
+      climate.outside_sensor_c,
+      vehicle.outside_unfiltered_c,
+      vehicle.outside_raw_c
+    );
+    const coolant = firstValue(engine.coolant_temp_c, engine.coolant_c, vehicle.coolant_temp_c);
+    const voltage = firstValue(electrical.voltage_v, electrical.battery_v, vehicle.voltage_v, vehicle.battery_v);
+    const rpm = firstValue(engine.rpm, vehicle.rpm);
+
+    return `
+      <div class="openmmi-settings-panel-head"><span>Diagnostics</span><small>live decoded state</small></div>
+      ${metric("Status age", ageText)}
+      ${metric("Lighting mode", lightingText)}
+      ${metric("Outside display", tempText(outsideDisplay))}
+      ${metric("Outside raw", tempText(outsideRaw))}
+      ${metric("Coolant", tempText(coolant))}
+      ${metric("Voltage", voltsText(voltage))}
+      ${metric("RPM", rpmText(rpm))}
+      ${metric("Reverse", boolText(vehicle.reverse ?? vehicle.reverse_selected))}
+      ${metric("Handbrake", boolText(vehicle.handbrake ?? vehicle.parking_brake))}
+      <a class="openmmi-settings-link" href="/api/status" target="_blank" rel="noreferrer">Open raw /api/status</a>
+    `;
+  }
+
+  function sectionTemplate(section, payload) {
+    const { vehicle } = statusParts(payload);
 
     if (section === "display") {
       return `
@@ -2006,14 +2065,7 @@ try {
     }
 
     if (section === "diagnostics") {
-      return `
-        <div class="openmmi-settings-panel-head"><span>Diagnostics</span><small>live status</small></div>
-        ${metric("Status age", ageText)}
-        ${metric("Lighting mode", lightingText)}
-        ${metric("Reverse", boolText(vehicle.reverse ?? vehicle.reverse_selected))}
-        ${metric("Handbrake", boolText(vehicle.handbrake ?? vehicle.parking_brake))}
-        <a class="openmmi-settings-link" href="/api/status" target="_blank" rel="noreferrer">Open raw /api/status</a>
-      `;
+      return diagnosticsTemplate(payload);
     }
 
     if (section === "media") {
@@ -2038,7 +2090,7 @@ try {
       <div class="openmmi-settings-panel-head"><span>Units</span><small>driver display</small></div>
       ${row("Speed", "Dashboard speed and distance display.", pill("mph", true) + pill("km/h"))}
       ${row("Temperature", "Climate and outside temperature display.", pill("°C", true) + pill("°F"))}
-      ${row("Raw/debug values", "Unfiltered values move to Diagnostics instead of driver pages.", pill("hidden", true))}
+      ${row("Raw/debug values", "Raw and unfiltered values belong in Diagnostics, not driver pages.", pill("diagnostics", true))}
     `;
   }
 
@@ -2072,7 +2124,7 @@ try {
         <section class="openmmi-settings-sidebar-card" aria-label="Settings categories">
           <div class="openmmi-settings-kicker">V1 roadmap</div>
           <h2>Settings</h2>
-          <p>Preferences stay grouped here so Drive and Media remain clean.</p>
+          <p>Preferences and diagnostics live here so Drive and Media stay clean.</p>
           <nav class="openmmi-settings-tree" aria-label="Settings tree">
             <button type="button" data-openmmi-settings-section="units">Units <small>mph, °C, raw values</small></button>
             <button type="button" data-openmmi-settings-section="display">Display <small>dim mode, animation</small></button>

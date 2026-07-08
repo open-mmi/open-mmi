@@ -152,3 +152,7 @@ The Settings page shell is scrollable inside the dashboard content area. This ke
 ### Settings option tree
 
 The Settings page now uses a compact option-tree layout instead of a full page of cards. Categories stay visible on the left, and only the selected group is shown on the right. This keeps the dashboard shell fixed and avoids page-level scrolling on tablet screens.
+
+### Diagnostics panel
+
+Settings → Diagnostics now shows live decoded state such as status age, lighting mode, outside display/raw temperature, coolant, voltage, RPM, reverse, handbrake, and a link to `/api/status`. This is the first step toward moving raw/unfiltered values away from driver-facing pages.
