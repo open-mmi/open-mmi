@@ -31,6 +31,66 @@ function kmToMi(km, decimals = 0) {
   return fmtNum(n * 0.621371192, decimals);
 }
 
+function openMmiUnitPrefs() {
+  const defaults = { speedUnit: "mph", tempUnit: "c" };
+  try {
+    return Object.assign({}, defaults, JSON.parse(localStorage.getItem("openmmi.dashboard.settings.v1") || "{}"));
+  } catch (_) {
+    return defaults;
+  }
+}
+
+function openMmiDistanceUnitLabel() {
+  return openMmiUnitPrefs().speedUnit === "kmh" ? "km" : "mi";
+}
+
+function openMmiSpeedUnitLabel() {
+  return openMmiUnitPrefs().speedUnit === "kmh" ? "km/h" : "mph";
+}
+
+function openMmiTempUnitLabel() {
+  return openMmiUnitPrefs().tempUnit === "f" ? "°F" : "°C";
+}
+
+function openMmiFormatSpeedFromKmh(km, decimals = 0) {
+  const n = Number(km);
+  if (!Number.isFinite(n)) return "--";
+  return openMmiUnitPrefs().speedUnit === "kmh" ? fmtNum(n, decimals) : kmToMi(n, decimals);
+}
+
+function openMmiFormatDistanceFromKm(km, decimals = 0) {
+  const n = Number(km);
+  if (!Number.isFinite(n)) return "--";
+  return openMmiUnitPrefs().speedUnit === "kmh" ? fmtNum(n, decimals) : kmToMi(n, decimals);
+}
+
+function openMmiFormatTempFromC(celsius, decimals = 0) {
+  const n = Number(celsius);
+  if (!Number.isFinite(n)) return "--";
+  const value = openMmiUnitPrefs().tempUnit === "f" ? ((n * 9) / 5) + 32 : n;
+  return fmtNum(value, decimals);
+}
+
+function openMmiApplyUnitLabels() {
+  const labels = {
+    speed_mph: openMmiSpeedUnitLabel(),
+    odo_mi: openMmiDistanceUnitLabel(),
+    range_mi: openMmiDistanceUnitLabel(),
+    coolant_c: openMmiTempUnitLabel(),
+    outside_reg_c: openMmiTempUnitLabel(),
+    outside_unfiltered_c: openMmiTempUnitLabel(),
+  };
+
+  Object.entries(labels).forEach(([field, unit]) => {
+    document.querySelectorAll(`[data-field="${field}"]`).forEach((node) => {
+      const value = node.closest(".value");
+      const small = value ? value.querySelector("small") : node.parentElement?.querySelector("small");
+      if (small) small.textContent = unit;
+    });
+  });
+}
+
+
 function boolText(value) {
   if (value === true) return "ON";
   if (value === false) return "OFF";
@@ -112,13 +172,14 @@ function updateTach(rpm) {
   const fuel = state.fuel || {};
   const doors = state.doors || {};
 
-  setField("speed_mph", kmToMi(vehicle.speed_kmh, 0));
+  setField("speed_mph", openMmiFormatSpeedFromKmh(vehicle.speed_kmh, 0));
   setField("rpm", fmtNum(engine.speed_rpm, 0));
-  setField("odo_mi", kmToMi(vehicle.odometer_km, 0));
-  setField("range_mi", kmToMi(fuel.range_km_candidate ?? fuel.range_km_rounded_candidate, 0));
-  setField("coolant_c", fmtNum(engine.coolant_temp_c, 0));
-  setField("outside_reg_c", fmtNum(climate.outside_temp_regulation_c, 1));
-  setField("outside_unfiltered_c", fmtNum(climate.outside_temp_unfiltered_c, 1));
+  setField("odo_mi", openMmiFormatDistanceFromKm(vehicle.odometer_km, 0));
+  setField("range_mi", openMmiFormatDistanceFromKm(fuel.range_km_candidate ?? fuel.range_km_rounded_candidate, 0));
+  setField("coolant_c", openMmiFormatTempFromC(engine.coolant_temp_c, 0));
+  setField("outside_reg_c", openMmiFormatTempFromC(climate.outside_temp_regulation_c, 1));
+  setField("outside_unfiltered_c", openMmiFormatTempFromC(climate.outside_temp_unfiltered_c, 1));
+  openMmiApplyUnitLabels();
   setField("voltage_v", fmtNum(electrical.supply_voltage_v ?? electrical.terminal30_voltage_v, 1));
   setField("blower_pct", fmtNum(climate.blower_load_percent, 1));
   setField("dimmer_pct", fmtNum(lighting.dimmer_percent ?? lighting.dimmer_percent_mirror, 0));
@@ -333,7 +394,7 @@ function updateTach(rpm) {
       // The printed scale is 50 / 90 / 130 °C, so map the marker to that range.
       const percent = clamp(((tempC - 50) / 80) * 100, 0, 100);
       bar.style.setProperty('--coolant-pos', percent.toFixed(1) + '%');
-      bar.setAttribute('title', 'Coolant temperature: ' + tempC.toFixed(0) + ' °C');
+      bar.setAttribute('title', 'Coolant temperature: ' + openMmiFormatTempFromC(tempC, 0) + ' ' + openMmiTempUnitLabel());
     });
   }
 
