@@ -160,3 +160,7 @@ Settings → Diagnostics now shows live decoded state such as status age, lighti
 ### Door overlay
 
 A global, dismissible door-open overlay now appears above any dashboard page when decoded door state reports an open door. Dismissal is tied to the current door-state signature: closing all doors resets it, and a changed door set can show the popup again. This creates the shared overlay foundation for future reverse/PDC/camera prompts.
+
+### Reverse overlay foundation
+
+A global reverse-selected overlay is now available as the shared foundation for later rear camera/PDC work. It is deliberately a placeholder in this pass: it appears when decoded reverse state is active, can be dismissed for the current reverse selection, and resets after leaving reverse. Future work can replace the placeholder panel with camera/PDC content and wire Settings → Reverse assist to choose the behaviour.

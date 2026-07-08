@@ -2407,3 +2407,165 @@ try {
   window.openMmiDoorOverlayState = state;
 })();
 // --- Open MMI V1 roadmap: door overlay end ---
+
+// --- Open MMI V1 roadmap: reverse overlay start ---
+(function openMmiReverseOverlayV1() {
+  if (window.__openMmiReverseOverlayV1Loaded) return;
+  window.__openMmiReverseOverlayV1Loaded = true;
+
+  const state = {
+    active: false,
+    dismissedThisReverse: false,
+  };
+
+  const one = (selector) => document.querySelector(selector);
+
+  function normalText(value) {
+    return String(value ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  }
+
+  function truthyReverseValue(value) {
+    if (value === true) return true;
+    if (value === false || value === null || value === undefined) return false;
+    if (typeof value === "number") return Number.isFinite(value) && value !== 0;
+
+    const text = normalText(value);
+    if (!text) return false;
+    if (["false", "no", "off", "0", "inactive", "not_reverse", "not_reversing", "park", "parking", "neutral", "drive", "d"].includes(text)) return false;
+    if (["true", "yes", "on", "1", "active", "reverse", "reversing", "reverse_selected", "r", "gear_r"].includes(text)) return true;
+    return /(^|_)(reverse|reversing)(_|$)/.test(text) || text === "r";
+  }
+
+  function firstValue(...values) {
+    for (const value of values) {
+      if (value !== undefined && value !== null && value !== "") return value;
+    }
+    return undefined;
+  }
+
+  function scanForReverse(obj, basePath = "") {
+    if (!obj || typeof obj !== "object") return false;
+    if (Array.isArray(obj)) return obj.some((item, idx) => scanForReverse(item, `${basePath}[${idx}]`));
+
+    for (const [key, value] of Object.entries(obj)) {
+      const path = basePath ? `${basePath}.${key}` : key;
+      const p = path.toLowerCase();
+      if (value && typeof value === "object") {
+        if (scanForReverse(value, path)) return true;
+        continue;
+      }
+      if (/(reverse|reversing|gear|selector|transmission)/.test(p) && !/(assist|overlay|camera|pdc|setting|mode)/.test(p)) {
+        if (truthyReverseValue(value)) return true;
+      }
+    }
+    return false;
+  }
+
+  function reverseSelected(payload) {
+    const root = payload || {};
+    const decoded = root.state || root.decoded || root;
+    const vehicle = decoded.vehicle || {};
+    const drivetrain = decoded.drivetrain || decoded.transmission || decoded.gearbox || {};
+    const status = decoded.status || root.status || {};
+
+    const direct = firstValue(
+      vehicle.reverse,
+      vehicle.reverse_selected,
+      vehicle.reverse_gear,
+      vehicle.reversing,
+      drivetrain.reverse,
+      drivetrain.reverse_selected,
+      drivetrain.gear,
+      drivetrain.selector,
+      status.reverse,
+      status.reverse_selected,
+      decoded.reverse,
+      decoded.reverse_selected
+    );
+
+    if (truthyReverseValue(direct)) return true;
+    if (direct !== undefined && direct !== null && direct !== "") return false;
+    return scanForReverse(decoded);
+  }
+
+  function ensureOverlay() {
+    let overlay = one("#openMmiReverseOverlay");
+    if (overlay) return overlay;
+
+    overlay = document.createElement("div");
+    overlay.id = "openMmiReverseOverlay";
+    overlay.className = "openmmi-reverse-overlay";
+    overlay.setAttribute("aria-live", "polite");
+    overlay.setAttribute("hidden", "");
+    overlay.innerHTML = `
+      <div class="openmmi-reverse-overlay-card" role="status" aria-label="Reverse assist alert">
+        <div class="openmmi-reverse-overlay-kicker">Reverse assist</div>
+        <h2>Reverse selected</h2>
+        <p>Camera/PDC overlay placeholder. Rear assist settings will live under Settings → Reverse assist.</p>
+        <div class="openmmi-reverse-overlay-grid" aria-hidden="true">
+          <span></span><span></span><span></span><span></span>
+        </div>
+        <button type="button" class="openmmi-reverse-overlay-dismiss" id="openMmiReverseOverlayDismiss">Dismiss</button>
+      </div>
+    `;
+
+    const footer = document.querySelector("footer.status-strip") || document.querySelector("footer");
+    (footer?.parentNode || document.body).insertBefore(overlay, footer || null);
+
+    overlay.querySelector("#openMmiReverseOverlayDismiss")?.addEventListener("click", () => {
+      state.dismissedThisReverse = true;
+      hideOverlay();
+    });
+
+    return overlay;
+  }
+
+  function hideOverlay() {
+    const overlay = one("#openMmiReverseOverlay");
+    if (!overlay) return;
+    overlay.setAttribute("hidden", "");
+    overlay.classList.remove("is-visible");
+  }
+
+  function showOverlay() {
+    const overlay = ensureOverlay();
+    overlay.removeAttribute("hidden");
+    overlay.classList.add("is-visible");
+  }
+
+  function updateReverseOverlay(payload) {
+    const active = reverseSelected(payload);
+    state.active = active;
+
+    if (!active) {
+      state.dismissedThisReverse = false;
+      hideOverlay();
+      return;
+    }
+
+    if (state.dismissedThisReverse) {
+      hideOverlay();
+      return;
+    }
+
+    showOverlay();
+  }
+
+  function wrapRenderForReverseOverlay() {
+    try {
+      if (typeof render !== "function" || render.__openMmiReverseOverlayWrapped) return;
+      const previousRender = render;
+      const wrapped = function openMmiRenderWithReverseOverlay(payload) {
+        previousRender(payload);
+        updateReverseOverlay(payload);
+      };
+      wrapped.__openMmiReverseOverlayWrapped = true;
+      render = wrapped;
+    } catch (_) {}
+  }
+
+  ensureOverlay();
+  wrapRenderForReverseOverlay();
+  window.openMmiReverseOverlayState = state;
+})();
+// --- Open MMI V1 roadmap: reverse overlay end ---
