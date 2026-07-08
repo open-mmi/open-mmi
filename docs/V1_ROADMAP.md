@@ -140,3 +140,7 @@ These are explicitly after V1 unless they fall out naturally:
 - installer image
 - full tablet power/amp install guide
 - CAN transmit/control from the dashboard
+
+## V1 roadmap checkpoint: Settings shell
+
+The dashboard now has a Settings page shell for units, display preferences, diagnostics visibility, integrations, and reverse-assist placeholders. These controls are intentionally mostly non-functional at this stage; the first step is to establish where preferences live before wiring persistent behaviour.
