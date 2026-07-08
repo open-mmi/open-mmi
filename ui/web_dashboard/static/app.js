@@ -198,7 +198,7 @@ function updateTach(rpm) {
   setBoolNo("bulb_out", lighting.bulb_out);
 
   DOORS.forEach((name) => updateDoor(name, doors[name]));
-  $("#carShell")?.classList.toggle("any-open", doors.any_open === true);
+  $$(".car-shell").forEach((node) => { node.classList.toggle("any-open", doors.any_open === true); });
 
   updateTach(engine.speed_rpm);
 }
@@ -2783,6 +2783,37 @@ try {
     return Array.from(out.keys()).sort((a, b) => a.localeCompare(b));
   }
 
+
+  function syncDoorOverlayVehicleVisual(overlay) {
+    if (!overlay) return;
+    const host = overlay.querySelector("#openMmiDoorOverlayCarHost");
+    const source = document.querySelector("#carShell");
+    if (!host || !source) return;
+
+    let clone = host.querySelector(".car-shell");
+    if (!clone) {
+      clone = source.cloneNode(true);
+      clone.removeAttribute("id");
+      clone.classList.add("openmmi-door-overlay-car-shell");
+      clone.setAttribute("aria-hidden", "true");
+      host.replaceChildren(clone);
+    }
+
+    clone.classList.toggle("any-open", source.classList.contains("any-open"));
+    clone.querySelectorAll("[data-door-mark]").forEach((mark) => {
+      const key = mark.getAttribute("data-door-mark");
+      const liveMark = source.querySelector(`[data-door-mark="${key}"]`);
+      mark.classList.toggle("open", !!liveMark?.classList.contains("open"));
+    });
+
+    const list = overlay.querySelector("#openMmiDoorOverlayList");
+    if (list) {
+      list.textContent = "";
+      list.hidden = true;
+      list.setAttribute("aria-hidden", "true");
+    }
+  }
+
   function ensureOverlay() {
     let overlay = one("#openMmiVehicleOverlay");
     if (overlay) return overlay;
@@ -2793,16 +2824,17 @@ try {
     overlay.setAttribute("aria-live", "polite");
     overlay.setAttribute("hidden", "");
     overlay.innerHTML = `
-      <div class="openmmi-vehicle-overlay-card" role="status" aria-label="Vehicle status alert">
-        <div class="openmmi-vehicle-overlay-kicker">Vehicle status</div>
-        <h2>Door open</h2>
-        <div class="openmmi-vehicle-overlay-list" id="openMmiDoorOverlayList"></div>
+      <div class="openmmi-vehicle-overlay-card openmmi-door-overlay-visual-card" role="status" aria-label="Door open alert">
+        <div class="openmmi-door-overlay-car-host" id="openMmiDoorOverlayCarHost" aria-hidden="true"></div>
+        <div class="openmmi-vehicle-overlay-list" id="openMmiDoorOverlayList" hidden aria-hidden="true"></div>
         <button type="button" class="openmmi-vehicle-overlay-dismiss" id="openMmiDoorOverlayDismiss">Dismiss</button>
       </div>
     `;
 
     const footer = document.querySelector("footer.status-strip") || document.querySelector("footer");
     (footer?.parentNode || document.body).insertBefore(overlay, footer || null);
+
+    syncDoorOverlayVehicleVisual(overlay);
 
     overlay.querySelector("#openMmiDoorOverlayDismiss")?.addEventListener("click", () => {
       state.dismissedSignature = state.currentSignature;
@@ -2823,7 +2855,9 @@ try {
     const overlay = ensureOverlay();
     const list = overlay.querySelector("#openMmiDoorOverlayList");
     if (list) {
-      list.innerHTML = openDoors.map((door) => `<div class="openmmi-vehicle-overlay-item">${door}</div>`).join("");
+      list.textContent = "";
+      list.hidden = true;
+      list.setAttribute("aria-hidden", "true");
     }
     overlay.removeAttribute("hidden");
     overlay.classList.add("is-visible");
@@ -3388,3 +3422,6 @@ try {
 })();
 // --- Open MMI V1 roadmap: tell-tale test render-path settings end ---
 
+
+
+// --- openmmi door overlay reuse vehicle visual v3 ---
