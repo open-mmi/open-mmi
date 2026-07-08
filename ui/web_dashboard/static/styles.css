@@ -2727,3 +2727,138 @@ html.openmmi-telltale-test-active #openMmiFooterTelltales [data-openmmi-telltale
   opacity: 1;
 }
 
+/* openmmi door overlay reuse vehicle visual v3 */
+.openmmi-door-overlay-visual-card {
+  align-items: center;
+  text-align: center;
+}
+
+.openmmi-door-overlay-car-host {
+  display: grid;
+  place-items: center;
+  width: min(42vw, 22rem);
+  max-width: 100%;
+  min-height: 12rem;
+  margin: 0 auto 0.75rem;
+}
+
+.openmmi-door-overlay-car-host .car-shell {
+  margin: 0 auto;
+  transform: scale(1.08);
+  transform-origin: center;
+}
+
+.openmmi-door-overlay-car-host .door-mark {
+  pointer-events: none;
+}
+
+.openmmi-door-overlay-visual-card .openmmi-vehicle-overlay-list,
+#openMmiDoorOverlayList[hidden] {
+  display: none !important;
+}
+
+/* open-mmi door overlay fit v9: fixed visual and dismiss rows */
+/* CSS-only. Keep the reused Vehicle-page car inside the card, then put
+   Dismiss in its own non-overlapping row below it. */
+#openMmiVehicleOverlay {
+  overflow: visible !important;
+}
+
+#openMmiVehicleOverlay .openmmi-vehicle-overlay-card.openmmi-door-overlay-visual-card,
+#openMmiVehicleOverlay .openmmi-door-overlay-visual-card {
+  display: grid !important;
+  grid-template-rows: minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  justify-items: center !important;
+  box-sizing: border-box !important;
+  width: min(22rem, calc(100vw - 2rem)) !important;
+  max-width: calc(100vw - 2rem) !important;
+  min-height: min(24rem, calc(100dvh - 5rem)) !important;
+  max-height: calc(100dvh - 4rem) !important;
+  padding: clamp(0.55rem, 1.2vh, 0.8rem) clamp(1rem, 2vw, 1.35rem) clamp(0.85rem, 1.8vh, 1.2rem) !important;
+  row-gap: clamp(0.65rem, 1.8vh, 1.1rem) !important;
+  overflow: hidden !important;
+}
+
+#openMmiVehicleOverlay #openMmiDoorOverlayList,
+#openMmiVehicleOverlay .openmmi-vehicle-overlay-list {
+  display: none !important;
+}
+
+#openMmiVehicleOverlay .openmmi-door-overlay-car-host {
+  grid-row: 1 !important;
+  align-self: stretch !important;
+  justify-self: stretch !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  box-sizing: border-box !important;
+  width: 100% !important;
+  min-height: 0 !important;
+  height: 100% !important;
+  margin: 0 !important;
+  /* Space for the bonnet/boot and side door markers so the card can hide overflow safely. */
+  padding: 1.15rem 1.7rem 1.45rem !important;
+  overflow: visible !important;
+}
+
+#openMmiVehicleOverlay .openmmi-door-overlay-car-host .car-shell,
+#openMmiVehicleOverlay .car-shell.openmmi-door-overlay-car-shell {
+  /* Use real dimensions rather than transform-scaling. Transform kept the old
+     layout box and made the graphic/card fight each other. */
+  width: clamp(5.8rem, 15vw, 7.2rem) !important;
+  height: clamp(9.2rem, 33vh, 12.1rem) !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  transform: none !important;
+  transform-origin: center center !important;
+  margin: 0 auto !important;
+  overflow: visible !important;
+}
+
+#openMmiVehicleOverlay .openmmi-door-overlay-car-host .door-mark.boot {
+  bottom: -8px !important;
+}
+
+#openMmiVehicleOverlay .openmmi-door-overlay-car-host .door-mark.bonnet {
+  top: -8px !important;
+}
+
+#openMmiVehicleOverlay #openMmiDoorOverlayDismiss,
+#openMmiVehicleOverlay .openmmi-vehicle-overlay-dismiss {
+  grid-row: 2 !important;
+  position: static !important;
+  inset: auto !important;
+  transform: none !important;
+  align-self: end !important;
+  justify-self: center !important;
+  display: block !important;
+  width: min(12rem, 72%) !important;
+  margin: 0 auto !important;
+  z-index: 3 !important;
+}
+
+@media (max-height: 640px) {
+  #openMmiVehicleOverlay .openmmi-vehicle-overlay-card.openmmi-door-overlay-visual-card,
+  #openMmiVehicleOverlay .openmmi-door-overlay-visual-card {
+    width: min(20rem, calc(100vw - 1.5rem)) !important;
+    min-height: calc(100dvh - 4rem) !important;
+    max-height: calc(100dvh - 3rem) !important;
+    padding-top: 0.4rem !important;
+    padding-bottom: 0.75rem !important;
+    row-gap: 0.55rem !important;
+  }
+
+  #openMmiVehicleOverlay .openmmi-door-overlay-car-host {
+    padding: 0.85rem 1.5rem 1.2rem !important;
+  }
+
+  #openMmiVehicleOverlay .openmmi-door-overlay-car-host .car-shell,
+  #openMmiVehicleOverlay .car-shell.openmmi-door-overlay-car-shell {
+    width: clamp(5.2rem, 14vw, 6.5rem) !important;
+    height: clamp(8.2rem, 29vh, 10.7rem) !important;
+  }
+}
+/* end open-mmi door overlay fit v9 */
