@@ -35,7 +35,7 @@ Home/Menu should become the neutral landing page and provide quick access to:
 - Drive
 - Media
 - Climate
-- Settings
+- Settings / Display boost
 - Diagnostics/Vehicle
 
 The first implementation should keep Drive and Media internals mostly untouched. The goal is to improve navigation around the existing pages, not rewrite the working pages.

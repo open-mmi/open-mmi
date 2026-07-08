@@ -2119,7 +2119,7 @@ try {
     if (section === "display") {
       return `
         <div class="openmmi-settings-panel-head"><span>Display</span><small>visual preferences</small></div>
-        ${row("Dim mode", "Low-light dashboard theme.", pill("off", true) + pill("on"))}
+        ${row("Dim mode", "Low-light dashboard theme; Boost raises contrast for bright cabins.", pill("off", true) + pill("on") + pill("boost"))}
         ${row("Reduced animation", "For older tablets or distraction reduction.", pill("off", true) + pill("on"))}
         ${row("Tell-tale test", "Move forced test states into Settings later.", pill("next"))}
       `;
@@ -2298,7 +2298,10 @@ try {
   function applyPrefs() {
     const prefs = loadPrefs();
     const root = document.documentElement;
-    root.classList.toggle("openmmi-dim-mode", !!prefs.dimMode);
+    const dimMode = prefs.dimMode === "boost" ? "boost" : (prefs.dimMode ? "on" : "off");
+    root.dataset.openmmiDisplayMode = dimMode;
+    root.classList.toggle("openmmi-dim-mode", dimMode === "on");
+    root.classList.toggle("openmmi-boost-mode", dimMode === "boost");
     root.classList.toggle("openmmi-reduced-motion", !!prefs.reducedMotion);
     root.classList.toggle("openmmi-reverse-assist-off", prefs.reverseAssist === "off");
     window.openMmiDashboardSettings = prefs;
@@ -2379,7 +2382,7 @@ try {
       if (title.includes("speed")) setPills(row, prefs.speedUnit === "kmh" ? "km/h" : "mph");
       else if (title.includes("temperature")) setPills(row, prefs.tempUnit === "f" ? "°f" : "°c");
       else if (title.includes("raw") || title.includes("debug")) setPills(row, prefs.showRaw ? "show" : "hide");
-      else if (title.includes("dim")) setPills(row, prefs.dimMode ? "on" : "off");
+      else if (title.includes("dim")) { const dim = prefs.dimMode === "boost" ? "boost" : (prefs.dimMode ? "on" : "off"); setPills(row, dim); }
       else if (title.includes("reduced")) setPills(row, prefs.reducedMotion ? "on" : "off");
       else if (title.includes("reverse popup")) setPills(row, prefs.reverseAssist);
     });
@@ -2396,7 +2399,7 @@ try {
     if (title.includes("speed")) setPref("speedUnit", label.includes("km") ? "kmh" : "mph");
     else if (title.includes("temperature")) setPref("tempUnit", label.includes("f") ? "f" : "c");
     else if (title.includes("raw") || title.includes("debug")) setPref("showRaw", label.includes("show"));
-    else if (title.includes("dim")) setPref("dimMode", label.includes("on"));
+    else if (title.includes("dim")) setPref("dimMode", label.includes("boost") ? "boost" : label.includes("on"));
     else if (title.includes("reduced")) setPref("reducedMotion", label.includes("on"));
     else if (title.includes("reverse popup")) {
       if (label.includes("off")) setPref("reverseAssist", "off");
@@ -2482,7 +2485,10 @@ try {
   function applyPrefs() {
     const prefs = loadPrefs();
     const root = document.documentElement;
-    root.classList.toggle("openmmi-dim-mode", !!prefs.dimMode);
+    const dimMode = prefs.dimMode === "boost" ? "boost" : (prefs.dimMode ? "on" : "off");
+    root.dataset.openmmiDisplayMode = dimMode;
+    root.classList.toggle("openmmi-dim-mode", dimMode === "on");
+    root.classList.toggle("openmmi-boost-mode", dimMode === "boost");
     root.classList.toggle("openmmi-reduced-motion", !!prefs.reducedMotion);
     root.classList.toggle("openmmi-reverse-assist-off", prefs.reverseAssist === "off");
     window.openMmiDashboardSettings = prefs;
@@ -2522,7 +2528,7 @@ try {
       if (title.includes("speed")) setRowSelected(row, prefs.speedUnit === "kmh" ? "km/h" : "mph");
       else if (title.includes("temperature")) setRowSelected(row, prefs.tempUnit === "f" ? "°f" : "°c");
       else if (title.includes("raw") || title.includes("debug")) setRowSelected(row, prefs.showRaw ? "show" : "hide");
-      else if (title.includes("dim")) setRowSelected(row, prefs.dimMode ? "on" : "off");
+      else if (title.includes("dim")) { const dim = prefs.dimMode === "boost" ? "boost" : (prefs.dimMode ? "on" : "off"); setRowSelected(row, dim); }
       else if (title.includes("reduced")) setRowSelected(row, prefs.reducedMotion ? "on" : "off");
       else if (title.includes("reverse popup")) setRowSelected(row, prefs.reverseAssist);
     });
@@ -2542,7 +2548,7 @@ try {
     if (title.includes("speed")) setPref("speedUnit", label.includes("km") ? "kmh" : "mph");
     else if (title.includes("temperature")) setPref("tempUnit", label.includes("f") ? "f" : "c");
     else if (title.includes("raw") || title.includes("debug")) setPref("showRaw", label.includes("show"));
-    else if (title.includes("dim")) setPref("dimMode", label.includes("on"));
+    else if (title.includes("dim")) setPref("dimMode", label.includes("boost") ? "boost" : label.includes("on"));
     else if (title.includes("reduced")) setPref("reducedMotion", label.includes("on"));
     else if (title.includes("reverse popup")) {
       if (label.includes("off")) setPref("reverseAssist", "off");

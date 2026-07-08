@@ -2618,3 +2618,30 @@ footer.openmmi-footer-black,
   pointer-events: auto;
 }
 /* Open MMI V1 roadmap: settings wiring v4 stability end */
+
+
+/* Open MMI display boost: high-contrast daylight mode from Settings > Display. */
+:root.openmmi-boost-mode body {
+  filter: brightness(1.12) contrast(1.12) saturate(1.06);
+}
+
+:root.openmmi-boost-mode .card,
+:root.openmmi-boost-mode .tile,
+:root.openmmi-boost-mode .openmmi-settings-panel-card,
+:root.openmmi-boost-mode .openmmi-settings-sidebar-card,
+:root.openmmi-boost-mode .openmmi-home-card,
+:root.openmmi-boost-mode .ommi-media-card {
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.16), 0 14px 42px rgba(0,0,0,0.42);
+}
+
+:root.openmmi-boost-mode .value,
+:root.openmmi-boost-mode .speed,
+:root.openmmi-boost-mode .openmmi-now-title,
+:root.openmmi-boost-mode .openmmi-settings-panel-head span,
+:root.openmmi-boost-mode .openmmi-home-title {
+  text-shadow: 0 0 14px rgba(255,255,255,0.16);
+}
+
+:root.openmmi-boost-mode .openmmi-setting-pill.is-selected {
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.38), 0 0 20px rgba(13,202,240,0.28);
+}
