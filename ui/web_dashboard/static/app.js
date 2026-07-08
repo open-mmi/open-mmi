@@ -1691,7 +1691,75 @@ try {
     badge.textContent = `TEST ${Array.from(new Set([...FORCED_FROM_URL, ...forcedFromKeyboard])).join(" ")}`;
   }
 
+
+  const OPENMMI_SETTINGS_KEY = "openmmi.dashboard.settings.v1";
+  let openMmiSettingsTelltaleTestActive = false;
+
+  function openMmiReadDashboardPrefs() {
+    try {
+      return JSON.parse(localStorage.getItem(OPENMMI_SETTINGS_KEY) || "{}");
+    } catch (_) {
+      return {};
+    }
+  }
+
+  function openMmiRefreshSettingsTelltaleTest() {
+    const prefs = openMmiReadDashboardPrefs();
+    openMmiSettingsTelltaleTestActive = String(prefs.telltaleTest || "off").toLowerCase() === "on";
+    document.documentElement.classList.toggle("openmmi-telltale-test-active", openMmiSettingsTelltaleTestActive);
+  }
+
+  function openMmiApplySettingsTelltaleTestPayload(payload) {
+    if (!openMmiSettingsTelltaleTestActive) return payload;
+
+    const next = Object.assign({}, payload || {});
+    const state = Object.assign({}, next.state || {});
+    const lighting = Object.assign({}, state.lighting || {});
+    const vehicle = Object.assign({}, state.vehicle || {});
+
+    // Use broad decoded names so the existing footer renderer can pick up the
+    // fields it already understands across old/new payload shapes.
+    lighting.lights_on = true;
+    lighting.mode = "main_beam_rear_fog";
+    lighting.position_lights = true;
+    lighting.sidelights = true;
+    lighting.low_beam = true;
+    lighting.dipped_beam = true;
+    lighting.dip_beam = true;
+    lighting.high_beam = true;
+    lighting.main_beam = true;
+    lighting.rear_fog = true;
+    lighting.rear_fog_light = true;
+    lighting.left_indicator = true;
+    lighting.right_indicator = true;
+    lighting.indicator_left = true;
+    lighting.indicator_right = true;
+    lighting.hazard = true;
+    lighting.hazards = true;
+    lighting.hazard_warning = true;
+    lighting.bulb_failure = true;
+    lighting.exterior_bulb_failure = true;
+    lighting.bulb_out = true;
+    lighting.bulb_fault = true;
+    lighting.bulb_warning = true;
+    lighting.lamp_failure = true;
+
+    vehicle.handbrake = true;
+    vehicle.parking_brake = true;
+    vehicle.park_brake = true;
+
+    state.lighting = lighting;
+    state.vehicle = vehicle;
+    next.state = state;
+    return next;
+  }
+
+  openMmiRefreshSettingsTelltaleTest();
+  window.addEventListener("storage", openMmiRefreshSettingsTelltaleTest);
+  window.addEventListener("openmmi:settingschange", openMmiRefreshSettingsTelltaleTest);
+
   function renderStableFooterTelltales(payload) {
+    payload = openMmiApplySettingsTelltaleTestPayload(payload);
     lastPayload = payload || lastPayload || {};
     const state = (lastPayload && lastPayload.state) || {};
     const vehicle = state.vehicle || {};
@@ -3248,4 +3316,75 @@ try {
   applyTelltaleTestMode();
 })();
 // --- Open MMI V1 roadmap: tell-tale test existing icons v2 end ---
+
+// --- Open MMI V1 roadmap: tell-tale test render-path settings start ---
+(function openMmiTelltaleTestRenderPathSettingsV4() {
+  if (window.__openMmiTelltaleTestRenderPathSettingsV4Loaded) return;
+  window.__openMmiTelltaleTestRenderPathSettingsV4Loaded = true;
+
+  const STORE_KEY = "openmmi.dashboard.settings.v1";
+
+  function readPrefs() {
+    try { return JSON.parse(localStorage.getItem(STORE_KEY) || "{}"); }
+    catch (_) { return {}; }
+  }
+
+  function writePrefs(prefs) {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(prefs)); } catch (_) {}
+    window.openMmiDashboardSettings = Object.assign({}, window.openMmiDashboardSettings || {}, prefs);
+    window.dispatchEvent(new CustomEvent("openmmi:settingschange", { detail: prefs }));
+  }
+
+  function rowTitle(row) {
+    return (row?.querySelector?.("strong")?.textContent || "").trim().toLowerCase();
+  }
+
+  function setSelected(row, selectedLabel) {
+    row?.querySelectorAll?.(".openmmi-setting-pill").forEach((button) => {
+      const label = (button.textContent || "").trim().toLowerCase();
+      button.classList.toggle("is-selected", label === selectedLabel);
+      button.classList.remove("openmmi-disabled");
+      button.disabled = false;
+      button.removeAttribute("disabled");
+    });
+  }
+
+  function syncTellTaleRow() {
+    const prefs = readPrefs();
+    const selected = String(prefs.telltaleTest || "off").toLowerCase() === "on" ? "on" : "off";
+    document.querySelectorAll("#openmmiSettingsPanel .openmmi-setting-row, #openmmiSettingsStaticControls .openmmi-setting-row").forEach((row) => {
+      if (rowTitle(row).includes("tell-tale test")) setSelected(row, selected);
+    });
+  }
+
+  document.addEventListener("click", (event) => {
+    const pill = event.target.closest?.("#openmmiSettingsPanel .openmmi-setting-pill, #openmmiSettingsStaticControls .openmmi-setting-pill");
+    if (!pill) return;
+
+    const row = pill.closest(".openmmi-setting-row");
+    if (!rowTitle(row).includes("tell-tale test")) return;
+
+    const label = (pill.textContent || "").trim().toLowerCase();
+    if (label !== "on" && label !== "off") return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const prefs = readPrefs();
+    prefs.telltaleTest = label;
+    writePrefs(prefs);
+    setSelected(row, label);
+
+    if (window.openMmiLastStatusPayload && typeof render === "function") {
+      try { render(window.openMmiLastStatusPayload); } catch (_) {}
+    }
+  }, true);
+
+  window.addEventListener("openmmi:settingsrender", () => requestAnimationFrame(syncTellTaleRow));
+  window.addEventListener("openmmi:pagechange", () => requestAnimationFrame(syncTellTaleRow));
+  window.addEventListener("openmmi:settingschange", () => requestAnimationFrame(syncTellTaleRow));
+  document.addEventListener("DOMContentLoaded", syncTellTaleRow);
+  syncTellTaleRow();
+})();
+// --- Open MMI V1 roadmap: tell-tale test render-path settings end ---
 
