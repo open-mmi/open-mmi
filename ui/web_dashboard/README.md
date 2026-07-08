@@ -249,3 +249,27 @@ OPEN_MMI_GPS_SOURCE=gpsd
 OPEN_MMI_GPSD_HOST=127.0.0.1
 OPEN_MMI_GPSD_PORT=2947
 ```
+
+<!-- OPENMMI_WEB_SETTINGS_DOCS_START -->
+## Settings and local preferences
+
+The Settings page is local to the dashboard/browser and is designed for display behaviour, not vehicle control.
+
+Current Settings areas:
+
+- Units: speed/distance display can be shown as mph/mi or km/h/km; temperature display can be shown as °C or °F.
+- Display: normal, dim and boost modes are available for different cabin/tablet lighting conditions.
+- Display: reduced animation can be enabled for older tablets or lower-distraction use.
+- Display: tell-tale test lights the existing footer tell-tale icons through the normal frontend render path. It is frontend-only and does not write to `/api/status` or transmit anything to the car.
+- Diagnostics: shows live decoded state and optional raw/debug detail for development.
+- Media: documents the server-side Jellyfin integration path.
+- Reverse assist: provides a placeholder overlay path for later PDC/camera work.
+
+These preferences are stored in browser local storage under the dashboard settings key. They change presentation only; backend decoding and vehicle state remain unchanged.
+
+## Read-only operation
+
+The web dashboard is a read-only MMI surface. It polls local decoded state and renders it for the driver/passenger display. It should not be used as a path for CAN transmit, actuator control, coding, adaptation, or security access.
+
+For live vehicle testing, use listen-only CAN wiring and removable harness/adaptor setups. Do not cut or permanently modify the vehicle loom for dashboard testing.
+<!-- OPENMMI_WEB_SETTINGS_DOCS_END -->

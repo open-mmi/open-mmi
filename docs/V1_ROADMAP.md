@@ -172,3 +172,29 @@ Raw/debug visibility controls now live outside the diagnostics refresh target, s
 
 - Settings Display tell-tale visual test: frontend-only icon strip for safe local verification.
 - Settings Display tell-tale test uses existing footer tell-tale icons only; no backend or CAN state changes.
+
+<!-- OPENMMI_V1_STATUS_START -->
+## Current V1 status
+
+Completed for the current pre-V1 dashboard checkpoint:
+
+- [x] Home/Menu navigation added.
+- [x] Settings option tree added.
+- [x] Stable Settings rendering, avoiding static panel rebuilds during live status refresh.
+- [x] Local Settings wiring for units, display mode, reduced animation, reverse overlay mode and diagnostics raw/debug toggle.
+- [x] Unit settings applied inside the status render loop for speed, distance and temperature fields.
+- [x] Display boost mode added alongside normal and dim display modes.
+- [x] Frontend-only tell-tale test renders through the existing footer icon path.
+- [x] Diagnostics panel expanded for live decoded state inspection.
+- [x] Door-open overlay foundation added.
+- [x] Reverse-selected overlay foundation added.
+- [x] Compatibility testing document and PQ35 compatibility report issue template started.
+
+Still pending before calling V1 complete:
+
+- [ ] Final public README/docs pass after all dashboard wording is reviewed.
+- [ ] Release notes/changelog for the V1 checkpoint.
+- [ ] Compatibility reports beyond the confirmed SEAT León 1P development vehicle.
+- [ ] PQ35-family validation using reversible, listen-only test setups.
+- [ ] Keep all dashboard behaviour read-only; no CAN transmit/control path from the web UI.
+<!-- OPENMMI_V1_STATUS_END -->
