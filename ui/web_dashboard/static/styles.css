@@ -1967,3 +1967,203 @@ footer.openmmi-footer-black,
 }
 /* --- Open MMI proper light tell-tales end --- */
 
+/* Open MMI V1 roadmap: home/menu navigation start */
+.page-home.active {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+}
+
+.openmmi-home-shell {
+  min-height: 0;
+  height: 100%;
+  display: grid;
+  grid-template-columns: minmax(18rem, .92fr) minmax(24rem, 1.08fr);
+  gap: clamp(12px, 2vw, 28px);
+  align-items: stretch;
+}
+
+.openmmi-home-card {
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 18px;
+  background: radial-gradient(circle at 50% 0%, rgba(85,186,255,.10), transparent 42%), rgba(10,12,16,.62);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.025), 0 22px 60px rgba(0,0,0,.26);
+  overflow: hidden;
+}
+
+.openmmi-home-hero {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: clamp(1.1rem, 2.6vw, 2.4rem);
+}
+
+.openmmi-home-kicker,
+.openmmi-home-menu-head span {
+  color: var(--blue);
+  font-size: clamp(.78rem, 1.15vw, 1rem);
+  font-weight: 700;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+}
+
+.openmmi-home-hero h2 {
+  margin: .25rem 0 .3rem;
+  font-size: clamp(3.4rem, 8vw, 8rem);
+  font-weight: 300;
+  letter-spacing: -.07em;
+  line-height: .9;
+}
+
+.openmmi-home-copy {
+  max-width: 34rem;
+  margin: 0 0 clamp(1.2rem, 3vh, 2.4rem);
+  color: var(--muted);
+  font-size: clamp(1rem, 1.45vw, 1.45rem);
+}
+
+.openmmi-home-status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(.7rem, 1.4vw, 1.1rem);
+}
+
+.openmmi-home-stat {
+  min-width: 0;
+  padding: clamp(.8rem, 1.4vw, 1.05rem);
+  border: 1px solid rgba(255,255,255,.10);
+  border-radius: 14px;
+  background: rgba(255,255,255,.04);
+}
+
+.openmmi-home-stat span {
+  display: block;
+  color: var(--muted);
+  font-size: clamp(.82rem, 1.15vw, 1rem);
+}
+
+.openmmi-home-stat strong {
+  display: block;
+  margin-top: .35rem;
+  color: var(--text);
+  font-size: clamp(1.8rem, 3.8vw, 3.8rem);
+  font-weight: 300;
+  letter-spacing: -.055em;
+  line-height: .95;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.openmmi-home-stat strong small {
+  margin-left: .35rem;
+  color: var(--muted);
+  font-size: .35em;
+  letter-spacing: 0;
+  text-transform: lowercase;
+}
+
+.openmmi-home-stat strong b {
+  font-weight: inherit;
+}
+
+.openmmi-home-menu {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(.9rem, 1.8vh, 1.4rem);
+  padding: clamp(1rem, 2vw, 1.7rem);
+}
+
+.openmmi-home-menu-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: baseline;
+  color: var(--muted);
+}
+
+.openmmi-home-menu-head small {
+  color: var(--muted);
+  font-size: clamp(.85rem, 1.2vw, 1.05rem);
+}
+
+.openmmi-home-actions {
+  min-height: 0;
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: minmax(5rem, 1fr);
+  gap: clamp(.7rem, 1.4vw, 1.1rem);
+}
+
+.openmmi-home-action {
+  min-width: 0;
+  appearance: none;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 16px;
+  background: linear-gradient(145deg, rgba(255,255,255,.07), rgba(255,255,255,.025));
+  color: var(--text);
+  text-align: left;
+  padding: clamp(.9rem, 1.7vw, 1.25rem);
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.025);
+}
+
+.openmmi-home-action:hover,
+.openmmi-home-action:focus-visible {
+  border-color: rgba(85,186,255,.50);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(85,186,255,.12), inset 0 0 0 1px rgba(255,255,255,.035);
+}
+
+.openmmi-home-action span {
+  display: block;
+  font-size: clamp(1.45rem, 2.7vw, 2.6rem);
+  font-weight: 300;
+  letter-spacing: -.045em;
+  line-height: 1;
+}
+
+.openmmi-home-action small {
+  display: block;
+  margin-top: .45rem;
+  color: var(--muted);
+  font-size: clamp(.82rem, 1.15vw, 1rem);
+  line-height: 1.2;
+}
+
+.openmmi-home-action.openmmi-primary {
+  border-color: rgba(85,186,255,.28);
+  background: radial-gradient(circle at 80% 0%, rgba(85,186,255,.20), transparent 45%), rgba(255,255,255,.045);
+}
+
+.openmmi-home-action.openmmi-disabled {
+  cursor: default;
+  opacity: .45;
+}
+
+.openmmi-home-action.openmmi-disabled:hover,
+.openmmi-home-action.openmmi-disabled:focus-visible {
+  border-color: rgba(255,255,255,.12);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.025);
+}
+
+@media (max-width: 1180px) {
+  .openmmi-home-shell {
+    grid-template-columns: 1fr;
+  }
+  .openmmi-home-actions {
+    grid-auto-rows: minmax(4.6rem, auto);
+  }
+}
+
+@media (max-width: 720px) {
+  .openmmi-home-status-grid,
+  .openmmi-home-actions {
+    grid-template-columns: 1fr;
+  }
+}
+/* Open MMI V1 roadmap: home/menu navigation end */

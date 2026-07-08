@@ -1724,3 +1724,222 @@ try {
 })();
 // --- Open MMI proper light tell-tales end ---
 
+// --- Open MMI V1 roadmap: home/menu navigation start ---
+(function openMmiHomeMenuNavigation() {
+  if (window.__openMmiHomeMenuNavigationLoaded) return;
+  window.__openMmiHomeMenuNavigationLoaded = true;
+
+  const QUICK_PAGES = [
+    { id: "pageElectrical", title: "Media", label: "Media" },
+    { id: "pageHome", title: "Home", label: "Home" },
+    { id: "pageDrive", title: "Drive", label: "Drive" },
+  ];
+  const MENU_PAGES = {
+    climate: { id: "pageClimate", title: "Climate" },
+    vehicle: { id: "pageVehicle", title: "Vehicle" },
+  };
+  const HOME_INDEX = 1;
+
+  const one = (selector) => document.querySelector(selector);
+  const many = (selector) => Array.from(document.querySelectorAll(selector));
+
+  function homeFmtNumber(value, digits = 0, fallback = "--") {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return fallback;
+    return n.toFixed(digits);
+  }
+
+  function homeKmhToMph(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return "--";
+    return Math.round(n * 0.621371).toString();
+  }
+
+  function homeText(value, fallback = "--") {
+    return value === null || value === undefined || value === "" ? fallback : String(value);
+  }
+
+  function ensureHomePage() {
+    let page = one("#pageHome");
+    if (!page) {
+      page = document.createElement("section");
+      page.id = "pageHome";
+      page.className = "page page-home";
+      page.setAttribute("aria-label", "Home menu");
+
+      const firstPage = one(".page");
+      if (firstPage && firstPage.parentNode) firstPage.parentNode.insertBefore(page, firstPage);
+      else {
+        const footer = one("footer.status-strip") || one("footer");
+        (footer?.parentNode || document.body).insertBefore(page, footer || null);
+      }
+    }
+
+    page.innerHTML = `
+      <div class="openmmi-home-shell">
+        <section class="openmmi-home-card openmmi-home-hero" aria-label="Open MMI summary">
+          <div class="openmmi-home-kicker">Open MMI</div>
+          <h2>Home</h2>
+          <p class="openmmi-home-copy">Local, read-only vehicle status built from decoded signals.</p>
+          <div class="openmmi-home-status-grid" aria-label="Live status summary">
+            <div class="openmmi-home-stat">
+              <span>Speed</span>
+              <strong><b id="homeSpeed">--</b><small>mph</small></strong>
+            </div>
+            <div class="openmmi-home-stat">
+              <span>RPM</span>
+              <strong><b id="homeRpm">--</b><small>rpm</small></strong>
+            </div>
+            <div class="openmmi-home-stat">
+              <span>Lights</span>
+              <strong id="homeLights">--</strong>
+            </div>
+            <div class="openmmi-home-stat">
+              <span>Range</span>
+              <strong><b id="homeRange">--</b><small>mi</small></strong>
+            </div>
+          </div>
+        </section>
+
+        <section class="openmmi-home-card openmmi-home-menu" aria-label="Dashboard menu">
+          <div class="openmmi-home-menu-head">
+            <span>Quick access</span>
+            <small>Media ← Home → Drive</small>
+          </div>
+          <div class="openmmi-home-actions">
+            <button type="button" class="openmmi-home-action openmmi-primary" data-openmmi-page="2">
+              <span>Drive</span><small>Speed, RPM and tell-tales</small>
+            </button>
+            <button type="button" class="openmmi-home-action openmmi-primary" data-openmmi-page="0">
+              <span>Media</span><small>Local Jellyfin player</small>
+            </button>
+            <button type="button" class="openmmi-home-action" data-openmmi-menu="climate">
+              <span>Climate</span><small>HVAC and outside temperature</small>
+            </button>
+            <button type="button" class="openmmi-home-action" data-openmmi-menu="vehicle">
+              <span>Vehicle</span><small>Doors, reverse and status</small>
+            </button>
+            <button type="button" class="openmmi-home-action openmmi-disabled" disabled>
+              <span>Settings</span><small>Next: units and preferences</small>
+            </button>
+          </div>
+        </section>
+      </div>
+    `;
+  }
+
+  function syncQuickArrays() {
+    try {
+      if (Array.isArray(PAGE_NAMES)) {
+        PAGE_NAMES.length = 0;
+        QUICK_PAGES.forEach((page) => PAGE_NAMES.push(page.title));
+      }
+      if (Array.isArray(PAGE_IDS)) {
+        PAGE_IDS.length = 0;
+        QUICK_PAGES.forEach((page) => PAGE_IDS.push(page.id));
+      }
+    } catch (_) {}
+  }
+
+  function rebuildPager() {
+    const pager = one(".pager");
+    if (!pager) return;
+    pager.innerHTML = QUICK_PAGES.map((page, idx) => `
+      <button type="button" data-page="${idx}" aria-label="${page.label}" title="${page.label}"></button>
+    `).join("");
+    pager.querySelectorAll("button[data-page]").forEach((button) => {
+      button.addEventListener("click", () => setPage(Number(button.dataset.page)));
+    });
+  }
+
+  function setActivePageElement(id) {
+    many(".page").forEach((page) => page.classList.toggle("active", page.id === id));
+  }
+
+  function setPagerActive(index) {
+    many(".pager button").forEach((button, idx) => button.classList.toggle("active", idx === index));
+  }
+
+  function showPageById(id, title, quickIndex = HOME_INDEX) {
+    setActivePageElement(id);
+    setPagerActive(quickIndex);
+    const titleEl = one("#pageTitle");
+    if (titleEl) titleEl.textContent = title;
+    try { activePage = quickIndex; } catch (_) {}
+    window.dispatchEvent(new CustomEvent("openmmi:pagechange", { detail: { id, title, quickIndex } }));
+  }
+
+  function installNavigationOverride() {
+    const nextSetPage = function openMmiSetQuickPage(index) {
+      const safeIndex = Number.isFinite(Number(index)) ? Number(index) : HOME_INDEX;
+      const idx = ((Math.trunc(safeIndex) % QUICK_PAGES.length) + QUICK_PAGES.length) % QUICK_PAGES.length;
+      const page = QUICK_PAGES[idx] || QUICK_PAGES[HOME_INDEX];
+      showPageById(page.id, page.title, idx);
+    };
+    nextSetPage.__openMmiHomeMenu = true;
+    try { setPage = nextSetPage; } catch (_) {}
+  }
+
+  function bindHomeButtons() {
+    const page = one("#pageHome");
+    if (!page) return;
+    page.querySelectorAll("[data-openmmi-page]").forEach((button) => {
+      button.addEventListener("click", () => setPage(Number(button.dataset.openmmiPage)));
+    });
+    page.querySelectorAll("[data-openmmi-menu]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const target = MENU_PAGES[button.dataset.openmmiMenu];
+        if (target) showPageById(target.id, target.title, HOME_INDEX);
+      });
+    });
+  }
+
+  function updateHome(payload) {
+    const state = payload?.state || {};
+    const vehicle = state.vehicle || {};
+    const engine = state.engine || {};
+    const fuel = state.fuel || {};
+    const lighting = state.lighting || {};
+
+    const speed = one("#homeSpeed");
+    if (speed) speed.textContent = homeKmhToMph(vehicle.speed_kmh);
+
+    const rpm = one("#homeRpm");
+    if (rpm) rpm.textContent = homeFmtNumber(engine.speed_rpm, 0);
+
+    const range = one("#homeRange");
+    if (range) range.textContent = homeKmhToMph(fuel.range_km);
+
+    const lights = one("#homeLights");
+    if (lights) lights.textContent = homeText(lighting.mode).replaceAll("_", " ");
+  }
+
+  function wrapRenderForHome() {
+    try {
+      if (typeof render !== "function" || render.__openMmiHomeWrapped) return;
+      const previousRender = render;
+      const wrapped = function openMmiRenderWithHome(payload) {
+        previousRender(payload);
+        updateHome(payload);
+      };
+      wrapped.__openMmiHomeWrapped = true;
+      render = wrapped;
+    } catch (_) {}
+  }
+
+  function bindHomeKey() {
+    window.addEventListener("keydown", (event) => {
+      if (event.key === "Home" || event.key === "h" || event.key === "H") setPage(HOME_INDEX);
+    });
+  }
+
+  ensureHomePage();
+  syncQuickArrays();
+  rebuildPager();
+  installNavigationOverride();
+  bindHomeButtons();
+  wrapRenderForHome();
+  bindHomeKey();
+  setPage(HOME_INDEX);
+})();
+// --- Open MMI V1 roadmap: home/menu navigation end ---
