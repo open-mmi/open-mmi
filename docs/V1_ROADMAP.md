@@ -144,3 +144,11 @@ These are explicitly after V1 unless they fall out naturally:
 ## V1 roadmap checkpoint: Settings shell
 
 The dashboard now has a Settings page shell for units, display preferences, diagnostics visibility, integrations, and reverse-assist placeholders. These controls are intentionally mostly non-functional at this stage; the first step is to establish where preferences live before wiring persistent behaviour.
+
+### Settings shell scroll behaviour
+
+The Settings page shell is scrollable inside the dashboard content area. This keeps the footer/tell-tales fixed while allowing units, display, diagnostics, integrations, and reverse-assist cards to remain accessible on tablet-sized screens.
+
+### Settings option tree
+
+The Settings page now uses a compact option-tree layout instead of a full page of cards. Categories stay visible on the left, and only the selected group is shown on the right. This keeps the dashboard shell fixed and avoids page-level scrolling on tablet screens.

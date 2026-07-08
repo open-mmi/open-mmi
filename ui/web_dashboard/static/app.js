@@ -1945,12 +1945,13 @@ try {
 // --- Open MMI V1 roadmap: home/menu navigation end ---
 
 // --- Open MMI V1 roadmap: settings shell start ---
-(function openMmiSettingsShell() {
-  if (window.__openMmiSettingsShellLoaded) return;
-  window.__openMmiSettingsShellLoaded = true;
+(function openMmiSettingsOptionTree() {
+  if (window.__openMmiSettingsOptionTreeLoaded) return;
+  window.__openMmiSettingsOptionTreeLoaded = true;
 
   const one = (selector) => document.querySelector(selector);
   const many = (selector) => Array.from(document.querySelectorAll(selector));
+  const state = { section: "units", payload: null };
 
   function fmt(value, digits = 0, fallback = "--") {
     const n = Number(value);
@@ -1966,6 +1967,88 @@ try {
     if (value === true) return "on";
     if (value === false) return "off";
     return text(value);
+  }
+
+  function statusParts(payload) {
+    const root = payload || {};
+    const s = root.state || {};
+    const vehicle = s.vehicle || {};
+    const lighting = s.lighting || {};
+    const meta = root.meta || root.status || {};
+    const ageValue = root.age_s ?? root.age_seconds ?? meta.age_s ?? meta.age_seconds ?? s.age_s;
+    return { root, s, vehicle, lighting, ageValue };
+  }
+
+  function pill(label, selected = false) {
+    return `<button type="button" class="openmmi-setting-pill${selected ? " is-selected" : ""}" disabled>${label}</button>`;
+  }
+
+  function row(title, note, controls = "") {
+    return `<div class="openmmi-setting-row"><div><strong>${title}</strong><small>${note}</small></div><div class="openmmi-setting-controls">${controls}</div></div>`;
+  }
+
+  function metric(label, value) {
+    return `<div class="openmmi-settings-metric"><span>${label}</span><strong>${value}</strong></div>`;
+  }
+
+  function sectionTemplate(section, payload) {
+    const { vehicle, lighting, ageValue } = statusParts(payload);
+    const lightingText = text(lighting.mode).replaceAll("_", " ");
+    const ageText = Number.isFinite(Number(ageValue)) ? `${fmt(ageValue, 1)} s` : "live";
+
+    if (section === "display") {
+      return `
+        <div class="openmmi-settings-panel-head"><span>Display</span><small>visual preferences</small></div>
+        ${row("Dim mode", "Future low-light dashboard theme.", pill("next"))}
+        ${row("Reduced animation", "For older tablets or distraction reduction.", pill("next"))}
+        ${row("Tell-tale test", "Move forced test states into Settings later.", pill("next"))}
+      `;
+    }
+
+    if (section === "diagnostics") {
+      return `
+        <div class="openmmi-settings-panel-head"><span>Diagnostics</span><small>live status</small></div>
+        ${metric("Status age", ageText)}
+        ${metric("Lighting mode", lightingText)}
+        ${metric("Reverse", boolText(vehicle.reverse ?? vehicle.reverse_selected))}
+        ${metric("Handbrake", boolText(vehicle.handbrake ?? vehicle.parking_brake))}
+        <a class="openmmi-settings-link" href="/api/status" target="_blank" rel="noreferrer">Open raw /api/status</a>
+      `;
+    }
+
+    if (section === "media") {
+      return `
+        <div class="openmmi-settings-panel-head"><span>Media</span><small>server-side</small></div>
+        ${metric("Jellyfin", "env configured")}
+        ${row("Token privacy", "Jellyfin URL/token remain server-side, never in browser settings.", pill("locked"))}
+        ${row("Media keys", "Browser/system media controls stay handled by the dashboard.", pill("active", true))}
+      `;
+    }
+
+    if (section === "reverse") {
+      return `
+        <div class="openmmi-settings-panel-head"><span>Reverse assist</span><small>placeholder</small></div>
+        ${row("Reverse popup", "Foundation for a future camera/PDC overlay.", pill("off", true) + pill("PDC") + pill("camera"))}
+        ${row("Auto-dismiss", "Later: hide overlay shortly after leaving reverse.", pill("next"))}
+        ${metric("Reverse selected", boolText(vehicle.reverse ?? vehicle.reverse_selected))}
+      `;
+    }
+
+    return `
+      <div class="openmmi-settings-panel-head"><span>Units</span><small>driver display</small></div>
+      ${row("Speed", "Dashboard speed and distance display.", pill("mph", true) + pill("km/h"))}
+      ${row("Temperature", "Climate and outside temperature display.", pill("°C", true) + pill("°F"))}
+      ${row("Raw/debug values", "Unfiltered values move to Diagnostics instead of driver pages.", pill("hidden", true))}
+    `;
+  }
+
+  function renderSettingsPanel() {
+    const panel = one("#openmmiSettingsPanel");
+    if (panel) panel.innerHTML = sectionTemplate(state.section, state.payload);
+
+    many("[data-openmmi-settings-section]").forEach((button) => {
+      button.classList.toggle("active", button.dataset.openmmiSettingsSection === state.section);
+    });
   }
 
   function ensureSettingsPage() {
@@ -1986,62 +2069,30 @@ try {
 
     page.innerHTML = `
       <div class="openmmi-settings-shell">
-        <section class="openmmi-settings-card openmmi-settings-hero" aria-label="Settings summary">
+        <section class="openmmi-settings-sidebar-card" aria-label="Settings categories">
           <div class="openmmi-settings-kicker">V1 roadmap</div>
           <h2>Settings</h2>
-          <p>Preferences and diagnostics will live here so Drive and Media stay clean.</p>
-          <div class="openmmi-settings-live" aria-label="Current live state">
-            <div><span>Status age</span><strong id="settingsStatusAge">--</strong></div>
-            <div><span>Lighting mode</span><strong id="settingsLightingMode">--</strong></div>
-            <div><span>Polling</span><strong>200 ms</strong></div>
-          </div>
+          <p>Preferences stay grouped here so Drive and Media remain clean.</p>
+          <nav class="openmmi-settings-tree" aria-label="Settings tree">
+            <button type="button" data-openmmi-settings-section="units">Units <small>mph, °C, raw values</small></button>
+            <button type="button" data-openmmi-settings-section="display">Display <small>dim mode, animation</small></button>
+            <button type="button" data-openmmi-settings-section="diagnostics">Diagnostics <small>live decoded state</small></button>
+            <button type="button" data-openmmi-settings-section="media">Media <small>Jellyfin and keys</small></button>
+            <button type="button" data-openmmi-settings-section="reverse">Reverse assist <small>PDC/camera path</small></button>
+          </nav>
         </section>
-
-        <section class="openmmi-settings-card" aria-label="Units">
-          <div class="openmmi-settings-head"><span>Units</span><small>placeholder</small></div>
-          <div class="openmmi-setting-row">
-            <div><strong>Speed</strong><small>Dashboard display units</small></div>
-            <button type="button" class="openmmi-setting-pill is-selected" disabled>mph</button>
-            <button type="button" class="openmmi-setting-pill" disabled>km/h</button>
-          </div>
-          <div class="openmmi-setting-row">
-            <div><strong>Temperature</strong><small>Climate and outside temperature</small></div>
-            <button type="button" class="openmmi-setting-pill is-selected" disabled>°C</button>
-            <button type="button" class="openmmi-setting-pill" disabled>°F</button>
-          </div>
-          <p class="openmmi-settings-note">Stored preferences come next; this shell defines the layout first.</p>
-        </section>
-
-        <section class="openmmi-settings-card" aria-label="Display">
-          <div class="openmmi-settings-head"><span>Display</span><small>next</small></div>
-          <label class="openmmi-toggle-row"><span><strong>Dim mode</strong><small>Future low-light dashboard theme</small></span><input type="checkbox" disabled></label>
-          <label class="openmmi-toggle-row"><span><strong>Reduced animation</strong><small>Keep tell-tales and media stable on older tablets</small></span><input type="checkbox" disabled></label>
-          <label class="openmmi-toggle-row"><span><strong>Tell-tale test mode</strong><small>Move forced test states out of query strings later</small></span><input type="checkbox" disabled></label>
-        </section>
-
-        <section class="openmmi-settings-card" aria-label="Vehicle data">
-          <div class="openmmi-settings-head"><span>Vehicle data</span><small>diagnostics</small></div>
-          <label class="openmmi-toggle-row"><span><strong>Show raw/debug values</strong><small>Unfiltered temperatures, decoded modes and missing fields</small></span><input type="checkbox" disabled></label>
-          <div class="openmmi-settings-metric"><span>Reverse</span><strong id="settingsReverse">--</strong></div>
-          <div class="openmmi-settings-metric"><span>Handbrake</span><strong id="settingsHandbrake">--</strong></div>
-          <a class="openmmi-settings-link" href="/api/status" target="_blank" rel="noreferrer">Open raw /api/status</a>
-        </section>
-
-        <section class="openmmi-settings-card" aria-label="Media and reverse assist">
-          <div class="openmmi-settings-head"><span>Integrations</span><small>server-side</small></div>
-          <div class="openmmi-settings-metric"><span>Jellyfin</span><strong id="settingsJellyfin">env configured</strong></div>
-          <p class="openmmi-settings-note">Jellyfin URL/token stay server-side. No media secrets are stored in browser settings.</p>
-          <div class="openmmi-settings-divider"></div>
-          <div class="openmmi-settings-head"><span>Reverse assist</span><small>placeholder</small></div>
-          <div class="openmmi-setting-row openmmi-setting-row-wrap">
-            <div><strong>Reverse popup</strong><small>Foundation for PDC/rear camera later</small></div>
-            <button type="button" class="openmmi-setting-pill is-selected" disabled>Off</button>
-            <button type="button" class="openmmi-setting-pill" disabled>PDC</button>
-            <button type="button" class="openmmi-setting-pill" disabled>Camera</button>
-          </div>
-        </section>
+        <section class="openmmi-settings-panel-card" id="openmmiSettingsPanel" aria-label="Selected settings"></section>
       </div>
     `;
+
+    many("[data-openmmi-settings-section]").forEach((button) => {
+      button.addEventListener("click", () => {
+        state.section = button.dataset.openmmiSettingsSection || "units";
+        renderSettingsPanel();
+      });
+    });
+
+    renderSettingsPanel();
   }
 
   function showSettingsPage() {
@@ -2065,23 +2116,8 @@ try {
   }
 
   function updateSettings(payload) {
-    const state = payload?.state || {};
-    const vehicle = state.vehicle || {};
-    const lighting = state.lighting || {};
-    const meta = payload?.meta || payload?.status || {};
-
-    const lightingMode = one("#settingsLightingMode");
-    if (lightingMode) lightingMode.textContent = text(lighting.mode).replaceAll("_", " ");
-
-    const age = one("#settingsStatusAge");
-    const ageValue = payload?.age_s ?? payload?.age_seconds ?? meta.age_s ?? meta.age_seconds ?? state.age_s;
-    if (age) age.textContent = Number.isFinite(Number(ageValue)) ? `${fmt(ageValue, 1)} s` : "live";
-
-    const reverse = one("#settingsReverse");
-    if (reverse) reverse.textContent = boolText(vehicle.reverse ?? vehicle.reverse_selected ?? state.reverse);
-
-    const handbrake = one("#settingsHandbrake");
-    if (handbrake) handbrake.textContent = boolText(vehicle.handbrake ?? vehicle.parking_brake ?? state.handbrake);
+    state.payload = payload;
+    if (one("#pageSettings.active")) renderSettingsPanel();
   }
 
   function wrapRenderForSettings() {
