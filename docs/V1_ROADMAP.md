@@ -198,3 +198,10 @@ Still pending before calling V1 complete:
 - [ ] PQ35-family validation using reversible, listen-only test setups.
 - [ ] Keep all dashboard behaviour read-only; no CAN transmit/control path from the web UI.
 <!-- OPENMMI_V1_STATUS_END -->
+
+## Recent dashboard cleanup
+
+- Driver-facing pages cleaned up: Home no longer duplicates Drive data, unfiltered/raw values stay in Diagnostics.
+
+- Driver-facing dashboard cleanup v2: Home summary noise and duplicate Diagnostics raw/debug controls cleaned up.
+
