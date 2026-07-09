@@ -602,6 +602,7 @@ function ommiMediaPage() {
   }
   ommiMediaUpdatePagerLabels();
   ommiMediaBind();
+  if (window.openMmiMediaSources) window.openMmiMediaSources.apply();
   ommiMediaFitViewport();
   return page;
 }
@@ -779,6 +780,7 @@ function ommiMediaRenderResults(items) {
 
 async function ommiMediaLoadLibrary(query = "") {
   ommiMediaPage();
+  if (window.openMmiMediaSources && !window.openMmiMediaSources.shouldUseJellyfin()) { window.openMmiMediaSources.renderPlaceholder(); return; }
   const listTitle = document.querySelector("#ommiMediaListTitle");
   const q = String(query || "").trim();
   openMmiMedia.lastQuery = q;
@@ -798,6 +800,7 @@ async function ommiMediaLoadLibrary(query = "") {
 
 async function ommiMediaRefreshStatus() {
   ommiMediaPage();
+  if (window.openMmiMediaSources && !window.openMmiMediaSources.shouldUseJellyfin()) { window.openMmiMediaSources.renderPlaceholder(); return; }
   try {
     const status = await ommiMediaFetchJson("/api/jellyfin/status");
     const remote = document.querySelector("#ommiMediaRemoteState");
@@ -816,6 +819,7 @@ async function ommiMediaRefreshStatus() {
 
 async function ommiMediaPlayIndex(index) {
   ommiMediaPage();
+  if (window.openMmiMediaSources && !window.openMmiMediaSources.shouldUseJellyfin()) { window.openMmiMediaSources.renderPlaceholder(); return; }
   const audio = document.querySelector("#ommiMediaAudio");
   const item = openMmiMedia.queue[Number(index)];
   if (!audio || !item) return;
@@ -921,8 +925,292 @@ function ommiMediaBind() {
   openMmiMedia.bound = true;
 }
 
+
+// --- Open MMI media source shell v1 start ---
+(function openMmiMediaSourceShellV1() {
+  if (window.__openMmiMediaSourceShellV1Loaded) return;
+  window.__openMmiMediaSourceShellV1Loaded = true;
+
+  const STORE_KEY = "openmmi.dashboard.settings.v1";
+  const SOURCES = [
+    { id: "jellyfin", label: "Jellyfin", note: "Local library", planned: false },
+    { id: "radio", label: "Internet radio", note: "planned stream source", planned: true },
+    { id: "usb", label: "USB", note: "planned local index", planned: true },
+    { id: "bluetooth", label: "Bluetooth", note: "planned external source", planned: true },
+    { id: "spotify", label: "Spotify", note: "planned integration", planned: true },
+  ];
+
+  const DEFAULT_MEDIA = {
+    mediaActiveSource: "jellyfin",
+    mediaDefaultSource: "jellyfin",
+    mediaSources: {
+      jellyfin: true,
+      radio: false,
+      usb: false,
+      bluetooth: false,
+      spotify: false,
+    },
+  };
+
+  const $ = (selector) => document.querySelector(selector);
+  const $$ = (selector) => Array.from(document.querySelectorAll(selector));
+  const sourceById = (id) => SOURCES.find((source) => source.id === id) || SOURCES[0];
+
+  function loadPrefs() {
+    let saved = {};
+    try { saved = JSON.parse(localStorage.getItem(STORE_KEY) || "{}"); }
+    catch (_) { saved = {}; }
+    const mediaSources = Object.assign({}, DEFAULT_MEDIA.mediaSources, saved.mediaSources || {});
+    const prefs = Object.assign({}, DEFAULT_MEDIA, saved, { mediaSources });
+
+    if (!sourceById(prefs.mediaDefaultSource)) prefs.mediaDefaultSource = "jellyfin";
+    if (!sourceById(prefs.mediaActiveSource)) prefs.mediaActiveSource = prefs.mediaDefaultSource || "jellyfin";
+    return prefs;
+  }
+
+  function savePrefs(prefs) {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(prefs)); } catch (_) {}
+    window.openMmiDashboardSettings = Object.assign({}, window.openMmiDashboardSettings || {}, prefs);
+  }
+
+  function isEnabled(id, prefs = loadPrefs()) {
+    return prefs.mediaSources?.[id] === true;
+  }
+
+  function firstEnabled(prefs = loadPrefs()) {
+    return SOURCES.find((source) => isEnabled(source.id, prefs))?.id || "";
+  }
+
+  function activeSourceId(prefs = loadPrefs()) {
+    if (isEnabled(prefs.mediaActiveSource, prefs)) return prefs.mediaActiveSource;
+    if (isEnabled(prefs.mediaDefaultSource, prefs)) return prefs.mediaDefaultSource;
+    return firstEnabled(prefs);
+  }
+
+  function setSourceEnabled(id, enabled) {
+    const prefs = loadPrefs();
+    prefs.mediaSources[id] = !!enabled;
+
+    if (!activeSourceId(prefs)) {
+      const fallback = enabled ? id : firstEnabled(prefs);
+      prefs.mediaActiveSource = fallback || id;
+      prefs.mediaDefaultSource = fallback || prefs.mediaDefaultSource || id;
+    } else if (!isEnabled(prefs.mediaActiveSource, prefs)) {
+      prefs.mediaActiveSource = activeSourceId(prefs);
+    }
+
+    if (!isEnabled(prefs.mediaDefaultSource, prefs)) {
+      prefs.mediaDefaultSource = activeSourceId(prefs) || prefs.mediaDefaultSource;
+    }
+
+    savePrefs(prefs);
+    apply();
+  }
+
+  function setDefaultSource(id) {
+    const prefs = loadPrefs();
+    if (!isEnabled(id, prefs)) return;
+    prefs.mediaDefaultSource = id;
+    savePrefs(prefs);
+    apply();
+  }
+
+  function setActiveSource(id) {
+    const prefs = loadPrefs();
+    if (!isEnabled(id, prefs)) return;
+    prefs.mediaActiveSource = id;
+    savePrefs(prefs);
+    apply();
+
+    if (id === "jellyfin") {
+      try { if (typeof ommiMediaRefreshStatus === "function") ommiMediaRefreshStatus(); } catch (_) {}
+      try {
+        if (typeof ommiMediaLoadLibrary === "function" && (!window.openMmiMedia || !window.openMmiMedia.queue || !window.openMmiMedia.queue.length)) {
+          ommiMediaLoadLibrary("");
+        }
+      } catch (_) {}
+    }
+  }
+
+  function shouldUseJellyfin() {
+    const prefs = loadPrefs();
+    return activeSourceId(prefs) === "jellyfin" && isEnabled("jellyfin", prefs);
+  }
+
+  function renderSourceBar(root = $("#openMmiMediaRoot")) {
+    if (!root) return;
+    root.classList.add("openmmi-media-source-shell");
+    let bar = root.querySelector("#openMmiMediaSourceBar");
+    if (!bar) {
+      bar = document.createElement("div");
+      bar.id = "openMmiMediaSourceBar";
+      bar.className = "openmmi-media-source-bar";
+      root.insertBefore(bar, root.firstChild);
+    }
+
+    const prefs = loadPrefs();
+    const active = activeSourceId(prefs);
+    const visibleSources = SOURCES.filter((source) => isEnabled(source.id, prefs));
+    root.classList.toggle("openmmi-media-no-enabled-sources", visibleSources.length === 0);
+
+    bar.innerHTML = visibleSources.map((source) => {
+      const selected = source.id === active;
+      const planned = source.planned ? '<span class="openmmi-media-source-planned">planned</span>' : '';
+      return `
+        <button type="button" class="openmmi-media-source-btn${selected ? " is-selected" : ""}" data-openmmi-media-source="${source.id}" aria-pressed="${selected ? "true" : "false"}" title="Switch media source">
+          <span>${source.label}</span>${planned}
+        </button>`;
+    }).join("");
+  }
+
+  function renderPlaceholder() {
+    const root = $("#openMmiMediaRoot");
+    if (!root) return;
+    renderSourceBar(root);
+
+    if (shouldUseJellyfin()) {
+      root.classList.remove("openmmi-media-source-placeholder-active");
+      root.querySelector("#openMmiMediaSourcePlaceholder")?.remove();
+      return;
+    }
+
+    const prefs = loadPrefs();
+    const active = activeSourceId(prefs);
+    const source = active ? sourceById(active) : null;
+    root.classList.add("openmmi-media-source-placeholder-active");
+
+    let placeholder = root.querySelector("#openMmiMediaSourcePlaceholder");
+    if (!placeholder) {
+      placeholder = document.createElement("section");
+      placeholder.id = "openMmiMediaSourcePlaceholder";
+      placeholder.className = "openmmi-media-source-placeholder";
+      root.appendChild(placeholder);
+    }
+
+    if (!source) {
+      placeholder.innerHTML = `
+        <div class="openmmi-media-source-empty-kicker">Media source</div>
+        <h2>No media source enabled</h2>
+        <p>Enable Jellyfin, radio, USB, Bluetooth or Spotify from Settings → Media.</p>`;
+      return;
+    }
+
+    const disabledJellyfin = source.id === "jellyfin" && !isEnabled("jellyfin", prefs);
+    placeholder.innerHTML = `
+      <div class="openmmi-media-source-empty-kicker">${source.label}</div>
+      <h2>${disabledJellyfin ? "Jellyfin disabled" : `${source.label} source placeholder`}</h2>
+      <p>${disabledJellyfin ? "Jellyfin is disabled in Settings → Media. No Jellyfin API calls are made while it is disabled." : `${source.note}. This source is available in the selector shell but has no playback backend yet.`}</p>`;
+  }
+
+  function settingsRow(title, note, controls) {
+    return `<div class="openmmi-setting-row"><div><strong>${title}</strong><small>${note}</small></div><div class="openmmi-setting-controls">${controls}</div></div>`;
+  }
+
+  function sourceToggleRow(source, prefs) {
+    const enabled = isEnabled(source.id, prefs);
+    return settingsRow(
+      source.label,
+      source.planned ? `${source.note}; can be exposed as a placeholder source.` : "Configured server-side with URL/token environment variables.",
+      `<button type="button" class="openmmi-setting-pill${enabled ? "" : " is-selected"}" data-openmmi-media-source-enable="${source.id}" data-openmmi-media-source-value="off" aria-pressed="${enabled ? "false" : "true"}">off</button>` +
+      `<button type="button" class="openmmi-setting-pill${enabled ? " is-selected" : ""}" data-openmmi-media-source-enable="${source.id}" data-openmmi-media-source-value="on" aria-pressed="${enabled ? "true" : "false"}">on</button>`
+    );
+  }
+
+  function defaultControls(prefs) {
+    return SOURCES.map((source) => {
+      const enabled = isEnabled(source.id, prefs);
+      const selected = prefs.mediaDefaultSource === source.id;
+      return `<button type="button" class="openmmi-setting-pill${selected ? " is-selected" : ""}" data-openmmi-media-default-source="${source.id}" ${enabled ? "" : "disabled"} aria-pressed="${selected ? "true" : "false"}">${source.label}</button>`;
+    }).join("");
+  }
+
+  function renderSettingsPanel() {
+    const active = document.querySelector("[data-openmmi-settings-section].active")?.dataset?.openmmiSettingsSection;
+    const panel = $("#openmmiSettingsPanel");
+    if (active !== "media" || !panel) return;
+
+    const prefs = loadPrefs();
+    const activeId = activeSourceId(prefs);
+    const activeLabel = activeId ? sourceById(activeId).label : "None";
+    const defaultLabel = sourceById(prefs.mediaDefaultSource).label;
+
+    panel.innerHTML = `
+      <div data-openmmi-media-settings-panel="true">
+        <div class="openmmi-settings-panel-head"><span>Media</span><small>sources</small></div>
+        <div class="openmmi-settings-metric"><span>Active source</span><strong>${activeLabel}</strong></div>
+        <div class="openmmi-settings-metric"><span>Default source</span><strong>${defaultLabel}</strong></div>
+        ${settingsRow("Default source", "Used when the Media page opens or the active source is disabled.", defaultControls(prefs))}
+        ${SOURCES.map((source) => sourceToggleRow(source, prefs)).join("")}
+        ${settingsRow("Token privacy", "Jellyfin URL/token stay server-side. Source enablement is a browser-local dashboard preference.", '<button type="button" class="openmmi-setting-pill is-selected" disabled>locked</button>')}
+        ${settingsRow("Media keys", "Browser/system media controls follow the currently selected source where supported.", '<button type="button" class="openmmi-setting-pill is-selected" disabled>active</button>')}
+      </div>`;
+  }
+
+  function apply() {
+    const root = $("#openMmiMediaRoot");
+    if (root) {
+      renderSourceBar(root);
+      if (shouldUseJellyfin()) {
+        root.classList.remove("openmmi-media-source-placeholder-active");
+        root.querySelector("#openMmiMediaSourcePlaceholder")?.remove();
+      } else {
+        renderPlaceholder();
+      }
+    }
+    renderSettingsPanel();
+  }
+
+  document.addEventListener("click", (event) => {
+    const sourceButton = event.target.closest?.("[data-openmmi-media-source]");
+    if (sourceButton) {
+      setActiveSource(sourceButton.dataset.openmmiMediaSource);
+      return;
+    }
+
+    const enableButton = event.target.closest?.("[data-openmmi-media-source-enable]");
+    if (enableButton) {
+      setSourceEnabled(enableButton.dataset.openmmiMediaSourceEnable, enableButton.dataset.openmmiMediaSourceValue === "on");
+      return;
+    }
+
+    const defaultButton = event.target.closest?.("[data-openmmi-media-default-source]");
+    if (defaultButton) {
+      setDefaultSource(defaultButton.dataset.openmmiMediaDefaultSource);
+      return;
+    }
+
+    if (event.target.closest?.('[data-openmmi-settings-section="media"]')) {
+      requestAnimationFrame(renderSettingsPanel);
+    }
+  });
+
+  window.addEventListener("openmmi:pagechange", () => requestAnimationFrame(apply));
+  document.addEventListener("DOMContentLoaded", () => requestAnimationFrame(apply));
+
+  const observer = new MutationObserver(() => {
+    const active = document.querySelector("[data-openmmi-settings-section].active")?.dataset?.openmmiSettingsSection;
+    const panel = $("#openmmiSettingsPanel");
+    if (active === "media" && panel && !panel.querySelector("[data-openmmi-media-settings-panel]")) {
+      renderSettingsPanel();
+    }
+  });
+  try { observer.observe(document.body, { childList: true, subtree: true }); } catch (_) {}
+
+  window.openMmiMediaSources = {
+    apply,
+    activeSourceId,
+    isEnabled,
+    loadPrefs,
+    renderPlaceholder,
+    setActiveSource,
+    shouldUseJellyfin,
+  };
+})();
+// --- Open MMI media source shell v1 end ---
+
 function ommiMediaBoot() {
   ommiMediaPage();
+  if (window.openMmiMediaSources && !window.openMmiMediaSources.shouldUseJellyfin()) { window.openMmiMediaSources.renderPlaceholder(); return; }
   ommiMediaSetNowPlaying(openMmiMedia.current);
   ommiMediaRefreshStatus();
   if (!openMmiMedia.queue.length) ommiMediaLoadLibrary("");

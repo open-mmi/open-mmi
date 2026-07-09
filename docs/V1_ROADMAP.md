@@ -205,3 +205,12 @@ Still pending before calling V1 complete:
 
 - Driver-facing dashboard cleanup v2: Home summary noise and duplicate Diagnostics raw/debug controls cleaned up.
 
+### Media source shell v1
+
+- Added browser-local media source enable/default preferences in Settings.
+- Media page now has a source switcher and can show planned placeholders for Radio, USB, Bluetooth and Spotify.
+- Jellyfin can be disabled from Settings so the frontend does not poll/search Jellyfin while it is not the active enabled source.
+
+### Media source disabled visibility v2
+
+- Media page source switcher now shows enabled sources only. Disabled sources remain configurable from Settings → Media and do not appear as disabled placeholders on the Media page.
