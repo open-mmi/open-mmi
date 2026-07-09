@@ -31,6 +31,76 @@ function kmToMi(km, decimals = 0) {
   return fmtNum(n * 0.621371192, decimals);
 }
 
+function openMmiApplyDriverFacingCleanup() {
+  const removeContainer = (node) => {
+    if (!node) return;
+    const container = node.closest("article, .tile, .openmmi-home-tile, .openmmi-home-metric, .openmmi-home-status, .metric, .status-chip, .summary-tile, .summary-card");
+    if (container && !container.closest(".openmmi-settings-shell")) container.remove();
+  };
+
+  const home = document.querySelector("#pageHome");
+  if (home) {
+    home.querySelectorAll('[data-field="range_mi"], [data-field="rpm"], [data-field="lighting_mode"], [data-field="lights_on"]').forEach(removeContainer);
+    home.querySelectorAll("article, .tile, .openmmi-home-tile, .openmmi-home-metric, .openmmi-home-status, .summary-tile, .summary-card").forEach((node) => {
+      const label = (node.querySelector(".label, .openmmi-label, .metric-label")?.textContent || "").trim().toLowerCase();
+      if (["lights", "light state", "lighting", "range", "range est.", "range est", "rpm"].includes(label)) node.remove();
+    });
+  }
+
+  document.querySelectorAll('#pageClimate [data-field="outside_unfiltered_c"]').forEach(removeContainer);
+}
+
+
+
+function openMmiApplyDriverDashboardCleanupV2() {
+  const home = document.querySelector("#pageHome");
+  if (home) {
+    home.querySelectorAll("small").forEach((node) => {
+      const text = (node.textContent || "").trim();
+      if (text === "Speed, RPM and tell-tales" || text === "Speed, RPM, and tell-tales") {
+        node.textContent = "Speed and tell-tales";
+      }
+    });
+
+    const removeHomeLabels = [/^lights?\b/i, /^range\b/i, /^rpm\b/i, /lights state/i, /range est/i];
+    const candidates = home.querySelectorAll([
+      "article",
+      ".tile",
+      ".openmmi-home-tile",
+      ".openmmi-home-stat",
+      ".openmmi-home-metric",
+      ".openmmi-home-status-item",
+      "[data-openmmi-home-metric]"
+    ].join(","));
+
+    candidates.forEach((node) => {
+      if (node.closest("nav") || node.matches("button") || node.closest("button")) return;
+      const labelNode = node.querySelector(".label, .openmmi-label, dt, h3, h4, strong, span");
+      const label = ((labelNode && labelNode.textContent) || node.textContent || "").trim();
+      if (removeHomeLabels.some((pattern) => pattern.test(label))) node.remove();
+    });
+  }
+
+  const diagnosticsPanel = document.querySelector("#openmmiSettingsPanel");
+  if (diagnosticsPanel) {
+    diagnosticsPanel.querySelectorAll([
+      ".openmmi-settings-row",
+      ".openmmi-settings-control",
+      ".openmmi-diagnostics-control",
+      ".openmmi-diagnostics-row",
+      "article",
+      "[data-openmmi-diagnostics-control]"
+    ].join(",")).forEach((node) => {
+      if (node.closest("#openmmiSettingsStaticControls")) return;
+      const text = (node.textContent || "").toLowerCase();
+      const hasControl = !!node.querySelector("button, [role='button'], .openmmi-settings-pill, .openmmi-pill");
+      if (hasControl && (text.includes("raw/debug") || text.includes("raw debug") || text.includes("show raw") || text.includes("hide raw"))) {
+        node.remove();
+      }
+    });
+  }
+}
+
 function openMmiUnitPrefs() {
   const defaults = { speedUnit: "mph", tempUnit: "c" };
   try {
@@ -188,6 +258,7 @@ function updateTach(rpm) {
   setField("lights_on", lightsLabel(lighting.lights_on));
   setField("indicators", indicatorLabel(lighting));
   setField("air_intake", climate.air_intake || "Normal");
+  openMmiApplyDriverFacingCleanup();
 
   setBool("handbrake", vehicle.handbrake);
   setBool("reverse", vehicle.reverse);
@@ -1938,7 +2009,7 @@ try {
           </div>
           <div class="openmmi-home-actions">
             <button type="button" class="openmmi-home-action openmmi-primary" data-openmmi-page="2">
-              <span>Drive</span><small>Speed, RPM and tell-tales</small>
+              <span>Drive</span><small>Speed and tell-tales</small>
             </button>
             <button type="button" class="openmmi-home-action openmmi-primary" data-openmmi-page="0">
               <span>Media</span><small>Local Jellyfin player</small>
@@ -2220,13 +2291,13 @@ try {
       <div class="openmmi-settings-panel-head"><span>Units</span><small>driver display</small></div>
       ${row("Speed", "Dashboard speed and distance display.", pill("mph", true) + pill("km/h"))}
       ${row("Temperature", "Climate and outside temperature display.", pill("°C", true) + pill("°F"))}
-      ${row("Raw/debug values", "Raw and unfiltered values belong in Diagnostics, not driver pages.", pill("hide", true) + pill("show"))}
-    `;
+`;
   }
 
   function renderSettingsPanel() {
     const panel = one("#openmmiSettingsPanel");
     if (panel) panel.innerHTML = sectionTemplate(state.section, state.payload);
+    openMmiApplyDriverDashboardCleanupV2();
 
     many("[data-openmmi-settings-section]").forEach((button) => {
       button.classList.toggle("active", button.dataset.openmmiSettingsSection === state.section);
@@ -2428,9 +2499,6 @@ try {
     const panel = document.querySelector("#openmmiSettingsPanel");
     const host = ensureStaticControlsHost();
 
-    // Old v3 inserted this inside the live diagnostics panel. Remove it after
-    // every refresh so the click target does not vanish/reappear at 200 ms.
-    panel?.querySelectorAll?.("[data-openmmi-raw-toggle-row]").forEach((row) => row.remove());
 
     if (host) {
       if (currentSection() === "diagnostics") {
@@ -2575,22 +2643,9 @@ try {
     });
   }
 
-  function ensureRawToggleRow(panel) {
-    if (!panel || currentSection() !== "diagnostics") return;
-    if (panel.querySelector("[data-openmmi-raw-toggle-row]")) return;
-    const head = panel.querySelector(".openmmi-settings-panel-head");
-    const row = document.createElement("div");
-    row.className = "openmmi-setting-row";
-    row.dataset.openmmiRawToggleRow = "true";
-    row.innerHTML = '<div><strong>Raw/debug values</strong><small>Show low-level decoded values in this diagnostics panel.</small></div><div class="openmmi-setting-controls"><button type="button" class="openmmi-setting-pill">hide</button><button type="button" class="openmmi-setting-pill">show</button></div>';
-    if (head && head.nextSibling) head.parentNode.insertBefore(row, head.nextSibling);
-    else panel.prepend(row);
-  }
-
   function updateSettingsSelection() {
     const panel = document.querySelector("#openmmiSettingsPanel");
     if (!panel) return;
-    ensureRawToggleRow(panel);
     const prefs = loadPrefs();
     panel.querySelectorAll(".openmmi-setting-row").forEach((row) => {
       const title = rowTitle(row);
@@ -3425,3 +3480,5 @@ try {
 
 
 // --- openmmi door overlay reuse vehicle visual v3 ---
+
+document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanupV2);
