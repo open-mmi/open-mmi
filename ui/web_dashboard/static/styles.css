@@ -3100,3 +3100,63 @@ html.openmmi-telltale-test-active #openMmiFooterTelltales [data-openmmi-telltale
   }
 }
 /* --- Open MMI Media control layout follow-up end --- */
+
+/* --- Open MMI Media icon/live search follow-up start --- */
+#openMmiMediaRoot .ommi-music-icon {
+  display: block;
+  overflow: visible;
+  shape-rendering: geometricPrecision;
+}
+
+#openMmiMediaRoot .ommi-art .ommi-music-icon {
+  width: 2.8rem;
+  height: 2.8rem;
+  opacity: 0.88;
+  filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.12));
+}
+
+#openMmiMediaRoot .ommi-track-art .ommi-music-icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  opacity: 0.82;
+}
+
+#openMmiMediaRoot #ommiMediaSearch {
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+#openMmiMediaRoot #ommiMediaSearch:focus {
+  border-color: rgba(255, 255, 255, 0.92) !important;
+  background-color: rgba(255, 255, 255, 0.11) !important;
+}
+/* --- Open MMI Media icon/live search follow-up end --- */
+
+/* --- Open MMI Media icon/keyboard cleanup start --- */
+#openMmiMediaRoot .ommi-music-icon {
+  display: block;
+  overflow: visible;
+  font-size: 0 !important;
+  line-height: 0 !important;
+  background: none !important;
+  text-indent: 0 !important;
+  shape-rendering: geometricPrecision;
+}
+
+#openMmiMediaRoot .ommi-music-icon::before,
+#openMmiMediaRoot .ommi-music-icon::after {
+  content: none !important;
+  display: none !important;
+}
+
+/* --- Open MMI Media icon/keyboard cleanup end --- */
+
+/* --- Open MMI Media speaker icon fix start --- */
+#openMmiMediaRoot .ommi-media-speaker-icon {
+  flex: 0 0 auto;
+  fill: none;
+}
+
+#openMmiMediaRoot .ommi-media-speaker-icon path {
+  vector-effect: non-scaling-stroke;
+}
+/* --- Open MMI Media speaker icon fix end --- */

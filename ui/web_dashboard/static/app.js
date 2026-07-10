@@ -582,6 +582,82 @@ function ommiMediaIcon(name, cls = "") {
   return `<svg class="bi ${cls}" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true" focusable="false">${paths[name] || paths["music-note-beamed"]}</svg>`;
 }
 
+// --- Open MMI Media icon/live search follow-up start ---
+const OMMI_MEDIA_LIVE_SEARCH_DELAY_MS = 320;
+
+function ommiMediaCleanMusicIcon(cls = "") {
+  // A speaker silhouette is deliberately used instead of a note, disc, or
+  // rounded-square/circle combination, which can resemble a social-media logo.
+  const className = ["ommi-music-icon", "ommi-media-speaker-icon", cls]
+    .filter(Boolean)
+    .join(" ");
+  return `<svg class="${className}" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+    <path d="M4.5 9.25h3.2l4.55-3.45v12.4L7.7 14.75H4.5z"
+      fill="currentColor"/>
+    <path d="M15.15 9.35c1.45 1.45 1.45 3.85 0 5.3"
+      fill="none" stroke="currentColor" stroke-width="1.65"
+      stroke-linecap="round"/>
+    <path d="M17.7 7.15c2.75 2.75 2.75 6.95 0 9.7"
+      fill="none" stroke="currentColor" stroke-width="1.65"
+      stroke-linecap="round"/>
+  </svg>`;
+}
+
+function ommiMediaInvalidateRequest() {
+  openMmiMedia.requestSerial = (Number(openMmiMedia.requestSerial) || 0) + 1;
+  ommiMediaSetLoading(false);
+}
+
+function ommiMediaRunSearchNow(value) {
+  if (openMmiMedia.searchTimer) {
+    clearTimeout(openMmiMedia.searchTimer);
+    openMmiMedia.searchTimer = null;
+  }
+  return ommiMediaLoadLibrary(value || "", openMmiMedia.filter);
+}
+
+function ommiMediaScheduleLiveSearch(input) {
+  if (openMmiMedia.searchTimer) clearTimeout(openMmiMedia.searchTimer);
+  ommiMediaInvalidateRequest();
+  const value = input?.value || "";
+  openMmiMedia.searchTimer = setTimeout(() => {
+    openMmiMedia.searchTimer = null;
+    ommiMediaLoadLibrary(value, openMmiMedia.filter);
+  }, OMMI_MEDIA_LIVE_SEARCH_DELAY_MS);
+}
+
+function ommiMediaBindLiveSearch(root) {
+  const input = root?.querySelector?.("#ommiMediaSearch");
+  if (!input || input.dataset.openMmiLiveSearchBound === "true") return;
+
+  input.dataset.openMmiLiveSearchBound = "true";
+  input.autocomplete = "off";
+  input.spellcheck = false;
+  input.placeholder = "Search music…";
+  input.setAttribute("aria-label", "Search music; results update as you type");
+
+  let composing = false;
+  input.addEventListener("compositionstart", () => { composing = true; });
+  input.addEventListener("compositionend", () => {
+    composing = false;
+    ommiMediaScheduleLiveSearch(input);
+  });
+  input.addEventListener("input", () => {
+    if (!composing) ommiMediaScheduleLiveSearch(input);
+  });
+  input.addEventListener("keydown", (event) => {
+    // Keep dashboard-wide shortcuts (H/Home and page arrows) out of text entry.
+    // Native cursor movement is preserved; Enter remains an immediate search.
+    event.stopPropagation();
+    if (event.key === "Enter") {
+      event.preventDefault();
+      ommiMediaRunSearchNow(input.value || "");
+    }
+  });
+  input.addEventListener("search", () => ommiMediaRunSearchNow(input.value || ""));
+}
+// --- Open MMI Media icon/live search follow-up end ---
+
 function ommiMediaPage() {
   let page = document.querySelector("#pageElectrical") || Array.from(document.querySelectorAll(".page"))[3];
   if (!page) {
@@ -620,7 +696,7 @@ function ommiMediaBuildRoot() {
       <section class="col-12 col-md-5 col-xl-4 h-100 min-h-0 d-flex overflow-hidden ommi-player-col" aria-label="Local Jellyfin player">
         <div class="card flex-fill h-100 min-h-0 overflow-hidden ommi-media-card">
           <div class="card-body d-flex flex-column min-h-0 h-100 gap-2 ommi-player-body">
-            <div id="ommiMediaArt" class="ommi-art flex-shrink-0" aria-hidden="true"><span>${ommiMediaIcon("music-note-beamed", "ommi-art-icon")}</span></div>
+            <div id="ommiMediaArt" class="ommi-art flex-shrink-0" aria-hidden="true"><span>${ommiMediaCleanMusicIcon("ommi-art-icon")}</span></div>
             <div class="min-w-0 flex-shrink-0 ommi-now-copy">
               <div class="text-uppercase small text-secondary ommi-kicker">${ommiMediaIcon("volume-up-fill")} Local player</div>
               <h2 id="ommiMediaTitle" class="ommi-now-title mb-1">Select music</h2>
@@ -711,7 +787,7 @@ function ommiMediaSetArtwork(track) {
     art.innerHTML = `<img src="${ommiMediaEsc(track.image_url)}" alt="">`;
   } else {
     art.classList.remove("has-art");
-    art.innerHTML = `<span>${ommiMediaIcon("music-note-beamed", "ommi-art-icon")}</span>`;
+    art.innerHTML = `<span>${ommiMediaCleanMusicIcon("ommi-art-icon")}</span>`;
   }
 }
 
@@ -794,7 +870,8 @@ function ommiMediaInstallFilters() {
     select.addEventListener("change", () => {
       const input = document.querySelector("#ommiMediaSearch");
       if (input) input.value = "";
-      ommiMediaLoadLibrary("", select.value || "recent");
+      openMmiMedia.filter = select.value || "recent";
+      ommiMediaRunSearchNow("");
     });
     recent.replaceWith(select);
   }
@@ -836,7 +913,7 @@ function ommiMediaRenderResults(items) {
 
   results.innerHTML = openMmiMedia.queue.map((item, index) => `
     <button type="button" class="list-group-item list-group-item-action d-grid ommi-track" data-open-mmi-track="${index}" role="listitem" aria-label="Play ${ommiMediaEsc(item.name || "track")}">
-      <span class="ommi-track-art">${item.image_url ? `<img src="${ommiMediaEsc(item.image_url)}" alt="">` : ommiMediaIcon("music-note-beamed")}</span>
+      <span class="ommi-track-art">${item.image_url ? `<img src="${ommiMediaEsc(item.image_url)}" alt="">` : ommiMediaCleanMusicIcon()}</span>
       <span class="ommi-track-copy"><strong>${ommiMediaEsc(item.name || "Untitled")}</strong><small>${ommiMediaEsc([item.artist, item.album].filter(Boolean).join(" · ") || "Unknown artist")}</small></span>
       <span class="ommi-track-duration">${ommiMediaTime(item.duration_seconds)}</span>
     </button>`).join("");
@@ -854,6 +931,8 @@ async function ommiMediaLoadLibrary(query = "", filter = openMmiMedia.filter) {
   const selectedFilter = Object.prototype.hasOwnProperty.call(OMMI_MEDIA_FILTERS, filter)
     ? filter
     : "recent";
+  const requestSerial = (Number(openMmiMedia.requestSerial) || 0) + 1;
+  openMmiMedia.requestSerial = requestSerial;
   openMmiMedia.lastQuery = q;
   openMmiMedia.filter = selectedFilter;
   ommiMediaUpdateFilters();
@@ -871,16 +950,18 @@ async function ommiMediaLoadLibrary(query = "", filter = openMmiMedia.filter) {
       filter: selectedFilter,
     });
     const payload = await ommiMediaFetchJson(`/api/jellyfin/search?${params}`);
+    if (requestSerial !== openMmiMedia.requestSerial) return;
     if (payload.error) ommiMediaSetMessage(payload.error, "error");
     else ommiMediaSetMessage("Tap any track to play locally.");
     ommiMediaRenderResults(payload.items || []);
   } catch (err) {
+    if (requestSerial !== openMmiMedia.requestSerial) return;
     ommiMediaSetMessage(`Could not load library: ${err.message}`, "error");
     ommiMediaRenderResults([]);
   } finally {
-    ommiMediaSetLoading(false);
+    if (requestSerial === openMmiMedia.requestSerial) ommiMediaSetLoading(false);
   }
-  ommiMediaFitViewport();
+  if (requestSerial === openMmiMedia.requestSerial) ommiMediaFitViewport();
 }
 
 async function ommiMediaRefreshStatus() {
@@ -946,6 +1027,7 @@ function ommiMediaBind() {
   const root = document.querySelector("#openMmiMediaRoot");
   const audio = document.querySelector("#ommiMediaAudio");
   if (!root || !audio) return;
+  ommiMediaBindLiveSearch(root);
 
   root.addEventListener("click", async (event) => {
     const trackButton = event.target.closest?.("[data-open-mmi-track]");
@@ -955,9 +1037,8 @@ function ommiMediaBind() {
       return;
     }
     if (event.target.closest?.("#ommiMediaSearchBtn")) {
-      return ommiMediaLoadLibrary(
+      return ommiMediaRunSearchNow(
         document.querySelector("#ommiMediaSearch")?.value || "",
-        openMmiMedia.filter,
       );
     }
     if (event.target.closest?.("#ommiMediaPrev")) return ommiMediaPrev();
@@ -995,7 +1076,10 @@ function ommiMediaBind() {
   });
 
   root.addEventListener("keydown", (event) => {
-    if (event.key === "Enter" && event.target?.id === "ommiMediaSearch") ommiMediaLoadLibrary(event.target.value || "");
+    if (event.key === "Enter" && event.target?.id === "ommiMediaSearch") {
+      event.preventDefault();
+      ommiMediaRunSearchNow(event.target.value || "");
+    }
   });
 
   audio.addEventListener("timeupdate", ommiMediaUpdateProgress);
@@ -2503,7 +2587,15 @@ try {
 
   function bindHomeKey() {
     window.addEventListener("keydown", (event) => {
-      if (event.key === "Home" || event.key === "h" || event.key === "H") setPage(HOME_INDEX);
+      const target = event.target;
+      if (
+        target instanceof Element
+        && target.closest("input, textarea, select, [contenteditable='true'], [contenteditable='']")
+      ) return;
+      if (event.key === "Home" || event.key === "h" || event.key === "H") {
+        event.preventDefault();
+        setPage(HOME_INDEX);
+      }
     });
   }
 
