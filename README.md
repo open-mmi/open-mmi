@@ -1399,3 +1399,12 @@ The dashboard remains read-only. It consumes decoded local vehicle state and doe
 
 Compatibility claims are intentionally conservative: SEAT León 1P is the confirmed development vehicle. Wider PQ35-family testing is planned, but Golf Mk5, Audi A3 8P, Octavia/Yeti and related vehicles should be treated as pending validation until logs and compatibility reports exist.
 <!-- OPENMMI_DASHBOARD_STATUS_END -->
+
+<!-- open-mmi-media-sources-start -->
+### Media sources
+
+The dashboard Media page has a persisted source selector. Jellyfin and Internet
+Radio are functional sources; USB, Bluetooth, and Spotify remain roadmap entries.
+Internet Radio uses Radio Browser for discovery and a same-origin, UUID-based audio
+proxy with public-address validation.
+<!-- open-mmi-media-sources-end -->
