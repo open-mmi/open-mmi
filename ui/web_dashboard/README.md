@@ -161,6 +161,58 @@ Search test:
 curl 'http://127.0.0.1:8765/api/jellyfin/search?limit=5' | python3 -m json.tool
 ```
 
+<!-- open-mmi-items-4-6:start -->
+### Security and library scope
+
+Use a dedicated, non-administrator Jellyfin user with access only to the music
+libraries that should be visible in the car. User scope is required by default:
+
+```bash
+export OPEN_MMI_JELLYFIN_USER_ID='user-id'
+```
+
+A server API key is not a user session, so token mode does not use `/Users/Me`.
+Set `OPEN_MMI_JELLYFIN_USER_ID`, or set `OPEN_MMI_JELLYFIN_USERNAME` without a
+password to resolve an exact username through the API key. To restrict the Media
+page to one Jellyfin library, also set:
+
+```bash
+export OPEN_MMI_JELLYFIN_LIBRARY_ID='music-library-id'
+```
+
+Search results, audio streams, and artwork are checked against the configured
+user/library scope. Legacy server API keys that genuinely need global access must
+opt in explicitly:
+
+```bash
+export OPEN_MMI_JELLYFIN_ALLOW_GLOBAL=1
+```
+
+Global mode is intentionally not the default. Do not use it on a dashboard exposed
+to an untrusted network.
+
+Remote session status is also opt-in. Set an exact session ID or exact device/client
+name; the dashboard no longer falls back to another user's active session:
+
+```bash
+export OPEN_MMI_JELLYFIN_SESSION_ID='session-id'
+# or
+export OPEN_MMI_JELLYFIN_DEVICE='Dashboard'
+```
+
+The dashboard binds to `127.0.0.1` by default. When binding to `0.0.0.0`, protect the
+port with a host firewall or an authenticated reverse proxy.
+
+The Media page exposes recently added, favourites, and A–Z through one compact dropdown.
+Equivalent API checks are:
+
+```bash
+curl 'http://127.0.0.1:8765/api/jellyfin/search?filter=recent&limit=5'
+curl 'http://127.0.0.1:8765/api/jellyfin/search?filter=favorites&limit=5'
+curl 'http://127.0.0.1:8765/api/jellyfin/search?filter=az&limit=5'
+```
+<!-- open-mmi-items-4-6:end -->
+
 ### Media keys and steering-wheel controls
 
 The Media page registers browser media-session handlers and keyboard fallbacks for:
@@ -221,6 +273,7 @@ Run these before committing dashboard changes:
 ```bash
 python3 -m py_compile ui/web_dashboard/server.py
 node --check ui/web_dashboard/static/app.js
+python3 -m unittest discover -s tests
 python3 ui/web_dashboard/server.py --demo --demo-scenario warnings
 ```
 

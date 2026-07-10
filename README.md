@@ -55,7 +55,7 @@ It is intended to make decoded vehicle state visible as a practical in-car inter
 Current web dashboard pages:
 
 * **Drive** — speed, RPM, coolant, voltage, range/odometer, outside temperature, and OEM-style footer tell-tales.
-* **Media** — optional Jellyfin music search/playback using a server-side API token and local browser audio playback.
+* **Media** — optional Jellyfin music search/playback using server-side credentials, user/library scoping, and local browser audio playback.
 * **Climate** — blower load, outside temperature, demist/compressor/heater/intake state where available from the status snapshot.
 * **Vehicle** — doors, reverse, dimmer and body-state information where available from the status snapshot.
 

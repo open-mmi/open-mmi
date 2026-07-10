@@ -539,6 +539,8 @@ const openMmiMedia = {
   current: null,
   bound: false,
   lastQuery: "",
+  filter: "recent",
+  loading: false,
 };
 
 function ommiMediaEsc(value) {
@@ -601,6 +603,7 @@ function ommiMediaPage() {
     openMmiMedia.bound = false;
   }
   ommiMediaUpdatePagerLabels();
+  ommiMediaInstallFilters();
   ommiMediaBind();
   if (window.openMmiMediaSources) window.openMmiMediaSources.apply();
   ommiMediaFitViewport();
@@ -757,6 +760,67 @@ async function ommiMediaFetchJson(path) {
   return response.json();
 }
 
+const OMMI_MEDIA_FILTERS = {
+  recent: "Recent music",
+  favorites: "Favourites",
+  az: "A–Z",
+};
+
+function ommiMediaUpdateFilters() {
+  const select = document.querySelector("#ommiMediaFilter");
+  if (select && select.value !== openMmiMedia.filter) {
+    select.value = openMmiMedia.filter;
+  }
+}
+
+function ommiMediaInstallFilters() {
+  let select = document.querySelector("#ommiMediaFilter");
+  const recent = document.querySelector("#ommiMediaRecentBtn");
+
+  if (!select && recent) {
+    select = document.createElement("select");
+    select.id = "ommiMediaFilter";
+    select.className = "form-select ommi-filter-select";
+    select.setAttribute("aria-label", "Music library view");
+    select.title = "Choose music library view";
+
+    Object.entries(OMMI_MEDIA_FILTERS).forEach(([value, label]) => {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = label;
+      select.appendChild(option);
+    });
+
+    select.addEventListener("change", () => {
+      const input = document.querySelector("#ommiMediaSearch");
+      if (input) input.value = "";
+      ommiMediaLoadLibrary("", select.value || "recent");
+    });
+    recent.replaceWith(select);
+  }
+
+  // Remove the previous button implementation when upgrading an already-patched UI.
+  document.querySelectorAll("[data-open-mmi-filter]").forEach((button) => button.remove());
+
+  const search = document.querySelector("#ommiMediaSearchBtn");
+  if (search) {
+    search.title = "Search music";
+    search.setAttribute("aria-label", "Search music");
+  }
+  ommiMediaUpdateFilters();
+}
+
+function ommiMediaSetLoading(loading) {
+  openMmiMedia.loading = Boolean(loading);
+  const root = document.querySelector("#openMmiMediaRoot");
+  root?.setAttribute("aria-busy", String(openMmiMedia.loading));
+  document
+    .querySelectorAll("#ommiMediaSearchBtn, #ommiMediaFilter")
+    .forEach((control) => {
+      control.disabled = openMmiMedia.loading;
+    });
+}
+
 function ommiMediaRenderResults(items) {
   const results = document.querySelector("#ommiMediaResults");
   const count = document.querySelector("#ommiMediaCount");
@@ -778,22 +842,43 @@ function ommiMediaRenderResults(items) {
     </button>`).join("");
 }
 
-async function ommiMediaLoadLibrary(query = "") {
+async function ommiMediaLoadLibrary(query = "", filter = openMmiMedia.filter) {
   ommiMediaPage();
-  if (window.openMmiMediaSources && !window.openMmiMediaSources.shouldUseJellyfin()) { window.openMmiMediaSources.renderPlaceholder(); return; }
+  ommiMediaInstallFilters();
+  if (window.openMmiMediaSources && !window.openMmiMediaSources.shouldUseJellyfin()) {
+    window.openMmiMediaSources.renderPlaceholder();
+    return;
+  }
   const listTitle = document.querySelector("#ommiMediaListTitle");
   const q = String(query || "").trim();
+  const selectedFilter = Object.prototype.hasOwnProperty.call(OMMI_MEDIA_FILTERS, filter)
+    ? filter
+    : "recent";
   openMmiMedia.lastQuery = q;
-  if (listTitle) listTitle.textContent = q ? "Search results" : "Recent music";
-  ommiMediaSetMessage(q ? "Searching…" : "Loading music…");
+  openMmiMedia.filter = selectedFilter;
+  ommiMediaUpdateFilters();
+  if (listTitle) {
+    listTitle.textContent = q
+      ? `Search results · ${OMMI_MEDIA_FILTERS[selectedFilter]}`
+      : OMMI_MEDIA_FILTERS[selectedFilter];
+  }
+  ommiMediaSetMessage(q ? "Searching…" : `Loading ${OMMI_MEDIA_FILTERS[selectedFilter].toLowerCase()}…`);
+  ommiMediaSetLoading(true);
   try {
-    const payload = await ommiMediaFetchJson(`/api/jellyfin/search?q=${encodeURIComponent(q)}&limit=60`);
+    const params = new URLSearchParams({
+      q,
+      limit: "60",
+      filter: selectedFilter,
+    });
+    const payload = await ommiMediaFetchJson(`/api/jellyfin/search?${params}`);
     if (payload.error) ommiMediaSetMessage(payload.error, "error");
     else ommiMediaSetMessage("Tap any track to play locally.");
     ommiMediaRenderResults(payload.items || []);
   } catch (err) {
     ommiMediaSetMessage(`Could not load library: ${err.message}`, "error");
     ommiMediaRenderResults([]);
+  } finally {
+    ommiMediaSetLoading(false);
   }
   ommiMediaFitViewport();
 }
@@ -869,11 +954,11 @@ function ommiMediaBind() {
       await ommiMediaPlayIndex(trackButton.dataset.openMmiTrack);
       return;
     }
-    if (event.target.closest?.("#ommiMediaSearchBtn")) return ommiMediaLoadLibrary(document.querySelector("#ommiMediaSearch")?.value || "");
-    if (event.target.closest?.("#ommiMediaRecentBtn")) {
-      const input = document.querySelector("#ommiMediaSearch");
-      if (input) input.value = "";
-      return ommiMediaLoadLibrary("");
+    if (event.target.closest?.("#ommiMediaSearchBtn")) {
+      return ommiMediaLoadLibrary(
+        document.querySelector("#ommiMediaSearch")?.value || "",
+        openMmiMedia.filter,
+      );
     }
     if (event.target.closest?.("#ommiMediaPrev")) return ommiMediaPrev();
     if (event.target.closest?.("#ommiMediaNext")) return ommiMediaNext();
