@@ -337,3 +337,52 @@ The web dashboard is a read-only MMI surface. It polls local decoded state and r
 
 For live vehicle testing, use listen-only CAN wiring and removable harness/adaptor setups. Do not cut or permanently modify the vehicle loom for dashboard testing.
 <!-- OPENMMI_WEB_SETTINGS_DOCS_END -->
+
+<!-- open-mmi-internet-radio-start -->
+## Internet Radio source
+
+The existing Media source selector now supports **Internet Radio** through the
+community Radio Browser directory. Enable it in **Settings → Media**, then select
+**Internet Radio** on the Media page. Search is live and the browse menu offers
+popular, top-rated, recently active, and browser-local favourite stations. Country
+and language selectors appear beneath the browse control. On first use, the country
+follows the browser locale when it contains a region; choosing **All countries**
+overrides that default.
+
+Use the star beside the playback controls to add or remove the current station. Radio
+favourites and country/language preferences are stored in browser local storage and
+do not sync between devices.
+
+The dashboard sends only station UUIDs to its own server. The browser never receives
+or opens arbitrary catalogue stream URLs directly. Before proxying a station, the
+server resolves the stream host and rejects loopback, private, link-local, multicast,
+reserved, and unspecified addresses. Redirect targets are checked again before they
+are followed.
+
+Optional configuration:
+
+```bash
+export OPEN_MMI_RADIO_BROWSER_URL='https://all.api.radio-browser.info'
+export OPEN_MMI_RADIO_USER_AGENT='Open-MMI/0.1 (+https://github.com/open-mmi/open-mmi)'
+export OPEN_MMI_RADIO_CATALOG_TIMEOUT='6'
+export OPEN_MMI_RADIO_STREAM_TIMEOUT='12'
+```
+
+Private-network station targets are blocked by default. A trusted deployment that
+intentionally uses a private stream can opt in explicitly:
+
+```bash
+export OPEN_MMI_RADIO_ALLOW_PRIVATE_STREAMS=1
+```
+
+Do not enable that escape hatch on a dashboard exposed to untrusted users.
+
+API checks:
+
+```bash
+curl 'http://127.0.0.1:8765/api/radio/status'
+curl 'http://127.0.0.1:8765/api/radio/search?filter=popular&limit=5'
+curl 'http://127.0.0.1:8765/api/radio/search?q=bbc&country=GB&language=english&limit=5'
+curl 'http://127.0.0.1:8765/api/radio/options'
+```
+<!-- open-mmi-internet-radio-end -->

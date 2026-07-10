@@ -3160,3 +3160,105 @@ html.openmmi-telltale-test-active #openMmiFooterTelltales [data-openmmi-telltale
   vector-effect: non-scaling-stroke;
 }
 /* --- Open MMI Media speaker icon fix end --- */
+
+/* --- Open MMI Internet Radio source start --- */
+#openMmiMediaRoot.openmmi-media-source-radio #ommiMediaProgressTrack {
+  cursor: default;
+}
+
+#openMmiMediaRoot #ommiMediaProgressTrack.is-live {
+  opacity: 0.72;
+  pointer-events: none;
+}
+
+#openMmiMediaRoot #ommiMediaProgressTrack.is-live .ommi-progress-fill {
+  transition: width 180ms ease;
+}
+
+#openMmiMediaRoot .ommi-track-duration.ommi-live {
+  width: auto;
+  min-width: 2.85rem;
+  padding: 0.18rem 0.38rem;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 999px;
+  font-size: 0.64rem;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-align: center;
+}
+
+#openMmiMediaRoot.openmmi-media-source-radio #ommiMediaElapsed {
+  font-weight: 750;
+  letter-spacing: 0.08em;
+}
+/* --- Open MMI Internet Radio source end --- */
+
+/* --- Open MMI Radio favourites and locale filters start --- */
+#openMmiMediaRoot .input-group:has(#ommiMediaFilter) > .ommi-radio-facets {
+  grid-column: 1 / -1;
+  grid-row: 3;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  width: 100%;
+  min-width: 0;
+}
+
+#openMmiMediaRoot:not(.openmmi-media-source-radio) .ommi-radio-facets,
+#openMmiMediaRoot .ommi-radio-facets[hidden] {
+  display: none !important;
+}
+
+#openMmiMediaRoot .ommi-radio-facet-select {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 12.5rem;
+  min-height: 30px;
+  height: 30px;
+  padding: 0.16rem 1.65rem 0.16rem 0.48rem;
+  border: 1px solid rgba(255, 255, 255, 0.7) !important;
+  border-radius: 0.48rem !important;
+  background-color: rgba(255, 255, 255, 0.045) !important;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+#openMmiMediaRoot .ommi-radio-facet-select:hover,
+#openMmiMediaRoot .ommi-radio-facet-select:focus-visible {
+  border-color: #fff !important;
+  background-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+#openMmiMediaRoot #ommiMediaFavoriteBtn {
+  display: inline-grid;
+  place-items: center;
+  width: 42px;
+  min-width: 42px;
+  height: 42px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.88) !important;
+}
+
+#openMmiMediaRoot #ommiMediaFavoriteBtn[hidden] {
+  display: none !important;
+}
+
+#openMmiMediaRoot #ommiMediaFavoriteBtn svg {
+  width: 1.12rem;
+  height: 1.12rem;
+}
+
+#openMmiMediaRoot #ommiMediaFavoriteBtn[aria-pressed="true"] {
+  background: rgba(255, 255, 255, 0.16) !important;
+  color: #fff;
+}
+
+@media (max-height: 620px) and (min-width: 700px) {
+  #openMmiMediaRoot .ommi-radio-facet-select {
+    min-height: 27px;
+    height: 27px;
+    font-size: 0.68rem;
+  }
+}
+/* --- Open MMI Radio favourites and locale filters end --- */
