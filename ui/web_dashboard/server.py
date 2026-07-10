@@ -264,19 +264,31 @@ def demo_status(scenario: str, started_at: float) -> Dict[str, Any]:
 JELLYFIN_TIMEOUT_SECONDS = 4.0
 JELLYFIN_ACTIVE_WITHIN_SECONDS = 600
 JELLYFIN_AUDIO_CHUNK_BYTES = 64 * 1024
+JELLYFIN_CLIENT_NAME = "Open MMI"
+JELLYFIN_DEVICE_ID = "open-mmi-dashboard"
+JELLYFIN_CLIENT_VERSION = "0.1.0"
+_JELLYFIN_LOGIN_CACHE: Dict[str, Dict[str, Any]] = {}
 
 
 def _jellyfin_config() -> Dict[str, Any]:
     url = os.getenv("OPEN_MMI_JELLYFIN_URL", "").strip().rstrip("/")
     token = os.getenv("OPEN_MMI_JELLYFIN_TOKEN", "").strip()
+    username = os.getenv("OPEN_MMI_JELLYFIN_USERNAME", "").strip()
+    password_set = "OPEN_MMI_JELLYFIN_PASSWORD" in os.environ
+    password = os.getenv("OPEN_MMI_JELLYFIN_PASSWORD", "")
     session_id = os.getenv("OPEN_MMI_JELLYFIN_SESSION_ID", "").strip()
     device_name = os.getenv("OPEN_MMI_JELLYFIN_DEVICE", "").strip().lower()
     user_id = os.getenv("OPEN_MMI_JELLYFIN_USER_ID", "").strip()
     insecure_tls = os.getenv("OPEN_MMI_JELLYFIN_INSECURE_TLS", "").strip().lower() in {"1", "true", "yes", "on"}
+    username_configured = bool(username and password_set)
     return {
-        "configured": bool(url and token),
+        "configured": bool(url and (token or username_configured)),
         "url": url,
         "token": token,
+        "username": username,
+        "password": password,
+        "username_configured": username_configured,
+        "auth_mode": "token" if token else "username" if username_configured else "",
         "session_id": session_id,
         "device_name": device_name,
         "user_id": user_id,
@@ -284,11 +296,92 @@ def _jellyfin_config() -> Dict[str, Any]:
     }
 
 
+def _jellyfin_header_value(value: Any) -> str:
+    return str(value).replace("\\", "\\\\").replace('"', '\"')
+
+
+def _jellyfin_login_auth_header(config: Dict[str, Any]) -> str:
+    device_name = os.getenv("OPEN_MMI_JELLYFIN_DEVICE", "").strip() or "Dashboard"
+    device_id = os.getenv("OPEN_MMI_JELLYFIN_DEVICE_ID", "").strip() or JELLYFIN_DEVICE_ID
+    return (
+        f'MediaBrowser Client="{_jellyfin_header_value(JELLYFIN_CLIENT_NAME)}", '
+        f'Device="{_jellyfin_header_value(device_name)}", '
+        f'DeviceId="{_jellyfin_header_value(device_id)}", '
+        f'Version="{_jellyfin_header_value(JELLYFIN_CLIENT_VERSION)}"'
+    )
+
+
+def _jellyfin_login(config: Dict[str, Any]) -> Dict[str, Any]:
+    from urllib.error import HTTPError, URLError
+    from urllib.request import Request
+
+    if not config.get("username_configured"):
+        raise RuntimeError("Jellyfin username/password is not configured")
+
+    device_id = os.getenv("OPEN_MMI_JELLYFIN_DEVICE_ID", "").strip() or JELLYFIN_DEVICE_ID
+    cache_key = "|".join([str(config.get("url") or ""), str(config.get("username") or ""), device_id])
+    cached = _JELLYFIN_LOGIN_CACHE.get(cache_key)
+    if cached and cached.get("token"):
+        return cached
+
+    url = f"{config['url']}/Users/AuthenticateByName"
+    body = json.dumps({"Username": config.get("username", ""), "Pw": config.get("password", "")}).encode("utf-8")
+    request = Request(
+        url,
+        data=body,
+        headers={
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "Authorization": _jellyfin_login_auth_header(config),
+        },
+        method="POST",
+    )
+
+    try:
+        with _jellyfin_urlopen(request, config, timeout=JELLYFIN_TIMEOUT_SECONDS) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        raise RuntimeError(f"Jellyfin login HTTP {exc.code}") from exc
+    except URLError as exc:
+        raise RuntimeError(f"Jellyfin login connection failed: {exc.reason}") from exc
+    except TimeoutError as exc:
+        raise RuntimeError("Jellyfin login timed out") from exc
+
+    if not isinstance(payload, dict) or not payload.get("AccessToken"):
+        raise RuntimeError("Jellyfin login did not return an access token")
+
+    user = payload.get("User") if isinstance(payload.get("User"), dict) else {}
+    login = {
+        "token": str(payload["AccessToken"]),
+        "user_id": str(user.get("Id") or ""),
+        "user_name": str(user.get("Name") or config.get("username") or ""),
+    }
+    _JELLYFIN_LOGIN_CACHE[cache_key] = login
+    return login
+
+
+def _jellyfin_access_token(config: Dict[str, Any]) -> str:
+    token = str(config.get("token") or "")
+    if token:
+        return token
+
+    login = _jellyfin_login(config)
+    token = str(login.get("token") or "")
+    if not token:
+        raise RuntimeError("Jellyfin login did not return an access token")
+
+    config["token"] = token
+    if login.get("user_id") and not config.get("user_id"):
+        config["user_id"] = login["user_id"]
+    return token
+
+
 def _jellyfin_auth_headers(config: Dict[str, Any]) -> Dict[str, str]:
+    token = _jellyfin_access_token(config)
     return {
         "Accept": "application/json",
-        "Authorization": f"MediaBrowser Token={config['token']}",
-        "X-MediaBrowser-Token": config["token"],
+        "Authorization": f"MediaBrowser Token={token}",
+        "X-MediaBrowser-Token": token,
     }
 
 
@@ -424,7 +517,7 @@ def _jellyfin_status_payload(demo_mode: bool = False) -> Dict[str, Any]:
             "status": "unconfigured",
             "state_label": "not configured",
             "title": "Jellyfin not configured",
-            "subtitle": "Set OPEN_MMI_JELLYFIN_URL and OPEN_MMI_JELLYFIN_TOKEN",
+            "subtitle": "Set Jellyfin URL with token or username/password",
         }
 
     try:
@@ -634,7 +727,9 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             from urllib.error import HTTPError, URLError
             from urllib.request import Request
             image_url = f"{config['url']}/Items/{item_id}/Images/Primary?maxHeight=480&quality=84"
-            request = Request(image_url, headers={"Authorization": f"MediaBrowser Token={config['token']}", "X-MediaBrowser-Token": config["token"]})
+            headers = _jellyfin_auth_headers(config)
+            headers["Accept"] = "image/*,*/*"
+            request = Request(image_url, headers=headers)
             try:
                 with _jellyfin_urlopen(request, config, timeout=JELLYFIN_TIMEOUT_SECONDS) as response:
                     body = response.read()

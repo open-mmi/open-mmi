@@ -118,6 +118,17 @@ export OPEN_MMI_JELLYFIN_TOKEN='your-api-key'
 python3 ui/web_dashboard/server.py
 ```
 
+Assigned-user login is also supported. This keeps Jellyfin credentials server-side and avoids exposing them to the browser:
+
+```bash
+export OPEN_MMI_JELLYFIN_URL='https://your-jellyfin'
+export OPEN_MMI_JELLYFIN_USERNAME='open-mmi'
+export OPEN_MMI_JELLYFIN_PASSWORD='...'
+```
+
+Token mode still works and takes priority when `OPEN_MMI_JELLYFIN_TOKEN` is set. `OPEN_MMI_JELLYFIN_INSECURE_TLS=1` is only for self-signed or otherwise untrusted local TLS certificates.
+
+
 For a self-signed or local HTTPS certificate:
 
 ```bash
