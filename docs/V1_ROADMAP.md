@@ -215,4 +215,3 @@ Still pending before calling V1 complete:
 
 - Media page source switcher now shows enabled sources only. Disabled sources remain configurable from Settings → Media and do not appear as disabled placeholders on the Media page.
 - Jellyfin assigned-user login: `OPEN_MMI_JELLYFIN_USERNAME` / `OPEN_MMI_JELLYFIN_PASSWORD` with token mode retained as an override.
-

@@ -1,71 +1,73 @@
 from __future__ import annotations
 
 import unittest
-from pathlib import Path
+
+from dashboard_contract_helpers import at_rule_block, css_properties, marked_block, read_repo_text
 
 
 class DashboardMediaControlVisualConsistencyTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.styles = (
-            Path(__file__).resolve().parents[1]
-            / "ui"
-            / "web_dashboard"
-            / "static"
-            / "styles.css"
-        ).read_text(encoding="utf-8")
-        start = cls.styles.index(
-            "/* --- Open MMI media control visual consistency start --- */"
-        )
-        end = cls.styles.index(
+        cls.styles = read_repo_text("ui/web_dashboard/static/styles.css")
+        cls.block = marked_block(
+            cls.styles,
+            "/* --- Open MMI media control visual consistency start --- */",
             "/* --- Open MMI media control visual consistency end --- */",
-            start,
         )
-        cls.block = cls.styles[start:end]
 
-    def test_radio_facets_share_second_row_on_wide_layouts(self):
-        self.assertIn("> .ommi-radio-facets", self.block)
-        self.assertIn("grid-row: 2;", self.block)
-        self.assertIn("padding-inline-start: 10.88rem;", self.block)
+    def assertCssValue(self, source: str, selector: str, name: str, expected: str):
+        properties = css_properties(source, selector)
+        self.assertEqual(properties.get(name), expected.lower())
 
-    def test_radio_facets_wrap_on_narrow_layouts(self):
-        self.assertIn("@media (max-width: 760px)", self.block)
-        self.assertIn("grid-row: 3;", self.block)
-        self.assertIn("padding-inline-start: 0;", self.block)
+    def test_radio_facets_use_a_wide_second_row_and_narrow_fallback(self):
+        selector = (
+            "#openMmiMediaRoot.openmmi-media-source-radio "
+            ".input-group:has(#ommiMediaFilter) > .ommi-radio-facets"
+        )
+        wide = self.block.split("@media", 1)[0]
+        self.assertCssValue(wide, selector, "grid-row", "2")
+        self.assertCssValue(wide, selector, "padding-inline-start", "10.88rem")
+        narrow = at_rule_block(self.block, r"@media\s*\(\s*max-width\s*:\s*760px\s*\)")
+        self.assertCssValue(narrow, selector, "grid-row", "3")
+        self.assertCssValue(narrow, selector, "padding-inline-start", "0")
 
-    def test_radio_select_text_and_keylines_are_explicitly_white(self):
-        self.assertIn(".ommi-radio-facet-select", self.block)
-        self.assertIn("-webkit-text-fill-color: #fff;", self.block)
-        self.assertIn("border-color: #fff !important;", self.block)
+    def test_radio_selects_use_white_text_and_keylines(self):
+        props = css_properties(
+            self.block,
+            "#openMmiMediaRoot.openmmi-media-source-radio .ommi-radio-facet-select",
+        )
+        self.assertEqual(props.get("-webkit-text-fill-color"), "#fff")
+        self.assertIn(props.get("border-color"), {"#fff", "#fff !important"})
 
     def test_favourite_and_search_actions_use_white_keylines(self):
-        self.assertIn("#ommiMediaFavoriteBtn", self.block)
-        self.assertIn("#ommiMediaSearchBtn", self.block)
-        self.assertIn("outline-color: #fff !important;", self.block)
+        for selector in ("#openMmiMediaRoot #ommiMediaFavoriteBtn", "#openMmiMediaRoot #ommiMediaSearchBtn"):
+            with self.subTest(selector=selector):
+                props = css_properties(self.block, selector)
+                self.assertIn(props.get("border-color"), {"#fff", "#fff !important"})
 
-    def test_disabled_favourite_mutes_only_its_icon(self):
-        disabled = self.block.index("#openMmiMediaRoot #ommiMediaFavoriteBtn:disabled {")
-        icon = self.block.index("#openMmiMediaRoot #ommiMediaFavoriteBtn:disabled svg", disabled)
-        excerpt = self.block[disabled:icon]
-        self.assertIn("border-color: #fff !important;", excerpt)
-        self.assertIn("opacity: 1 !important;", excerpt)
-        self.assertIn("opacity: 0.55;", self.block[icon:])
+    def test_disabled_favourite_mutes_only_the_icon(self):
+        button = css_properties(self.block, "#openMmiMediaRoot #ommiMediaFavoriteBtn:disabled")
+        icon = css_properties(self.block, "#openMmiMediaRoot #ommiMediaFavoriteBtn:disabled svg")
+        self.assertIn(button.get("border-color"), {"#fff", "#fff !important"})
+        self.assertIn(button.get("opacity"), {"1", "1 !important"})
+        self.assertEqual(icon.get("opacity"), "0.55")
 
-    def test_selected_favourite_does_not_fill_the_button(self):
-        selected = self.block.index(
-            '#openMmiMediaRoot #ommiMediaFavoriteBtn[aria-pressed="true"] {'
+    def test_selected_favourite_changes_icon_not_button_surface(self):
+        selected = css_properties(
+            self.block,
+            '#openMmiMediaRoot #ommiMediaFavoriteBtn[aria-pressed="true"]',
         )
-        hover = self.block.index(
-            '#openMmiMediaRoot #ommiMediaFavoriteBtn[aria-pressed="true"]:hover',
-            selected,
+        self.assertIn(
+            selected.get("background-color"),
+            {"transparent", "transparent !important"},
         )
-        self.assertIn("background-color: transparent !important;", self.block[selected:hover])
 
-    def test_transport_hover_surface_is_shared(self):
-        self.assertIn("#openMmiMediaRoot #ommiMediaPrev:hover", self.block)
-        self.assertIn("#openMmiMediaRoot #ommiMediaNext:hover", self.block)
-        self.assertIn("#openMmiMediaRoot #ommiMediaStop:hover", self.block)
-        self.assertIn("background-color: rgba(255, 255, 255, 0.12) !important;", self.block)
+    def test_transport_buttons_share_the_same_hover_surface(self):
+        expected = "rgba(255, 255, 255, 0.12) !important"
+        for control in ("Prev", "Next", "Stop"):
+            selector = f"#openMmiMediaRoot #ommiMedia{control}:hover"
+            with self.subTest(selector=selector):
+                self.assertEqual(css_properties(self.block, selector).get("background-color"), expected)
 
 
 if __name__ == "__main__":

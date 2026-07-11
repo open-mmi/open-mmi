@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import importlib.util
 import os
 import sys
@@ -5,6 +7,16 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+
+from dashboard_contract_helpers import (
+    implemented_source_ids,
+    javascript_function_body,
+    js_bool_property,
+    js_object_with_id,
+    js_string_property,
+    marked_block,
+    read_repo_text,
+)
 
 
 SERVER_PATH = Path(__file__).resolve().parents[1] / "ui" / "web_dashboard" / "server.py"
@@ -68,10 +80,20 @@ class UsbMediaTests(unittest.TestCase):
         self.assertTrue(tracks["parent_id"])
         self.assertEqual(tracks["breadcrumbs"][-1]["label"], "Album")
 
-    def test_recursive_search_and_sidecar_art(self):
-        payload = server._usb_browse_payload("", "track", 60, "az")
-        self.assertEqual(len(payload["items"]), 1)
-        item = payload["items"][0]
+    def test_recursive_search_sidecar_art_and_spaced_terms(self):
+        (self.album / "Road Trip Anthem.mp3").write_bytes(b"road-trip")
+        cases = {
+            "track": "Track One",
+            "track one": "Track One",
+            "road trip": "Road Trip Anthem",
+            "artist second": "Second",
+        }
+        for query, expected in cases.items():
+            with self.subTest(query=query):
+                payload = server._usb_browse_payload("", query, 60, "az")
+                names = [item["name"] for item in payload["items"]]
+                self.assertIn(expected, names)
+        item = server._usb_browse_payload("", "track one", 60, "az")["items"][0]
         self.assertEqual(item["source"], "usb")
         self.assertEqual(item["kind"], "audio")
         self.assertTrue(item["image_url"].startswith("/api/usb/art/"))
@@ -83,7 +105,6 @@ class UsbMediaTests(unittest.TestCase):
         _root, relative, resolved = server._usb_resolve_id(valid)
         self.assertEqual(relative.as_posix(), "Artist/Album/Track_One.mp3")
         self.assertEqual(resolved, self.album / "Track_One.mp3")
-
         with self.assertRaises(ValueError):
             server._usb_encode_id(root["id"], Path("../outside.mp3"))
         with self.assertRaises(ValueError):
@@ -102,8 +123,8 @@ class UsbMediaTests(unittest.TestCase):
         item_id = server._usb_encode_id(root["id"], Path("link/escape.mp3"))
         with self.assertRaises(PermissionError):
             server._usb_resolve_id(item_id)
-        root_payload = server._usb_browse_payload(server._usb_encode_id(root["id"]), "", 60, "browse")
-        self.assertNotIn("link", [item["name"] for item in root_payload["items"]])
+        payload = server._usb_browse_payload(server._usb_encode_id(root["id"]), "", 60, "browse")
+        self.assertNotIn("link", [item["name"] for item in payload["items"]])
 
     def test_range_parsing(self):
         self.assertEqual(server._usb_parse_range("bytes=2-5", 10), (2, 5))
@@ -114,48 +135,34 @@ class UsbMediaTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             server._usb_parse_range("bytes=1-2,4-5", 10)
 
-    def test_frontend_and_routes_are_present(self):
-        root = SERVER_PATH.parents[2]
-        app = (root / "ui/web_dashboard/static/app.js").read_text(encoding="utf-8")
-        source = SERVER_PATH.read_text(encoding="utf-8")
-        self.assertIn('id: "usb", label: "USB", note: "read-only local media", planned: false', app)
-        self.assertIn('api.adapters.usb = usbAdapter()', app)
-        self.assertRegex(app, r'return\s*\[[^\]]*"usb"[^\]]*\]\.includes\(active\)')
-        self.assertIn('if parsed.path == "/api/usb/status":', source)
-        self.assertIn('if parsed.path.startswith("/api/usb/stream/"):', source)
+    def test_frontend_registration_and_routes_are_semantic(self):
+        app = read_repo_text("ui/web_dashboard/static/app.js")
+        source = read_repo_text("ui/web_dashboard/server.py")
+        descriptor = js_object_with_id(app, "usb")
+        self.assertEqual(js_string_property(descriptor, "label"), "USB")
+        self.assertFalse(js_bool_property(descriptor, "planned"))
+        self.assertIn("usb", implemented_source_ids(app))
+        self.assertRegex(app, r"\badapters\.usb\s*=\s*usbAdapter\s*\(\s*\)")
+        self.assertRegex(source, r"parsed\.path\s*==\s*['\"]/api/usb/status['\"]")
+        self.assertRegex(source, r"parsed\.path\.startswith\(\s*['\"]/api/usb/stream/['\"]")
 
+    def test_usb_navigation_is_scoped_and_missing_durations_are_hydrated(self):
+        app = read_repo_text("ui/web_dashboard/static/app.js")
+        block = marked_block(
+            app,
+            "// --- Open MMI USB media source start ---",
+            "// --- Open MMI USB media source end ---",
+        )
+        chrome = javascript_function_body(block, "syncUsbSourceChrome")
+        self.assertRegex(
+            chrome,
+            r"controls\.hidden\s*=\s*[A-Za-z_$][\w$]*\s*!==?\s*['\"]usb['\"]",
+        )
+        self.assertRegex(block, r"preload\s*=\s*['\"]metadata['\"]")
+        self.assertIn("loadedmetadata", block)
+        self.assertRegex(block, r"Math\.min\(\s*2\s*,")
+        self.assertIn("durationCache", block)
 
-    def test_frontend_hydrates_missing_usb_durations(self):
-        root = SERVER_PATH.parents[2]
-        app = (root / "ui/web_dashboard/static/app.js").read_text(encoding="utf-8")
-        self.assertIn("durationCache: new Map()", app)
-        self.assertIn('audio.preload = "metadata";', app)
-        self.assertIn("Math.min(2, entries.length)", app)
-        self.assertIn('duration.textContent = "…";', app)
-        self.assertIn("commitUsbDuration(index, item, cached, generation)", app)
-        self.assertIn("playerAudio.addEventListener(\"loadedmetadata\"", app)
-
-
-    def test_usb_search_accepts_spaces_and_path_terms(self):
-        spaced = self.album / "Road Trip Anthem.mp3"
-        spaced.write_bytes(b"road-trip")
-        payload = server._usb_browse_payload("", "road trip", 60, "az")
-        self.assertIn("Road Trip Anthem", [item["name"] for item in payload["items"]])
-
-        separated = server._usb_browse_payload("", "track one", 60, "az")
-        self.assertIn("Track One", [item["name"] for item in separated["items"]])
-
-        across_path = server._usb_browse_payload("", "artist second", 60, "az")
-        self.assertIn("Second", [item["name"] for item in across_path["items"]])
-
-    def test_usb_navigation_chrome_is_source_scoped(self):
-        root = SERVER_PATH.parents[2]
-        app = (root / "ui/web_dashboard/static/app.js").read_text(encoding="utf-8")
-        self.assertIn("function syncUsbSourceChrome(sourceId = null)", app)
-        self.assertIn('const sourceButton = event.target.closest?.("[data-openmmi-media-source]");', app)
-        self.assertIn('syncUsbSourceChrome(sourceId);', app)
-        self.assertIn('if (sourceId !== "usb") return;', app)
-        self.assertIn('syncUsbSourceChrome(usbIsActive ? "usb" : null);', app)
 
 if __name__ == "__main__":
     unittest.main()

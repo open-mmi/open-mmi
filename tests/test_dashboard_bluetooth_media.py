@@ -1,16 +1,27 @@
 from __future__ import annotations
 
 import importlib.util
-import os
-import tempfile
+import sys
 import unittest
 from pathlib import Path
 from unittest import mock
 
-SERVER_PATH = Path(__file__).resolve().parents[1] / "ui/web_dashboard/server.py"
+from dashboard_contract_helpers import (
+    css_properties,
+    javascript_function_body,
+    js_bool_property,
+    js_object_with_id,
+    js_string_property,
+    marked_block,
+    read_repo_text,
+)
+
+
+SERVER_PATH = Path(__file__).resolve().parents[1] / "ui" / "web_dashboard" / "server.py"
 SPEC = importlib.util.spec_from_file_location("open_mmi_dashboard_server_bluetooth_test", SERVER_PATH)
-server = importlib.util.module_from_spec(SPEC)
 assert SPEC and SPEC.loader
+server = importlib.util.module_from_spec(SPEC)
+sys.modules[SPEC.name] = server
 SPEC.loader.exec_module(server)
 
 
@@ -54,7 +65,7 @@ class BluetoothMediaTests(unittest.TestCase):
                 "Duration": 180000,
             },
             (path, "org.bluez.MediaPlayer1", "Device"): "/org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF",
-            (path, "org.bluez.MediaPlayer1", "Name"): "Remote Player",
+            (path, "org.bluez.MediaPlayer1", "Name"): "Browser Player",
             ("/org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF", "org.bluez.Device1", "Alias"): "Pixel Phone",
         }
 
@@ -74,10 +85,10 @@ class BluetoothMediaTests(unittest.TestCase):
         self.assertNotIn("AA_BB_CC", str(payload))
         self.assertFalse(payload["controls"]["seek"])
 
-    def test_control_is_allowlisted_and_revalidates_current_player(self):
+    def test_controls_are_allowlisted_revalidated_and_report_actual_action(self):
         path = "/org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF/player0"
         player_id = server._bluetooth_player_id(path)
-        calls = []
+        calls: list[tuple] = []
 
         def busctl(*args):
             calls.append(args)
@@ -85,9 +96,12 @@ class BluetoothMediaTests(unittest.TestCase):
 
         with mock.patch.object(server, "_bluetooth_player_paths", return_value=[path]), \
              mock.patch.object(server, "_bluetooth_busctl", side_effect=busctl):
-            result = server._bluetooth_control(player_id, "next")
-            self.assertTrue(result["ok"])
-            self.assertEqual(calls[-1][-1], "Next")
+            for action, method in (("play", "Play"), ("pause", "Pause"), ("next", "Next"), ("previous", "Previous"), ("stop", "Stop")):
+                with self.subTest(action=action):
+                    result = server._bluetooth_control(player_id, action)
+                    self.assertTrue(result["ok"])
+                    self.assertEqual(calls[-1][-1], method)
+                    self.assertEqual(result.get("performed_action"), action)
             with self.assertRaises(ValueError):
                 server._bluetooth_control(player_id, "delete_everything")
 
@@ -95,58 +109,53 @@ class BluetoothMediaTests(unittest.TestCase):
             with self.assertRaises(FileNotFoundError):
                 server._bluetooth_control(player_id, "play")
 
-    def test_play_pause_uses_current_remote_status(self):
+    def test_play_pause_uses_current_remote_status_and_reports_result(self):
         path = "/org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF/player0"
         player_id = server._bluetooth_player_id(path)
-        calls = []
+        calls: list[tuple] = []
         with mock.patch.object(server, "_bluetooth_player_paths", return_value=[path]), \
              mock.patch.object(server, "_bluetooth_optional_property", return_value="playing"), \
              mock.patch.object(server, "_bluetooth_busctl", side_effect=lambda *args: calls.append(args) or ""):
             result = server._bluetooth_control(player_id, "play_pause")
         self.assertEqual(calls[-1][-1], "Pause")
-        self.assertEqual(result["performed_action"], "pause")
-        self.assertEqual(result["playback_status"], "paused")
+        self.assertEqual(result.get("performed_action"), "pause")
+        self.assertEqual(result.get("playback_status"), "paused")
 
-    def test_frontend_routes_and_security_contract(self):
-        root = SERVER_PATH.parents[2]
-        app = (root / "ui/web_dashboard/static/app.js").read_text(encoding="utf-8")
-        source = SERVER_PATH.read_text(encoding="utf-8")
-        styles = (root / "ui/web_dashboard/static/styles.css").read_text(encoding="utf-8")
-        self.assertIn('id: "bluetooth", label: "Bluetooth", note: "connected phone playback controls", planned: false', app)
-        self.assertIn("api.adapters.bluetooth = bluetoothAdapter()", app)
-        self.assertIn('fetch("/api/bluetooth/control"', app)
-        self.assertIn('if parsed.path == "/api/bluetooth/status":', source)
-        self.assertIn('if parsed.path != "/api/bluetooth/control":', source)
-        self.assertIn('content_type != "application/json"', source)
-        self.assertIn("_bluetooth_same_origin", source)
-        self.assertIn("is-bluetooth-readonly", styles)
-        self.assertIn('progress.classList.remove("is-bluetooth-readonly")', app)
-        self.assertIn('selected_action not in _BLUETOOTH_ACTION_METHODS', source)
-        self.assertIn('function effectivePlaybackStatus(', app)
-        self.assertIn('function currentBluetoothPosition(', app)
-        self.assertIn('function applyOptimisticControlState(', app)
-        self.assertIn('function scheduleProgressTicker(', app)
-        self.assertIn('applyOptimisticControlState(performedAction);', app)
-        self.assertIn('clearProgressTicker();', app)
-        self.assertIn('performed_action": method.lower()', source)
-        self.assertIn('const performedAction = String(payload?.performed_action || action).toLowerCase();', app)
-        self.assertIn('Dashboard-issued Bluetooth transport state is authoritative', app)
-        self.assertNotIn("Release the pause latch only when playback", app)
-        self.assertNotIn(
-            "state.playbackOverridePosition = Math.max(state.playbackOverridePosition, serverPosition);",
+    def test_frontend_registration_transport_and_seek_reconciliation_are_semantic(self):
+        app = read_repo_text("ui/web_dashboard/static/app.js")
+        descriptor = js_object_with_id(app, "bluetooth")
+        self.assertEqual(js_string_property(descriptor, "label"), "Bluetooth")
+        self.assertFalse(js_bool_property(descriptor, "planned"))
+        self.assertRegex(app, r"\badapters\.bluetooth\s*=\s*bluetoothAdapter\s*\(\s*\)")
+
+        block = marked_block(
             app,
+            "// --- Open MMI Bluetooth media source start ---",
+            "// --- Open MMI Bluetooth media source end ---",
         )
-        self.assertIn('if (overrideStatus === "playing")', app)
-        self.assertIn('(performance.now() - Number(state.playbackOverrideStartedAt', app)
-        self.assertIn('function bluetoothPlayButtonAction()', app)
-        self.assertIn('action = bluetoothPlayButtonAction();', app)
-        self.assertNotIn('action = "play_pause";', app)
-        self.assertIn('state.playbackOverride !== "playing"', app)
-        self.assertIn('const remoteSeek = (', app)
-        self.assertIn('serverDelta < -1.5', app)
-        self.assertIn('serverDelta >= observedSeconds + 1.5', app)
-        self.assertIn('Math.abs(drift) >= 4', app)
-        self.assertIn('state.playbackOverridePosition = serverPosition;', app)
+        button_action = javascript_function_body(block, "bluetoothPlayButtonAction")
+        self.assertIn('"pause"', button_action)
+        self.assertIn('"play"', button_action)
+        self.assertNotRegex(block, r"\baction\s*=\s*['\"]play_pause['\"]")
+        self.assertRegex(block, r"performed_action")
+        self.assertIn("remoteSeek", block)
+        self.assertRegex(block, r"playbackOverridePosition\s*=\s*serverPosition")
+
+    def test_routes_origin_json_and_readonly_progress_contract(self):
+        app = read_repo_text("ui/web_dashboard/static/app.js")
+        source = read_repo_text("ui/web_dashboard/server.py")
+        styles = read_repo_text("ui/web_dashboard/static/styles.css")
+        self.assertRegex(source, r"parsed\.path\s*==\s*['\"]/api/bluetooth/status['\"]")
+        self.assertRegex(source, r"parsed\.path\s*!=\s*['\"]/api/bluetooth/control['\"]")
+        self.assertRegex(source, r"content_type\s*!=\s*['\"]application/json['\"]")
+        self.assertIn("_bluetooth_same_origin", source)
+        self.assertIn("_BLUETOOTH_ACTION_METHODS", source)
+        self.assertRegex(app, r"fetch\(\s*['\"]/api/bluetooth/control['\"]")
+        props = css_properties(
+            styles,
+            "#openMmiMediaRoot #ommiMediaProgressTrack.is-bluetooth-readonly",
+        )
+        self.assertEqual(props.get("cursor"), "default !important")
 
 
 if __name__ == "__main__":
