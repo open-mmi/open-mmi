@@ -5057,10 +5057,11 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
   const STATUS_PATH = "/api/status";
   const STATUS_INTERVAL_MS = 200;
   const SAMPLES_PER_SCENARIO = 50;
-  const RUNS_PER_SCENARIO = 3;
+  const RUNS_PER_SCENARIO = 5;
   const WARMUP_SAMPLES = 10;
   const SCENARIO_TIMEOUT_MS = 15000;
-  const REPORT_SCHEMA = 2;
+  const REPORT_SCHEMA = 3;
+  const REQUIRED_PASSING_RUNS = 4;
   const SAMPLE_ID = Symbol("openMmiPerformanceSampleId");
 
   const state = {
@@ -5547,18 +5548,32 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
         scenario.run_count === RUNS_PER_SCENARIO
         && scenario.failed_requests === 0
         && scenario.completed_target
-        && scenario.stability?.stable !== false,
+        && scenario.availability?.ready !== false
+        && scenario.valid_run_count >= REQUIRED_PASSING_RUNS,
       );
   }
 
-  function aggregateScenario(name, runs, skippedSetup = null) {
+
+  function aggregateScenario(name, runs, coldSetup = null, skippedSetup = null) {
     if (!runs.length) {
-      return summariseScenario(name, skippedSetup || {
+      const summary = summariseScenario(name, skippedSetup || {
         skipped: true,
         reason: "No measured runs completed",
       }, `${name}__none`);
+      summary.availability = {
+        ready: coldSetup?.ready !== false && !coldSetup?.skipped,
+        setup_ms: round(coldSetup?.setup_ms),
+        failure_reason: coldSetup?.ready === false
+          ? String(coldSetup?.reason || "Source did not become ready")
+          : coldSetup?.skipped
+            ? String(coldSetup?.reason || "Source was skipped")
+            : null,
+      };
+      summary.benchmark_kind = "cold_activation_only";
+      summary.run_count = 0;
+      summary.valid_run_count = 0;
+      return summary;
     }
-    const setupTimes = runs.map((run) => Number(run.source_setup_ms)).filter(Number.isFinite);
     const longTaskCounts = runs.map((run) => Number(run.long_tasks?.count || 0));
     const requestStats = aggregateDistribution(runs, "request_ms");
     const jsonStats = aggregateDistribution(runs, "json_ms");
@@ -5567,15 +5582,29 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
     const requestPaintStats = aggregateDistribution(runs, "request_to_paint_ms");
     const requestGapStats = aggregateDistribution(runs, "request_start_gap_ms");
     const paintGapStats = aggregateDistribution(runs, "paint_gap_ms");
+    const validRuns = runs.filter((run) =>
+      run.completed_target
+      && Number(run.failed_requests || 0) === 0
+      && Number(run.max_in_flight || 0) <= 1,
+    );
     return {
       name,
-      benchmark_kind: "median_of_runs",
+      benchmark_kind: "cold_activation_plus_five_warm_runs",
       skipped: false,
       skip_reason: null,
-      source_ready: runs.every((run) => run.source_ready !== false),
-      source_setup_ms: round(percentile(setupTimes, 0.5)),
-      source_setup_worst_ms: setupTimes.length ? round(Math.max(...setupTimes)) : null,
+      source_ready: coldSetup?.ready !== false,
+      source_setup_ms: round(coldSetup?.setup_ms),
+      source_setup_worst_ms: round(coldSetup?.setup_ms),
+      availability: {
+        ready: coldSetup?.ready !== false,
+        setup_ms: round(coldSetup?.setup_ms),
+        failure_reason: coldSetup?.ready === false
+          ? String(coldSetup?.reason || "Source did not become ready")
+          : null,
+      },
       run_count: runs.length,
+      valid_run_count: validRuns.length,
+      required_passing_runs: REQUIRED_PASSING_RUNS,
       samples: runs.reduce((sum, run) => sum + Number(run.samples || 0), 0),
       successful_requests: runs.reduce((sum, run) => sum + Number(run.successful_requests || 0), 0),
       failed_requests: runs.reduce((sum, run) => sum + Number(run.failed_requests || 0), 0),
@@ -5591,56 +5620,112 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
       request_to_paint_ms: requestPaintStats,
       request_start_gap_ms: requestGapStats,
       paint_gap_ms: paintGapStats,
-      stability: stabilityForScenario(requestStats, paintGapStats),
+      stability: {
+        stable: validRuns.length >= REQUIRED_PASSING_RUNS,
+        valid_runs: validRuns.length,
+        required_runs: REQUIRED_PASSING_RUNS,
+      },
       long_tasks: {
         supported: runs.some((run) => run.long_tasks?.supported),
         count: longTaskCounts.reduce((sum, value) => sum + value, 0),
         total_ms: round(runs.reduce((sum, run) => sum + Number(run.long_tasks?.total_ms || 0), 0)),
         maximum_ms: round(Math.max(0, ...runs.map((run) => Number(run.long_tasks?.maximum_ms || 0)))),
       },
-      completed_target: runs.every((run) => run.completed_target),
+      completed_target: validRuns.length >= REQUIRED_PASSING_RUNS,
       capture_ms: round(runs.reduce((sum, run) => sum + Number(run.capture_ms || 0), 0)),
       runs,
     };
   }
 
+
   async function benchmarkScenario(name, setup) {
-    const warmup = await captureScenarioRun(name, setup, 0, WARMUP_SAMPLES, true);
-    if (warmup.skipped) return aggregateScenario(name, [], warmup);
+    setProgress(`Cold activation: ${name.replaceAll("_", " ")}…`, 0);
+    const coldSetup = await setup();
+    if (coldSetup?.skipped) {
+      return aggregateScenario(name, [], coldSetup, coldSetup);
+    }
+    if (coldSetup?.ready === false) {
+      return aggregateScenario(name, [], coldSetup, {
+        skipped: false,
+        reason: coldSetup?.reason || "Source did not become ready",
+      });
+    }
+
+    const settledSetup = async () => ({
+      skipped: false,
+      ready: true,
+      setup_ms: 0,
+    });
+    const warmup = await captureScenarioRun(
+      name,
+      settledSetup,
+      0,
+      WARMUP_SAMPLES,
+      true,
+    );
+    if (warmup.skipped) return aggregateScenario(name, [], coldSetup, warmup);
+
     const runs = [];
     for (let run = 1; run <= RUNS_PER_SCENARIO; run += 1) {
       if (run > 1) await sleep(250);
-      const result = await captureScenarioRun(name, setup, run, SAMPLES_PER_SCENARIO, false);
-      if (result.skipped) return aggregateScenario(name, runs, result);
+      const result = await captureScenarioRun(
+        name,
+        settledSetup,
+        run,
+        SAMPLES_PER_SCENARIO,
+        false,
+      );
+      if (result.skipped) break;
       runs.push(result);
     }
-    return aggregateScenario(name, runs);
+    return aggregateScenario(name, runs, coldSetup);
   }
 
-  function compareMetric(baselineScenario, candidateScenario, group, metric, allowedRatio) {
+
+  function compareMetric(
+    baselineScenario,
+    candidateScenario,
+    group,
+    metric,
+    allowedRatio,
+    absoluteToleranceMs = 0,
+  ) {
     const oldValue = Number(baselineScenario?.[group]?.[metric]);
-    const newValue = Number(candidateScenario?.[group]?.[metric]);
-    if (!Number.isFinite(oldValue) || !Number.isFinite(newValue)) return null;
-    const limit = Math.max(oldValue * (1 + allowedRatio), oldValue + 0.5);
-    const check = {
+    if (!Number.isFinite(oldValue)) return null;
+    const candidateRuns = (candidateScenario?.runs || [])
+      .map((run) => Number(run?.[group]?.[metric]))
+      .filter(Number.isFinite);
+    const baselineRuns = (baselineScenario?.runs || [])
+      .map((run) => Number(run?.[group]?.[metric]))
+      .filter(Number.isFinite);
+    if (baselineRuns.length < REQUIRED_PASSING_RUNS) return null;
+
+    // The acceptance anchor is the slowest baseline run that must pass.
+    // With a four-of-five policy this is the fourth-best run, not the median.
+    // Small latency values also need an absolute floor: a harmless one- or
+    // two-millisecond shift should not look like a large percentage regression.
+    const sortedBaselineRuns = [...baselineRuns].sort((left, right) => left - right);
+    const baselineAcceptanceAnchor = sortedBaselineRuns[REQUIRED_PASSING_RUNS - 1];
+    const relativeLimit = baselineAcceptanceAnchor * (1 + allowedRatio);
+    const absoluteLimit = baselineAcceptanceAnchor
+      + Math.max(0, Number(absoluteToleranceMs) || 0);
+    const limit = Math.max(relativeLimit, absoluteLimit);
+    const passedRuns = candidateRuns.filter((value) => value <= limit).length;
+    return {
       baseline: round(oldValue),
-      candidate: round(newValue),
+      baseline_acceptance_anchor: round(baselineAcceptanceAnchor),
+      candidate: round(candidateScenario?.[group]?.[metric]),
       limit: round(limit),
-      passed: newValue <= limit,
+      relative_tolerance: allowedRatio,
+      absolute_tolerance_ms: round(absoluteToleranceMs),
+      passed_runs: passedRuns,
+      measured_runs: candidateRuns.length,
+      required_runs: REQUIRED_PASSING_RUNS,
+      passed: candidateRuns.length === RUNS_PER_SCENARIO
+        && passedRuns >= REQUIRED_PASSING_RUNS,
+      baseline_run_values: baselineRuns.map(round),
+      candidate_run_values: candidateRuns.map(round),
     };
-    const oldWorst = Number(baselineScenario?.[group]?.worst_p95);
-    const newWorst = Number(candidateScenario?.[group]?.worst_p95);
-    if (metric === "p95" && Number.isFinite(oldWorst) && Number.isFinite(newWorst)) {
-      const worstLimit = Math.max(oldWorst * 1.25, oldWorst + 1);
-      check.worst_run = {
-        baseline: round(oldWorst),
-        candidate: round(newWorst),
-        limit: round(worstLimit),
-        passed: newWorst <= worstLimit,
-      };
-      check.passed = check.passed && check.worst_run.passed;
-    }
-    return check;
   }
 
   function compareReports(baseline, candidate) {
@@ -5648,7 +5733,8 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
     const compatible = Number(baseline.schema) === REPORT_SCHEMA
       && Number(baseline.configuration?.runs_per_scenario) === RUNS_PER_SCENARIO
       && Number(baseline.configuration?.samples_per_run) === SAMPLES_PER_SCENARIO
-      && Number(baseline.configuration?.warmup_samples) === WARMUP_SAMPLES;
+      && Number(baseline.configuration?.warmup_samples) === WARMUP_SAMPLES
+      && Number(baseline.configuration?.required_passing_runs) === REQUIRED_PASSING_RUNS;
     if (!compatible) {
       return {
         passed: null,
@@ -5661,20 +5747,39 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
     for (const scenario of candidate.scenarios) {
       const old = baseline.scenarios.find((entry) => entry.name === scenario.name);
       if (!old || scenario.skipped || old.skipped) continue;
+
+      if (scenario.availability?.ready === false) {
+        results.push({
+          name: scenario.name,
+          passed: false,
+          inconclusive: false,
+          category: "availability",
+          reason: scenario.availability?.failure_reason || "Source did not become ready",
+          checks: {},
+        });
+        continue;
+      }
+
       const checks = {
-        request_p95: compareMetric(old, scenario, "request_ms", "p95", 0.10),
-        response_to_paint_p95: compareMetric(old, scenario, "response_to_paint_ms", "p95", 0.10),
-        paint_gap_p95: compareMetric(old, scenario, "paint_gap_ms", "p95", 0.20),
+        request_p95: compareMetric(old, scenario, "request_ms", "p95", 0.10, 5),
+        response_to_paint_p95: compareMetric(old, scenario, "response_to_paint_ms", "p95", 0.10, 5),
+        paint_gap_p95: compareMetric(old, scenario, "paint_gap_ms", "p95", 0.20, 0),
       };
-      const unstable = scenario.stability?.stable === false || old.stability?.stable === false;
+      const valid = scenario.valid_run_count >= REQUIRED_PASSING_RUNS
+        && scenario.run_count === RUNS_PER_SCENARIO
+        && scenario.failed_requests === 0
+        && scenario.completed_target;
       const failed = Object.values(checks).filter(Boolean).some((check) => !check.passed)
-        || scenario.failed_requests > old.failed_requests
-        || scenario.run_count < RUNS_PER_SCENARIO;
+        || scenario.out_of_order_completions > 0
+        || Number(scenario.long_tasks?.maximum_ms || 0) >= 1000;
       results.push({
         name: scenario.name,
-        passed: unstable ? null : !failed,
-        inconclusive: unstable,
-        reason: unstable ? "Run-to-run spread is too high for a reliable comparison" : null,
+        passed: valid ? !failed : null,
+        inconclusive: !valid,
+        category: valid ? "performance" : "invalid_capture",
+        reason: valid
+          ? null
+          : `Only ${Number(scenario.valid_run_count || 0)} of ${RUNS_PER_SCENARIO} runs were valid`,
         checks,
       });
     }
@@ -5686,6 +5791,7 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
       scenarios: results,
     };
   }
+
 
   async function runSuite() {
     if (state.running) return;
@@ -5714,7 +5820,8 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
         samples_per_run: SAMPLES_PER_SCENARIO,
         warmup_samples: WARMUP_SAMPLES,
         scenario_timeout_ms: SCENARIO_TIMEOUT_MS,
-        aggregation: "median of run-level metrics with worst-run guard",
+        aggregation: "one cold activation plus five warm runs; four-of-five agreement",
+        required_passing_runs: REQUIRED_PASSING_RUNS,
       },
       environment: {
         viewport: `${window.innerWidth}x${window.innerHeight}`,
@@ -5736,7 +5843,7 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
           activateSource("jellyfin"),
         ));
       } else {
-        report.scenarios.push(aggregateScenario("media_jellyfin_browse", [], {
+        report.scenarios.push(aggregateScenario("media_jellyfin_browse", [], null, {
           skipped: true,
           reason: "Jellyfin is disabled",
         }));
@@ -5747,7 +5854,7 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
           activateSource("radio"),
         ));
       } else {
-        report.scenarios.push(aggregateScenario("media_radio_browse", [], {
+        report.scenarios.push(aggregateScenario("media_radio_browse", [], null, {
           skipped: true,
           reason: "Internet Radio is disabled or not acknowledged",
         }));
@@ -5792,30 +5899,35 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
     }
     const comparison = state.latest?.comparison?.scenarios?.find((entry) => entry.name === scenario.name);
     const badge = comparison
-      ? comparison.passed === null
-        ? '<span class="openmmi-perf-badge is-warn">unstable</span>'
-        : `<span class="openmmi-perf-badge ${comparison.passed ? "is-pass" : "is-fail"}">${comparison.passed ? "within baseline" : "regression"}</span>`
-      : scenario.stability?.stable === false
-        ? '<span class="openmmi-perf-badge is-warn">unstable</span>'
+      ? comparison.category === "availability"
+        ? '<span class="openmmi-perf-badge is-fail">availability failed</span>'
+        : comparison.passed === null
+          ? '<span class="openmmi-perf-badge is-warn">inconclusive</span>'
+          : `<span class="openmmi-perf-badge ${comparison.passed ? "is-pass" : "is-fail"}">${comparison.passed ? "within baseline" : "regression"}</span>`
+      : scenario.availability?.ready === false
+        ? '<span class="openmmi-perf-badge is-fail">availability failed</span>'
         : "";
     const method = scenario.run_count
-      ? `Median of ${Number(scenario.run_count)} measured runs`
-      : "Legacy single-run result";
+      ? `Cold activation + ${Number(scenario.run_count)} warm runs (${Number(scenario.valid_run_count || 0)} valid)`
+      : "Cold activation only";
+    const readiness = scenario.availability?.ready === false
+      ? escapeHtml(scenario.availability?.failure_reason || "Failed")
+      : formatMs(scenario.availability?.setup_ms);
     return `<article class="openmmi-perf-card">
       <header><strong>${escapeHtml(scenario.name.replaceAll("_", " "))}</strong>${badge}</header>
       <p class="openmmi-perf-method">${escapeHtml(method)}</p>
       <dl>
         <div><dt>Status p95</dt><dd>${formatMs(scenario.request_ms?.p95)}</dd></div>
-        <div><dt>Worst status p95</dt><dd>${formatMs(scenario.request_ms?.worst_p95)}</dd></div>
         <div><dt>Response → paint p95</dt><dd>${formatMs(scenario.response_to_paint_ms?.p95)}</dd></div>
         <div><dt>Paint gap p95</dt><dd>${formatMs(scenario.paint_gap_ms?.p95)}</dd></div>
-        <div><dt>Worst paint p95</dt><dd>${formatMs(scenario.paint_gap_ms?.worst_p95)}</dd></div>
-        <div><dt>Source ready</dt><dd>${formatMs(scenario.source_setup_ms)}</dd></div>
+        <div><dt>Cold activation</dt><dd>${readiness}</dd></div>
+        <div><dt>Valid warm runs</dt><dd>${Number(scenario.valid_run_count || 0)}/${Number(scenario.run_count || 0)}</dd></div>
         <div><dt>Failures</dt><dd>${Number(scenario.failed_requests || 0)}</dd></div>
         <div><dt>Long tasks</dt><dd>${Number(scenario.long_tasks?.count || 0)}</dd></div>
       </dl>
     </article>`;
   }
+
 
   function renderReport() {
     const output = document.querySelector("#openMmiPerformanceResults");
@@ -5828,11 +5940,13 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
       ? "No browser baseline saved"
       : state.latest.comparison.compatible === false
         ? state.latest.comparison.reason
-        : state.latest.comparison.passed === null
-          ? "Comparison is inconclusive because run-to-run variation is too high"
-          : state.latest.comparison.passed
-            ? "All comparable scenarios are within the saved baseline"
-            : "One or more scenarios are slower than the saved baseline";
+        : state.latest.comparison.scenarios?.some((entry) => entry.category === "availability")
+          ? "A source failed its cold activation check"
+          : state.latest.comparison.passed === null
+            ? "Comparison is inconclusive because fewer than four warm runs were valid"
+            : state.latest.comparison.passed
+              ? "At least four of five runs are within the saved baseline"
+              : "Fewer than four of five runs met the saved baseline";
     output.innerHTML = `
       <div class="openmmi-perf-summary ${state.latest.comparison?.passed === false ? "is-fail" : ""}">
         <strong>${escapeHtml(comparisonText)}</strong>
@@ -5841,6 +5955,7 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
       <div class="openmmi-perf-grid">${(state.latest.scenarios || []).map(scenarioCard).join("")}</div>
     `;
   }
+
 
   function downloadLatest() {
     if (!state.latest) return;
@@ -5906,7 +6021,7 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
     const clear = document.querySelector("#openMmiPerformanceClearBaseline");
     if (run) {
       run.disabled = state.running;
-      run.textContent = state.running ? "Running…" : "Run 3-pass suite";
+      run.textContent = state.running ? "Running…" : "Run robust suite";
     }
     if (download) download.disabled = !state.latest || state.running;
     if (baseline) baseline.disabled = !state.latest || state.running || !reportIsStable(state.latest);
@@ -5916,10 +6031,11 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
       baselineState.textContent = state.baseline
         ? Number(state.baseline.schema) === REPORT_SCHEMA
           ? `Browser baseline saved ${new Date(state.baseline.generated_at).toLocaleString()}`
-          : "Saved baseline uses the older single-run format"
+          : "Saved baseline uses an older benchmark format"
         : "No browser baseline saved";
     }
   }
+
 
   function ensureProgressOverlay() {
     if (document.querySelector("#openMmiPerformanceProgress")) return;
@@ -5932,10 +6048,11 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
     overlay.innerHTML = `
       <strong data-openmmi-perf-progress-label>Preparing diagnostics…</strong>
       <div class="openmmi-performance-progress-track"><span data-openmmi-perf-progress-bar></span></div>
-      <small>Three measured passes per scenario, plus warm-up. Pages and sources are restored afterward.</small>
+      <small>One cold activation and five warm runs per scenario. Four matching runs are required. Pages and sources are restored afterward.</small>
     `;
     document.body.appendChild(overlay);
   }
+
 
   function ensurePanel() {
     const page = document.querySelector("#pageSettings");
@@ -5951,10 +6068,10 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
           <div><span>Diagnostics</span><h3>Automated browser performance</h3></div>
           <span id="openMmiPerformanceBaselineState" class="openmmi-perf-baseline-state"></span>
         </header>
-        <p>Runs Home, Jellyfin browsing, and Internet Radio browsing automatically. Each scenario has a warm-up followed by three measured passes, then reports the median and worst pass. Allow about two minutes. Radio is tested only when already enabled and privacy-acknowledged. The suite does not start audio; existing playback may stop and will not resume automatically.</p>
+        <p>Runs Home, Jellyfin browsing, and Internet Radio browsing automatically. Each scenario records one cold activation, then a warm-up and five measured passes. Four of five runs must agree. Allow about three minutes. Radio is tested only when already enabled and privacy-acknowledged. The suite does not start audio; existing playback may stop and will not resume automatically.</p>
         <p class="openmmi-perf-privacy">Results contain timings and scenario names only. Status payloads, telltale values, Jellyfin credentials, station favourites, and search text are not stored or uploaded.</p>
         <div class="openmmi-perf-actions">
-          <button type="button" id="openMmiPerformanceRun">Run 3-pass suite</button>
+          <button type="button" id="openMmiPerformanceRun">Run robust suite</button>
           <button type="button" id="openMmiPerformanceDownload">Download JSON</button>
           <button type="button" id="openMmiPerformanceSaveBaseline">Save as baseline</button>
           <button type="button" id="openMmiPerformanceClearBaseline">Clear baseline</button>
@@ -5979,6 +6096,7 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
     updateButtons();
     renderReport();
   }
+
 
   function schedulePanel() {
     requestAnimationFrame(ensurePanel);

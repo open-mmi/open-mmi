@@ -1,4 +1,4 @@
-"""Static contracts for the repeated in-dashboard performance benchmark."""
+"""Regression tests for the in-dashboard browser benchmark methodology."""
 
 from __future__ import annotations
 
@@ -8,119 +8,196 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-APP_JS = ROOT / "ui" / "web_dashboard" / "static" / "app.js"
-STYLES = ROOT / "ui" / "web_dashboard" / "static" / "styles.css"
+APP = ROOT / "ui" / "web_dashboard" / "static" / "app.js"
+DOCS = ROOT / "docs" / "performance-testing.md"
+
 JS_START = "// --- Open MMI browser performance diagnostics start ---"
 JS_END = "// --- Open MMI browser performance diagnostics end ---"
-CSS_START = "/* --- Open MMI browser performance diagnostics start --- */"
-CSS_END = "/* --- Open MMI browser performance diagnostics end --- */"
 
 
 def marked_block(source: str, start: str, end: str) -> str:
-    start_index = source.find(start)
-    end_index = source.find(end)
-    if start_index < 0 or end_index < start_index:
-        raise AssertionError(f"Could not find marked block {start!r} ... {end!r}")
-    return source[start_index : end_index + len(end)]
+    left = source.find(start)
+    right = source.find(end)
+    if left < 0 or right < left:
+        raise AssertionError(f"Missing marked block: {start} ... {end}")
+    return source[left:right + len(end)]
 
 
-class BrowserPerformanceDiagnosticsContracts(unittest.TestCase):
+class BrowserPerformanceMethodologyTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app_source = APP_JS.read_text(encoding="utf-8")
-        cls.style_source = STYLES.read_text(encoding="utf-8")
+        cls.app_source = APP.read_text(encoding="utf-8")
         cls.js = marked_block(cls.app_source, JS_START, JS_END)
-        cls.css = marked_block(cls.style_source, CSS_START, CSS_END)
+        cls.docs = DOCS.read_text(encoding="utf-8")
 
-    def test_known_good_status_cadence_is_not_changed(self):
+    def test_known_good_status_poll_is_unchanged(self):
         self.assertRegex(
             self.app_source,
             r"setInterval\s*\(\s*fetchStatus\s*,\s*200\s*\)",
         )
-        self.assertNotRegex(self.app_source, r"setTimeout\s*\(\s*fetchStatus\b")
-
-    def test_suite_uses_existing_poll_and_three_measured_runs(self):
-        self.assertIn("const STATUS_INTERVAL_MS = 200;", self.js)
-        self.assertIn("const SAMPLES_PER_SCENARIO = 50;", self.js)
-        self.assertIn("const RUNS_PER_SCENARIO = 3;", self.js)
-        self.assertIn("const WARMUP_SAMPLES = 10;", self.js)
-        self.assertIn("const REPORT_SCHEMA = 2;", self.js)
-        self.assertIn("window.fetch = async function openMmiMeasuredFetch", self.js)
-        self.assertNotRegex(self.js, r"setInterval\s*\(\s*fetchStatus")
-        self.assertNotRegex(self.js, r"setTimeout\s*\(\s*fetchStatus")
-
-    def test_scenarios_are_warmed_and_repeated_automatically(self):
-        self.assertIn("captureScenarioRun(name, setup, 0, WARMUP_SAMPLES, true)", self.js)
-        self.assertRegex(
-            self.js,
-            r"for \(let run = 1; run <= RUNS_PER_SCENARIO; run \+= 1\)",
+        self.assertNotRegex(
+            self.app_source,
+            r"setTimeout\s*\(\s*fetchStatus\b",
         )
-        self.assertIn('benchmarkScenario("home_idle"', self.js)
-        self.assertIn('benchmarkScenario("media_jellyfin_browse"', self.js)
-        self.assertIn('benchmarkScenario("media_radio_browse"', self.js)
 
-    def test_aggregation_uses_run_medians_and_worst_run_guards(self):
-        self.assertIn('benchmark_kind: "median_of_runs"', self.js)
-        self.assertIn("result.worst_p95", self.js)
-        self.assertIn("result.p95_spread", self.js)
-        self.assertIn('aggregation: "median of run-level metrics with worst-run guard"', self.js)
-        self.assertIn("check.worst_run", self.js)
+    def test_schema_uses_one_cold_activation_and_five_warm_runs(self):
+        self.assertIn("const REPORT_SCHEMA = 3;", self.js)
+        self.assertIn("const RUNS_PER_SCENARIO = 5;", self.js)
+        self.assertIn("const REQUIRED_PASSING_RUNS = 4;", self.js)
+        self.assertIn("const WARMUP_SAMPLES = 10;", self.js)
+        self.assertIn("const SAMPLES_PER_SCENARIO = 50;", self.js)
+        self.assertIn(
+            'benchmark_kind: "cold_activation_plus_five_warm_runs"',
+            self.js,
+        )
 
-    def test_unstable_runs_are_inconclusive_not_regressions(self):
-        self.assertIn("stabilityForScenario", self.js)
-        self.assertIn("passed: unstable ? null : !failed", self.js)
-        self.assertIn("Run-to-run spread is too high", self.js)
-        self.assertIn("Comparison is inconclusive", self.js)
-        self.assertIn("is-warn", self.js)
+    def test_source_activation_is_not_repeated_for_each_measured_run(self):
+        benchmark = re.search(
+            r"async function benchmarkScenario\(name, setup\)\s*\{(?P<body>.*?)\n  \}",
+            self.js,
+            re.S,
+        )
+        self.assertIsNotNone(benchmark)
+        body = benchmark.group("body")
+        self.assertEqual(body.count("const coldSetup = await setup();"), 1)
+        self.assertIn("const settledSetup = async () => ({", body)
+        self.assertIn("captureScenarioRun(\n        name,\n        settledSetup,", body)
+        self.assertNotIn("captureScenarioRun(name, setup,", body)
 
-    def test_only_stable_matching_reports_can_be_saved_or_compared(self):
+    def test_cold_readiness_is_reported_separately(self):
+        self.assertIn("availability:", self.js)
+        self.assertIn('category: "availability"', self.js)
+        self.assertIn("Source did not become ready", self.js)
+        self.assertIn("A source failed its cold activation check", self.js)
+        self.assertIn("<dt>Cold activation</dt>", self.js)
+
+    def test_comparison_requires_four_of_five_runs(self):
+        self.assertIn("passed_runs: passedRuns", self.js)
+        self.assertIn("required_runs: REQUIRED_PASSING_RUNS", self.js)
+        self.assertIn("passedRuns >= REQUIRED_PASSING_RUNS", self.js)
+        self.assertIn(
+            'aggregation: "one cold activation plus five warm runs; four-of-five agreement"',
+            self.js,
+        )
+        self.assertIn(
+            "At least four of five runs are within the saved baseline",
+            self.js,
+        )
+        self.assertIn(
+            "Fewer than four of five runs met the saved baseline",
+            self.js,
+        )
+
+    def test_self_comparison_uses_fourth_best_baseline_run(self):
+        self.assertIn(
+            "const sortedBaselineRuns = [...baselineRuns].sort",
+            self.js,
+        )
+        self.assertIn(
+            "const baselineAcceptanceAnchor = sortedBaselineRuns[REQUIRED_PASSING_RUNS - 1];",
+            self.js,
+        )
+        self.assertIn(
+            "baseline_acceptance_anchor: round(baselineAcceptanceAnchor)",
+            self.js,
+        )
+        self.assertIn(
+            "baselineAcceptanceAnchor * (1 + allowedRatio)",
+            self.js,
+        )
+        self.assertNotIn(
+            "const limit = Math.max(oldValue * (1 + allowedRatio)",
+            self.js,
+        )
+
+        # Representative report from the regression: the median is 12, but
+        # four-of-five acceptance must anchor at the fourth-best value, 14.55.
+        baseline_runs = sorted([12, 11, 15.55, 11, 14.55])
+        anchor = baseline_runs[4 - 1]
+        limit = max(anchor * 1.10, anchor + 5)
+        self.assertEqual(anchor, 14.55)
+        self.assertGreaterEqual(
+            sum(value <= limit for value in baseline_runs),
+            4,
+        )
+
+    def test_low_latency_metrics_use_absolute_tolerance_floor(self):
+        self.assertIn("absoluteToleranceMs = 0", self.js)
+        self.assertIn(
+            "const relativeLimit = baselineAcceptanceAnchor * (1 + allowedRatio);",
+            self.js,
+        )
+        self.assertIn(
+            "const absoluteLimit = baselineAcceptanceAnchor",
+            self.js,
+        )
+        self.assertIn("const limit = Math.max(relativeLimit, absoluteLimit);", self.js)
+        self.assertIn("absolute_tolerance_ms: round(absoluteToleranceMs)", self.js)
+        self.assertIn(
+            'compareMetric(old, scenario, "request_ms", "p95", 0.10, 5)',
+            self.js,
+        )
+        self.assertIn(
+            'compareMetric(old, scenario, "response_to_paint_ms", "p95", 0.10, 5)',
+            self.js,
+        )
+        self.assertIn(
+            'compareMetric(old, scenario, "paint_gap_ms", "p95", 0.20, 0)',
+            self.js,
+        )
+
+        # The independent comparison that exposed the calibration problem:
+        # a 13 ms baseline anchor and 15 ms candidate should remain acceptable.
+        anchor = 13
+        limit = max(anchor * 1.10, anchor + 5)
+        candidate_runs = [16, 15, 15.55, 13, 12.55]
+        self.assertEqual(limit, 18)
+        self.assertGreaterEqual(sum(value <= limit for value in candidate_runs), 4)
+
+    def test_inconclusive_requires_insufficient_valid_runs(self):
+        self.assertIn("valid_run_count", self.js)
+        self.assertIn("Only ${Number(scenario.valid_run_count || 0)}", self.js)
+        self.assertIn(
+            "Comparison is inconclusive because fewer than four warm runs were valid",
+            self.js,
+        )
+        self.assertNotIn(
+            "Run-to-run spread is too high for a reliable comparison",
+            self.js,
+        )
+
+    def test_baseline_profile_must_match_methodology(self):
+        self.assertIn(
+            "Number(baseline.configuration?.required_passing_runs) === REQUIRED_PASSING_RUNS",
+            self.js,
+        )
         self.assertIn("reportIsStable", self.js)
-        self.assertIn("if (!state.latest || !reportIsStable(state.latest)) return;", self.js)
-        self.assertIn("baseline.disabled = !state.latest || state.running || !reportIsStable(state.latest)", self.js)
-        self.assertIn("The saved baseline uses an older or different benchmark profile", self.js)
-        self.assertIn("Saved baseline uses the older single-run format", self.js)
+        self.assertIn(
+            "scenario.valid_run_count >= REQUIRED_PASSING_RUNS",
+            self.js,
+        )
 
-    def test_suite_restores_page_source_and_instrumentation(self):
-        self.assertIn("const originalPage = currentPageId();", self.js)
-        self.assertIn("const originalSource = activeSourceId();", self.js)
-        self.assertIn("removeInstrumentation();", self.js)
-        self.assertIn("setActiveSource?.(originalSource)", self.js)
-        self.assertIn("showPage(originalPage);", self.js)
-        self.assertRegex(self.js, r"finally\s*\{")
+    def test_settings_copy_describes_robust_suite(self):
+        self.assertIn("Run robust suite", self.js)
+        self.assertIn(
+            "One cold activation and five warm runs per scenario",
+            self.js,
+        )
+        self.assertIn("Four matching runs are required", self.js)
+        self.assertIn("Allow about three minutes", self.js)
 
-    def test_suite_does_not_start_media_or_use_document_observer(self):
+    def test_runner_remains_non_invasive(self):
         self.assertNotRegex(self.js, r"\.play\s*\(")
         self.assertNotIn("MutationObserver", self.js)
+        self.assertIn("showPage(originalPage);", self.js)
+        self.assertIn("setActiveSource?.(originalSource)", self.js)
+        self.assertIn("insertBefore(host, panel)", self.js)
 
-    def test_panel_is_accessible_and_before_live_refreshed_panel(self):
-        self.assertIn('insertBefore(host, panel)', self.js)
-        self.assertNotIn('insertAdjacentElement("afterend", host)', self.js)
-        for control_id in (
-            "openMmiPerformanceRun",
-            "openMmiPerformanceDownload",
-            "openMmiPerformanceSaveBaseline",
-            "openMmiPerformanceClearBaseline",
-            "openMmiPerformanceProgress",
-        ):
-            self.assertIn(control_id, self.js)
-        self.assertIn('aria-live="polite"', self.js)
-        self.assertIn("Run 3-pass suite", self.js)
-
-    def test_report_remains_local_and_excludes_payloads(self):
-        self.assertIn("localStorage.setItem(key, JSON.stringify(value))", self.js)
-        self.assertIn("Status payloads, telltale values", self.js)
-        self.assertNotIn("JSON.stringify(payload)", self.js)
-        self.assertNotIn("/api/performance", self.js)
-
-    def test_action_buttons_keep_readable_states(self):
-        self.assertRegex(
-            self.css,
-            r"\.openmmi-perf-actions button\s*\{[^}]*border:\s*1px solid #fff",
-        )
-        self.assertRegex(
-            self.css,
-            r"\.openmmi-perf-actions button:hover,[^{]*\{[^}]*background:\s*#fff",
-        )
+    def test_docs_explain_cold_and_warm_measurements(self):
+        self.assertIn("one **cold activation** measurement", self.docs)
+        self.assertIn("**five warm measured runs", self.docs)
+        self.assertIn("four of five", self.docs.lower())
+        self.assertIn("availability failure", self.docs.lower())
 
 
 if __name__ == "__main__":

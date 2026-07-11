@@ -167,32 +167,50 @@ The standard suite automatically exercises:
 3. Internet Radio browsing, when Radio is already enabled and its privacy
    notice has been acknowledged.
 
-Each scenario has a ten-poll warm-up followed by **three measured runs of 50
-status polls**. At the approved 200 ms cadence, a complete three-scenario suite
-takes roughly 100–120 seconds. The runner temporarily switches pages and media
-sources, then restores them. It does not start audio. Existing playback may be
-stopped by source switching and is not resumed automatically.
+Each scenario records source activation separately:
 
-### Why the suite uses repeated runs
+1. one **cold activation** measurement;
+2. a ten-poll warm-up after the source is ready;
+3. **five warm measured runs of 50 status polls**.
 
-A single p95 result is strongly affected by the slowest few samples. The suite
-therefore stores each measured run separately and reports the median of the
-three run-level metrics. It also retains a worst-run p95 guard so a consistently
-poor pass cannot be hidden by the median.
+At the approved 200 ms cadence, a complete three-scenario suite takes roughly
+three minutes. The runner temporarily switches pages and media sources, then
+restores them. It does not start audio. Existing playback may be stopped by
+source switching and is not resumed automatically.
+
+### Comparison method
+
+Cold activation and steady-state browser cadence are intentionally separate.
+A failed or timed-out activation is reported as an availability failure; it
+does not make the rendering benchmark merely "unstable."
+
+For steady-state comparison, each candidate run is checked against the saved
+baseline budget. At least **four of five** runs must pass. One outlier is
+therefore permitted without making the whole comparison inconclusive.
+
+The acceptance budget is anchored to the baseline's **fourth-best run** (the slowest run that must pass), then the metric tolerance is applied. This makes self-comparison an invariant: every valid baseline passes when compared with itself.
+
+For low-latency metrics, the budget uses the larger of a relative and an absolute tolerance. Status request p95 and response-to-paint p95 allow **10% or 5 ms**, whichever is larger. Paint-gap p95 continues to allow **20%**. This prevents harmless millisecond-scale jitter from being reported as a regression while retaining the four-of-five requirement.
 
 A comparison can have three outcomes:
 
-- **within baseline** — median metrics and worst-run guards pass;
-- **regression** — a stable, comparable result exceeds its budget;
-- **unstable / inconclusive** — run-to-run spread is too high for a reliable
-  judgement.
+- **within baseline** — at least four of five warm runs meet every budget;
+- **regression** — fewer than four warm runs meet a budget, or a severe
+  correctness failure occurs;
+- **inconclusive** — fewer than four runs completed validly, so the result does
+  not contain enough evidence.
 
-Unstable reports cannot be saved as baselines. A baseline must use the same
-report schema, run count, sample count, and warm-up profile as the candidate.
-Older single-run baselines remain visible but must be replaced before comparison.
+The suite no longer rejects a report merely because one measured run has a
+large spread. Failed requests, incomplete captures, overlapping status
+requests, out-of-order completions, and extreme long tasks remain visible.
+
+A baseline must use the same report schema, run count, sample count, warm-up
+profile, and four-of-five rule as the candidate. Older baselines remain visible
+but must be replaced before comparison.
 
 The report includes:
 
+- cold source activation time and readiness;
 - status request latency;
 - JSON parsing time;
 - render CPU time;
@@ -200,8 +218,7 @@ The report includes:
 - request and paint gaps;
 - simultaneous and out-of-order status requests;
 - browser long tasks when the Long Tasks API is available;
-- source activation-to-ready time;
-- per-run measurements, median summaries, spread, and worst-run p95 values.
+- all five warm runs and the median run-level summaries.
 
 The report contains timing data and scenario names only. It does not retain
 `/api/status` payloads, telltale values, Jellyfin credentials, Radio favourites,
@@ -210,10 +227,11 @@ local storage until downloaded or cleared.
 
 ### Establish a browser baseline
 
-Open Settings → Diagnostics and select **Run 3-pass suite**. Save the result as
-a baseline only when all measured scenarios are stable. Later runs compare
-against that device- and environment-specific baseline. Use **Download JSON**
-to keep local reports; benchmark directories should remain ignored by Git.
+Open Settings → Diagnostics and select **Run robust suite**. Save the result as
+a baseline only when every enabled source became ready and at least four of five
+warm runs completed validly. Later runs compare against that device- and
+environment-specific baseline. Use **Download JSON** to keep local reports;
+benchmark directories should remain ignored by Git.
 
 Radio scenarios make the same external Radio Browser requests that ordinary
 Radio browsing makes. They run only when Internet Radio is already enabled and
