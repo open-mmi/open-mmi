@@ -1379,6 +1379,297 @@ function ommiMediaBind() {
 })();
 // --- Open MMI media source shell v1 end ---
 
+// --- Open MMI Internet Radio privacy consent start ---
+(function openMmiRadioPrivacyConsent() {
+  if (window.__openMmiRadioPrivacyConsentLoaded) return;
+  window.__openMmiRadioPrivacyConsentLoaded = true;
+
+  const SETTINGS_KEY = "openmmi.dashboard.settings.v1";
+  const CONSENT_KEY = "openmmi.media.radio.privacy-consent.v1";
+  const NOTICE_VERSION = "2026-07-11-v1";
+  let pendingEnableButton = null;
+  let bypassRadioEnableGate = false;
+
+  function readJson(key, fallback = {}) {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(key) || "null");
+      return parsed && typeof parsed === "object" ? parsed : fallback;
+    } catch (_) {
+      return fallback;
+    }
+  }
+
+  function writeJson(key, value) {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function hasCurrentConsent() {
+    const consent = readJson(CONSENT_KEY, {});
+    return consent.notice_version === NOTICE_VERSION && Boolean(consent.accepted_at);
+  }
+
+  function saveConsent() {
+    return writeJson(CONSENT_KEY, {
+      notice_version: NOTICE_VERSION,
+      accepted_at: new Date().toISOString(),
+    });
+  }
+
+  function fallbackSource(mediaSources) {
+    if (mediaSources?.jellyfin === true) return "jellyfin";
+    return Object.entries(mediaSources || {})
+      .find(([id, enabled]) => id !== "radio" && enabled === true)?.[0] || "jellyfin";
+  }
+
+  function disableRadioPreference() {
+    const prefs = readJson(SETTINGS_KEY, {});
+    const mediaSources = {
+      jellyfin: true,
+      radio: false,
+      usb: false,
+      bluetooth: false,
+      spotify: false,
+      ...(prefs.mediaSources || {}),
+    };
+    const wasEnabled = mediaSources.radio === true;
+    mediaSources.radio = false;
+    const fallback = fallbackSource(mediaSources);
+    if (prefs.mediaActiveSource === "radio") prefs.mediaActiveSource = fallback;
+    if (prefs.mediaDefaultSource === "radio") prefs.mediaDefaultSource = fallback;
+    prefs.mediaSources = mediaSources;
+    writeJson(SETTINGS_KEY, prefs);
+    window.openMmiDashboardSettings = {
+      ...(window.openMmiDashboardSettings || {}),
+      ...prefs,
+    };
+    return wasEnabled;
+  }
+
+  function syncAfterPreferenceChange() {
+    try { window.openMmiMediaSources?.apply?.(); } catch (_) {}
+    try { window.openMmiMediaAdapters?.syncActiveSource?.(true); } catch (_) {}
+    requestAnimationFrame(ensureSettingsReviewControl);
+  }
+
+  function ensureDialog() {
+    let overlay = document.querySelector("#openMmiRadioPrivacyOverlay");
+    if (overlay) return overlay;
+
+    overlay = document.createElement("div");
+    overlay.id = "openMmiRadioPrivacyOverlay";
+    overlay.className = "openmmi-radio-privacy-overlay";
+    overlay.hidden = true;
+    overlay.innerHTML = `
+      <section class="openmmi-radio-privacy-dialog" role="dialog" aria-modal="true" aria-labelledby="openMmiRadioPrivacyTitle" aria-describedby="openMmiRadioPrivacySummary">
+        <div class="openmmi-radio-privacy-heading">
+          <div>
+            <p class="openmmi-radio-privacy-kicker">External network service</p>
+            <h2 id="openMmiRadioPrivacyTitle">Before enabling Internet Radio</h2>
+          </div>
+          <button type="button" class="btn openmmi-radio-privacy-close" data-openmmi-radio-privacy-close aria-label="Close privacy notice">×</button>
+        </div>
+
+        <p id="openMmiRadioPrivacySummary" class="openmmi-radio-privacy-summary">
+          Internet Radio is not a local-only feature. Open MMI contacts the community Radio Browser directory and, when you play a station, that station or its hosting provider. Open MMI proxies those connections through the dashboard server, but this does not make them anonymous.
+        </p>
+
+        <h3>What external services may receive</h3>
+        <ul>
+          <li><strong>Radio Browser directory:</strong> the dashboard server's public IP address, request time, the search text and country/language filters you use, station identifiers, the Open MMI application/version User-Agent, and a station-click notification when playback starts.</li>
+          <li><strong>Radio station or streaming host:</strong> the dashboard server's public IP address, request time, the requested stream, connection duration and data transferred, and ordinary HTTP request headers. The operator may infer an approximate location from the public IP address.</li>
+          <li><strong>Other providers:</strong> a station may use a CDN, hosting company, analytics service, or redirect to another provider. Their logging, retention, and sharing practices are controlled by them, not by Open MMI.</li>
+        </ul>
+
+        <h3>What Open MMI does and does not send</h3>
+        <ul>
+          <li>Open MMI does <strong>not</strong> send your Jellyfin token, Jellyfin library contents, radio favourites, or a unique Open MMI user identifier to Radio Browser or a station.</li>
+          <li>Open MMI does not request GPS location. If available, the browser locale may be used to choose an initial country filter; that selected country filter is then included in directory searches.</li>
+          <li>Your acknowledgement, Radio enablement, favourites, and country/language preferences are stored in this browser's local storage. They do not automatically sync to other devices.</li>
+          <li>If this dashboard is self-hosted at home, the external services will usually see your household's public IP. If it runs on a remote server, they will usually see that server's public IP.</li>
+        </ul>
+
+        <p class="openmmi-radio-privacy-caveat">
+          Open MMI cannot promise how long external operators keep logs or how they combine them with other information. Use Internet Radio only if you accept those external connections.
+        </p>
+
+        <p id="openMmiRadioPrivacyError" class="openmmi-radio-privacy-error" role="alert" hidden></p>
+
+        <label class="openmmi-radio-privacy-ack" for="openMmiRadioPrivacyAck">
+          <input type="checkbox" id="openMmiRadioPrivacyAck">
+          <span>I understand this notice and want to enable Internet Radio.</span>
+        </label>
+
+        <div class="openmmi-radio-privacy-actions">
+          <button type="button" class="btn btn-outline-light" data-openmmi-radio-privacy-cancel>Cancel</button>
+          <button type="button" class="btn btn-outline-light openmmi-radio-privacy-forget" data-openmmi-radio-privacy-forget hidden>Disable Radio and forget acknowledgement</button>
+          <button type="button" class="btn btn-light" data-openmmi-radio-privacy-accept disabled>Enable Internet Radio</button>
+        </div>
+      </section>`;
+    document.body.appendChild(overlay);
+
+    const checkbox = overlay.querySelector("#openMmiRadioPrivacyAck");
+    const accept = overlay.querySelector("[data-openmmi-radio-privacy-accept]");
+    checkbox?.addEventListener("change", () => {
+      if (accept) accept.disabled = !checkbox.checked;
+    });
+
+    overlay.addEventListener("click", (event) => {
+      if (
+        event.target === overlay
+        || event.target.closest?.("[data-openmmi-radio-privacy-close]")
+        || event.target.closest?.("[data-openmmi-radio-privacy-cancel]")
+      ) {
+        closeDialog();
+        return;
+      }
+      if (event.target.closest?.("[data-openmmi-radio-privacy-forget]")) {
+        try { localStorage.removeItem(CONSENT_KEY); } catch (_) {}
+        disableRadioPreference();
+        try { window.openMmiMediaAdapters?.stopPlayback?.(true); } catch (_) {}
+        closeDialog();
+        syncAfterPreferenceChange();
+        return;
+      }
+      if (event.target.closest?.("[data-openmmi-radio-privacy-accept]")) {
+        if (!checkbox?.checked) return;
+        if (!saveConsent() || !hasCurrentConsent()) {
+          const error = overlay.querySelector("#openMmiRadioPrivacyError");
+          if (error) {
+            error.textContent = "Open MMI could not store the acknowledgement in this browser, so Internet Radio remains disabled.";
+            error.hidden = false;
+          }
+          return;
+        }
+        const enableButton = pendingEnableButton;
+        closeDialog();
+        ensureSettingsReviewControl();
+        if (enableButton?.isConnected) {
+          bypassRadioEnableGate = true;
+          try { enableButton.click(); } finally { bypassRadioEnableGate = false; }
+        }
+      }
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !overlay.hidden) closeDialog();
+    });
+    return overlay;
+  }
+
+  function openDialog(mode = "enable", enableButton = null) {
+    const overlay = ensureDialog();
+    pendingEnableButton = enableButton;
+    const checkbox = overlay.querySelector("#openMmiRadioPrivacyAck");
+    const ack = overlay.querySelector(".openmmi-radio-privacy-ack");
+    const accept = overlay.querySelector("[data-openmmi-radio-privacy-accept]");
+    const forget = overlay.querySelector("[data-openmmi-radio-privacy-forget]");
+    const review = mode === "review";
+    const error = overlay.querySelector("#openMmiRadioPrivacyError");
+
+    if (error) { error.hidden = true; error.textContent = ""; }
+    if (checkbox) checkbox.checked = false;
+    if (ack) ack.hidden = review;
+    if (accept) {
+      accept.hidden = review;
+      accept.disabled = true;
+    }
+    if (forget) forget.hidden = !review || !hasCurrentConsent();
+    overlay.hidden = false;
+    document.body.classList.add("openmmi-radio-privacy-open");
+    requestAnimationFrame(() => {
+      (review
+        ? overlay.querySelector("[data-openmmi-radio-privacy-close]")
+        : checkbox)?.focus?.();
+    });
+  }
+
+  function closeDialog() {
+    const overlay = document.querySelector("#openMmiRadioPrivacyOverlay");
+    if (overlay) overlay.hidden = true;
+    document.body.classList.remove("openmmi-radio-privacy-open");
+    pendingEnableButton = null;
+  }
+
+  function interceptRadioEnable(event) {
+    if (bypassRadioEnableGate || hasCurrentConsent()) return;
+    const enableButton = event.target.closest?.(
+      '[data-openmmi-media-source-enable="radio"][data-openmmi-media-source-value="on"]',
+    );
+    const sourceButton = event.target.closest?.('[data-openmmi-media-source="radio"]');
+    const defaultButton = event.target.closest?.('[data-openmmi-media-default-source="radio"]');
+    if (!enableButton && !sourceButton && !defaultButton) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    openDialog("enable", enableButton);
+  }
+
+  function ensureSettingsReviewControl() {
+    const enableButton = document.querySelector(
+      '[data-openmmi-media-source-enable="radio"][data-openmmi-media-source-value="on"]',
+    );
+    if (!enableButton) return;
+    const controls = enableButton.parentElement;
+    if (!controls) return;
+    let review = controls.querySelector("[data-openmmi-radio-privacy-review]");
+    if (!review) {
+      review = document.createElement("button");
+      review.type = "button";
+      review.className = "btn openmmi-radio-privacy-review";
+      review.dataset.openmmiRadioPrivacyReview = "true";
+      review.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        openDialog("review");
+      });
+      controls.appendChild(review);
+    }
+    review.textContent = hasCurrentConsent() ? "Privacy details" : "Privacy notice required";
+    review.title = hasCurrentConsent()
+      ? "Review the Internet Radio privacy notice"
+      : "Acknowledge the privacy notice before enabling Internet Radio";
+  }
+
+  // Fail closed even if browser storage becomes unwritable: source adapters
+  // cannot select Radio without a current, readable acknowledgement.
+  const mediaSourceApi = window.openMmiMediaSources;
+  if (mediaSourceApi?.activeSourceId && !mediaSourceApi.__radioPrivacyWrapped) {
+    const originalActiveSourceId = mediaSourceApi.activeSourceId.bind(mediaSourceApi);
+    mediaSourceApi.activeSourceId = (...args) => {
+      const sourceId = originalActiveSourceId(...args);
+      if (sourceId !== "radio" || hasCurrentConsent()) return sourceId;
+      const prefs = readJson(SETTINGS_KEY, {});
+      return fallbackSource(prefs.mediaSources || {});
+    };
+    mediaSourceApi.__radioPrivacyWrapped = true;
+  }
+
+  // A material notice change deliberately invalidates old consent. Existing
+  // Radio enablement is disabled before the source adapters begin making calls.
+  const revokedExistingEnablement = !hasCurrentConsent() && disableRadioPreference();
+
+  document.addEventListener("click", interceptRadioEnable, true);
+  window.addEventListener("openmmi:pagechange", () => requestAnimationFrame(ensureSettingsReviewControl));
+  document.addEventListener("DOMContentLoaded", () => requestAnimationFrame(ensureSettingsReviewControl));
+  const observer = new MutationObserver(() => requestAnimationFrame(ensureSettingsReviewControl));
+  try { observer.observe(document.body, { childList: true, subtree: true }); } catch (_) {}
+  requestAnimationFrame(() => {
+    ensureSettingsReviewControl();
+    if (revokedExistingEnablement) syncAfterPreferenceChange();
+  });
+
+  window.openMmiRadioPrivacy = {
+    consentKey: CONSENT_KEY,
+    noticeVersion: NOTICE_VERSION,
+    hasCurrentConsent,
+    openNotice: () => openDialog("review"),
+  };
+})();
+// --- Open MMI Internet Radio privacy consent end ---
 // --- Open MMI media source adapters/radio start ---
 (function openMmiMediaSourceAdaptersRadio() {
   if (window.__openMmiMediaSourceAdaptersRadioLoaded) return;

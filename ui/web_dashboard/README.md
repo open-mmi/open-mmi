@@ -386,3 +386,39 @@ curl 'http://127.0.0.1:8765/api/radio/search?q=bbc&country=GB&language=english&l
 curl 'http://127.0.0.1:8765/api/radio/options'
 ```
 <!-- open-mmi-internet-radio-end -->
+
+<!-- open-mmi-radio-privacy-consent-start -->
+### Internet Radio privacy acknowledgement
+
+Internet Radio is an optional external-network feature. The dashboard requires a
+versioned, explicit acknowledgement before it can be enabled in **Settings →
+Media**. A material change to the notice version invalidates the old acknowledgement
+and disables Radio until the updated notice is accepted.
+
+The in-dashboard notice explains, in plain language, that:
+
+- Radio Browser directory requests can expose the dashboard server's public IP,
+  request times, search text, selected country/language filters, station IDs, the
+  Open MMI application User-Agent, and the station-click request made when playback
+  starts.
+- The selected station, its stream host, CDN, redirects, or analytics providers may
+  receive the dashboard server's public IP, timestamps, requested stream, ordinary
+  HTTP headers, connection duration, and transferred byte counts. They may infer an
+  approximate location from the public IP and control their own retention/sharing.
+- Open MMI does not send Jellyfin credentials, Jellyfin library contents, Radio
+  favourites, GPS coordinates, or a unique Open MMI user identifier to those
+  services. Browser locale may choose an initial country filter, and that filter is
+  sent in directory searches.
+- The acknowledgement, source preference, favourites, and country/language filters
+  remain in browser local storage and do not automatically sync between devices.
+
+The acknowledgement is stored under
+`openmmi.media.radio.privacy-consent.v1` with the current notice version and an
+acceptance timestamp. Users can review the notice at any time from the Radio row in
+Settings and can choose **Disable Radio and forget acknowledgement**.
+
+This acknowledgement is a transparency and informed-choice control; it is not a
+claim that external providers retain no logs. Open MMI does not control the privacy,
+retention, or sharing practices of Radio Browser mirrors, station operators, stream
+hosts, CDNs, redirects, or analytics providers.
+<!-- open-mmi-radio-privacy-consent-end -->

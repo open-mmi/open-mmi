@@ -3262,3 +3262,263 @@ html.openmmi-telltale-test-active #openMmiFooterTelltales [data-openmmi-telltale
   }
 }
 /* --- Open MMI Radio favourites and locale filters end --- */
+
+/* --- Open MMI Internet Radio privacy consent start --- */
+body.openmmi-radio-privacy-open {
+  overflow: hidden;
+}
+
+.openmmi-radio-privacy-overlay[hidden] {
+  display: none !important;
+}
+
+.openmmi-radio-privacy-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  display: grid;
+  place-items: center;
+  padding: clamp(0.75rem, 3vw, 2rem);
+  background: rgba(0, 0, 0, 0.82);
+  backdrop-filter: blur(8px);
+}
+
+.openmmi-radio-privacy-dialog {
+  width: min(44rem, 100%);
+  max-height: min(90vh, 52rem);
+  overflow: auto;
+  padding: clamp(1rem, 3vw, 1.5rem);
+  border: 1px solid rgba(255, 255, 255, 0.92);
+  border-radius: 1rem;
+  background: #11151a;
+  color: #fff;
+  box-shadow: 0 1.5rem 5rem rgba(0, 0, 0, 0.5);
+}
+
+.openmmi-radio-privacy-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.openmmi-radio-privacy-heading h2 {
+  margin: 0;
+  font-size: clamp(1.25rem, 3vw, 1.7rem);
+}
+
+.openmmi-radio-privacy-kicker {
+  margin: 0 0 0.25rem;
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.openmmi-radio-privacy-close {
+  min-width: 2.5rem;
+  min-height: 2.5rem;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.8) !important;
+  color: #fff;
+  font-size: 1.45rem;
+  line-height: 1;
+}
+
+.openmmi-radio-privacy-summary,
+.openmmi-radio-privacy-dialog li,
+.openmmi-radio-privacy-caveat {
+  color: rgba(255, 255, 255, 0.86);
+  line-height: 1.5;
+}
+
+.openmmi-radio-privacy-dialog h3 {
+  margin: 1rem 0 0.45rem;
+  font-size: 0.98rem;
+}
+
+.openmmi-radio-privacy-dialog ul {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.openmmi-radio-privacy-dialog li + li {
+  margin-top: 0.45rem;
+}
+
+.openmmi-radio-privacy-caveat {
+  margin: 1rem 0;
+  padding: 0.75rem 0.85rem;
+  border-left: 3px solid #fff;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.openmmi-radio-privacy-error {
+  margin: 0 0 1rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid rgba(255, 255, 255, 0.88);
+  border-radius: 0.55rem;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.openmmi-radio-privacy-error[hidden] {
+  display: none !important;
+}
+
+.openmmi-radio-privacy-ack {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  padding: 0.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 0.65rem;
+  background: rgba(255, 255, 255, 0.045);
+  cursor: pointer;
+}
+
+.openmmi-radio-privacy-ack[hidden] {
+  display: none !important;
+}
+
+.openmmi-radio-privacy-ack input {
+  width: 1.2rem;
+  height: 1.2rem;
+  margin-top: 0.12rem;
+  accent-color: #fff;
+}
+
+.openmmi-radio-privacy-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.55rem;
+  margin-top: 1rem;
+}
+
+.openmmi-radio-privacy-actions .btn {
+  min-height: 42px;
+  border-width: 1px;
+}
+
+.openmmi-radio-privacy-review {
+  min-height: 30px;
+  margin-left: 0.4rem;
+  padding: 0.25rem 0.55rem;
+  border: 1px solid rgba(255, 255, 255, 0.75) !important;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.68rem;
+  line-height: 1.1;
+}
+
+.openmmi-radio-privacy-review:hover,
+.openmmi-radio-privacy-review:focus-visible {
+  border-color: #fff !important;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+@media (max-width: 560px) {
+  .openmmi-radio-privacy-dialog {
+    max-height: 94vh;
+    border-radius: 0.75rem;
+  }
+
+  .openmmi-radio-privacy-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .openmmi-radio-privacy-actions .btn {
+    width: 100%;
+  }
+}
+/* --- Open MMI Internet Radio privacy consent end --- */
+
+/* --- Open MMI Radio privacy button contrast fix start --- */
+/* Keep privacy-dialog actions readable despite Bootstrap/global button rules. */
+.openmmi-radio-privacy-dialog .openmmi-radio-privacy-actions .btn {
+  -webkit-text-fill-color: currentColor !important;
+  text-shadow: none !important;
+}
+
+.openmmi-radio-privacy-dialog
+  .openmmi-radio-privacy-actions
+  [data-openmmi-radio-privacy-cancel],
+.openmmi-radio-privacy-dialog
+  .openmmi-radio-privacy-actions
+  [data-openmmi-radio-privacy-forget] {
+  border-color: rgba(255, 255, 255, 0.92) !important;
+  background: transparent !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+.openmmi-radio-privacy-dialog
+  .openmmi-radio-privacy-actions
+  [data-openmmi-radio-privacy-cancel]:hover,
+.openmmi-radio-privacy-dialog
+  .openmmi-radio-privacy-actions
+  [data-openmmi-radio-privacy-cancel]:focus-visible,
+.openmmi-radio-privacy-dialog
+  .openmmi-radio-privacy-actions
+  [data-openmmi-radio-privacy-cancel]:active,
+.openmmi-radio-privacy-dialog
+  .openmmi-radio-privacy-actions
+  [data-openmmi-radio-privacy-forget]:hover,
+.openmmi-radio-privacy-dialog
+  .openmmi-radio-privacy-actions
+  [data-openmmi-radio-privacy-forget]:focus-visible,
+.openmmi-radio-privacy-dialog
+  .openmmi-radio-privacy-actions
+  [data-openmmi-radio-privacy-forget]:active {
+  border-color: #ffffff !important;
+  background: #ffffff !important;
+  color: #11151a !important;
+  -webkit-text-fill-color: #11151a !important;
+}
+
+.openmmi-radio-privacy-dialog
+  .openmmi-radio-privacy-actions
+  [data-openmmi-radio-privacy-accept] {
+  border-color: #ffffff !important;
+  background: #ffffff !important;
+  color: #11151a !important;
+  -webkit-text-fill-color: #11151a !important;
+  font-weight: 700;
+}
+
+.openmmi-radio-privacy-dialog
+  .openmmi-radio-privacy-actions
+  [data-openmmi-radio-privacy-accept]:hover,
+.openmmi-radio-privacy-dialog
+  .openmmi-radio-privacy-actions
+  [data-openmmi-radio-privacy-accept]:focus-visible,
+.openmmi-radio-privacy-dialog
+  .openmmi-radio-privacy-actions
+  [data-openmmi-radio-privacy-accept]:active {
+  border-color: #d8dde2 !important;
+  background: #d8dde2 !important;
+  color: #090b0d !important;
+  -webkit-text-fill-color: #090b0d !important;
+}
+
+.openmmi-radio-privacy-dialog
+  .openmmi-radio-privacy-actions
+  [data-openmmi-radio-privacy-accept]:disabled {
+  border-color: rgba(255, 255, 255, 0.42) !important;
+  background: rgba(255, 255, 255, 0.28) !important;
+  color: rgba(255, 255, 255, 0.7) !important;
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.7) !important;
+  opacity: 1 !important;
+  cursor: not-allowed;
+}
+
+.openmmi-radio-privacy-dialog .openmmi-radio-privacy-actions .btn:focus-visible {
+  outline: 3px solid rgba(255, 255, 255, 0.55) !important;
+  outline-offset: 2px;
+  box-shadow: none !important;
+}
+/* --- Open MMI Radio privacy button contrast fix end --- */
