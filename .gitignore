@@ -4,3 +4,6 @@ venv/
 .env
 # Dev / local experimentation
 dev/
+
+# Local dashboard performance reports
+benchmarks/
