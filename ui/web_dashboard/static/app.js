@@ -5080,6 +5080,9 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
     originalFetch: null,
     originalRender: null,
     longTaskObserver: null,
+    visibilityInvalidation: null,
+    visibilityHandler: null,
+    pageHideHandler: null,
   };
 
   function readJson(key, fallback) {
@@ -5150,12 +5153,72 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
   async function waitUntil(predicate, timeoutMs, intervalMs = 50) {
     const deadline = performance.now() + timeoutMs;
     while (performance.now() < deadline) {
+      if (state.visibilityInvalidation) return false;
       try {
         if (predicate()) return true;
       } catch (_) {}
       await sleep(intervalMs);
+      if (state.visibilityInvalidation) return false;
     }
     return false;
+  }
+
+  function activeVisibilityContext() {
+    const sampleKey = String(state.scenario || "");
+    const match = sampleKey.match(/^(.*)__(setup|warmup|run_(\d+))$/);
+    return {
+      sample_key: sampleKey || null,
+      scenario: match?.[1] || sampleKey || null,
+      phase: match?.[2] === "setup"
+        ? "setup"
+        : match?.[2] === "warmup"
+          ? "warmup"
+          : match?.[2]
+            ? "measured_run"
+            : "setup",
+      run: match?.[3] ? Number(match[3]) : null,
+    };
+  }
+
+  function invalidateForVisibility(eventType) {
+    if (!state.running || state.visibilityInvalidation) return;
+    state.visibilityInvalidation = {
+      occurred_at: new Date().toISOString(),
+      event: String(eventType || "visibilitychange"),
+      visibility_state: document.visibilityState,
+      ...activeVisibilityContext(),
+    };
+    state.capture = false;
+    setProgress("Benchmark invalidated — keep this tab visible", 0);
+  }
+
+  function installVisibilityGuard() {
+    state.visibilityInvalidation = null;
+    state.visibilityHandler = () => {
+      if (document.hidden) invalidateForVisibility("visibilitychange");
+    };
+    state.pageHideHandler = () => invalidateForVisibility("pagehide");
+    document.addEventListener("visibilitychange", state.visibilityHandler);
+    window.addEventListener("pagehide", state.pageHideHandler);
+    if (document.hidden) invalidateForVisibility("started_hidden");
+  }
+
+  function removeVisibilityGuard() {
+    if (state.visibilityHandler) {
+      document.removeEventListener("visibilitychange", state.visibilityHandler);
+    }
+    if (state.pageHideHandler) {
+      window.removeEventListener("pagehide", state.pageHideHandler);
+    }
+    state.visibilityHandler = null;
+    state.pageHideHandler = null;
+  }
+
+  function throwIfVisibilityInvalidated() {
+    if (!state.visibilityInvalidation) return;
+    const error = new Error("Benchmark tab lost visibility");
+    error.code = "OPENMMI_PERFORMANCE_VISIBILITY_INTERRUPTED";
+    throw error;
   }
 
   function activeSettingsSection() {
@@ -5461,8 +5524,10 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
     const runLabel = warmup ? "warm-up" : `run ${runNumber}/${RUNS_PER_SCENARIO}`;
     setProgress(`Preparing ${name.replaceAll("_", " ")} ${runLabel}…`, 0);
     const setupResult = await setup();
+    throwIfVisibilityInvalidated();
     if (setupResult?.skipped) return summariseScenario(name, setupResult, sampleKey);
     await sleep(warmup ? 250 : 350);
+    throwIfVisibilityInvalidated();
     const startingCount = scenarioSamples(sampleKey).length;
     state.scenario = sampleKey;
     state.capture = true;
@@ -5478,6 +5543,7 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
       );
       return count >= targetSamples;
     }, SCENARIO_TIMEOUT_MS, 50);
+    throwIfVisibilityInvalidated();
     if (state.originalRender) {
       await waitUntil(() => {
         const samples = scenarioSamples(sampleKey).slice(startingCount);
@@ -5485,8 +5551,10 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
         const painted = samples.filter((sample) => Number.isFinite(sample.paint_at_ms)).length;
         return painted >= Math.min(completedResponses, targetSamples);
       }, 2000, 25);
+      throwIfVisibilityInvalidated();
     }
     state.capture = false;
+    throwIfVisibilityInvalidated();
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     const summary = summariseScenario(name, setupResult || {}, sampleKey);
     summary.run = warmup ? 0 : runNumber;
@@ -5544,6 +5612,7 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
     const measured = (report?.scenarios || []).filter((scenario) => !scenario.skipped);
     return Number(report?.schema) === REPORT_SCHEMA
       && measured.length > 0
+      && report?.visibility_guard?.remained_visible !== false
       && measured.every((scenario) =>
         scenario.run_count === RUNS_PER_SCENARIO
         && scenario.failed_requests === 0
@@ -5639,8 +5708,10 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
 
 
   async function benchmarkScenario(name, setup) {
+    state.scenario = `${name}__setup`;
     setProgress(`Cold activation: ${name.replaceAll("_", " ")}…`, 0);
     const coldSetup = await setup();
+    throwIfVisibilityInvalidated();
     if (coldSetup?.skipped) {
       return aggregateScenario(name, [], coldSetup, coldSetup);
     }
@@ -5675,6 +5746,7 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
         SAMPLES_PER_SCENARIO,
         false,
       );
+      throwIfVisibilityInvalidated();
       if (result.skipped) break;
       runs.push(result);
     }
@@ -5729,6 +5801,15 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
   }
 
   function compareReports(baseline, candidate) {
+    if (candidate?.visibility_guard?.remained_visible === false) {
+      return {
+        passed: null,
+        compatible: true,
+        category: "visibility",
+        reason: "Benchmark tab lost visibility; rerun with this tab kept in the foreground",
+        scenarios: [],
+      };
+    }
     if (!baseline?.scenarios || !candidate?.scenarios) return null;
     const compatible = Number(baseline.schema) === REPORT_SCHEMA
       && Number(baseline.configuration?.runs_per_scenario) === RUNS_PER_SCENARIO
@@ -5802,6 +5883,7 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
     state.completionOrder = [];
     state.maxInFlight = 0;
     state.sampleSequence = 0;
+    installVisibilityGuard();
     const originalPage = currentPageId();
     const originalSource = activeSourceId();
     const audio = document.querySelector("#ommiMediaAudio");
@@ -5829,6 +5911,11 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
         visibility_state: document.visibilityState,
       },
       playback_was_interrupted: interruptedPlayback,
+      visibility_guard: {
+        required: true,
+        remained_visible: true,
+        interruptions: [],
+      },
       scenarios: [],
     };
 
@@ -5864,11 +5951,28 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
       state.latest = report;
       writeJson(LATEST_KEY, report);
     } catch (error) {
-      report.error = String(error?.message || error);
+      if (state.visibilityInvalidation
+          || error?.code === "OPENMMI_PERFORMANCE_VISIBILITY_INTERRUPTED") {
+        report.visibility_guard.remained_visible = false;
+        report.visibility_guard.interruptions = state.visibilityInvalidation
+          ? [state.visibilityInvalidation]
+          : [];
+        report.inconclusive_reason = "Benchmark tab lost visibility";
+        report.comparison = compareReports(state.baseline, report) || {
+          passed: null,
+          compatible: true,
+          category: "visibility",
+          reason: "Benchmark tab lost visibility; rerun with this tab kept in the foreground",
+          scenarios: [],
+        };
+      } else {
+        report.error = String(error?.message || error);
+      }
       state.latest = report;
       writeJson(LATEST_KEY, report);
     } finally {
       state.capture = false;
+      removeVisibilityGuard();
       removeInstrumentation();
       try {
         if (sourceEnabled(originalSource)) {
@@ -5936,9 +6040,11 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
       output.innerHTML = '<p class="openmmi-perf-empty">No browser diagnostic run has been recorded yet.</p>';
       return;
     }
-    const comparisonText = !state.latest.comparison
-      ? "No browser baseline saved"
-      : state.latest.comparison.compatible === false
+    const comparisonText = state.latest.visibility_guard?.remained_visible === false
+      ? "Benchmark inconclusive because this tab lost visibility"
+      : !state.latest.comparison
+        ? "No browser baseline saved"
+        : state.latest.comparison.compatible === false
         ? state.latest.comparison.reason
         : state.latest.comparison.scenarios?.some((entry) => entry.category === "availability")
           ? "A source failed its cold activation check"
@@ -6048,7 +6154,7 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
     overlay.innerHTML = `
       <strong data-openmmi-perf-progress-label>Preparing diagnostics…</strong>
       <div class="openmmi-performance-progress-track"><span data-openmmi-perf-progress-bar></span></div>
-      <small>One cold activation and five warm runs per scenario. Four matching runs are required. Pages and sources are restored afterward.</small>
+      <small>Keep this tab visible. Leaving it invalidates the suite. One cold activation and five warm runs per scenario. Four matching runs are required.</small>
     `;
     document.body.appendChild(overlay);
   }
@@ -6068,7 +6174,7 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
           <div><span>Diagnostics</span><h3>Automated browser performance</h3></div>
           <span id="openMmiPerformanceBaselineState" class="openmmi-perf-baseline-state"></span>
         </header>
-        <p>Runs Home, Jellyfin browsing, and Internet Radio browsing automatically. Each scenario records one cold activation, then a warm-up and five measured passes. Four of five runs must agree. Allow about three minutes. Radio is tested only when already enabled and privacy-acknowledged. The suite does not start audio; existing playback may stop and will not resume automatically.</p>
+        <p><strong>Keep this tab visible for the entire run.</strong> Switching tabs, minimising the browser, or navigating away invalidates the suite and prevents baseline saving. Runs Home, Jellyfin browsing, and Internet Radio browsing automatically. Each scenario records one cold activation, then a warm-up and five measured passes. Four of five runs must agree. Allow about three minutes. Radio is tested only when already enabled and privacy-acknowledged. The suite does not start audio; existing playback may stop and will not resume automatically.</p>
         <p class="openmmi-perf-privacy">Results contain timings and scenario names only. Status payloads, telltale values, Jellyfin credentials, station favourites, and search text are not stored or uploaded.</p>
         <div class="openmmi-perf-actions">
           <button type="button" id="openMmiPerformanceRun">Run robust suite</button>

@@ -178,6 +178,8 @@ three minutes. The runner temporarily switches pages and media sources, then
 restores them. It does not start audio. Existing playback may be stopped by
 source switching and is not resumed automatically.
 
+The benchmark must remain in the foreground for its entire duration. A `visibilitychange` to hidden or a `pagehide` event immediately invalidates the active suite, records the event timestamp and active scenario/run, and reports the result as inconclusive. Visibility-invalidated reports cannot be saved as baselines. Keep the dashboard tab visible and avoid minimising or navigating away while measurements are running.
+
 ### Comparison method
 
 Cold activation and steady-state browser cadence are intentionally separate.

@@ -186,6 +186,41 @@ class BrowserPerformanceMethodologyTests(unittest.TestCase):
         self.assertIn("Four matching runs are required", self.js)
         self.assertIn("Allow about three minutes", self.js)
 
+    def test_visibility_loss_invalidates_active_suite(self):
+        self.assertIn('document.addEventListener("visibilitychange", state.visibilityHandler);', self.js)
+        self.assertIn('window.addEventListener("pagehide", state.pageHideHandler);', self.js)
+        self.assertIn('document.removeEventListener("visibilitychange", state.visibilityHandler);', self.js)
+        self.assertIn('window.removeEventListener("pagehide", state.pageHideHandler);', self.js)
+        self.assertIn('throwIfVisibilityInvalidated()', self.js)
+        self.assertIn('error.code = "OPENMMI_PERFORMANCE_VISIBILITY_INTERRUPTED";', self.js)
+        self.assertIn('visibility_guard:', self.js)
+        self.assertIn('remained_visible: true', self.js)
+        self.assertIn('category: "visibility"', self.js)
+        self.assertIn('report?.visibility_guard?.remained_visible !== false', self.js)
+        self.assertIn('removeVisibilityGuard();', self.js)
+
+    def test_visibility_interruption_is_recorded_with_context(self):
+        self.assertIn('occurred_at: new Date().toISOString()', self.js)
+        self.assertIn('event: String(eventType || "visibilitychange")', self.js)
+        self.assertIn('sample_key: sampleKey || null', self.js)
+        self.assertIn('state.scenario = `${name}__setup`;', self.js)
+        self.assertIn('phase:', self.js)
+        self.assertIn('run: match?.[3] ? Number(match[3]) : null', self.js)
+        self.assertIn('report.visibility_guard.interruptions = state.visibilityInvalidation', self.js)
+
+    def test_visibility_invalidated_report_cannot_be_baseline(self):
+        self.assertIn(
+            '&& report?.visibility_guard?.remained_visible !== false',
+            self.js,
+        )
+        self.assertIn(
+            'Benchmark inconclusive because this tab lost visibility',
+            self.js,
+        )
+        self.assertIn(
+            '<strong>Keep this tab visible for the entire run.</strong>',
+            self.js,
+        )
     def test_runner_remains_non_invasive(self):
         self.assertNotRegex(self.js, r"\.play\s*\(")
         self.assertNotIn("MutationObserver", self.js)
