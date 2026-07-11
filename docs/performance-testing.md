@@ -157,20 +157,41 @@ representative scenarios.
 ## In-dashboard automated browser suite
 
 Settings → Diagnostics includes an **Automated browser performance** panel. It
-uses the dashboard's existing `/api/status` poll rather than starting a second
-status loop. One run automatically exercises:
+uses the dashboard's existing `/api/status` poll rather than starting another
+status loop.
+
+The standard suite automatically exercises:
 
 1. Home/idle rendering;
 2. Jellyfin browsing, when Jellyfin is enabled;
 3. Internet Radio browsing, when Radio is already enabled and its privacy
    notice has been acknowledged.
 
-The runner temporarily switches pages and active media sources, then restores
-them. It does not start audio. Existing playback may be stopped by source
-switching and is not resumed automatically.
+Each scenario has a ten-poll warm-up followed by **three measured runs of 50
+status polls**. At the approved 200 ms cadence, a complete three-scenario suite
+takes roughly 100–120 seconds. The runner temporarily switches pages and media
+sources, then restores them. It does not start audio. Existing playback may be
+stopped by source switching and is not resumed automatically.
 
-Each scenario collects 50 normal status polls, approximately ten seconds at the
-known-good 200 ms cadence. The report includes:
+### Why the suite uses repeated runs
+
+A single p95 result is strongly affected by the slowest few samples. The suite
+therefore stores each measured run separately and reports the median of the
+three run-level metrics. It also retains a worst-run p95 guard so a consistently
+poor pass cannot be hidden by the median.
+
+A comparison can have three outcomes:
+
+- **within baseline** — median metrics and worst-run guards pass;
+- **regression** — a stable, comparable result exceeds its budget;
+- **unstable / inconclusive** — run-to-run spread is too high for a reliable
+  judgement.
+
+Unstable reports cannot be saved as baselines. A baseline must use the same
+report schema, run count, sample count, and warm-up profile as the candidate.
+Older single-run baselines remain visible but must be replaced before comparison.
+
+The report includes:
 
 - status request latency;
 - JSON parsing time;
@@ -179,7 +200,8 @@ known-good 200 ms cadence. The report includes:
 - request and paint gaps;
 - simultaneous and out-of-order status requests;
 - browser long tasks when the Long Tasks API is available;
-- source activation-to-ready time.
+- source activation-to-ready time;
+- per-run measurements, median summaries, spread, and worst-run p95 values.
 
 The report contains timing data and scenario names only. It does not retain
 `/api/status` payloads, telltale values, Jellyfin credentials, Radio favourites,
@@ -188,11 +210,10 @@ local storage until downloaded or cleared.
 
 ### Establish a browser baseline
 
-Open Settings → Diagnostics and select **Run automated suite**. Once the result
-looks representative, select **Save as baseline**. Later runs compare their p95
-status, response-to-paint, and paint-gap measurements with that saved baseline.
-Use **Download JSON** to archive a result alongside the command-line benchmark
-reports.
+Open Settings → Diagnostics and select **Run 3-pass suite**. Save the result as
+a baseline only when all measured scenarios are stable. Later runs compare
+against that device- and environment-specific baseline. Use **Download JSON**
+to keep local reports; benchmark directories should remain ignored by Git.
 
 Radio scenarios make the same external Radio Browser requests that ordinary
 Radio browsing makes. They run only when Internet Radio is already enabled and

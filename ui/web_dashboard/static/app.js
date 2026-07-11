@@ -5057,8 +5057,10 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
   const STATUS_PATH = "/api/status";
   const STATUS_INTERVAL_MS = 200;
   const SAMPLES_PER_SCENARIO = 50;
+  const RUNS_PER_SCENARIO = 3;
+  const WARMUP_SAMPLES = 10;
   const SCENARIO_TIMEOUT_MS = 15000;
-  const REPORT_SCHEMA = 1;
+  const REPORT_SCHEMA = 2;
   const SAMPLE_ID = Symbol("openMmiPerformanceSampleId");
 
   const state = {
@@ -5396,17 +5398,18 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
     return count;
   }
 
-  function summariseScenario(name, setup) {
-    const samples = scenarioSamples(name);
+  function summariseScenario(name, setup, sampleKey = name) {
+    const samples = scenarioSamples(sampleKey);
     const starts = samples.map((sample) => sample.started_at_ms);
     const paints = samples
       .map((sample) => sample.paint_at_ms)
       .filter(Number.isFinite)
       .sort((left, right) => left - right);
     const gaps = (values) => values.slice(1).map((value, index) => value - values[index]);
-    const longTasks = state.longTasks.filter((entry) => entry.scenario === name);
+    const longTasks = state.longTasks.filter((entry) => entry.scenario === sampleKey);
     return {
       name,
+      sample_key: sampleKey,
       skipped: Boolean(setup?.skipped),
       skip_reason: setup?.reason || null,
       source_ready: setup?.ready ?? null,
@@ -5452,37 +5455,166 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
     };
   }
 
-  async function captureScenario(name, setup) {
-    setProgress(`Preparing ${name.replaceAll("_", " ")}…`, 0);
+  async function captureScenarioRun(name, setup, runNumber, targetSamples, warmup = false) {
+    const sampleKey = `${name}__${warmup ? "warmup" : `run_${runNumber}`}`;
+    const runLabel = warmup ? "warm-up" : `run ${runNumber}/${RUNS_PER_SCENARIO}`;
+    setProgress(`Preparing ${name.replaceAll("_", " ")} ${runLabel}…`, 0);
     const setupResult = await setup();
-    if (setupResult?.skipped) return summariseScenario(name, setupResult);
-    await sleep(350);
-    const startingCount = scenarioSamples(name).length;
-    state.scenario = name;
+    if (setupResult?.skipped) return summariseScenario(name, setupResult, sampleKey);
+    await sleep(warmup ? 250 : 350);
+    const startingCount = scenarioSamples(sampleKey).length;
+    state.scenario = sampleKey;
     state.capture = true;
     const started = performance.now();
     const completed = await waitUntil(() => {
-      const count = scenarioSamples(name).filter((sample) =>
+      const count = scenarioSamples(sampleKey).filter((sample) =>
         Number.isFinite(sample.response_at_ms),
       ).length - startingCount;
-      const ratio = Math.min(1, count / SAMPLES_PER_SCENARIO);
-      setProgress(`Measuring ${name.replaceAll("_", " ")}… ${count}/${SAMPLES_PER_SCENARIO}`, ratio);
-      return count >= SAMPLES_PER_SCENARIO;
+      const ratio = Math.min(1, count / targetSamples);
+      setProgress(
+        `${name.replaceAll("_", " ")} ${runLabel}… ${count}/${targetSamples}`,
+        ratio,
+      );
+      return count >= targetSamples;
     }, SCENARIO_TIMEOUT_MS, 50);
     if (state.originalRender) {
       await waitUntil(() => {
-        const samples = scenarioSamples(name).slice(startingCount);
+        const samples = scenarioSamples(sampleKey).slice(startingCount);
         const completedResponses = samples.filter((sample) => Number.isFinite(sample.response_at_ms)).length;
         const painted = samples.filter((sample) => Number.isFinite(sample.paint_at_ms)).length;
-        return painted >= Math.min(completedResponses, SAMPLES_PER_SCENARIO);
+        return painted >= Math.min(completedResponses, targetSamples);
       }, 2000, 25);
     }
     state.capture = false;
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    const summary = summariseScenario(name, setupResult || {});
+    const summary = summariseScenario(name, setupResult || {}, sampleKey);
+    summary.run = warmup ? 0 : runNumber;
+    summary.warmup = warmup;
     summary.completed_target = completed;
     summary.capture_ms = round(performance.now() - started);
     return summary;
+  }
+
+  function aggregateDistribution(runs, group) {
+    const fields = ["mean", "median", "p95", "p99", "maximum"];
+    const result = { count: runs.reduce((sum, run) => sum + Number(run?.[group]?.count || 0), 0) };
+    for (const field of fields) {
+      result[field] = round(percentile(
+        runs.map((run) => Number(run?.[group]?.[field])).filter(Number.isFinite),
+        0.5,
+      ));
+    }
+    const runP95 = runs.map((run) => Number(run?.[group]?.p95)).filter(Number.isFinite);
+    result.worst_p95 = runP95.length ? round(Math.max(...runP95)) : null;
+    result.best_p95 = runP95.length ? round(Math.min(...runP95)) : null;
+    result.p95_spread = runP95.length
+      ? round(Math.max(...runP95) - Math.min(...runP95))
+      : null;
+    return result;
+  }
+
+  function stabilityForScenario(requestStats, paintStats) {
+    const requestMedian = Number(requestStats?.p95);
+    const requestSpread = Number(requestStats?.p95_spread);
+    const paintMedian = Number(paintStats?.p95);
+    const paintSpread = Number(paintStats?.p95_spread);
+    const requestLimit = Number.isFinite(requestMedian)
+      ? Math.max(10, requestMedian * 0.75)
+      : null;
+    const paintLimit = Number.isFinite(paintMedian)
+      ? Math.max(50, paintMedian * 0.25)
+      : null;
+    const requestStable = !Number.isFinite(requestSpread)
+      || !Number.isFinite(requestLimit)
+      || requestSpread <= requestLimit;
+    const paintStable = !Number.isFinite(paintSpread)
+      || !Number.isFinite(paintLimit)
+      || paintSpread <= paintLimit;
+    return {
+      stable: requestStable && paintStable,
+      request_p95_spread_ms: round(requestSpread),
+      request_p95_spread_limit_ms: round(requestLimit),
+      paint_gap_p95_spread_ms: round(paintSpread),
+      paint_gap_p95_spread_limit_ms: round(paintLimit),
+    };
+  }
+
+  function reportIsStable(report) {
+    const measured = (report?.scenarios || []).filter((scenario) => !scenario.skipped);
+    return Number(report?.schema) === REPORT_SCHEMA
+      && measured.length > 0
+      && measured.every((scenario) =>
+        scenario.run_count === RUNS_PER_SCENARIO
+        && scenario.failed_requests === 0
+        && scenario.completed_target
+        && scenario.stability?.stable !== false,
+      );
+  }
+
+  function aggregateScenario(name, runs, skippedSetup = null) {
+    if (!runs.length) {
+      return summariseScenario(name, skippedSetup || {
+        skipped: true,
+        reason: "No measured runs completed",
+      }, `${name}__none`);
+    }
+    const setupTimes = runs.map((run) => Number(run.source_setup_ms)).filter(Number.isFinite);
+    const longTaskCounts = runs.map((run) => Number(run.long_tasks?.count || 0));
+    const requestStats = aggregateDistribution(runs, "request_ms");
+    const jsonStats = aggregateDistribution(runs, "json_ms");
+    const renderStats = aggregateDistribution(runs, "render_cpu_ms");
+    const responsePaintStats = aggregateDistribution(runs, "response_to_paint_ms");
+    const requestPaintStats = aggregateDistribution(runs, "request_to_paint_ms");
+    const requestGapStats = aggregateDistribution(runs, "request_start_gap_ms");
+    const paintGapStats = aggregateDistribution(runs, "paint_gap_ms");
+    return {
+      name,
+      benchmark_kind: "median_of_runs",
+      skipped: false,
+      skip_reason: null,
+      source_ready: runs.every((run) => run.source_ready !== false),
+      source_setup_ms: round(percentile(setupTimes, 0.5)),
+      source_setup_worst_ms: setupTimes.length ? round(Math.max(...setupTimes)) : null,
+      run_count: runs.length,
+      samples: runs.reduce((sum, run) => sum + Number(run.samples || 0), 0),
+      successful_requests: runs.reduce((sum, run) => sum + Number(run.successful_requests || 0), 0),
+      failed_requests: runs.reduce((sum, run) => sum + Number(run.failed_requests || 0), 0),
+      max_in_flight: Math.max(0, ...runs.map((run) => Number(run.max_in_flight || 0))),
+      out_of_order_completions: runs.reduce(
+        (sum, run) => sum + Number(run.out_of_order_completions || 0),
+        0,
+      ),
+      request_ms: requestStats,
+      json_ms: jsonStats,
+      render_cpu_ms: renderStats,
+      response_to_paint_ms: responsePaintStats,
+      request_to_paint_ms: requestPaintStats,
+      request_start_gap_ms: requestGapStats,
+      paint_gap_ms: paintGapStats,
+      stability: stabilityForScenario(requestStats, paintGapStats),
+      long_tasks: {
+        supported: runs.some((run) => run.long_tasks?.supported),
+        count: longTaskCounts.reduce((sum, value) => sum + value, 0),
+        total_ms: round(runs.reduce((sum, run) => sum + Number(run.long_tasks?.total_ms || 0), 0)),
+        maximum_ms: round(Math.max(0, ...runs.map((run) => Number(run.long_tasks?.maximum_ms || 0)))),
+      },
+      completed_target: runs.every((run) => run.completed_target),
+      capture_ms: round(runs.reduce((sum, run) => sum + Number(run.capture_ms || 0), 0)),
+      runs,
+    };
+  }
+
+  async function benchmarkScenario(name, setup) {
+    const warmup = await captureScenarioRun(name, setup, 0, WARMUP_SAMPLES, true);
+    if (warmup.skipped) return aggregateScenario(name, [], warmup);
+    const runs = [];
+    for (let run = 1; run <= RUNS_PER_SCENARIO; run += 1) {
+      if (run > 1) await sleep(250);
+      const result = await captureScenarioRun(name, setup, run, SAMPLES_PER_SCENARIO, false);
+      if (result.skipped) return aggregateScenario(name, runs, result);
+      runs.push(result);
+    }
+    return aggregateScenario(name, runs);
   }
 
   function compareMetric(baselineScenario, candidateScenario, group, metric, allowedRatio) {
@@ -5490,16 +5622,41 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
     const newValue = Number(candidateScenario?.[group]?.[metric]);
     if (!Number.isFinite(oldValue) || !Number.isFinite(newValue)) return null;
     const limit = Math.max(oldValue * (1 + allowedRatio), oldValue + 0.5);
-    return {
+    const check = {
       baseline: round(oldValue),
       candidate: round(newValue),
       limit: round(limit),
       passed: newValue <= limit,
     };
+    const oldWorst = Number(baselineScenario?.[group]?.worst_p95);
+    const newWorst = Number(candidateScenario?.[group]?.worst_p95);
+    if (metric === "p95" && Number.isFinite(oldWorst) && Number.isFinite(newWorst)) {
+      const worstLimit = Math.max(oldWorst * 1.25, oldWorst + 1);
+      check.worst_run = {
+        baseline: round(oldWorst),
+        candidate: round(newWorst),
+        limit: round(worstLimit),
+        passed: newWorst <= worstLimit,
+      };
+      check.passed = check.passed && check.worst_run.passed;
+    }
+    return check;
   }
 
   function compareReports(baseline, candidate) {
     if (!baseline?.scenarios || !candidate?.scenarios) return null;
+    const compatible = Number(baseline.schema) === REPORT_SCHEMA
+      && Number(baseline.configuration?.runs_per_scenario) === RUNS_PER_SCENARIO
+      && Number(baseline.configuration?.samples_per_run) === SAMPLES_PER_SCENARIO
+      && Number(baseline.configuration?.warmup_samples) === WARMUP_SAMPLES;
+    if (!compatible) {
+      return {
+        passed: null,
+        compatible: false,
+        reason: "The saved baseline uses an older or different benchmark profile. Save a new baseline before judging regressions.",
+        scenarios: [],
+      };
+    }
     const results = [];
     for (const scenario of candidate.scenarios) {
       const old = baseline.scenarios.find((entry) => entry.name === scenario.name);
@@ -5509,12 +5666,23 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
         response_to_paint_p95: compareMetric(old, scenario, "response_to_paint_ms", "p95", 0.10),
         paint_gap_p95: compareMetric(old, scenario, "paint_gap_ms", "p95", 0.20),
       };
+      const unstable = scenario.stability?.stable === false || old.stability?.stable === false;
       const failed = Object.values(checks).filter(Boolean).some((check) => !check.passed)
-        || scenario.failed_requests > old.failed_requests;
-      results.push({ name: scenario.name, passed: !failed, checks });
+        || scenario.failed_requests > old.failed_requests
+        || scenario.run_count < RUNS_PER_SCENARIO;
+      results.push({
+        name: scenario.name,
+        passed: unstable ? null : !failed,
+        inconclusive: unstable,
+        reason: unstable ? "Run-to-run spread is too high for a reliable comparison" : null,
+        checks,
+      });
     }
+    const hasFailure = results.some((entry) => entry.passed === false);
+    const hasInconclusive = results.some((entry) => entry.passed === null);
     return {
-      passed: results.every((entry) => entry.passed),
+      passed: hasFailure ? false : hasInconclusive ? null : true,
+      compatible: true,
       scenarios: results,
     };
   }
@@ -5542,8 +5710,11 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
       label: "browser-automated-suite",
       configuration: {
         status_interval_ms: STATUS_INTERVAL_MS,
-        samples_per_scenario: SAMPLES_PER_SCENARIO,
+        runs_per_scenario: RUNS_PER_SCENARIO,
+        samples_per_run: SAMPLES_PER_SCENARIO,
+        warmup_samples: WARMUP_SAMPLES,
         scenario_timeout_ms: SCENARIO_TIMEOUT_MS,
+        aggregation: "median of run-level metrics with worst-run guard",
       },
       environment: {
         viewport: `${window.innerWidth}x${window.innerHeight}`,
@@ -5555,28 +5726,28 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
     };
 
     try {
-      report.scenarios.push(await captureScenario("home_idle", async () => {
+      report.scenarios.push(await benchmarkScenario("home_idle", async () => {
         showPage("pageHome");
         return { skipped: false, ready: true, setup_ms: 0 };
       }));
 
       if (sourceEnabled("jellyfin")) {
-        report.scenarios.push(await captureScenario("media_jellyfin_browse", () =>
+        report.scenarios.push(await benchmarkScenario("media_jellyfin_browse", () =>
           activateSource("jellyfin"),
         ));
       } else {
-        report.scenarios.push(summariseScenario("media_jellyfin_browse", {
+        report.scenarios.push(aggregateScenario("media_jellyfin_browse", [], {
           skipped: true,
           reason: "Jellyfin is disabled",
         }));
       }
 
       if (sourceEnabled("radio")) {
-        report.scenarios.push(await captureScenario("media_radio_browse", () =>
+        report.scenarios.push(await benchmarkScenario("media_radio_browse", () =>
           activateSource("radio"),
         ));
       } else {
-        report.scenarios.push(summariseScenario("media_radio_browse", {
+        report.scenarios.push(aggregateScenario("media_radio_browse", [], {
           skipped: true,
           reason: "Internet Radio is disabled or not acknowledged",
         }));
@@ -5621,14 +5792,24 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
     }
     const comparison = state.latest?.comparison?.scenarios?.find((entry) => entry.name === scenario.name);
     const badge = comparison
-      ? `<span class="openmmi-perf-badge ${comparison.passed ? "is-pass" : "is-fail"}">${comparison.passed ? "within baseline" : "regression"}</span>`
-      : "";
+      ? comparison.passed === null
+        ? '<span class="openmmi-perf-badge is-warn">unstable</span>'
+        : `<span class="openmmi-perf-badge ${comparison.passed ? "is-pass" : "is-fail"}">${comparison.passed ? "within baseline" : "regression"}</span>`
+      : scenario.stability?.stable === false
+        ? '<span class="openmmi-perf-badge is-warn">unstable</span>'
+        : "";
+    const method = scenario.run_count
+      ? `Median of ${Number(scenario.run_count)} measured runs`
+      : "Legacy single-run result";
     return `<article class="openmmi-perf-card">
       <header><strong>${escapeHtml(scenario.name.replaceAll("_", " "))}</strong>${badge}</header>
+      <p class="openmmi-perf-method">${escapeHtml(method)}</p>
       <dl>
         <div><dt>Status p95</dt><dd>${formatMs(scenario.request_ms?.p95)}</dd></div>
+        <div><dt>Worst status p95</dt><dd>${formatMs(scenario.request_ms?.worst_p95)}</dd></div>
         <div><dt>Response → paint p95</dt><dd>${formatMs(scenario.response_to_paint_ms?.p95)}</dd></div>
         <div><dt>Paint gap p95</dt><dd>${formatMs(scenario.paint_gap_ms?.p95)}</dd></div>
+        <div><dt>Worst paint p95</dt><dd>${formatMs(scenario.paint_gap_ms?.worst_p95)}</dd></div>
         <div><dt>Source ready</dt><dd>${formatMs(scenario.source_setup_ms)}</dd></div>
         <div><dt>Failures</dt><dd>${Number(scenario.failed_requests || 0)}</dd></div>
         <div><dt>Long tasks</dt><dd>${Number(scenario.long_tasks?.count || 0)}</dd></div>
@@ -5645,9 +5826,13 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
     }
     const comparisonText = !state.latest.comparison
       ? "No browser baseline saved"
-      : state.latest.comparison.passed
-        ? "All comparable scenarios are within the saved baseline"
-        : "One or more scenarios are slower than the saved baseline";
+      : state.latest.comparison.compatible === false
+        ? state.latest.comparison.reason
+        : state.latest.comparison.passed === null
+          ? "Comparison is inconclusive because run-to-run variation is too high"
+          : state.latest.comparison.passed
+            ? "All comparable scenarios are within the saved baseline"
+            : "One or more scenarios are slower than the saved baseline";
     output.innerHTML = `
       <div class="openmmi-perf-summary ${state.latest.comparison?.passed === false ? "is-fail" : ""}">
         <strong>${escapeHtml(comparisonText)}</strong>
@@ -5673,7 +5858,7 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
   }
 
   function saveBaseline() {
-    if (!state.latest) return;
+    if (!state.latest || !reportIsStable(state.latest)) return;
     state.baseline = typeof structuredClone === "function"
       ? structuredClone(state.latest)
       : JSON.parse(JSON.stringify(state.latest));
@@ -5721,15 +5906,17 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
     const clear = document.querySelector("#openMmiPerformanceClearBaseline");
     if (run) {
       run.disabled = state.running;
-      run.textContent = state.running ? "Running…" : "Run automated suite";
+      run.textContent = state.running ? "Running…" : "Run 3-pass suite";
     }
     if (download) download.disabled = !state.latest || state.running;
-    if (baseline) baseline.disabled = !state.latest || state.running;
+    if (baseline) baseline.disabled = !state.latest || state.running || !reportIsStable(state.latest);
     if (clear) clear.disabled = !state.baseline || state.running;
     const baselineState = document.querySelector("#openMmiPerformanceBaselineState");
     if (baselineState) {
       baselineState.textContent = state.baseline
-        ? `Browser baseline saved ${new Date(state.baseline.generated_at).toLocaleString()}`
+        ? Number(state.baseline.schema) === REPORT_SCHEMA
+          ? `Browser baseline saved ${new Date(state.baseline.generated_at).toLocaleString()}`
+          : "Saved baseline uses the older single-run format"
         : "No browser baseline saved";
     }
   }
@@ -5745,7 +5932,7 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
     overlay.innerHTML = `
       <strong data-openmmi-perf-progress-label>Preparing diagnostics…</strong>
       <div class="openmmi-performance-progress-track"><span data-openmmi-perf-progress-bar></span></div>
-      <small>Pages and enabled media sources are switched automatically, then restored.</small>
+      <small>Three measured passes per scenario, plus warm-up. Pages and sources are restored afterward.</small>
     `;
     document.body.appendChild(overlay);
   }
@@ -5764,10 +5951,10 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
           <div><span>Diagnostics</span><h3>Automated browser performance</h3></div>
           <span id="openMmiPerformanceBaselineState" class="openmmi-perf-baseline-state"></span>
         </header>
-        <p>Runs Home, Jellyfin browsing, and Internet Radio browsing without manual page changes. Radio is tested only when it is already enabled and privacy-acknowledged. The suite does not start audio. Any media already playing will stop and will not resume automatically.</p>
+        <p>Runs Home, Jellyfin browsing, and Internet Radio browsing automatically. Each scenario has a warm-up followed by three measured passes, then reports the median and worst pass. Allow about two minutes. Radio is tested only when already enabled and privacy-acknowledged. The suite does not start audio; existing playback may stop and will not resume automatically.</p>
         <p class="openmmi-perf-privacy">Results contain timings and scenario names only. Status payloads, telltale values, Jellyfin credentials, station favourites, and search text are not stored or uploaded.</p>
         <div class="openmmi-perf-actions">
-          <button type="button" id="openMmiPerformanceRun">Run automated suite</button>
+          <button type="button" id="openMmiPerformanceRun">Run 3-pass suite</button>
           <button type="button" id="openMmiPerformanceDownload">Download JSON</button>
           <button type="button" id="openMmiPerformanceSaveBaseline">Save as baseline</button>
           <button type="button" id="openMmiPerformanceClearBaseline">Clear baseline</button>

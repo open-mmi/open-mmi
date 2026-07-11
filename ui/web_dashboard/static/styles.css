@@ -3809,3 +3809,16 @@ body.openmmi-radio-privacy-open {
   display: none !important;
 }
 /* --- Open MMI browser diagnostics placement fix end --- */
+
+/* --- Open MMI browser performance multi-run additions start --- */
+.openmmi-perf-method {
+  margin: -0.15rem 0 0.45rem !important;
+  color: rgba(255, 255, 255, 0.62) !important;
+  font-size: 0.62rem !important;
+}
+
+.openmmi-perf-badge.is-warn {
+  border-color: rgba(255, 220, 120, 0.92);
+  color: #ffe08a;
+}
+/* --- Open MMI browser performance multi-run additions end --- */
