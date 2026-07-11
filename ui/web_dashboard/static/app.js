@@ -5046,3 +5046,773 @@ try {
 // --- openmmi door overlay reuse vehicle visual v3 ---
 
 document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanupV2);
+
+// --- Open MMI browser performance diagnostics start ---
+(function openMmiBrowserPerformanceDiagnostics() {
+  if (window.__openMmiBrowserPerformanceDiagnosticsLoaded) return;
+  window.__openMmiBrowserPerformanceDiagnosticsLoaded = true;
+
+  const LATEST_KEY = "openmmi.performance.latest.v1";
+  const BASELINE_KEY = "openmmi.performance.baseline.v1";
+  const STATUS_PATH = "/api/status";
+  const STATUS_INTERVAL_MS = 200;
+  const SAMPLES_PER_SCENARIO = 50;
+  const SCENARIO_TIMEOUT_MS = 15000;
+  const REPORT_SCHEMA = 1;
+  const SAMPLE_ID = Symbol("openMmiPerformanceSampleId");
+
+  const state = {
+    running: false,
+    capture: false,
+    scenario: "",
+    sampleSequence: 0,
+    samples: [],
+    parsedQueue: [],
+    inFlight: 0,
+    maxInFlight: 0,
+    completionOrder: [],
+    longTasks: [],
+    latest: readJson(LATEST_KEY, null),
+    baseline: readJson(BASELINE_KEY, null),
+    originalFetch: null,
+    originalRender: null,
+    longTaskObserver: null,
+  };
+
+  function readJson(key, fallback) {
+    try {
+      const value = JSON.parse(localStorage.getItem(key) || "null");
+      return value && typeof value === "object" ? value : fallback;
+    } catch (_) {
+      return fallback;
+    }
+  }
+
+  function writeJson(key, value) {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#39;");
+  }
+
+  function percentile(values, quantile) {
+    const data = values
+      .map(Number)
+      .filter(Number.isFinite)
+      .sort((left, right) => left - right);
+    if (!data.length) return null;
+    if (data.length === 1) return data[0];
+    const position = (data.length - 1) * quantile;
+    const lower = Math.floor(position);
+    const upper = Math.ceil(position);
+    if (lower === upper) return data[lower];
+    return data[lower] + (data[upper] - data[lower]) * (position - lower);
+  }
+
+  function describe(values) {
+    const data = values.map(Number).filter(Number.isFinite);
+    if (!data.length) {
+      return { count: 0, mean: null, median: null, p95: null, p99: null, maximum: null };
+    }
+    const mean = data.reduce((sum, value) => sum + value, 0) / data.length;
+    return {
+      count: data.length,
+      mean: round(mean),
+      median: round(percentile(data, 0.5)),
+      p95: round(percentile(data, 0.95)),
+      p99: round(percentile(data, 0.99)),
+      maximum: round(Math.max(...data)),
+    };
+  }
+
+  function round(value) {
+    return Number.isFinite(value) ? Math.round(value * 1000) / 1000 : null;
+  }
+
+  function sleep(milliseconds) {
+    return new Promise((resolve) => setTimeout(resolve, milliseconds));
+  }
+
+  async function waitUntil(predicate, timeoutMs, intervalMs = 50) {
+    const deadline = performance.now() + timeoutMs;
+    while (performance.now() < deadline) {
+      try {
+        if (predicate()) return true;
+      } catch (_) {}
+      await sleep(intervalMs);
+    }
+    return false;
+  }
+
+  function activeSettingsSection() {
+    return document.querySelector("[data-openmmi-settings-section].active")
+      ?.dataset?.openmmiSettingsSection || "";
+  }
+
+  function currentPageId() {
+    return document.querySelector(".page.active")?.id || "pageHome";
+  }
+
+  function pageIndex(pageId) {
+    try {
+      return Array.isArray(PAGE_IDS) ? PAGE_IDS.indexOf(pageId) : -1;
+    } catch (_) {
+      return -1;
+    }
+  }
+
+  function showPage(pageId) {
+    if (pageId === "pageSettings" && typeof window.openMmiShowSettingsPage === "function") {
+      window.openMmiShowSettingsPage();
+      return true;
+    }
+    const index = pageIndex(pageId);
+    try {
+      if (index >= 0 && typeof setPage === "function") {
+        setPage(index);
+        window.dispatchEvent(
+          new CustomEvent("openmmi:pagechange", { detail: { id: pageId } }),
+        );
+        return true;
+      }
+    } catch (_) {}
+    const page = document.getElementById(pageId);
+    if (!page) return false;
+    document.querySelectorAll(".page").forEach((candidate) => {
+      candidate.classList.toggle("active", candidate === page);
+    });
+    window.dispatchEvent(
+      new CustomEvent("openmmi:pagechange", { detail: { id: pageId } }),
+    );
+    return true;
+  }
+
+  function mediaPageId() {
+    return document.querySelector("#openMmiMediaRoot")?.closest(".page")?.id
+      || (pageIndex("pageElectrical") >= 0 ? "pageElectrical" : "pageElectrical");
+  }
+
+  function activeSourceId() {
+    try {
+      return window.openMmiMediaSources?.activeSourceId?.()
+        || window.openMmiMediaAdapters?.activeSourceId?.()
+        || "jellyfin";
+    } catch (_) {
+      return "jellyfin";
+    }
+  }
+
+  function sourceEnabled(sourceId) {
+    try {
+      return Boolean(window.openMmiMediaSources?.isEnabled?.(sourceId));
+    } catch (_) {
+      return sourceId === "jellyfin";
+    }
+  }
+
+  async function activateSource(sourceId) {
+    const started = performance.now();
+    if (!sourceEnabled(sourceId)) {
+      return { skipped: true, reason: `${sourceId} is disabled`, setup_ms: null };
+    }
+    try {
+      window.openMmiMediaSources?.setActiveSource?.(sourceId);
+      window.openMmiMediaAdapters?.syncActiveSource?.(true);
+    } catch (error) {
+      return { skipped: true, reason: String(error?.message || error), setup_ms: null };
+    }
+    showPage(mediaPageId());
+    const ready = await waitUntil(() => {
+      const root = document.querySelector("#openMmiMediaRoot");
+      if (!root) return false;
+      const selected = root.dataset.openMmiMediaSource || activeSourceId();
+      if (selected !== sourceId) return false;
+      if (root.getAttribute("aria-busy") === "true") return false;
+      const results = root.querySelector("#ommiMediaResults");
+      const realRows = results?.querySelectorAll(
+        ".ommi-track:not(.ommi-track-skeleton-v8b), .list-group-item:not(.ommi-track-skeleton-v8b)",
+      ).length || 0;
+      const message = root.querySelector("#ommiMediaMessage")?.textContent || "";
+      return realRows > 0 || /no |ready|tap|error|failed|not configured|could not/i.test(message);
+    }, 12000, 75);
+    return {
+      skipped: false,
+      ready,
+      setup_ms: round(performance.now() - started),
+    };
+  }
+
+  function statusUrl(input) {
+    try {
+      const raw = typeof input === "string" ? input : input?.url;
+      if (!raw) return false;
+      const parsed = new URL(raw, location.href);
+      return parsed.origin === location.origin && parsed.pathname === STATUS_PATH;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function installInstrumentation() {
+    if (state.originalFetch || state.originalRender) return;
+    state.originalFetch = window.fetch;
+    window.fetch = async function openMmiMeasuredFetch(input, init) {
+      if (!state.capture || !statusUrl(input)) {
+        return state.originalFetch.call(window, input, init);
+      }
+      const sample = {
+        id: ++state.sampleSequence,
+        scenario: state.scenario,
+        started_at_ms: performance.now(),
+        response_at_ms: null,
+        json_at_ms: null,
+        render_start_ms: null,
+        render_end_ms: null,
+        paint_at_ms: null,
+        ok: false,
+        error: null,
+      };
+      state.samples.push(sample);
+      state.inFlight += 1;
+      sample.in_flight = state.inFlight;
+      state.maxInFlight = Math.max(state.maxInFlight, state.inFlight);
+      try {
+        const response = await state.originalFetch.call(window, input, init);
+        sample.response_at_ms = performance.now();
+        sample.ok = response.ok;
+        const originalJson = response.json.bind(response);
+        try {
+          Object.defineProperty(response, "json", {
+            configurable: true,
+            value: async function openMmiMeasuredStatusJson() {
+              const payload = await originalJson();
+              sample.json_at_ms = performance.now();
+              state.parsedQueue.push(sample.id);
+              try {
+                Object.defineProperty(payload, SAMPLE_ID, {
+                  configurable: true,
+                  value: sample.id,
+                });
+              } catch (_) {}
+              return payload;
+            },
+          });
+        } catch (_) {}
+        return response;
+      } catch (error) {
+        sample.error = String(error?.message || error);
+        throw error;
+      } finally {
+        state.inFlight = Math.max(0, state.inFlight - 1);
+        state.completionOrder.push(sample.id);
+      }
+    };
+
+    try {
+      if (typeof render === "function") {
+        state.originalRender = render;
+        render = function openMmiMeasuredRender(payload) {
+          let sampleId = payload?.[SAMPLE_ID];
+          if (sampleId) {
+            const queueIndex = state.parsedQueue.indexOf(sampleId);
+            if (queueIndex >= 0) state.parsedQueue.splice(queueIndex, 1);
+          } else {
+            sampleId = state.parsedQueue.shift();
+          }
+          const sample = state.samples.find((entry) => entry.id === sampleId);
+          if (sample && state.capture) sample.render_start_ms = performance.now();
+          const result = state.originalRender(payload);
+          if (sample && state.capture) {
+            sample.render_end_ms = performance.now();
+            requestAnimationFrame(() => {
+              sample.paint_at_ms = performance.now();
+            });
+          }
+          return result;
+        };
+      }
+    } catch (_) {
+      state.originalRender = null;
+    }
+
+    try {
+      state.longTaskObserver = new PerformanceObserver((list) => {
+        if (!state.capture) return;
+        for (const entry of list.getEntries()) {
+          state.longTasks.push({
+            scenario: state.scenario,
+            start_ms: round(entry.startTime),
+            duration_ms: round(entry.duration),
+          });
+        }
+      });
+      state.longTaskObserver.observe({ entryTypes: ["longtask"] });
+    } catch (_) {
+      state.longTaskObserver = null;
+    }
+  }
+
+  function removeInstrumentation() {
+    state.capture = false;
+    if (state.originalFetch) {
+      window.fetch = state.originalFetch;
+      state.originalFetch = null;
+    }
+    try {
+      if (state.originalRender) render = state.originalRender;
+    } catch (_) {}
+    state.originalRender = null;
+    try {
+      state.longTaskObserver?.disconnect();
+    } catch (_) {}
+    state.longTaskObserver = null;
+    state.parsedQueue.length = 0;
+  }
+
+  function scenarioSamples(name) {
+    return state.samples.filter((sample) => sample.scenario === name);
+  }
+
+  function completionDisorder(samples) {
+    const wanted = new Set(samples.map((sample) => sample.id));
+    let maximum = -Infinity;
+    let count = 0;
+    for (const id of state.completionOrder) {
+      if (!wanted.has(id)) continue;
+      if (id < maximum) count += 1;
+      maximum = Math.max(maximum, id);
+    }
+    return count;
+  }
+
+  function summariseScenario(name, setup) {
+    const samples = scenarioSamples(name);
+    const starts = samples.map((sample) => sample.started_at_ms);
+    const paints = samples
+      .map((sample) => sample.paint_at_ms)
+      .filter(Number.isFinite)
+      .sort((left, right) => left - right);
+    const gaps = (values) => values.slice(1).map((value, index) => value - values[index]);
+    const longTasks = state.longTasks.filter((entry) => entry.scenario === name);
+    return {
+      name,
+      skipped: Boolean(setup?.skipped),
+      skip_reason: setup?.reason || null,
+      source_ready: setup?.ready ?? null,
+      source_setup_ms: setup?.setup_ms ?? null,
+      samples: samples.length,
+      successful_requests: samples.filter((sample) => sample.ok && !sample.error).length,
+      failed_requests: samples.filter((sample) => sample.error || !sample.ok).length,
+      max_in_flight: Math.max(0, ...samples.map((sample) => Number(sample.in_flight) || 0)),
+      out_of_order_completions: completionDisorder(samples),
+      request_ms: describe(samples.map((sample) =>
+        Number.isFinite(sample.response_at_ms)
+          ? sample.response_at_ms - sample.started_at_ms
+          : NaN,
+      )),
+      json_ms: describe(samples.map((sample) =>
+        Number.isFinite(sample.json_at_ms) && Number.isFinite(sample.response_at_ms)
+          ? sample.json_at_ms - sample.response_at_ms
+          : NaN,
+      )),
+      render_cpu_ms: describe(samples.map((sample) =>
+        Number.isFinite(sample.render_end_ms) && Number.isFinite(sample.render_start_ms)
+          ? sample.render_end_ms - sample.render_start_ms
+          : NaN,
+      )),
+      response_to_paint_ms: describe(samples.map((sample) =>
+        Number.isFinite(sample.paint_at_ms) && Number.isFinite(sample.response_at_ms)
+          ? sample.paint_at_ms - sample.response_at_ms
+          : NaN,
+      )),
+      request_to_paint_ms: describe(samples.map((sample) =>
+        Number.isFinite(sample.paint_at_ms)
+          ? sample.paint_at_ms - sample.started_at_ms
+          : NaN,
+      )),
+      request_start_gap_ms: describe(gaps(starts)),
+      paint_gap_ms: describe(gaps(paints)),
+      long_tasks: {
+        supported: Boolean(state.longTaskObserver || longTasks.length),
+        count: longTasks.length,
+        total_ms: round(longTasks.reduce((sum, entry) => sum + entry.duration_ms, 0)),
+        maximum_ms: round(Math.max(0, ...longTasks.map((entry) => entry.duration_ms))),
+      },
+    };
+  }
+
+  async function captureScenario(name, setup) {
+    setProgress(`Preparing ${name.replaceAll("_", " ")}…`, 0);
+    const setupResult = await setup();
+    if (setupResult?.skipped) return summariseScenario(name, setupResult);
+    await sleep(350);
+    const startingCount = scenarioSamples(name).length;
+    state.scenario = name;
+    state.capture = true;
+    const started = performance.now();
+    const completed = await waitUntil(() => {
+      const count = scenarioSamples(name).filter((sample) =>
+        Number.isFinite(sample.response_at_ms),
+      ).length - startingCount;
+      const ratio = Math.min(1, count / SAMPLES_PER_SCENARIO);
+      setProgress(`Measuring ${name.replaceAll("_", " ")}… ${count}/${SAMPLES_PER_SCENARIO}`, ratio);
+      return count >= SAMPLES_PER_SCENARIO;
+    }, SCENARIO_TIMEOUT_MS, 50);
+    if (state.originalRender) {
+      await waitUntil(() => {
+        const samples = scenarioSamples(name).slice(startingCount);
+        const completedResponses = samples.filter((sample) => Number.isFinite(sample.response_at_ms)).length;
+        const painted = samples.filter((sample) => Number.isFinite(sample.paint_at_ms)).length;
+        return painted >= Math.min(completedResponses, SAMPLES_PER_SCENARIO);
+      }, 2000, 25);
+    }
+    state.capture = false;
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const summary = summariseScenario(name, setupResult || {});
+    summary.completed_target = completed;
+    summary.capture_ms = round(performance.now() - started);
+    return summary;
+  }
+
+  function compareMetric(baselineScenario, candidateScenario, group, metric, allowedRatio) {
+    const oldValue = Number(baselineScenario?.[group]?.[metric]);
+    const newValue = Number(candidateScenario?.[group]?.[metric]);
+    if (!Number.isFinite(oldValue) || !Number.isFinite(newValue)) return null;
+    const limit = Math.max(oldValue * (1 + allowedRatio), oldValue + 0.5);
+    return {
+      baseline: round(oldValue),
+      candidate: round(newValue),
+      limit: round(limit),
+      passed: newValue <= limit,
+    };
+  }
+
+  function compareReports(baseline, candidate) {
+    if (!baseline?.scenarios || !candidate?.scenarios) return null;
+    const results = [];
+    for (const scenario of candidate.scenarios) {
+      const old = baseline.scenarios.find((entry) => entry.name === scenario.name);
+      if (!old || scenario.skipped || old.skipped) continue;
+      const checks = {
+        request_p95: compareMetric(old, scenario, "request_ms", "p95", 0.10),
+        response_to_paint_p95: compareMetric(old, scenario, "response_to_paint_ms", "p95", 0.10),
+        paint_gap_p95: compareMetric(old, scenario, "paint_gap_ms", "p95", 0.20),
+      };
+      const failed = Object.values(checks).filter(Boolean).some((check) => !check.passed)
+        || scenario.failed_requests > old.failed_requests;
+      results.push({ name: scenario.name, passed: !failed, checks });
+    }
+    return {
+      passed: results.every((entry) => entry.passed),
+      scenarios: results,
+    };
+  }
+
+  async function runSuite() {
+    if (state.running) return;
+    state.running = true;
+    state.samples = [];
+    state.parsedQueue = [];
+    state.longTasks = [];
+    state.completionOrder = [];
+    state.maxInFlight = 0;
+    state.sampleSequence = 0;
+    const originalPage = currentPageId();
+    const originalSource = activeSourceId();
+    const audio = document.querySelector("#ommiMediaAudio");
+    const interruptedPlayback = Boolean(audio && !audio.paused);
+    updateButtons();
+    showProgress(true);
+    installInstrumentation();
+
+    const report = {
+      schema: REPORT_SCHEMA,
+      generated_at: new Date().toISOString(),
+      label: "browser-automated-suite",
+      configuration: {
+        status_interval_ms: STATUS_INTERVAL_MS,
+        samples_per_scenario: SAMPLES_PER_SCENARIO,
+        scenario_timeout_ms: SCENARIO_TIMEOUT_MS,
+      },
+      environment: {
+        viewport: `${window.innerWidth}x${window.innerHeight}`,
+        device_pixel_ratio: window.devicePixelRatio || 1,
+        visibility_state: document.visibilityState,
+      },
+      playback_was_interrupted: interruptedPlayback,
+      scenarios: [],
+    };
+
+    try {
+      report.scenarios.push(await captureScenario("home_idle", async () => {
+        showPage("pageHome");
+        return { skipped: false, ready: true, setup_ms: 0 };
+      }));
+
+      if (sourceEnabled("jellyfin")) {
+        report.scenarios.push(await captureScenario("media_jellyfin_browse", () =>
+          activateSource("jellyfin"),
+        ));
+      } else {
+        report.scenarios.push(summariseScenario("media_jellyfin_browse", {
+          skipped: true,
+          reason: "Jellyfin is disabled",
+        }));
+      }
+
+      if (sourceEnabled("radio")) {
+        report.scenarios.push(await captureScenario("media_radio_browse", () =>
+          activateSource("radio"),
+        ));
+      } else {
+        report.scenarios.push(summariseScenario("media_radio_browse", {
+          skipped: true,
+          reason: "Internet Radio is disabled or not acknowledged",
+        }));
+      }
+
+      report.comparison = compareReports(state.baseline, report);
+      state.latest = report;
+      writeJson(LATEST_KEY, report);
+    } catch (error) {
+      report.error = String(error?.message || error);
+      state.latest = report;
+      writeJson(LATEST_KEY, report);
+    } finally {
+      state.capture = false;
+      removeInstrumentation();
+      try {
+        if (sourceEnabled(originalSource)) {
+          window.openMmiMediaSources?.setActiveSource?.(originalSource);
+          window.openMmiMediaAdapters?.syncActiveSource?.(true);
+        }
+      } catch (_) {}
+      showPage(originalPage);
+      if (originalPage === "pageSettings") {
+        window.openMmiShowSettingsPage?.();
+        await sleep(50);
+        document.querySelector('[data-openmmi-settings-section="diagnostics"]')?.click();
+      }
+      state.running = false;
+      showProgress(false);
+      updateButtons();
+      renderReport();
+    }
+  }
+
+  function formatMs(value) {
+    return Number.isFinite(Number(value)) ? `${Number(value).toFixed(1)} ms` : "—";
+  }
+
+  function scenarioCard(scenario) {
+    if (scenario.skipped) {
+      return `<article class="openmmi-perf-card is-skipped"><strong>${escapeHtml(scenario.name.replaceAll("_", " "))}</strong><span>${escapeHtml(scenario.skip_reason || "Skipped")}</span></article>`;
+    }
+    const comparison = state.latest?.comparison?.scenarios?.find((entry) => entry.name === scenario.name);
+    const badge = comparison
+      ? `<span class="openmmi-perf-badge ${comparison.passed ? "is-pass" : "is-fail"}">${comparison.passed ? "within baseline" : "regression"}</span>`
+      : "";
+    return `<article class="openmmi-perf-card">
+      <header><strong>${escapeHtml(scenario.name.replaceAll("_", " "))}</strong>${badge}</header>
+      <dl>
+        <div><dt>Status p95</dt><dd>${formatMs(scenario.request_ms?.p95)}</dd></div>
+        <div><dt>Response → paint p95</dt><dd>${formatMs(scenario.response_to_paint_ms?.p95)}</dd></div>
+        <div><dt>Paint gap p95</dt><dd>${formatMs(scenario.paint_gap_ms?.p95)}</dd></div>
+        <div><dt>Source ready</dt><dd>${formatMs(scenario.source_setup_ms)}</dd></div>
+        <div><dt>Failures</dt><dd>${Number(scenario.failed_requests || 0)}</dd></div>
+        <div><dt>Long tasks</dt><dd>${Number(scenario.long_tasks?.count || 0)}</dd></div>
+      </dl>
+    </article>`;
+  }
+
+  function renderReport() {
+    const output = document.querySelector("#openMmiPerformanceResults");
+    if (!output) return;
+    if (!state.latest) {
+      output.innerHTML = '<p class="openmmi-perf-empty">No browser diagnostic run has been recorded yet.</p>';
+      return;
+    }
+    const comparisonText = !state.latest.comparison
+      ? "No browser baseline saved"
+      : state.latest.comparison.passed
+        ? "All comparable scenarios are within the saved baseline"
+        : "One or more scenarios are slower than the saved baseline";
+    output.innerHTML = `
+      <div class="openmmi-perf-summary ${state.latest.comparison?.passed === false ? "is-fail" : ""}">
+        <strong>${escapeHtml(comparisonText)}</strong>
+        <span>${escapeHtml(new Date(state.latest.generated_at).toLocaleString())}</span>
+      </div>
+      <div class="openmmi-perf-grid">${(state.latest.scenarios || []).map(scenarioCard).join("")}</div>
+    `;
+  }
+
+  function downloadLatest() {
+    if (!state.latest) return;
+    const blob = new Blob([`${JSON.stringify(state.latest, null, 2)}\n`], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `open-mmi-browser-performance-${new Date().toISOString().replaceAll(":", "-")}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function saveBaseline() {
+    if (!state.latest) return;
+    state.baseline = typeof structuredClone === "function"
+      ? structuredClone(state.latest)
+      : JSON.parse(JSON.stringify(state.latest));
+    state.baseline.comparison = null;
+    writeJson(BASELINE_KEY, state.baseline);
+    state.latest.comparison = compareReports(state.baseline, state.latest);
+    writeJson(LATEST_KEY, state.latest);
+    updateButtons();
+    renderReport();
+  }
+
+  function clearBaseline() {
+    try {
+      localStorage.removeItem(BASELINE_KEY);
+    } catch (_) {}
+    state.baseline = null;
+    if (state.latest) {
+      state.latest.comparison = null;
+      writeJson(LATEST_KEY, state.latest);
+    }
+    updateButtons();
+    renderReport();
+  }
+
+  function setProgress(label, ratio) {
+    const overlay = document.querySelector("#openMmiPerformanceProgress");
+    if (!overlay) return;
+    const text = overlay.querySelector("[data-openmmi-perf-progress-label]");
+    const bar = overlay.querySelector("[data-openmmi-perf-progress-bar]");
+    if (text) text.textContent = label;
+    if (bar) bar.style.width = `${Math.max(0, Math.min(1, Number(ratio) || 0)) * 100}%`;
+  }
+
+  function showProgress(show) {
+    const overlay = document.querySelector("#openMmiPerformanceProgress");
+    if (!overlay) return;
+    overlay.hidden = !show;
+    overlay.setAttribute("aria-hidden", show ? "false" : "true");
+  }
+
+  function updateButtons() {
+    const run = document.querySelector("#openMmiPerformanceRun");
+    const download = document.querySelector("#openMmiPerformanceDownload");
+    const baseline = document.querySelector("#openMmiPerformanceSaveBaseline");
+    const clear = document.querySelector("#openMmiPerformanceClearBaseline");
+    if (run) {
+      run.disabled = state.running;
+      run.textContent = state.running ? "Running…" : "Run automated suite";
+    }
+    if (download) download.disabled = !state.latest || state.running;
+    if (baseline) baseline.disabled = !state.latest || state.running;
+    if (clear) clear.disabled = !state.baseline || state.running;
+    const baselineState = document.querySelector("#openMmiPerformanceBaselineState");
+    if (baselineState) {
+      baselineState.textContent = state.baseline
+        ? `Browser baseline saved ${new Date(state.baseline.generated_at).toLocaleString()}`
+        : "No browser baseline saved";
+    }
+  }
+
+  function ensureProgressOverlay() {
+    if (document.querySelector("#openMmiPerformanceProgress")) return;
+    const overlay = document.createElement("div");
+    overlay.id = "openMmiPerformanceProgress";
+    overlay.className = "openmmi-performance-progress";
+    overlay.hidden = true;
+    overlay.setAttribute("role", "status");
+    overlay.setAttribute("aria-live", "polite");
+    overlay.innerHTML = `
+      <strong data-openmmi-perf-progress-label>Preparing diagnostics…</strong>
+      <div class="openmmi-performance-progress-track"><span data-openmmi-perf-progress-bar></span></div>
+      <small>Pages and enabled media sources are switched automatically, then restored.</small>
+    `;
+    document.body.appendChild(overlay);
+  }
+
+  function ensurePanel() {
+    const page = document.querySelector("#pageSettings");
+    const panel = document.querySelector("#openmmiSettingsPanel");
+    if (!page || !panel) return;
+    let host = document.querySelector("#openMmiSettingsPerformanceHost");
+    if (!host) {
+      host = document.createElement("section");
+      host.id = "openMmiSettingsPerformanceHost";
+      host.className = "openmmi-performance-settings";
+      host.innerHTML = `
+        <header>
+          <div><span>Diagnostics</span><h3>Automated browser performance</h3></div>
+          <span id="openMmiPerformanceBaselineState" class="openmmi-perf-baseline-state"></span>
+        </header>
+        <p>Runs Home, Jellyfin browsing, and Internet Radio browsing without manual page changes. Radio is tested only when it is already enabled and privacy-acknowledged. The suite does not start audio. Any media already playing will stop and will not resume automatically.</p>
+        <p class="openmmi-perf-privacy">Results contain timings and scenario names only. Status payloads, telltale values, Jellyfin credentials, station favourites, and search text are not stored or uploaded.</p>
+        <div class="openmmi-perf-actions">
+          <button type="button" id="openMmiPerformanceRun">Run automated suite</button>
+          <button type="button" id="openMmiPerformanceDownload">Download JSON</button>
+          <button type="button" id="openMmiPerformanceSaveBaseline">Save as baseline</button>
+          <button type="button" id="openMmiPerformanceClearBaseline">Clear baseline</button>
+        </div>
+        <div id="openMmiPerformanceResults" class="openmmi-performance-results" aria-live="polite"></div>
+      `;
+      const staticControls = document.querySelector("#openmmiSettingsStaticControls");
+      if (staticControls?.parentNode === panel.parentNode) {
+        panel.parentNode.insertBefore(host, panel);
+      } else {
+        panel.parentNode?.insertBefore(host, panel);
+      }
+      requestAnimationFrame(() => {
+        host.scrollIntoView?.({ block: "start", behavior: "auto" });
+      });
+      host.querySelector("#openMmiPerformanceRun")?.addEventListener("click", runSuite);
+      host.querySelector("#openMmiPerformanceDownload")?.addEventListener("click", downloadLatest);
+      host.querySelector("#openMmiPerformanceSaveBaseline")?.addEventListener("click", saveBaseline);
+      host.querySelector("#openMmiPerformanceClearBaseline")?.addEventListener("click", clearBaseline);
+    }
+    host.hidden = activeSettingsSection() !== "diagnostics";
+    updateButtons();
+    renderReport();
+  }
+
+  function schedulePanel() {
+    requestAnimationFrame(ensurePanel);
+  }
+
+  window.addEventListener("openmmi:settingsrender", schedulePanel);
+  window.addEventListener("openmmi:pagechange", schedulePanel);
+  document.addEventListener("DOMContentLoaded", () => {
+    ensureProgressOverlay();
+    schedulePanel();
+  });
+  if (document.readyState !== "loading") {
+    ensureProgressOverlay();
+    schedulePanel();
+  }
+
+  window.openMmiPerformanceDiagnostics = {
+    runSuite,
+    getLatestReport: () => state.latest,
+    getBaseline: () => state.baseline,
+    saveLatestAsBaseline: saveBaseline,
+  };
+})();
+// --- Open MMI browser performance diagnostics end ---
