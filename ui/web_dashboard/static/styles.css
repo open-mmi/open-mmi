@@ -4017,3 +4017,29 @@ body.openmmi-radio-privacy-open {
   }
 }
 /* --- Open MMI media control visual consistency end --- */
+
+/* --- Open MMI Bluetooth media source start --- */
+#openMmiMediaRoot .openmmi-bluetooth-hidden {
+  display: none !important;
+}
+
+#openMmiMediaRoot.openmmi-media-source-bluetooth #ommiMediaProgressTrack,
+#openMmiMediaRoot #ommiMediaProgressTrack.is-bluetooth-readonly {
+  cursor: default !important;
+  opacity: 0.78;
+}
+
+#openMmiMediaRoot.openmmi-media-source-bluetooth .ommi-art {
+  background:
+    radial-gradient(circle at 50% 30%, rgba(92, 190, 255, 0.20), transparent 46%),
+    rgba(255, 255, 255, 0.045) !important;
+}
+
+#openMmiMediaRoot.openmmi-media-source-bluetooth .ommi-track {
+  cursor: pointer;
+}
+
+#openMmiMediaRoot.openmmi-media-source-bluetooth .ommi-track-duration {
+  font-variant-numeric: tabular-nums;
+}
+/* --- Open MMI Bluetooth media source end --- */

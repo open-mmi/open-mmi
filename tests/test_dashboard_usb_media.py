@@ -120,7 +120,7 @@ class UsbMediaTests(unittest.TestCase):
         source = SERVER_PATH.read_text(encoding="utf-8")
         self.assertIn('id: "usb", label: "USB", note: "read-only local media", planned: false', app)
         self.assertIn('api.adapters.usb = usbAdapter()', app)
-        self.assertIn('return ["jellyfin", "radio", "usb"].includes(active)', app)
+        self.assertRegex(app, r'return\s*\[[^\]]*"usb"[^\]]*\]\.includes\(active\)')
         self.assertIn('if parsed.path == "/api/usb/status":', source)
         self.assertIn('if parsed.path.startswith("/api/usb/stream/"):', source)
 

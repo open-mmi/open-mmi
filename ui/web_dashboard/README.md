@@ -489,3 +489,52 @@ curl 'http://127.0.0.1:8765/api/usb/status'
 curl 'http://127.0.0.1:8765/api/usb/browse?filter=browse&limit=10'
 ```
 <!-- open-mmi-usb-media-end -->
+
+<!-- open-mmi-bluetooth-media-start -->
+## Bluetooth media source
+
+Bluetooth Media controls an already-connected phone or remote player through
+BlueZ's `org.bluez.MediaPlayer1` interface on the system D-Bus. The dashboard
+does not pair devices, request browser Bluetooth permission, change PipeWire or
+PulseAudio routes, or copy the remote audio stream into the browser. Audio keeps
+playing through the operating system's configured Bluetooth input/profile.
+
+Requirements:
+
+- Linux with BlueZ and `busctl` available.
+- A connected device exposing AVRCP media controls.
+- The dashboard server must run with access to the system D-Bus.
+
+Enable **Bluetooth** under **Settings → Media**, connect the phone using the
+operating system, then start playback on the phone. The dashboard displays the
+track title, artist, album, duration, position, device name, and remote player
+name when BlueZ provides them. Play/pause, stop, previous, and next are sent back
+to the selected BlueZ player.
+
+BlueZ's remote `MediaPlayer1` API does not expose arbitrary seek positioning or
+artwork, so the progress bar is read-only and generic artwork is used.
+
+Optional configuration:
+
+```bash
+# Prefer a player whose device name, player name, or BlueZ object path contains
+# this case-insensitive text when more than one remote player is connected.
+export OPEN_MMI_BLUETOOTH_PLAYER='Pixel'
+
+# Disable the source backend explicitly.
+export OPEN_MMI_BLUETOOTH_DISABLE=1
+
+# Override the D-Bus command timeout (0.25 to 8 seconds).
+export OPEN_MMI_BLUETOOTH_DBUS_TIMEOUT=2
+```
+
+API checks:
+
+```bash
+curl 'http://127.0.0.1:8765/api/bluetooth/status'
+```
+
+Controls require a current opaque `player_id` from the status response and a
+same-origin JSON POST. Raw BlueZ object paths and Bluetooth addresses are never
+returned to the browser.
+<!-- open-mmi-bluetooth-media-end -->
