@@ -3822,3 +3822,198 @@ body.openmmi-radio-privacy-open {
   color: #ffe08a;
 }
 /* --- Open MMI browser performance multi-run additions end --- */
+
+/* --- Open MMI USB media source start --- */
+#openMmiMediaRoot .ommi-usb-browser-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-height: 44px;
+  margin: 0.25rem 0 0.55rem;
+  padding: 0.35rem 0.55rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 0.65rem;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+#openMmiMediaRoot .ommi-usb-browser-controls[hidden] {
+  display: none !important;
+}
+
+#openMmiMediaRoot .ommi-usb-up {
+  min-width: 64px;
+  min-height: 38px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: inherit;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+#openMmiMediaRoot .ommi-usb-path {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ommi-muted, rgba(255, 255, 255, 0.72));
+  font-size: 0.88rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#openMmiMediaRoot .ommi-usb-directory {
+  cursor: pointer;
+}
+
+#openMmiMediaRoot .ommi-usb-directory .ommi-track-art {
+  color: currentColor;
+  opacity: 0.88;
+}
+
+#openMmiMediaRoot .ommi-usb-folder-icon {
+  width: 1.65rem;
+  height: 1.65rem;
+}
+
+#openMmiMediaRoot .ommi-usb-folder-chevron {
+  font-size: 1.65rem;
+  line-height: 1;
+}
+
+@media (max-width: 720px) {
+  #openMmiMediaRoot .ommi-usb-browser-controls {
+    gap: 0.45rem;
+    margin-bottom: 0.4rem;
+  }
+
+  #openMmiMediaRoot .ommi-usb-path {
+    font-size: 0.8rem;
+  }
+}
+/* --- Open MMI USB media source end --- */
+
+/* --- Open MMI media control visual consistency start --- */
+/*
+ * Radio has three browse selectors. Keep them together on the second control
+ * row on wider layouts without disturbing the joined search field above.
+ */
+#openMmiMediaRoot.openmmi-media-source-radio
+  .input-group:has(#ommiMediaFilter) > #ommiMediaFilter {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  justify-self: start;
+  width: 10.5rem !important;
+  min-width: 10.5rem !important;
+  max-width: 10.5rem !important;
+  position: relative;
+  z-index: 1;
+}
+
+#openMmiMediaRoot.openmmi-media-source-radio
+  .input-group:has(#ommiMediaFilter) > .ommi-radio-facets {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  display: flex;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 0.38rem;
+  width: 100%;
+  min-width: 0;
+  padding-inline-start: 10.88rem;
+}
+
+#openMmiMediaRoot.openmmi-media-source-radio .ommi-radio-facet-select {
+  flex: 1 1 0;
+  width: 100%;
+  min-width: 0;
+  max-width: 12.5rem;
+  color: #fff !important;
+  -webkit-text-fill-color: #fff;
+  color-scheme: dark;
+  border-color: #fff !important;
+  opacity: 1;
+}
+
+#openMmiMediaRoot.openmmi-media-source-radio .ommi-radio-facet-select option {
+  color: #fff;
+  background: #171a20;
+}
+
+/* Give available icon-only actions explicit white text and keylines. */
+#openMmiMediaRoot #ommiMediaFavoriteBtn,
+#openMmiMediaRoot #ommiMediaSearchBtn,
+#openMmiMediaRoot .ommi-search-btn {
+  color: #fff !important;
+  border-color: #fff !important;
+  opacity: 1;
+}
+
+#openMmiMediaRoot #ommiMediaFavoriteBtn:hover,
+#openMmiMediaRoot #ommiMediaFavoriteBtn:focus-visible,
+#openMmiMediaRoot #ommiMediaSearchBtn:hover,
+#openMmiMediaRoot #ommiMediaSearchBtn:focus-visible,
+#openMmiMediaRoot .ommi-search-btn:hover,
+#openMmiMediaRoot .ommi-search-btn:focus-visible {
+  color: #fff !important;
+  border-color: #fff !important;
+  outline-color: #fff !important;
+}
+
+/*
+ * A disabled Radio favourite action means that no station is selected. Keep
+ * the structural keyline white and mute only the icon, rather than fading the
+ * complete button and turning its border grey.
+ */
+#openMmiMediaRoot #ommiMediaFavoriteBtn:disabled {
+  color: #fff !important;
+  border-color: #fff !important;
+  background-color: transparent !important;
+  opacity: 1 !important;
+}
+
+#openMmiMediaRoot #ommiMediaFavoriteBtn:disabled svg,
+#openMmiMediaRoot #ommiMediaFavoriteBtn:disabled i {
+  opacity: 0.55;
+}
+
+/* The filled icon alone communicates the favourite state. */
+#openMmiMediaRoot #ommiMediaFavoriteBtn[aria-pressed="true"] {
+  background-color: transparent !important;
+  box-shadow: none !important;
+}
+
+#openMmiMediaRoot #ommiMediaFavoriteBtn[aria-pressed="true"]:hover,
+#openMmiMediaRoot #ommiMediaFavoriteBtn[aria-pressed="true"]:focus-visible {
+  background-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+/* Previous and next now use the same restrained hover surface as stop. */
+#openMmiMediaRoot #ommiMediaPrev:hover,
+#openMmiMediaRoot #ommiMediaNext:hover,
+#openMmiMediaRoot #ommiMediaStop:hover,
+#openMmiMediaRoot #ommiMediaPrev:focus-visible,
+#openMmiMediaRoot #ommiMediaNext:focus-visible,
+#openMmiMediaRoot #ommiMediaStop:focus-visible {
+  color: #fff !important;
+  border-color: #fff !important;
+  background-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+/* Preserve intentional disabled styling for the search action only. */
+#openMmiMediaRoot #ommiMediaSearchBtn:disabled,
+#openMmiMediaRoot .ommi-search-btn:disabled {
+  opacity: 0.55;
+}
+
+/* On constrained widths, return the Radio facets to their own full row. */
+@media (max-width: 760px) {
+  #openMmiMediaRoot.openmmi-media-source-radio
+    .input-group:has(#ommiMediaFilter) > #ommiMediaFilter {
+    width: auto !important;
+    min-width: 8.25rem !important;
+    max-width: min(11rem, 68vw) !important;
+  }
+
+  #openMmiMediaRoot.openmmi-media-source-radio
+    .input-group:has(#ommiMediaFilter) > .ommi-radio-facets {
+    grid-row: 3;
+    padding-inline-start: 0;
+  }
+}
+/* --- Open MMI media control visual consistency end --- */
