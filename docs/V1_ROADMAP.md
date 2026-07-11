@@ -208,7 +208,7 @@ Still pending before calling V1 complete:
 ### Media source shell v1
 
 - Added browser-local media source enable/default preferences in Settings.
-- Media page now has a source switcher and can show planned placeholders for Radio, USB, Bluetooth and Spotify.
+- Media page has a source switcher for Jellyfin, Internet Radio, USB, and Bluetooth.
 - Jellyfin can be disabled from Settings so the frontend does not poll/search Jellyfin while it is not the active enabled source.
 
 ### Media source disabled visibility v2

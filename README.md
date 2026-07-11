@@ -1404,7 +1404,7 @@ Compatibility claims are intentionally conservative: SEAT León 1P is the confir
 ### Media sources
 
 The dashboard Media page has a persisted source selector. Jellyfin and Internet
-Radio are functional sources; USB, Bluetooth, and Spotify remain roadmap entries.
+Jellyfin, Internet Radio, USB, and Bluetooth are functional media sources.
 Internet Radio uses Radio Browser for discovery and a same-origin, UUID-based audio
 proxy with public-address validation.
 <!-- open-mmi-media-sources-end -->

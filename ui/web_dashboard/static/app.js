@@ -1106,7 +1106,6 @@ function ommiMediaBind() {
     { id: "radio", label: "Internet radio", note: "Radio Browser stations", planned: false },
     { id: "usb", label: "USB", note: "read-only local media", planned: false },
     { id: "bluetooth", label: "Bluetooth", note: "connected phone playback controls", planned: false },
-    { id: "spotify", label: "Spotify", note: "planned integration", planned: true },
   ];
 
   const DEFAULT_MEDIA = {
@@ -1117,7 +1116,6 @@ function ommiMediaBind() {
       radio: false,
       usb: false,
       bluetooth: false,
-      spotify: false,
     },
   };
 
@@ -1262,7 +1260,7 @@ function ommiMediaBind() {
       placeholder.innerHTML = `
         <div class="openmmi-media-source-empty-kicker">Media source</div>
         <h2>No media source enabled</h2>
-        <p>Enable Jellyfin, radio, USB, Bluetooth or Spotify from Settings → Media.</p>`;
+        <p>Enable Jellyfin, radio, USB or Bluetooth from Settings → Media.</p>`;
       return;
     }
 
@@ -1433,7 +1431,6 @@ function ommiMediaBind() {
       radio: false,
       usb: false,
       bluetooth: false,
-      spotify: false,
       ...(prefs.mediaSources || {}),
     };
     const wasEnabled = mediaSources.radio === true;

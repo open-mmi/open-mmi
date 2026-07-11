@@ -54,7 +54,7 @@ class BluetoothMediaTests(unittest.TestCase):
                 "Duration": 180000,
             },
             (path, "org.bluez.MediaPlayer1", "Device"): "/org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF",
-            (path, "org.bluez.MediaPlayer1", "Name"): "Spotify",
+            (path, "org.bluez.MediaPlayer1", "Name"): "Remote Player",
             ("/org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF", "org.bluez.Device1", "Alias"): "Pixel Phone",
         }
 
