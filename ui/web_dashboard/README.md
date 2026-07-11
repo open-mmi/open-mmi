@@ -422,3 +422,70 @@ claim that external providers retain no logs. Open MMI does not control the priv
 retention, or sharing practices of Radio Browser mirrors, station operators, stream
 hosts, CDNs, redirects, or analytics providers.
 <!-- open-mmi-radio-privacy-consent-end -->
+
+<!-- open-mmi-usb-media-start -->
+## USB media
+
+USB Media is a read-only local source. The dashboard never mounts, unmounts,
+formats, renames, deletes, or writes to a device. It only exposes supported audio
+files from readable roots through same-origin browser playback.
+
+The server automatically looks one directory below these conventional per-user
+mount locations:
+
+```text
+/run/media/$USER
+/media/$USER
+```
+
+You can provide one or more explicit roots with the Linux path separator (`:`):
+
+```bash
+export OPEN_MMI_USB_MEDIA_ROOTS='/media/pitto/MUSIC:/srv/car-music'
+python3 ui/web_dashboard/server.py
+```
+
+Useful controls:
+
+```bash
+# Disable conventional mount discovery and use explicit roots only.
+export OPEN_MMI_USB_AUTO_DISCOVER=0
+
+# Override the directories whose immediate children are treated as discovered roots.
+export OPEN_MMI_USB_DISCOVERY_ROOTS='/run/media/pitto:/media/pitto'
+
+# Include dotfiles and dot-directories. Hidden entries are omitted by default.
+export OPEN_MMI_USB_INCLUDE_HIDDEN=1
+
+# Optional tag/duration extraction when the third-party mutagen package is installed.
+# It is disabled by default; filename/folder metadata remains available without it.
+export OPEN_MMI_USB_READ_METADATA=1
+```
+
+Enable **USB** from Settings → Media after the server reports a readable root.
+The browser can navigate folders, search recursively from the current folder,
+sort folders/files, play supported audio, seek with byte-range requests, and use
+sidecar album art named `cover`, `folder`, `front`, or `album` with JPEG, PNG, or
+WebP extensions.
+
+Browse rows resolve missing durations lazily with the browser's metadata loader. Only two local metadata probes run concurrently, results are cached by opaque item ID, and playback metadata updates the matching row as a fallback. Enabling `OPEN_MMI_USB_READ_METADATA=1` remains optional and can populate tags and durations server-side when `mutagen` is installed.
+
+USB search is tokenised and separator-insensitive: spaces, underscores, hyphens, and folder boundaries can all separate search terms. Every entered term must match the track name or its relative folder path. USB folder navigation is shown only while USB is the active Media source.
+
+Security boundary:
+
+- browser-visible item IDs are opaque and resolved afresh on every request;
+- absolute paths and `..` traversal are rejected;
+- symlink components are never followed;
+- every browse, artwork, and stream request must remain within a currently allowed root;
+- hidden entries are omitted unless explicitly enabled;
+- only allowlisted audio and image extensions are served;
+- no filesystem path is returned to the browser.
+
+Quick checks:
+
+```bash
+curl 'http://127.0.0.1:8765/api/usb/status'
+curl 'http://127.0.0.1:8765/api/usb/browse?filter=browse&limit=10'
+```
+<!-- open-mmi-usb-media-end -->
