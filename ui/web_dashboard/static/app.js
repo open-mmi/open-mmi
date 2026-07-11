@@ -5067,6 +5067,8 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
   const state = {
     running: false,
     capture: false,
+    captureTarget: 0,
+    captureAccepted: 0,
     scenario: "",
     sampleSequence: 0,
     samples: [],
@@ -5337,6 +5339,10 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
       if (!state.capture || !statusUrl(input)) {
         return state.originalFetch.call(window, input, init);
       }
+      if (state.captureAccepted >= state.captureTarget) {
+        return state.originalFetch.call(window, input, init);
+      }
+      state.captureAccepted += 1;
       const sample = {
         id: ++state.sampleSequence,
         scenario: state.scenario,
@@ -5530,6 +5536,8 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
     throwIfVisibilityInvalidated();
     const startingCount = scenarioSamples(sampleKey).length;
     state.scenario = sampleKey;
+    state.captureTarget = Math.max(0, Number(targetSamples) || 0);
+    state.captureAccepted = 0;
     state.capture = true;
     const started = performance.now();
     const completed = await waitUntil(() => {
@@ -5554,6 +5562,8 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
       throwIfVisibilityInvalidated();
     }
     state.capture = false;
+    state.captureTarget = 0;
+    state.captureAccepted = 0;
     throwIfVisibilityInvalidated();
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     const summary = summariseScenario(name, setupResult || {}, sampleKey);
@@ -5782,12 +5792,19 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
     const absoluteLimit = baselineAcceptanceAnchor
       + Math.max(0, Number(absoluteToleranceMs) || 0);
     const limit = Math.max(relativeLimit, absoluteLimit);
-    const passedRuns = candidateRuns.filter((value) => value <= limit).length;
+    const decisionLimitMs = Math.round(limit);
+    const candidateDecisionValues = candidateRuns.map((value) => Math.round(value));
+    const baselineDecisionValues = baselineRuns.map((value) => Math.round(value));
+    const passedRuns = candidateDecisionValues.filter(
+      (value) => value <= decisionLimitMs,
+    ).length;
     return {
       baseline: round(oldValue),
       baseline_acceptance_anchor: round(baselineAcceptanceAnchor),
       candidate: round(candidateScenario?.[group]?.[metric]),
       limit: round(limit),
+      decision_limit_ms: decisionLimitMs,
+      comparison_resolution_ms: 1,
       relative_tolerance: allowedRatio,
       absolute_tolerance_ms: round(absoluteToleranceMs),
       passed_runs: passedRuns,
@@ -5797,6 +5814,8 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
         && passedRuns >= REQUIRED_PASSING_RUNS,
       baseline_run_values: baselineRuns.map(round),
       candidate_run_values: candidateRuns.map(round),
+      baseline_run_decision_values: baselineDecisionValues,
+      candidate_run_decision_values: candidateDecisionValues,
     };
   }
 

@@ -194,6 +194,8 @@ The acceptance budget is anchored to the baseline's **fourth-best run** (the slo
 
 For low-latency metrics, the budget uses the larger of a relative and an absolute tolerance. Status request p95 and response-to-paint p95 allow **10% or 5 ms**, whichever is larger. Paint-gap p95 continues to allow **20%**. This prevents harmless millisecond-scale jitter from being reported as a regression while retaining the four-of-five requirement.
 
+Each measured run accepts at most its configured sample target, so a status poll that begins during shutdown cannot create a 51st sample. Comparator budgets retain their raw values in the report, but run-level pass/fail decisions use **1 ms resolution**. This keeps interpolated p95 values such as 16.1 ms from failing a 16 ms decision boundary while 16.55 ms rounds to 17 ms and remains an outlier.
+
 A comparison can have three outcomes:
 
 - **within baseline** — at least four of five warm runs meet every budget;

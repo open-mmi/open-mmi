@@ -154,6 +154,42 @@ class BrowserPerformanceMethodologyTests(unittest.TestCase):
         self.assertEqual(limit, 18)
         self.assertGreaterEqual(sum(value <= limit for value in candidate_runs), 4)
 
+    def test_each_run_caps_accepted_samples_at_the_target(self):
+        self.assertIn("captureTarget: 0", self.js)
+        self.assertIn("captureAccepted: 0", self.js)
+        self.assertIn(
+            "state.captureAccepted >= state.captureTarget",
+            self.js,
+        )
+        self.assertIn("state.captureAccepted += 1;", self.js)
+        self.assertIn(
+            "state.captureTarget = Math.max(0, Number(targetSamples) || 0);",
+            self.js,
+        )
+        self.assertIn("state.captureAccepted = 0;", self.js)
+
+    def test_comparator_decides_at_whole_millisecond_resolution(self):
+        self.assertIn("const decisionLimitMs = Math.round(limit);", self.js)
+        self.assertIn(
+            "const candidateDecisionValues = candidateRuns.map((value) => Math.round(value));",
+            self.js,
+        )
+        self.assertIn("comparison_resolution_ms: 1", self.js)
+        self.assertIn("decision_limit_ms: decisionLimitMs", self.js)
+        self.assertIn(
+            "candidate_run_decision_values: candidateDecisionValues",
+            self.js,
+        )
+
+        # JavaScript Math.round semantics at the observed Radio boundary.
+        import math
+        js_round = lambda value: math.floor(value + 0.5)
+        candidate_runs = [14, 16.55, 16.1, 15.1, 13]
+        decision_limit = js_round(16)
+        passed = sum(js_round(value) <= decision_limit for value in candidate_runs)
+        self.assertEqual([js_round(value) for value in candidate_runs], [14, 17, 16, 15, 13])
+        self.assertEqual(passed, 4)
+
     def test_inconclusive_requires_insufficient_valid_runs(self):
         self.assertIn("valid_run_count", self.js)
         self.assertIn("Only ${Number(scenario.valid_run_count || 0)}", self.js)
