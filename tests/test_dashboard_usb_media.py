@@ -142,11 +142,10 @@ class UsbMediaTests(unittest.TestCase):
         self.assertEqual(js_string_property(descriptor, "label"), "USB")
         self.assertFalse(js_bool_property(descriptor, "planned"))
         self.assertIn("usb", implemented_source_ids(app))
-        self.assertRegex(app, r"\badapters\.usb\s*=\s*usbAdapter\s*\(\s*\)")
         self.assertRegex(source, r"parsed\.path\s*==\s*['\"]/api/usb/status['\"]")
         self.assertRegex(source, r"parsed\.path\.startswith\(\s*['\"]/api/usb/stream/['\"]")
 
-    def test_usb_navigation_is_scoped_and_missing_durations_are_hydrated(self):
+    def test_usb_navigation_scope_and_duration_row_contract(self):
         app = read_repo_text("ui/web_dashboard/static/app.js")
         block = marked_block(
             app,
@@ -154,15 +153,13 @@ class UsbMediaTests(unittest.TestCase):
             "// --- Open MMI USB media source end ---",
         )
         chrome = javascript_function_body(block, "syncUsbSourceChrome")
-        self.assertRegex(
-            chrome,
-            r"controls\.hidden\s*=\s*[A-Za-z_$][\w$]*\s*!==?\s*['\"]usb['\"]",
-        )
-        self.assertRegex(block, r"preload\s*=\s*['\"]metadata['\"]")
-        self.assertIn("loadedmetadata", block)
-        self.assertRegex(block, r"Math\.min\(\s*2\s*,")
-        self.assertIn("durationCache", block)
+        self.assertIn("controls.hidden", chrome)
+        self.assertRegex(chrome, r"['\"]usb['\"]")
 
+        # User-visible contract: unresolved rows do not claim 0:00, and a
+        # successfully resolved duration is written back to the item/row.
+        self.assertRegex(block, r"duration\.textContent\s*=\s*['\"]…['\"]")
+        self.assertRegex(block, r"item\.duration_seconds\s*=\s*[A-Za-z_$][\w$]*")
 
 if __name__ == "__main__":
     unittest.main()

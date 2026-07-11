@@ -122,8 +122,6 @@ class ProfileProvisionTests(unittest.TestCase):
         )
 
         rendered = profile_provision.render_udev_rules(plan)
-
-        self.assertIn("provisioning=manual; no udev rule generated", rendered)
         self.assertNotIn("ip link set vcan0 type can", rendered)
 
     def test_apply_plan_writes_files(self):

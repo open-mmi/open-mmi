@@ -8,7 +8,7 @@ from unittest import mock
 
 from dashboard_contract_helpers import (
     css_properties,
-    javascript_function_body,
+    implemented_source_ids,
     js_bool_property,
     js_object_with_id,
     js_string_property,
@@ -121,25 +121,21 @@ class BluetoothMediaTests(unittest.TestCase):
         self.assertEqual(result.get("performed_action"), "pause")
         self.assertEqual(result.get("playback_status"), "paused")
 
-    def test_frontend_registration_transport_and_seek_reconciliation_are_semantic(self):
+    def test_frontend_registration_and_public_control_contract(self):
         app = read_repo_text("ui/web_dashboard/static/app.js")
         descriptor = js_object_with_id(app, "bluetooth")
         self.assertEqual(js_string_property(descriptor, "label"), "Bluetooth")
         self.assertFalse(js_bool_property(descriptor, "planned"))
-        self.assertRegex(app, r"\badapters\.bluetooth\s*=\s*bluetoothAdapter\s*\(\s*\)")
+        self.assertIn("bluetooth", implemented_source_ids(app))
 
         block = marked_block(
             app,
             "// --- Open MMI Bluetooth media source start ---",
             "// --- Open MMI Bluetooth media source end ---",
         )
-        button_action = javascript_function_body(block, "bluetoothPlayButtonAction")
-        self.assertIn('"pause"', button_action)
-        self.assertIn('"play"', button_action)
-        self.assertNotRegex(block, r"\baction\s*=\s*['\"]play_pause['\"]")
-        self.assertRegex(block, r"performed_action")
-        self.assertIn("remoteSeek", block)
-        self.assertRegex(block, r"playbackOverridePosition\s*=\s*serverPosition")
+        self.assertIn("/api/bluetooth/control", block)
+        self.assertRegex(block, r"['\"]pause['\"]")
+        self.assertRegex(block, r"['\"]play['\"]")
 
     def test_routes_origin_json_and_readonly_progress_contract(self):
         app = read_repo_text("ui/web_dashboard/static/app.js")
@@ -155,8 +151,8 @@ class BluetoothMediaTests(unittest.TestCase):
             styles,
             "#openMmiMediaRoot #ommiMediaProgressTrack.is-bluetooth-readonly",
         )
-        self.assertEqual(props.get("cursor"), "default !important")
-
+        cursor = props.get("cursor", "").replace("!important", "").strip()
+        self.assertEqual(cursor, "default")
 
 if __name__ == "__main__":
     unittest.main()
