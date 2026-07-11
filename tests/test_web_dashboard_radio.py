@@ -150,5 +150,15 @@ class RadioSourceTests(unittest.TestCase):
         click.assert_called_once_with(f"/json/url/{station_id}")
 
 
+    # --- Open MMI parse_qs shadow regression start ---
+    def test_dashboard_handler_does_not_shadow_parse_qs(self):
+        self.assertNotIn(
+            "parse_qs",
+            server.DashboardHandler.do_GET.__code__.co_varnames,
+            "do_GET must use the module-level parse_qs import; a local import "
+            "breaks earlier Jellyfin query parsing",
+        )
+    # --- Open MMI parse_qs shadow regression end ---
+
 if __name__ == "__main__":
     unittest.main()

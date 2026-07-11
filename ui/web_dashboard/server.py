@@ -1426,8 +1426,6 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 self._send_json({"configured": True, "source": "radio", "error": str(exc)}, 502)
             return
         if parsed.path == "/api/radio/search":
-            from urllib.parse import parse_qs
-
             query = parse_qs(parsed.query or "")
             q = query.get("q", [""])[0]
             media_filter = query.get("filter", ["popular"])[0]
