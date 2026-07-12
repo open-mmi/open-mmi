@@ -220,6 +220,7 @@ function updateTach(rpm) {
   const root = document.documentElement;
 
   root.style.setProperty("--rpm-scale", progress.toFixed(4));
+  root.style.setProperty("--rpm-fill", `${(progress * 100).toFixed(2)}%`);
   root.classList.remove("rpm-unknown", "rpm-idle", "rpm-normal", "rpm-high", "rpm-redline");
 
   let state = "rpm-unknown";
@@ -245,7 +246,8 @@ function updateTach(rpm) {
   setField("speed_mph", openMmiFormatSpeedFromKmh(vehicle.speed_kmh, 0));
   setField("rpm", fmtNum(engine.speed_rpm, 0));
   setField("odo_mi", openMmiFormatDistanceFromKm(vehicle.odometer_km, 0));
-  setField("range_mi", openMmiFormatDistanceFromKm(fuel.range_km_candidate ?? fuel.range_km_rounded_candidate, 0));
+  // Fuel-range CAN frame is unverified; retain the field as unknown.
+  setField("range_mi", "--");
   setField("coolant_c", openMmiFormatTempFromC(engine.coolant_temp_c, 0));
   setField("outside_reg_c", openMmiFormatTempFromC(climate.outside_temp_regulation_c, 1));
   setField("outside_unfiltered_c", openMmiFormatTempFromC(climate.outside_temp_unfiltered_c, 1));
@@ -257,13 +259,12 @@ function updateTach(rpm) {
   setField("lighting_mode", lighting.mode || "--");
   setField("lights_on", lightsLabel(lighting.lights_on));
   setField("indicators", indicatorLabel(lighting));
-  setField("air_intake", climate.air_intake || "Normal");
   openMmiApplyDriverFacingCleanup();
 
   setBool("handbrake", vehicle.handbrake);
   setBool("reverse", vehicle.reverse);
   setBool("rear_heater", climate.rear_window_heater_requested);
-  setBool("front_demist", climate.front_demist_air_request);
+  setBool("recirculation", climate.front_demist_air_request);
   setBool("compressor", climate.compressor_active);
   setBool("hazards", lighting.hazards);
   setBoolNo("bulb_out", lighting.bulb_out);

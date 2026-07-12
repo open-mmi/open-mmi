@@ -4043,3 +4043,60 @@ body.openmmi-radio-privacy-open {
   font-variant-numeric: tabular-nums;
 }
 /* --- Open MMI Bluetooth media source end --- */
+
+/* --- Open MMI vehicle UI corrections start --- */
+:root {
+  --rpm-fill: 0%;
+}
+
+/*
+ * Keep the RPM colour zones aligned to the full track. Scaling the complete
+ * gradient compressed the red zone into the filled portion, which could put
+ * red near the beginning and leave the physical end of the track incomplete.
+ */
+.tach::after {
+  transform: none !important;
+  clip-path: inset(0 calc(100% - var(--rpm-fill)) 0 0 round 999px);
+  background: linear-gradient(
+    90deg,
+    rgba(82, 216, 120, .92) 0 64%,
+    rgba(255, 177, 59, .96) 64% 86%,
+    rgba(255, 60, 56, 1) 86% 100%
+  ) !important;
+  transition: clip-path 220ms cubic-bezier(.22, .61, .36, 1),
+    box-shadow 160ms ease !important;
+  will-change: clip-path;
+}
+
+/* Match the A/C blower panel to the rectangular hero cards on other pages. */
+.blower-card {
+  width: 100% !important;
+  max-width: none !important;
+  aspect-ratio: auto !important;
+  min-height: clamp(24rem, 62vh, 43rem) !important;
+  border-radius: 16px !important;
+  justify-self: stretch !important;
+  align-content: center;
+  grid-template-rows: auto auto auto;
+  gap: clamp(.75rem, 2vh, 1.5rem);
+}
+
+.blower-card .blower-value,
+.blower-card .dial-label {
+  margin-top: 0 !important;
+}
+
+@media (max-width: 1180px) {
+  .blower-card {
+    width: 100% !important;
+    min-height: 24rem !important;
+  }
+}
+
+@media (max-width: 720px) {
+  .blower-card {
+    min-height: 20rem !important;
+    border-radius: 14px !important;
+  }
+}
+/* --- Open MMI vehicle UI corrections end --- */
