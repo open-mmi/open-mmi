@@ -68,6 +68,19 @@ class CanbusdCoreTests(unittest.TestCase):
             core.main(max_iterations=iterations)
         return open_bus
 
+    def test_status_reset_is_persisted_and_failure_is_isolated(self):
+        with mock.patch.object(core, "reset_status") as reset:
+            core._safe_reset_status()
+        reset.assert_called_once_with(persist=True, notify=True)
+
+        with (
+            mock.patch.object(core, "reset_status", side_effect=OSError("read only")),
+            self.assertLogs("canbusd", level="ERROR") as logs,
+        ):
+            core._safe_reset_status()
+
+        self.assertIn("Status reset failed", "\n".join(logs.output))
+
     def test_status_frame_is_decoded_published_and_bus_is_closed(self):
         status_rules = parse_status_rules(
             [
@@ -90,6 +103,35 @@ class CanbusdCoreTests(unittest.TestCase):
         publish.assert_called_once_with({"vehicle": {"reverse": True}})
         open_bus.assert_called_once_with(channel="can0", interface="socketcan")
         self.assertEqual(bus.shutdown_calls, 1)
+
+    def test_status_publication_failure_is_logged_and_does_not_stop_receive_loop(self):
+        status_rules = parse_status_rules(
+            [
+                {
+                    "id": "0x100",
+                    "byte": 0,
+                    "type": "bool",
+                    "path": "vehicle.reverse",
+                    "true": "0x01",
+                    "false": "0x00",
+                }
+            ]
+        )
+        messages = [
+            SimpleNamespace(arbitration_id=0x100, data=bytes([1]), dlc=1),
+            SimpleNamespace(arbitration_id=0x100, data=bytes([0]), dlc=1),
+        ]
+        bus = FakeBus(messages)
+
+        with (
+            mock.patch.object(core, "publish_status", side_effect=OSError("disk full")) as publish,
+            self.assertLogs("canbusd", level="ERROR") as logs,
+        ):
+            self._run_main(bus, self._config(status_rules=status_rules), 2)
+
+        self.assertEqual(publish.call_count, 2)
+        self.assertEqual(bus.shutdown_calls, 1)
+        self.assertIn("Status publication failed", "\n".join(logs.output))
 
     def test_short_frames_do_not_publish_or_dispatch(self):
         status_rules = parse_status_rules(

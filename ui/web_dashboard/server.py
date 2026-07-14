@@ -168,14 +168,18 @@ def demo_status(scenario: str, started_at: float) -> Dict[str, Any]:
         "supply_voltage_v": round(voltage_v, 2),
         "terminal30_voltage_v": round(voltage_v, 2),
     }
+    recirculation_active = 45.0 < (t % 90.0) < 58.0
     climate = {
         "outside_temp_regulation_c": round(outside_c, 1),
         "outside_temp_unfiltered_c": round(outside_c + 0.3 * _wave(t, 8.0), 1),
         "blower_load_percent": round(blower_pct, 1),
         "rear_window_heater_requested": 20.0 < (t % 80.0) < 35.0,
-        "front_demist_air_request": False,
+        "recirculation_active": recirculation_active,
+        # Compatibility alias for dashboard/status consumers from the alpha
+        # schema. Remove only at a documented status-schema boundary.
+        "front_demist_air_request": recirculation_active,
         "compressor_active": _wave(t, 30.0) > -0.35,
-        "air_intake": "Recirc" if 45.0 < (t % 90.0) < 58.0 else "Normal",
+        "air_intake": "Recirc" if recirculation_active else "Normal",
     }
     lighting = {
         "mode": "Auto",

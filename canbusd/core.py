@@ -14,6 +14,7 @@ import can
 from canbusd.can_runtime import CanRuntimeConfig, item_matches_bus, resolve_can_runtime
 from canbusd.dispatcher import dispatch
 from canbusd.status_bus import publish as publish_status
+from canbusd.status_bus import reset as reset_status
 from canbusd.status_rules import StatusRuleState, evaluate_status_rules, parse_status_rules
 
 
@@ -273,6 +274,24 @@ def _load_config(
         )
 
 
+def _safe_publish_status(update: Dict[str, Any]) -> None:
+    """Publish decoded status without allowing UI persistence to stop CAN input."""
+
+    try:
+        publish_status(update)
+    except Exception:
+        logger.exception("Status publication failed update=%s", update)
+
+
+def _safe_reset_status() -> None:
+    """Clear stale decoded fields at a daemon/profile lifecycle boundary."""
+
+    try:
+        reset_status(persist=True, notify=True)
+    except Exception:
+        logger.exception("Status reset failed")
+
+
 def _publish_presence(
     presence_rule: Dict[str, Any],
     is_present: bool,
@@ -288,7 +307,7 @@ def _publish_presence(
     }
 
     _set_path(update, presence_rule.get("status_path", "vehicle.present"), is_present)
-    publish_status(update)
+    _safe_publish_status(update)
 
     if event:
         logger.info(
@@ -331,6 +350,7 @@ def main(max_iterations: Optional[int] = None) -> None:
     last_codes: Dict[Tuple[int, int, Optional[int]], int] = {}
     present_state: Dict[int, Optional[bool]] = {}
     status_state = StatusRuleState()
+    _safe_reset_status()
     bus = None
     opened_interface: Optional[str] = None
     last_check = 0.0
@@ -363,6 +383,7 @@ def main(max_iterations: Optional[int] = None) -> None:
                 )
                 if status_rules is not previous_status_rules:
                     status_state.reset()
+                    _safe_reset_status()
                 bindings = _load_bindings()
                 last_check = now
 
@@ -370,6 +391,9 @@ def main(max_iterations: Optional[int] = None) -> None:
                 if bus:
                     bus.shutdown()
                     bus = None
+
+                if opened_interface is not None:
+                    _safe_reset_status()
 
                 opened_interface = IFACE
                 last_seen.clear()
@@ -407,7 +431,7 @@ def main(max_iterations: Optional[int] = None) -> None:
                     state=status_state,
                 )
                 if status_update:
-                    publish_status(status_update)
+                    _safe_publish_status(status_update)
 
             if cid in rules:
                 for b, v, event in rules[cid]:

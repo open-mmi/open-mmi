@@ -264,7 +264,7 @@ function updateTach(rpm) {
   setBool("handbrake", vehicle.handbrake);
   setBool("reverse", vehicle.reverse);
   setBool("rear_heater", climate.rear_window_heater_requested);
-  setBool("recirculation", climate.front_demist_air_request);
+  setBool("recirculation", climate.recirculation_active ?? climate.front_demist_air_request);
   setBool("compressor", climate.compressor_active);
   setBool("hazards", lighting.hazards);
   setBoolNo("bulb_out", lighting.bulb_out);

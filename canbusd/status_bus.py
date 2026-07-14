@@ -1,15 +1,14 @@
+import copy
 import json
+import logging
 import os
 import tempfile
 import threading
 import time
 from pathlib import Path
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, List, Optional
 
-
-_subscribers: List[Callable[[Dict[str, Any]], None]] = []
-_lock = threading.Lock()
-_state: Dict[str, Any] = {}
+logger = logging.getLogger("canbusd.status_bus")
 
 
 def _default_status_path() -> Path:
@@ -28,48 +27,185 @@ def _deep_merge(dst: Dict[str, Any], src: Dict[str, Any]) -> Dict[str, Any]:
         if isinstance(value, dict) and isinstance(dst.get(key), dict):
             _deep_merge(dst[key], value)
         else:
-            dst[key] = value
+            dst[key] = copy.deepcopy(value)
     return dst
 
 
+class StatusBus:
+    """Thread-safe decoded-state publisher with an atomic JSON snapshot.
+
+    Publication is serialised so concurrent updates cannot write snapshots out
+    of order. Persistence and subscriber failures are logged and isolated from
+    the CAN receive loop; the in-memory state remains available to later
+    publishers and subscribers.
+    """
+
+    def __init__(
+        self,
+        path: Path,
+        clock: Callable[[], float] = time.time,
+    ) -> None:
+        self.path = Path(path)
+        self._clock = clock
+        self._subscribers: List[Callable[[Dict[str, Any]], None]] = []
+        self._state: Dict[str, Any] = {}
+        self._lock = threading.RLock()
+        self._publish_lock = threading.Lock()
+
+    def subscribe(self, fn: Callable[[Dict[str, Any]], None]) -> None:
+        with self._lock:
+            self._subscribers.append(fn)
+
+    def unsubscribe(self, fn: Callable[[Dict[str, Any]], None]) -> bool:
+        with self._lock:
+            try:
+                self._subscribers.remove(fn)
+            except ValueError:
+                return False
+            return True
+
+    def reset(self, persist: bool = False, notify: bool = False) -> None:
+        """Clear state at an explicit daemon/profile lifecycle boundary.
+
+        By default this only resets memory. ``persist=True`` atomically replaces
+        the previous snapshot with an empty state, preventing fields from an old
+        profile/runtime being presented as current. ``notify=True`` also sends
+        that empty state to in-process subscribers.
+        """
+
+        with self._publish_lock:
+            with self._lock:
+                self._state.clear()
+                subscribers = list(self._subscribers) if notify else []
+
+            if persist:
+                try:
+                    self._write_status_file({})
+                except Exception:
+                    logger.exception("Failed to persist cleared status snapshot to %s", self.path)
+
+            for fn in subscribers:
+                try:
+                    fn({})
+                except Exception:
+                    logger.exception(
+                        "Status subscriber failed during reset fn=%s",
+                        getattr(fn, "__name__", repr(fn)),
+                    )
+
+    def snapshot(self) -> Dict[str, Any]:
+        with self._lock:
+            return copy.deepcopy(self._state)
+
+    def publish(self, update: Dict[str, Any]) -> Dict[str, Any]:
+        if not isinstance(update, dict):
+            raise TypeError("status update must be a dictionary")
+
+        with self._publish_lock:
+            with self._lock:
+                _deep_merge(self._state, update)
+                snapshot = copy.deepcopy(self._state)
+                subscribers = list(self._subscribers)
+
+            try:
+                self._write_status_file(snapshot)
+            except Exception:
+                logger.exception("Failed to persist status snapshot to %s", self.path)
+
+            for fn in subscribers:
+                try:
+                    fn(copy.deepcopy(snapshot))
+                except Exception:
+                    logger.exception(
+                        "Status subscriber failed fn=%s",
+                        getattr(fn, "__name__", repr(fn)),
+                    )
+
+            return snapshot
+
+    def _write_status_file(self, snapshot: Dict[str, Any]) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+
+        payload = {
+            "updated_at": self._clock(),
+            "state": snapshot,
+        }
+        tmp_path: Optional[Path] = None
+
+        try:
+            with tempfile.NamedTemporaryFile(
+                "w",
+                encoding="utf-8",
+                dir=str(self.path.parent),
+                prefix=f".{self.path.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as handle:
+                json.dump(payload, handle, indent=2, sort_keys=True)
+                handle.write("\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+                tmp_path = Path(handle.name)
+
+            os.replace(str(tmp_path), str(self.path))
+            tmp_path = None
+            self._fsync_parent_directory()
+        finally:
+            if tmp_path is not None:
+                try:
+                    tmp_path.unlink()
+                except FileNotFoundError:
+                    pass
+
+    def _fsync_parent_directory(self) -> None:
+        flags = os.O_RDONLY
+        if hasattr(os, "O_DIRECTORY"):
+            flags |= os.O_DIRECTORY
+
+        try:
+            directory_fd = os.open(str(self.path.parent), flags)
+        except OSError:
+            # Some platforms/filesystems do not permit directory fsync. The
+            # atomic replace is still valid; durability is best effort there.
+            return
+
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+
+
+_default_bus = StatusBus(STATUS_PATH)
+
+
+def _sync_default_path() -> None:
+    # Preserve the long-standing ability for tests/embedders to replace the
+    # module-level STATUS_PATH after import.
+    _default_bus.path = Path(STATUS_PATH)
+
+
 def _write_status_file(snapshot: Dict[str, Any]) -> None:
-    STATUS_PATH.parent.mkdir(parents=True, exist_ok=True)
-
-    payload = {
-        "updated_at": time.time(),
-        "state": snapshot,
-    }
-
-    with tempfile.NamedTemporaryFile(
-        "w",
-        dir=str(STATUS_PATH.parent),
-        delete=False,
-    ) as f:
-        json.dump(payload, f, indent=2, sort_keys=True)
-        f.write("\n")
-        tmp_path = Path(f.name)
-
-    tmp_path.replace(STATUS_PATH)
+    _sync_default_path()
+    _default_bus._write_status_file(copy.deepcopy(snapshot))
 
 
 def subscribe(fn: Callable[[Dict[str, Any]], None]) -> None:
-    with _lock:
-        _subscribers.append(fn)
+    _default_bus.subscribe(fn)
 
 
-def publish(update: Dict[str, Any]) -> None:
-    global _state
+def unsubscribe(fn: Callable[[Dict[str, Any]], None]) -> bool:
+    return _default_bus.unsubscribe(fn)
 
-    with _lock:
-        _deep_merge(_state, update)
-        snapshot = dict(_state)
 
-    _write_status_file(snapshot)
+def reset(persist: bool = False, notify: bool = False) -> None:
+    _sync_default_path()
+    _default_bus.reset(persist=persist, notify=notify)
 
-    for fn in _subscribers:
-        fn(snapshot)
+
+def publish(update: Dict[str, Any]) -> Dict[str, Any]:
+    _sync_default_path()
+    return _default_bus.publish(update)
 
 
 def snapshot() -> Dict[str, Any]:
-    with _lock:
-        return dict(_state)
+    return _default_bus.snapshot()

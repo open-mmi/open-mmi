@@ -256,3 +256,30 @@ retrofit state. `open-mmi` should not be treated as safety-critical software.
 
 
 See also: [`docs/profile-ownership.md`](profile-ownership.md).
+
+## Status-path compatibility aliases
+
+Scalar status rules may define temporary aliases while a decoded field is being renamed:
+
+```json
+{
+  "id": "0x3E3",
+  "byte": 4,
+  "type": "bool",
+  "path": "climate.recirculation_active",
+  "aliases": ["climate.front_demist_air_request"],
+  "raw_path": "climate.recirculation_raw",
+  "raw_aliases": ["climate.front_demist_air_request_raw"],
+  "mask": "0x80",
+  "true": "0x80",
+  "false": "0x00"
+}
+```
+
+`aliases` and `raw_aliases` may be a string or a list of strings. The decoder publishes the
+same value to the canonical and alias paths. Use aliases only for planned schema migrations;
+new profile rules should otherwise have one canonical path.
+
+The Seat 1P `0x3E3` bit previously named `front_demist_air_request` is now identified as the
+HVAC recirculation state. `climate.recirculation_active` is the canonical field. The former
+field remains as a temporary alpha compatibility alias for existing UI/status consumers.
