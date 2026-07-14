@@ -12,6 +12,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 from urllib.error import HTTPError
 
+from ui.web_dashboard import radio
 
 ROOT = Path(__file__).resolve().parents[1]
 SERVER_PATH = ROOT / "ui" / "web_dashboard" / "server.py"
@@ -102,12 +103,12 @@ class RadioPinnedConnectionTests(unittest.TestCase):
         connection = FakeConnection(
             FakeResponse(b"audio", headers={"Content-Type": "audio/mpeg"})
         )
-        with patch.object(server, "_radio_config", return_value=self.config()), patch(
+        with patch.object(radio, "_radio_config", return_value=self.config()), patch(
             "socket.getaddrinfo", return_value=public
         ) as resolve, patch.object(
-            server, "_radio_connection", return_value=connection
+            radio, "_radio_connection", return_value=connection
         ) as connect:
-            response = server._radio_open_stream("http://radio.example/live?quality=high")
+            response = radio._radio_open_stream("http://radio.example/live?quality=high")
 
         self.assertEqual(resolve.call_count, 1)
         target, address, timeout = connect.call_args.args
@@ -133,13 +134,13 @@ class RadioPinnedConnectionTests(unittest.TestCase):
                 reason="Found",
             )
         )
-        with patch.object(server, "_radio_config", return_value=self.config()), patch(
+        with patch.object(radio, "_radio_config", return_value=self.config()), patch(
             "socket.getaddrinfo", side_effect=[public, private]
         ) as resolve, patch.object(
-            server, "_radio_connection", return_value=redirect
+            radio, "_radio_connection", return_value=redirect
         ) as connect:
             with self.assertRaises(PermissionError):
-                server._radio_open_stream("http://radio.example/live")
+                radio._radio_open_stream("http://radio.example/live")
 
         self.assertEqual(resolve.call_count, 2)
         self.assertEqual(connect.call_count, 1)
@@ -150,11 +151,11 @@ class RadioPinnedConnectionTests(unittest.TestCase):
             (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("93.184.216.34", 80))
         ]
         missing_location = FakeConnection(FakeResponse(status=302, headers={}))
-        with patch.object(server, "_radio_config", return_value=self.config()), patch(
+        with patch.object(radio, "_radio_config", return_value=self.config()), patch(
             "socket.getaddrinfo", return_value=public
-        ), patch.object(server, "_radio_connection", return_value=missing_location):
+        ), patch.object(radio, "_radio_connection", return_value=missing_location):
             with self.assertRaisesRegex(RuntimeError, "no Location"):
-                server._radio_open_stream("http://radio.example/live")
+                radio._radio_open_stream("http://radio.example/live")
 
         redirects = [
             FakeConnection(
@@ -165,11 +166,11 @@ class RadioPinnedConnectionTests(unittest.TestCase):
             )
             for _ in range(6)
         ]
-        with patch.object(server, "_radio_config", return_value=self.config()), patch(
+        with patch.object(radio, "_radio_config", return_value=self.config()), patch(
             "socket.getaddrinfo", return_value=public
-        ), patch.object(server, "_radio_connection", side_effect=redirects):
+        ), patch.object(radio, "_radio_connection", side_effect=redirects):
             with self.assertRaisesRegex(RuntimeError, "redirect limit"):
-                server._radio_open_stream("http://radio.example/live")
+                radio._radio_open_stream("http://radio.example/live")
 
     def test_mixed_public_and_private_dns_answers_are_rejected(self):
         mixed = [
@@ -178,7 +179,7 @@ class RadioPinnedConnectionTests(unittest.TestCase):
         ]
         with patch("socket.getaddrinfo", return_value=mixed):
             with self.assertRaises(PermissionError):
-                server._radio_resolve_stream_target("http://radio.example/live")
+                radio._radio_resolve_stream_target("http://radio.example/live")
 
     def test_pinned_http_connection_connects_to_numeric_sockaddr(self):
         target = {
@@ -191,7 +192,7 @@ class RadioPinnedConnectionTests(unittest.TestCase):
         with patch("socket.socket", return_value=fake_socket), patch(
             "socket.getaddrinfo"
         ) as resolve:
-            connection = server._radio_connection(target, address, 2.5)
+            connection = radio._radio_connection(target, address, 2.5)
             connection.connect()
 
         resolve.assert_not_called()
@@ -211,7 +212,7 @@ class RadioPinnedConnectionTests(unittest.TestCase):
         context = Mock()
         context.wrap_socket.return_value = wrapped_socket
         with patch("socket.socket", return_value=fake_socket):
-            connection = server._radio_connection(target, address, 3.0)
+            connection = radio._radio_connection(target, address, 3.0)
             connection._context = context
             connection.connect()
 

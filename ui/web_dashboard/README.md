@@ -275,7 +275,7 @@ Before adding or replacing icons, confirm the source licence and update `NOTICE.
 Run these before committing dashboard changes:
 
 ```bash
-python3 -m py_compile ui/web_dashboard/server.py
+python3 -m py_compile ui/web_dashboard/server.py ui/web_dashboard/radio.py
 node --check ui/web_dashboard/static/app.js
 python3 -m unittest discover -s tests
 python3 ui/web_dashboard/server.py --demo --demo-scenario warnings
@@ -344,6 +344,12 @@ For live vehicle testing, use listen-only CAN wiring and removable harness/adapt
 
 <!-- open-mmi-internet-radio-start -->
 ## Internet Radio source
+
+The Internet Radio backend lives in `ui/web_dashboard/radio.py`. The main
+`server.py` module owns HTTP routing only and delegates catalogue access, stream
+validation, pinned connections, redirects, and audio proxying to that provider.
+The Radio module does not import the dashboard handler, keeping the provider
+boundary acyclic and independently testable.
 
 The existing Media source selector now supports **Internet Radio** through the
 community Radio Browser directory. Enable it in **Settings → Media**, then select

@@ -1,12 +1,11 @@
 import importlib.util
-import os
 import socket
 import sys
 import unittest
 from pathlib import Path
 from unittest.mock import patch
-from urllib.parse import parse_qs, urlparse
 
+from ui.web_dashboard import radio
 
 SERVER_PATH = Path(__file__).resolve().parents[1] / "ui" / "web_dashboard" / "server.py"
 SPEC = importlib.util.spec_from_file_location("open_mmi_web_dashboard_server_radio", SERVER_PATH)
@@ -19,29 +18,29 @@ SPEC.loader.exec_module(server)
 class RadioSourceTests(unittest.TestCase):
     def test_station_id_must_be_uuid(self):
         value = "b5f9f7e7-8b6a-4f9e-a471-521fb85c1784"
-        self.assertEqual(server._safe_radio_station_id(value), value)
+        self.assertEqual(radio._safe_radio_station_id(value), value)
         with self.assertRaises(ValueError):
-            server._safe_radio_station_id("../../metadata")
+            radio._safe_radio_station_id("../../metadata")
 
     def test_stream_url_rejects_private_address(self):
         private = [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", 80))]
         with patch("socket.getaddrinfo", return_value=private):
             with self.assertRaises(PermissionError):
-                server._radio_validate_stream_url("http://radio.example/live")
+                radio._radio_validate_stream_url("http://radio.example/live")
 
     def test_stream_url_accepts_public_address(self):
         public = [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443))]
         with patch("socket.getaddrinfo", return_value=public):
             self.assertEqual(
-                server._radio_validate_stream_url("https://radio.example/live"),
+                radio._radio_validate_stream_url("https://radio.example/live"),
                 "https://radio.example/live",
             )
 
     def test_stream_url_rejects_credentials_and_non_http(self):
         with self.assertRaises(ValueError):
-            server._radio_validate_stream_url("file:///etc/passwd")
+            radio._radio_validate_stream_url("file:///etc/passwd")
         with self.assertRaises(ValueError):
-            server._radio_validate_stream_url("https://user:pass@example.com/live")
+            radio._radio_validate_stream_url("https://user:pass@example.com/live")
 
     def test_search_uses_bounded_broken_station_filter(self):
         captured = {}
@@ -63,8 +62,8 @@ class RadioSourceTests(unittest.TestCase):
                 "url": "https://stream.example/live",
             }]
 
-        with patch.object(server, "_radio_catalog_json", side_effect=fake_catalog):
-            payload = server._radio_search_payload(
+        with patch.object(radio, "_radio_catalog_json", side_effect=fake_catalog):
+            payload = radio._radio_search_payload(
                 "example", 999, "votes", country_code="gb", language="english"
             )
 
@@ -88,8 +87,8 @@ class RadioSourceTests(unittest.TestCase):
             captured.update(params or {})
             return []
 
-        with patch.object(server, "_radio_catalog_json", side_effect=fake_catalog):
-            payload = server._radio_search_payload("", 12, "recent")
+        with patch.object(radio, "_radio_catalog_json", side_effect=fake_catalog):
+            payload = radio._radio_search_payload("", 12, "recent")
         self.assertEqual(payload["filter"], "recent")
         self.assertEqual(captured["order"], "clicktimestamp")
         self.assertEqual(captured["reverse"], "true")
@@ -102,8 +101,8 @@ class RadioSourceTests(unittest.TestCase):
             captured.update(params or {})
             return []
 
-        with patch.object(server, "_radio_catalog_json", side_effect=fake_catalog):
-            server._radio_search_payload("", 10, "popular", "admin", "english\nother")
+        with patch.object(radio, "_radio_catalog_json", side_effect=fake_catalog):
+            radio._radio_search_payload("", 10, "popular", "admin", "english\nother")
         self.assertNotIn("countrycode", captured)
         self.assertNotIn("language", captured)
 
@@ -124,8 +123,8 @@ class RadioSourceTests(unittest.TestCase):
             self.assertEqual(params["order"], "stationcount")
             return responses[path]
 
-        with patch.object(server, "_radio_catalog_json", side_effect=fake_catalog):
-            payload = server._radio_filter_options_payload()
+        with patch.object(radio, "_radio_catalog_json", side_effect=fake_catalog):
+            payload = radio._radio_filter_options_payload()
         self.assertEqual(payload["countries"], [{"code": "GB", "station_count": 123}])
         self.assertEqual(
             payload["languages"],
@@ -139,11 +138,11 @@ class RadioSourceTests(unittest.TestCase):
             "url": "http://old.example/live",
             "url_resolved": "https://stream.example/live",
         }
-        with patch.object(server, "_radio_station_by_uuid", return_value=station), patch.object(
-            server, "_radio_validate_stream_url", side_effect=lambda value, **_: value
-        ) as validate, patch.object(server, "_radio_catalog_json", return_value={}) as click:
+        with patch.object(radio, "_radio_station_by_uuid", return_value=station), patch.object(
+            radio, "_radio_validate_stream_url", side_effect=lambda value, **_: value
+        ) as validate, patch.object(radio, "_radio_catalog_json", return_value={}) as click:
             self.assertEqual(
-                server._radio_stream_url(station_id),
+                radio._radio_stream_url(station_id),
                 "https://stream.example/live",
             )
         validate.assert_called_once()
