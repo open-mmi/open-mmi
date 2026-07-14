@@ -197,6 +197,11 @@ The daemon owns latch state per active profile runtime. State is reset when the 
 when status rules are reloaded, or when the active CAN interface changes. Inactive frames and
 ordinary periods without traffic preserve the current latch value.
 
+Configuration reloads are fail-safe: an unreadable or invalid replacement profile leaves the
+last known-good rules and CAN runtime active. The test suite also replays frames over
+python-can's virtual interface so profile parsing, daemon reception, status publication,
+and event dispatch are exercised together without vehicle hardware.
+
 By default, state identity includes the CAN id, byte, output path, mask, and true/false values.
 An explicit `state_key` may be used only when multiple rules intentionally share one latch.
 

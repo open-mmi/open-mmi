@@ -7,14 +7,14 @@ Supports:
 
 import subprocess
 import logging
-from typing import Tuple
+from typing import List, Tuple
 
 logger = logging.getLogger("canbusd.actions.audio")
 
 SUBPROCESS_TIMEOUT = 5  # seconds
 
 
-def _run_pc(args: list) -> Tuple[bool, str]:
+def _run_pc(args: List[str]) -> Tuple[bool, str]:
     """Run playerctl command safely with timeout.
     
     Args:
@@ -100,29 +100,29 @@ def mute_toggle() -> None:
         logger.error(f"mute_toggle failed: {e}")
 
 
+def _transport(command: str, fallback: str) -> None:
+    """Run a player command and use the media-key fallback on any failure."""
+
+    ok, _err = _run_pc([command])
+    if not ok:
+        _fallback(fallback)
+
+
 def play_pause() -> None:
-    """Play/pause via playerctl, fallback to media key."""
-    ok, err = _run_pc(["play-pause"])
-    if not ok and "No players found" in err:
-        _fallback("play_pause")
+    """Play/pause via playerctl, falling back to a media key."""
+    _transport("play-pause", "play_pause")
 
 
 def next_track() -> None:
-    """Next track via playerctl, fallback to media key."""
-    ok, err = _run_pc(["next"])
-    if not ok and "No players found" in err:
-        _fallback("next_track")
+    """Select the next track, falling back to a media key."""
+    _transport("next", "next_track")
 
 
 def prev_track() -> None:
-    """Previous track via playerctl, fallback to media key."""
-    ok, err = _run_pc(["previous"])
-    if not ok and "No players found" in err:
-        _fallback("prev_track")
+    """Select the previous track, falling back to a media key."""
+    _transport("previous", "prev_track")
 
 
 def stop() -> None:
-    """Stop playback via playerctl, fallback to media key."""
-    ok, err = _run_pc(["stop"])
-    if not ok and "No players found" in err:
-        _fallback("stop")
+    """Stop playback, falling back to a media key."""
+    _transport("stop", "stop")

@@ -19,3 +19,6 @@ htmlcov/
 # Local generated artifacts
 open-mmi-v1-foundation-hardening-phase1.patch
 open-mmi-v1-foundation-hardening-phase1.zip
+
+# Local Python environments
+.venv/

@@ -136,6 +136,45 @@ class CanbusdCoreTests(unittest.TestCase):
 
         dispatch.assert_called_once_with("button:pressed", None)
 
+    def test_publish_presence_updates_status_and_dispatches_configured_event(self):
+        rule = {
+            "id": 0x65F,
+            "status_path": "vehicle.present",
+            "on_present": "vehicle:on",
+            "on_absent": "vehicle:off",
+        }
+        binding = {"module": "screen", "func": "on"}
+        with (
+            mock.patch.object(core, "publish_status") as publish,
+            mock.patch.object(core, "dispatch") as dispatch,
+        ):
+            core._publish_presence(rule, True, {"vehicle:on": binding})
+
+        publish.assert_called_once_with(
+            {"presence": {"0x65F": True}, "vehicle": {"present": True}}
+        )
+        dispatch.assert_called_once_with("vehicle:on", binding)
+
+    def test_any_value_rule_dispatches_only_when_value_changes(self):
+        event_rules = {0x200: [(0, None, "dimmer:changed")]}
+        messages = [
+            SimpleNamespace(arbitration_id=0x200, data=bytes([10]), dlc=1),
+            SimpleNamespace(arbitration_id=0x200, data=bytes([10]), dlc=1),
+            SimpleNamespace(arbitration_id=0x200, data=bytes([11]), dlc=1),
+        ]
+        bus = FakeBus(messages)
+
+        with mock.patch.object(core, "dispatch") as dispatch:
+            self._run_main(bus, self._config(rules=event_rules), 3)
+
+        self.assertEqual(
+            dispatch.call_args_list,
+            [
+                mock.call("dimmer:changed", None, [10]),
+                mock.call("dimmer:changed", None, [11]),
+            ],
+        )
+
     def test_presence_transitions_publish_once_per_state_change(self):
         presence_rule = {
             "id": 0x65F,
@@ -234,6 +273,23 @@ class CanbusdCoreTests(unittest.TestCase):
 
         with self.assertRaisesRegex(RuntimeError, "CAN receive failed"):
             self._run_main(bus, self._config(), 1)
+
+        self.assertEqual(bus.shutdown_calls, 1)
+
+    def test_open_bus_is_closed_if_interface_disappears(self):
+        bus = FakeBus([None])
+        with (
+            mock.patch.object(core, "_load_config", return_value=self._config()),
+            mock.patch.object(core, "_load_bindings", return_value={}),
+            mock.patch.object(core.Path, "exists", side_effect=[True, False]),
+            mock.patch.object(core.time, "monotonic", return_value=1.0),
+            mock.patch.object(core.time, "sleep"),
+            mock.patch.object(core.can.interface, "Bus", return_value=bus),
+            mock.patch.object(core, "IFACE", "can0"),
+            mock.patch.object(core, "CAN_BUS", "comfort"),
+            mock.patch.object(core, "RELOAD_INTERVAL", 60),
+        ):
+            core.main(max_iterations=2)
 
         self.assertEqual(bus.shutdown_calls, 1)
 
