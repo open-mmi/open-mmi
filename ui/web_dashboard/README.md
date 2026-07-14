@@ -281,7 +281,7 @@ Before adding or replacing icons, confirm the source licence and update `NOTICE.
 Run these before committing dashboard changes:
 
 ```bash
-python3 -m py_compile ui/web_dashboard/server.py ui/web_dashboard/jellyfin.py ui/web_dashboard/radio.py ui/web_dashboard/usb.py
+python3 -m py_compile ui/web_dashboard/server.py ui/web_dashboard/bluetooth.py ui/web_dashboard/jellyfin.py ui/web_dashboard/radio.py ui/web_dashboard/usb.py
 node --check ui/web_dashboard/static/app.js
 python3 -m unittest discover -s tests
 python3 ui/web_dashboard/server.py --demo --demo-scenario warnings
@@ -519,6 +519,11 @@ curl 'http://127.0.0.1:8765/api/usb/browse?filter=browse&limit=10'
 
 <!-- open-mmi-bluetooth-media-start -->
 ## Bluetooth media source
+
+The Bluetooth backend lives in `ui/web_dashboard/bluetooth.py`. The main
+`server.py` module owns only the HTTP status/control routes and delegates BlueZ
+access, opaque player IDs, cached status, request validation, and allowlisted
+controls to the provider.
 
 Bluetooth Media controls an already-connected phone or remote player through
 BlueZ's `org.bluez.MediaPlayer1` interface on the system D-Bus. The dashboard

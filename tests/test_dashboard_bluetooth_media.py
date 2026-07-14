@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-import importlib.util
-import sys
 import unittest
-from pathlib import Path
 from unittest import mock
 
 from dashboard_contract_helpers import (
@@ -16,25 +13,19 @@ from dashboard_contract_helpers import (
     read_repo_text,
 )
 
-
-SERVER_PATH = Path(__file__).resolve().parents[1] / "ui" / "web_dashboard" / "server.py"
-SPEC = importlib.util.spec_from_file_location("open_mmi_dashboard_server_bluetooth_test", SERVER_PATH)
-assert SPEC and SPEC.loader
-server = importlib.util.module_from_spec(SPEC)
-sys.modules[SPEC.name] = server
-SPEC.loader.exec_module(server)
+from ui.web_dashboard import bluetooth, server
 
 
 class BluetoothMediaTests(unittest.TestCase):
     def setUp(self):
-        server._BLUETOOTH_ID_REGISTRY.clear()
-        server._bluetooth_invalidate_cache()
+        bluetooth._BLUETOOTH_ID_REGISTRY.clear()
+        bluetooth._bluetooth_invalidate_cache()
 
     def test_busctl_scalar_and_track_parsing(self):
-        self.assertEqual(server._bluetooth_parse_scalar('s "playing"'), "playing")
-        self.assertEqual(server._bluetooth_parse_scalar("u 1234"), 1234)
-        self.assertTrue(server._bluetooth_parse_scalar("b true"))
-        track = server._bluetooth_parse_track(
+        self.assertEqual(bluetooth._bluetooth_parse_scalar('s "playing"'), "playing")
+        self.assertEqual(bluetooth._bluetooth_parse_scalar("u 1234"), 1234)
+        self.assertTrue(bluetooth._bluetooth_parse_scalar("b true"))
+        track = bluetooth._bluetooth_parse_track(
             'a{sv} 4 "Title" s "Track One" "Artist" s "Artist Name" '
             '"Album" s "Album Name" "Duration" u 123456'
         )
@@ -47,9 +38,9 @@ class BluetoothMediaTests(unittest.TestCase):
 /org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF/sep1
 /org/other/player9
 """
-        with mock.patch.object(server, "_bluetooth_busctl", return_value=tree):
+        with mock.patch.object(bluetooth, "_bluetooth_busctl", return_value=tree):
             self.assertEqual(
-                server._bluetooth_player_paths(),
+                bluetooth._bluetooth_player_paths(),
                 ["/org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF/player0"],
             )
 
@@ -72,10 +63,10 @@ class BluetoothMediaTests(unittest.TestCase):
         def optional(candidate_path, interface, name, default=None):
             return properties.get((candidate_path, interface, name), default)
 
-        with mock.patch.object(server, "_bluetooth_busctl_executable", return_value="/usr/bin/busctl"), \
-             mock.patch.object(server, "_bluetooth_player_paths", return_value=[path]), \
-             mock.patch.object(server, "_bluetooth_optional_property", side_effect=optional):
-            payload = server._bluetooth_status_payload(force=True)
+        with mock.patch.object(bluetooth, "_bluetooth_busctl_executable", return_value="/usr/bin/busctl"), \
+             mock.patch.object(bluetooth, "_bluetooth_player_paths", return_value=[path]), \
+             mock.patch.object(bluetooth, "_bluetooth_optional_property", side_effect=optional):
+            payload = bluetooth._bluetooth_status_payload(force=True)
 
         self.assertTrue(payload["available"])
         self.assertRegex(payload["player_id"], r"^b[0-9a-f]{40}$")
@@ -87,36 +78,36 @@ class BluetoothMediaTests(unittest.TestCase):
 
     def test_controls_are_allowlisted_revalidated_and_report_actual_action(self):
         path = "/org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF/player0"
-        player_id = server._bluetooth_player_id(path)
+        player_id = bluetooth._bluetooth_player_id(path)
         calls: list[tuple] = []
 
         def busctl(*args):
             calls.append(args)
             return ""
 
-        with mock.patch.object(server, "_bluetooth_player_paths", return_value=[path]), \
-             mock.patch.object(server, "_bluetooth_busctl", side_effect=busctl):
+        with mock.patch.object(bluetooth, "_bluetooth_player_paths", return_value=[path]), \
+             mock.patch.object(bluetooth, "_bluetooth_busctl", side_effect=busctl):
             for action, method in (("play", "Play"), ("pause", "Pause"), ("next", "Next"), ("previous", "Previous"), ("stop", "Stop")):
                 with self.subTest(action=action):
-                    result = server._bluetooth_control(player_id, action)
+                    result = bluetooth._bluetooth_control(player_id, action)
                     self.assertTrue(result["ok"])
                     self.assertEqual(calls[-1][-1], method)
                     self.assertEqual(result.get("performed_action"), action)
             with self.assertRaises(ValueError):
-                server._bluetooth_control(player_id, "delete_everything")
+                bluetooth._bluetooth_control(player_id, "delete_everything")
 
-        with mock.patch.object(server, "_bluetooth_player_paths", return_value=[]):
+        with mock.patch.object(bluetooth, "_bluetooth_player_paths", return_value=[]):
             with self.assertRaises(FileNotFoundError):
-                server._bluetooth_control(player_id, "play")
+                bluetooth._bluetooth_control(player_id, "play")
 
     def test_play_pause_uses_current_remote_status_and_reports_result(self):
         path = "/org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF/player0"
-        player_id = server._bluetooth_player_id(path)
+        player_id = bluetooth._bluetooth_player_id(path)
         calls: list[tuple] = []
-        with mock.patch.object(server, "_bluetooth_player_paths", return_value=[path]), \
-             mock.patch.object(server, "_bluetooth_optional_property", return_value="playing"), \
-             mock.patch.object(server, "_bluetooth_busctl", side_effect=lambda *args: calls.append(args) or ""):
-            result = server._bluetooth_control(player_id, "play_pause")
+        with mock.patch.object(bluetooth, "_bluetooth_player_paths", return_value=[path]), \
+             mock.patch.object(bluetooth, "_bluetooth_optional_property", return_value="playing"), \
+             mock.patch.object(bluetooth, "_bluetooth_busctl", side_effect=lambda *args: calls.append(args) or ""):
+            result = bluetooth._bluetooth_control(player_id, "play_pause")
         self.assertEqual(calls[-1][-1], "Pause")
         self.assertEqual(result.get("performed_action"), "pause")
         self.assertEqual(result.get("playback_status"), "paused")
@@ -139,13 +130,14 @@ class BluetoothMediaTests(unittest.TestCase):
 
     def test_routes_origin_json_and_readonly_progress_contract(self):
         app = read_repo_text("ui/web_dashboard/static/app.js")
-        source = read_repo_text("ui/web_dashboard/server.py")
+        server_source = read_repo_text("ui/web_dashboard/server.py")
+        provider_source = read_repo_text("ui/web_dashboard/bluetooth.py")
         styles = read_repo_text("ui/web_dashboard/static/styles.css")
-        self.assertRegex(source, r"parsed\.path\s*==\s*['\"]/api/bluetooth/status['\"]")
-        self.assertRegex(source, r"parsed\.path\s*!=\s*['\"]/api/bluetooth/control['\"]")
-        self.assertRegex(source, r"content_type\s*!=\s*['\"]application/json['\"]")
-        self.assertIn("_bluetooth_same_origin", source)
-        self.assertIn("_BLUETOOTH_ACTION_METHODS", source)
+        self.assertRegex(server_source, r"parsed\.path\s*==\s*['\"]/api/bluetooth/status['\"]")
+        self.assertRegex(server_source, r"parsed\.path\s*!=\s*['\"]/api/bluetooth/control['\"]")
+        self.assertRegex(provider_source, r"content_type\s*!=\s*['\"]application/json['\"]")
+        self.assertIn("bluetooth_backend._bluetooth_same_origin", server_source)
+        self.assertIn("_BLUETOOTH_ACTION_METHODS", provider_source)
         self.assertRegex(app, r"fetch\(\s*['\"]/api/bluetooth/control['\"]")
         props = css_properties(
             styles,

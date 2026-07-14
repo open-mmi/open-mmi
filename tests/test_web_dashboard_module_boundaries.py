@@ -6,7 +6,7 @@ import sys
 import unittest
 from pathlib import Path
 
-from ui.web_dashboard import jellyfin, radio, server, usb
+from ui.web_dashboard import bluetooth, jellyfin, radio, server, usb
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -119,6 +119,43 @@ class DashboardModuleBoundaryTests(unittest.TestCase):
         self.assertIs(server._usb_open_file, usb._usb_open_file)
         self.assertIs(server._usb_send_file, usb._usb_send_file)
         self.assertIs(server._USB_ID_REGISTRY, usb._USB_ID_REGISTRY)
+
+
+    def test_bluetooth_provider_does_not_depend_on_dashboard_handler(self):
+        self.assertFalse(hasattr(bluetooth, "DashboardHandler"))
+        source = inspect.getsource(bluetooth)
+        self.assertNotIn("from ui.web_dashboard.server", source)
+        self.assertNotIn("import server", source)
+
+    def test_bluetooth_can_import_without_importing_server(self):
+        command = (
+            "import sys; "
+            "import ui.web_dashboard.bluetooth; "
+            "assert 'ui.web_dashboard.server' not in sys.modules"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", command],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_server_routes_delegate_to_bluetooth_provider(self):
+        get_source = inspect.getsource(server.DashboardHandler.do_GET)
+        post_source = inspect.getsource(server.DashboardHandler.do_POST)
+        self.assertIn("bluetooth_backend._bluetooth_status_payload()", get_source)
+        self.assertIn("bluetooth_backend._bluetooth_same_origin(self)", post_source)
+        self.assertIn("bluetooth_backend._bluetooth_json_body(self)", post_source)
+        self.assertIn("bluetooth_backend._bluetooth_control(", post_source)
+
+    def test_private_bluetooth_server_aliases_remain_compatible_during_extraction(self):
+        self.assertIs(server._bluetooth_player_paths, bluetooth._bluetooth_player_paths)
+        self.assertIs(server._bluetooth_control, bluetooth._bluetooth_control)
+        self.assertIs(server._bluetooth_json_body, bluetooth._bluetooth_json_body)
+        self.assertIs(server._BLUETOOTH_ID_REGISTRY, bluetooth._BLUETOOTH_ID_REGISTRY)
+        self.assertIs(server._BLUETOOTH_STATUS_CACHE, bluetooth._BLUETOOTH_STATUS_CACHE)
 
     def test_dashboard_still_runs_as_a_direct_script(self):
         result = subprocess.run(

@@ -13,6 +13,7 @@ REQUIRED_PATHS = {
     "bindings/default.json",
     "canbusd/core.py",
     "ui/dashboard/status_cli.py",
+    "ui/web_dashboard/bluetooth.py",
     "ui/web_dashboard/jellyfin.py",
     "ui/web_dashboard/radio.py",
     "ui/web_dashboard/server.py",
