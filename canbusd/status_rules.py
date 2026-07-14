@@ -20,6 +20,40 @@ def _set_path(dst: Dict[str, Any], path: str, value: Any) -> None:
     cur[parts[-1]] = value
 
 
+def _bool_default(value: Any, default: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    if value is None:
+        return default
+    return bool(value)
+
+
+_TOGGLE_LATCH_STATE: Dict[str, Dict[str, Any]] = {}
+
+
+def _toggle_latch_value(rule: Dict[str, Any], active: bool) -> bool:
+    # A false/inactive frame preserves the current latched value. A rising
+    # active edge toggles the latched value. This is intended for decoded
+    # status bits that are button/event requests rather than held states.
+    key = str(rule.get("state_key") or rule.get("path") or id(rule))
+    state = _TOGGLE_LATCH_STATE.setdefault(
+        key,
+        {
+            "latched": _bool_default(rule.get("initial"), False),
+            "previous_active": False,
+        },
+    )
+
+    was_active = bool(state.get("previous_active", False))
+    if active and not was_active:
+        state["latched"] = not bool(state.get("latched", False))
+
+    state["previous_active"] = bool(active)
+    return bool(state.get("latched", False))
+
+
 def _join_path(prefix: Optional[str], key: str) -> str:
     return f"{prefix}.{key}" if prefix else key
 
@@ -214,8 +248,14 @@ def evaluate_rule(rule: Dict[str, Any], data: bytes, dlc: int) -> Dict[str, Any]
     elif kind == "bool":
         true_value = parse_int(rule["true"])
         false_value = parse_int(rule.get("false", 0)) if "false" in rule else None
+        state_mode = rule.get("state") or rule.get("stateful") or rule.get("mode")
 
-        if value_raw == true_value:
+        if state_mode == "toggle_latch":
+            if value_raw == true_value:
+                _set_path(update, rule["path"], _toggle_latch_value(rule, True))
+            elif false_value is not None and value_raw == false_value:
+                _set_path(update, rule["path"], _toggle_latch_value(rule, False))
+        elif value_raw == true_value:
             _set_path(update, rule["path"], True)
         elif false_value is not None and value_raw == false_value:
             _set_path(update, rule["path"], False)

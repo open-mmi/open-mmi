@@ -1,0 +1,81 @@
+---
+name: PQ35 compatibility report
+description: Report what works on a VW Group PQ35-family vehicle
+title: "Compatibility: <vehicle/model/year>"
+labels: [compatibility, vehicle-profile]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for testing Open MMI. Please only report real vehicle results. If something is guessed rather than tested, mark it clearly.
+  - type: input
+    id: vehicle
+    attributes:
+      label: Vehicle
+      placeholder: "e.g. VW Golf Mk5 GT TDI"
+    validations:
+      required: true
+  - type: input
+    id: model_year
+    attributes:
+      label: Model year
+      placeholder: "e.g. 2007"
+    validations:
+      required: true
+  - type: input
+    id: engine_transmission
+    attributes:
+      label: Engine / transmission
+      placeholder: "e.g. BMN 170 / manual"
+  - type: input
+    id: head_unit
+    attributes:
+      label: Radio/head unit and cluster notes
+      placeholder: "e.g. factory radio, highline cluster, MFSW fitted"
+  - type: input
+    id: commit
+    attributes:
+      label: Open MMI commit hash
+      placeholder: "git rev-parse --short HEAD"
+  - type: textarea
+    id: setup
+    attributes:
+      label: Test setup
+      description: CAN adapter, bus tapped, bitrate, listen-only notes.
+      placeholder: |
+        CAN adapter:
+        Bus tapped:
+        Bitrate:
+        Listen-only:
+  - type: checkboxes
+    id: works
+    attributes:
+      label: Signals/features tested
+      options:
+        - label: Dashboard starts
+        - label: Speed
+        - label: RPM
+        - label: Coolant temperature
+        - label: Voltage
+        - label: Range/odometer where available
+        - label: Indicators
+        - label: Hazards
+        - label: Side/position lights
+        - label: Dipped beam
+        - label: Main beam
+        - label: Rear fog
+        - label: Handbrake
+        - label: Doors
+        - label: Boot/bonnet where available
+        - label: Reverse
+        - label: Steering wheel media keys where fitted
+  - type: textarea
+    id: missing_wrong
+    attributes:
+      label: Missing, wrong, delayed or unstable behaviour
+      placeholder: "Describe anything that did not work or looked different from the real cluster."
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes, screenshots or logs
+      placeholder: "Add screenshots, candump notes, or links to logs if you can share them safely."

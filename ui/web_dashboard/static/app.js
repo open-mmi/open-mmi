@@ -31,6 +31,136 @@ function kmToMi(km, decimals = 0) {
   return fmtNum(n * 0.621371192, decimals);
 }
 
+function openMmiApplyDriverFacingCleanup() {
+  const removeContainer = (node) => {
+    if (!node) return;
+    const container = node.closest("article, .tile, .openmmi-home-tile, .openmmi-home-metric, .openmmi-home-status, .metric, .status-chip, .summary-tile, .summary-card");
+    if (container && !container.closest(".openmmi-settings-shell")) container.remove();
+  };
+
+  const home = document.querySelector("#pageHome");
+  if (home) {
+    home.querySelectorAll('[data-field="range_mi"], [data-field="rpm"], [data-field="lighting_mode"], [data-field="lights_on"]').forEach(removeContainer);
+    home.querySelectorAll("article, .tile, .openmmi-home-tile, .openmmi-home-metric, .openmmi-home-status, .summary-tile, .summary-card").forEach((node) => {
+      const label = (node.querySelector(".label, .openmmi-label, .metric-label")?.textContent || "").trim().toLowerCase();
+      if (["lights", "light state", "lighting", "range", "range est.", "range est", "rpm"].includes(label)) node.remove();
+    });
+  }
+
+  document.querySelectorAll('#pageClimate [data-field="outside_unfiltered_c"]').forEach(removeContainer);
+}
+
+
+
+function openMmiApplyDriverDashboardCleanupV2() {
+  const home = document.querySelector("#pageHome");
+  if (home) {
+    home.querySelectorAll("small").forEach((node) => {
+      const text = (node.textContent || "").trim();
+      if (text === "Speed, RPM and tell-tales" || text === "Speed, RPM, and tell-tales") {
+        node.textContent = "Speed and tell-tales";
+      }
+    });
+
+    const removeHomeLabels = [/^lights?\b/i, /^range\b/i, /^rpm\b/i, /lights state/i, /range est/i];
+    const candidates = home.querySelectorAll([
+      "article",
+      ".tile",
+      ".openmmi-home-tile",
+      ".openmmi-home-stat",
+      ".openmmi-home-metric",
+      ".openmmi-home-status-item",
+      "[data-openmmi-home-metric]"
+    ].join(","));
+
+    candidates.forEach((node) => {
+      if (node.closest("nav") || node.matches("button") || node.closest("button")) return;
+      const labelNode = node.querySelector(".label, .openmmi-label, dt, h3, h4, strong, span");
+      const label = ((labelNode && labelNode.textContent) || node.textContent || "").trim();
+      if (removeHomeLabels.some((pattern) => pattern.test(label))) node.remove();
+    });
+  }
+
+  const diagnosticsPanel = document.querySelector("#openmmiSettingsPanel");
+  if (diagnosticsPanel) {
+    diagnosticsPanel.querySelectorAll([
+      ".openmmi-settings-row",
+      ".openmmi-settings-control",
+      ".openmmi-diagnostics-control",
+      ".openmmi-diagnostics-row",
+      "article",
+      "[data-openmmi-diagnostics-control]"
+    ].join(",")).forEach((node) => {
+      if (node.closest("#openmmiSettingsStaticControls")) return;
+      const text = (node.textContent || "").toLowerCase();
+      const hasControl = !!node.querySelector("button, [role='button'], .openmmi-settings-pill, .openmmi-pill");
+      if (hasControl && (text.includes("raw/debug") || text.includes("raw debug") || text.includes("show raw") || text.includes("hide raw"))) {
+        node.remove();
+      }
+    });
+  }
+}
+
+function openMmiUnitPrefs() {
+  const defaults = { speedUnit: "mph", tempUnit: "c" };
+  try {
+    return Object.assign({}, defaults, JSON.parse(localStorage.getItem("openmmi.dashboard.settings.v1") || "{}"));
+  } catch (_) {
+    return defaults;
+  }
+}
+
+function openMmiDistanceUnitLabel() {
+  return openMmiUnitPrefs().speedUnit === "kmh" ? "km" : "mi";
+}
+
+function openMmiSpeedUnitLabel() {
+  return openMmiUnitPrefs().speedUnit === "kmh" ? "km/h" : "mph";
+}
+
+function openMmiTempUnitLabel() {
+  return openMmiUnitPrefs().tempUnit === "f" ? "°F" : "°C";
+}
+
+function openMmiFormatSpeedFromKmh(km, decimals = 0) {
+  const n = Number(km);
+  if (!Number.isFinite(n)) return "--";
+  return openMmiUnitPrefs().speedUnit === "kmh" ? fmtNum(n, decimals) : kmToMi(n, decimals);
+}
+
+function openMmiFormatDistanceFromKm(km, decimals = 0) {
+  const n = Number(km);
+  if (!Number.isFinite(n)) return "--";
+  return openMmiUnitPrefs().speedUnit === "kmh" ? fmtNum(n, decimals) : kmToMi(n, decimals);
+}
+
+function openMmiFormatTempFromC(celsius, decimals = 0) {
+  const n = Number(celsius);
+  if (!Number.isFinite(n)) return "--";
+  const value = openMmiUnitPrefs().tempUnit === "f" ? ((n * 9) / 5) + 32 : n;
+  return fmtNum(value, decimals);
+}
+
+function openMmiApplyUnitLabels() {
+  const labels = {
+    speed_mph: openMmiSpeedUnitLabel(),
+    odo_mi: openMmiDistanceUnitLabel(),
+    range_mi: openMmiDistanceUnitLabel(),
+    coolant_c: openMmiTempUnitLabel(),
+    outside_reg_c: openMmiTempUnitLabel(),
+    outside_unfiltered_c: openMmiTempUnitLabel(),
+  };
+
+  Object.entries(labels).forEach(([field, unit]) => {
+    document.querySelectorAll(`[data-field="${field}"]`).forEach((node) => {
+      const value = node.closest(".value");
+      const small = value ? value.querySelector("small") : node.parentElement?.querySelector("small");
+      if (small) small.textContent = unit;
+    });
+  });
+}
+
+
 function boolText(value) {
   if (value === true) return "ON";
   if (value === false) return "OFF";
@@ -90,6 +220,7 @@ function updateTach(rpm) {
   const root = document.documentElement;
 
   root.style.setProperty("--rpm-scale", progress.toFixed(4));
+  root.style.setProperty("--rpm-fill", `${(progress * 100).toFixed(2)}%`);
   root.classList.remove("rpm-unknown", "rpm-idle", "rpm-normal", "rpm-high", "rpm-redline");
 
   let state = "rpm-unknown";
@@ -112,31 +243,34 @@ function updateTach(rpm) {
   const fuel = state.fuel || {};
   const doors = state.doors || {};
 
-  setField("speed_mph", kmToMi(vehicle.speed_kmh, 0));
+  setField("speed_mph", openMmiFormatSpeedFromKmh(vehicle.speed_kmh, 0));
   setField("rpm", fmtNum(engine.speed_rpm, 0));
-  setField("odo_mi", kmToMi(vehicle.odometer_km, 0));
-  setField("range_mi", kmToMi(fuel.range_km_candidate ?? fuel.range_km_rounded_candidate, 0));
-  setField("coolant_c", fmtNum(engine.coolant_temp_c, 0));
-  setField("outside_reg_c", fmtNum(climate.outside_temp_regulation_c, 1));
-  setField("outside_unfiltered_c", fmtNum(climate.outside_temp_unfiltered_c, 1));
+  setField("odo_mi", openMmiFormatDistanceFromKm(vehicle.odometer_km, 0));
+  // Fuel-range CAN frame is unverified; retain the field as unknown.
+  setField("range_mi", "--");
+  setField("coolant_c", openMmiFormatTempFromC(engine.coolant_temp_c, 0));
+  setField("outside_reg_c", openMmiFormatTempFromC(climate.outside_temp_regulation_c, 1));
+  setField("outside_unfiltered_c", openMmiFormatTempFromC(climate.outside_temp_unfiltered_c, 1));
+  openMmiApplyUnitLabels();
+  if (typeof openMmiApplyTellTaleTest === "function") openMmiApplyTellTaleTest();
   setField("voltage_v", fmtNum(electrical.supply_voltage_v ?? electrical.terminal30_voltage_v, 1));
   setField("blower_pct", fmtNum(climate.blower_load_percent, 1));
   setField("dimmer_pct", fmtNum(lighting.dimmer_percent ?? lighting.dimmer_percent_mirror, 0));
   setField("lighting_mode", lighting.mode || "--");
   setField("lights_on", lightsLabel(lighting.lights_on));
   setField("indicators", indicatorLabel(lighting));
-  setField("air_intake", climate.air_intake || "Normal");
+  openMmiApplyDriverFacingCleanup();
 
   setBool("handbrake", vehicle.handbrake);
   setBool("reverse", vehicle.reverse);
   setBool("rear_heater", climate.rear_window_heater_requested);
-  setBool("front_demist", climate.front_demist_air_request);
+  setBool("recirculation", climate.front_demist_air_request);
   setBool("compressor", climate.compressor_active);
   setBool("hazards", lighting.hazards);
   setBoolNo("bulb_out", lighting.bulb_out);
 
   DOORS.forEach((name) => updateDoor(name, doors[name]));
-  $("#carShell")?.classList.toggle("any-open", doors.any_open === true);
+  $$(".car-shell").forEach((node) => { node.classList.toggle("any-open", doors.any_open === true); });
 
   updateTach(engine.speed_rpm);
 }
@@ -333,7 +467,7 @@ function updateTach(rpm) {
       // The printed scale is 50 / 90 / 130 °C, so map the marker to that range.
       const percent = clamp(((tempC - 50) / 80) * 100, 0, 100);
       bar.style.setProperty('--coolant-pos', percent.toFixed(1) + '%');
-      bar.setAttribute('title', 'Coolant temperature: ' + tempC.toFixed(0) + ' °C');
+      bar.setAttribute('title', 'Coolant temperature: ' + openMmiFormatTempFromC(tempC, 0) + ' ' + openMmiTempUnitLabel());
     });
   }
 
@@ -406,6 +540,8 @@ const openMmiMedia = {
   current: null,
   bound: false,
   lastQuery: "",
+  filter: "recent",
+  loading: false,
 };
 
 function ommiMediaEsc(value) {
@@ -447,6 +583,82 @@ function ommiMediaIcon(name, cls = "") {
   return `<svg class="bi ${cls}" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true" focusable="false">${paths[name] || paths["music-note-beamed"]}</svg>`;
 }
 
+// --- Open MMI Media icon/live search follow-up start ---
+const OMMI_MEDIA_LIVE_SEARCH_DELAY_MS = 320;
+
+function ommiMediaCleanMusicIcon(cls = "") {
+  // A speaker silhouette is deliberately used instead of a note, disc, or
+  // rounded-square/circle combination, which can resemble a social-media logo.
+  const className = ["ommi-music-icon", "ommi-media-speaker-icon", cls]
+    .filter(Boolean)
+    .join(" ");
+  return `<svg class="${className}" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+    <path d="M4.5 9.25h3.2l4.55-3.45v12.4L7.7 14.75H4.5z"
+      fill="currentColor"/>
+    <path d="M15.15 9.35c1.45 1.45 1.45 3.85 0 5.3"
+      fill="none" stroke="currentColor" stroke-width="1.65"
+      stroke-linecap="round"/>
+    <path d="M17.7 7.15c2.75 2.75 2.75 6.95 0 9.7"
+      fill="none" stroke="currentColor" stroke-width="1.65"
+      stroke-linecap="round"/>
+  </svg>`;
+}
+
+function ommiMediaInvalidateRequest() {
+  openMmiMedia.requestSerial = (Number(openMmiMedia.requestSerial) || 0) + 1;
+  ommiMediaSetLoading(false);
+}
+
+function ommiMediaRunSearchNow(value) {
+  if (openMmiMedia.searchTimer) {
+    clearTimeout(openMmiMedia.searchTimer);
+    openMmiMedia.searchTimer = null;
+  }
+  return ommiMediaLoadLibrary(value || "", openMmiMedia.filter);
+}
+
+function ommiMediaScheduleLiveSearch(input) {
+  if (openMmiMedia.searchTimer) clearTimeout(openMmiMedia.searchTimer);
+  ommiMediaInvalidateRequest();
+  const value = input?.value || "";
+  openMmiMedia.searchTimer = setTimeout(() => {
+    openMmiMedia.searchTimer = null;
+    ommiMediaLoadLibrary(value, openMmiMedia.filter);
+  }, OMMI_MEDIA_LIVE_SEARCH_DELAY_MS);
+}
+
+function ommiMediaBindLiveSearch(root) {
+  const input = root?.querySelector?.("#ommiMediaSearch");
+  if (!input || input.dataset.openMmiLiveSearchBound === "true") return;
+
+  input.dataset.openMmiLiveSearchBound = "true";
+  input.autocomplete = "off";
+  input.spellcheck = false;
+  input.placeholder = "Search music…";
+  input.setAttribute("aria-label", "Search music; results update as you type");
+
+  let composing = false;
+  input.addEventListener("compositionstart", () => { composing = true; });
+  input.addEventListener("compositionend", () => {
+    composing = false;
+    ommiMediaScheduleLiveSearch(input);
+  });
+  input.addEventListener("input", () => {
+    if (!composing) ommiMediaScheduleLiveSearch(input);
+  });
+  input.addEventListener("keydown", (event) => {
+    // Keep dashboard-wide shortcuts (H/Home and page arrows) out of text entry.
+    // Native cursor movement is preserved; Enter remains an immediate search.
+    event.stopPropagation();
+    if (event.key === "Enter") {
+      event.preventDefault();
+      ommiMediaRunSearchNow(input.value || "");
+    }
+  });
+  input.addEventListener("search", () => ommiMediaRunSearchNow(input.value || ""));
+}
+// --- Open MMI Media icon/live search follow-up end ---
+
 function ommiMediaPage() {
   let page = document.querySelector("#pageElectrical") || Array.from(document.querySelectorAll(".page"))[3];
   if (!page) {
@@ -468,7 +680,9 @@ function ommiMediaPage() {
     openMmiMedia.bound = false;
   }
   ommiMediaUpdatePagerLabels();
+  ommiMediaInstallFilters();
   ommiMediaBind();
+  if (window.openMmiMediaSources) window.openMmiMediaSources.apply();
   ommiMediaFitViewport();
   return page;
 }
@@ -483,7 +697,7 @@ function ommiMediaBuildRoot() {
       <section class="col-12 col-md-5 col-xl-4 h-100 min-h-0 d-flex overflow-hidden ommi-player-col" aria-label="Local Jellyfin player">
         <div class="card flex-fill h-100 min-h-0 overflow-hidden ommi-media-card">
           <div class="card-body d-flex flex-column min-h-0 h-100 gap-2 ommi-player-body">
-            <div id="ommiMediaArt" class="ommi-art flex-shrink-0" aria-hidden="true"><span>${ommiMediaIcon("music-note-beamed", "ommi-art-icon")}</span></div>
+            <div id="ommiMediaArt" class="ommi-art flex-shrink-0" aria-hidden="true"><span>${ommiMediaCleanMusicIcon("ommi-art-icon")}</span></div>
             <div class="min-w-0 flex-shrink-0 ommi-now-copy">
               <div class="text-uppercase small text-secondary ommi-kicker">${ommiMediaIcon("volume-up-fill")} Local player</div>
               <h2 id="ommiMediaTitle" class="ommi-now-title mb-1">Select music</h2>
@@ -574,7 +788,7 @@ function ommiMediaSetArtwork(track) {
     art.innerHTML = `<img src="${ommiMediaEsc(track.image_url)}" alt="">`;
   } else {
     art.classList.remove("has-art");
-    art.innerHTML = `<span>${ommiMediaIcon("music-note-beamed", "ommi-art-icon")}</span>`;
+    art.innerHTML = `<span>${ommiMediaCleanMusicIcon("ommi-art-icon")}</span>`;
   }
 }
 
@@ -623,6 +837,68 @@ async function ommiMediaFetchJson(path) {
   return response.json();
 }
 
+const OMMI_MEDIA_FILTERS = {
+  recent: "Recent music",
+  favorites: "Favourites",
+  az: "A–Z",
+};
+
+function ommiMediaUpdateFilters() {
+  const select = document.querySelector("#ommiMediaFilter");
+  if (select && select.value !== openMmiMedia.filter) {
+    select.value = openMmiMedia.filter;
+  }
+}
+
+function ommiMediaInstallFilters() {
+  let select = document.querySelector("#ommiMediaFilter");
+  const recent = document.querySelector("#ommiMediaRecentBtn");
+
+  if (!select && recent) {
+    select = document.createElement("select");
+    select.id = "ommiMediaFilter";
+    select.className = "form-select ommi-filter-select";
+    select.setAttribute("aria-label", "Music library view");
+    select.title = "Choose music library view";
+
+    Object.entries(OMMI_MEDIA_FILTERS).forEach(([value, label]) => {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = label;
+      select.appendChild(option);
+    });
+
+    select.addEventListener("change", () => {
+      const input = document.querySelector("#ommiMediaSearch");
+      if (input) input.value = "";
+      openMmiMedia.filter = select.value || "recent";
+      ommiMediaRunSearchNow("");
+    });
+    recent.replaceWith(select);
+  }
+
+  // Remove the previous button implementation when upgrading an already-patched UI.
+  document.querySelectorAll("[data-open-mmi-filter]").forEach((button) => button.remove());
+
+  const search = document.querySelector("#ommiMediaSearchBtn");
+  if (search) {
+    search.title = "Search music";
+    search.setAttribute("aria-label", "Search music");
+  }
+  ommiMediaUpdateFilters();
+}
+
+function ommiMediaSetLoading(loading) {
+  openMmiMedia.loading = Boolean(loading);
+  const root = document.querySelector("#openMmiMediaRoot");
+  root?.setAttribute("aria-busy", String(openMmiMedia.loading));
+  document
+    .querySelectorAll("#ommiMediaSearchBtn, #ommiMediaFilter")
+    .forEach((control) => {
+      control.disabled = openMmiMedia.loading;
+    });
+}
+
 function ommiMediaRenderResults(items) {
   const results = document.querySelector("#ommiMediaResults");
   const count = document.querySelector("#ommiMediaCount");
@@ -638,33 +914,60 @@ function ommiMediaRenderResults(items) {
 
   results.innerHTML = openMmiMedia.queue.map((item, index) => `
     <button type="button" class="list-group-item list-group-item-action d-grid ommi-track" data-open-mmi-track="${index}" role="listitem" aria-label="Play ${ommiMediaEsc(item.name || "track")}">
-      <span class="ommi-track-art">${item.image_url ? `<img src="${ommiMediaEsc(item.image_url)}" alt="">` : ommiMediaIcon("music-note-beamed")}</span>
+      <span class="ommi-track-art">${item.image_url ? `<img src="${ommiMediaEsc(item.image_url)}" alt="">` : ommiMediaCleanMusicIcon()}</span>
       <span class="ommi-track-copy"><strong>${ommiMediaEsc(item.name || "Untitled")}</strong><small>${ommiMediaEsc([item.artist, item.album].filter(Boolean).join(" · ") || "Unknown artist")}</small></span>
       <span class="ommi-track-duration">${ommiMediaTime(item.duration_seconds)}</span>
     </button>`).join("");
 }
 
-async function ommiMediaLoadLibrary(query = "") {
+async function ommiMediaLoadLibrary(query = "", filter = openMmiMedia.filter) {
   ommiMediaPage();
+  ommiMediaInstallFilters();
+  if (window.openMmiMediaSources && !window.openMmiMediaSources.shouldUseJellyfin()) {
+    window.openMmiMediaSources.renderPlaceholder();
+    return;
+  }
   const listTitle = document.querySelector("#ommiMediaListTitle");
   const q = String(query || "").trim();
+  const selectedFilter = Object.prototype.hasOwnProperty.call(OMMI_MEDIA_FILTERS, filter)
+    ? filter
+    : "recent";
+  const requestSerial = (Number(openMmiMedia.requestSerial) || 0) + 1;
+  openMmiMedia.requestSerial = requestSerial;
   openMmiMedia.lastQuery = q;
-  if (listTitle) listTitle.textContent = q ? "Search results" : "Recent music";
-  ommiMediaSetMessage(q ? "Searching…" : "Loading music…");
+  openMmiMedia.filter = selectedFilter;
+  ommiMediaUpdateFilters();
+  if (listTitle) {
+    listTitle.textContent = q
+      ? `Search results · ${OMMI_MEDIA_FILTERS[selectedFilter]}`
+      : OMMI_MEDIA_FILTERS[selectedFilter];
+  }
+  ommiMediaSetMessage(q ? "Searching…" : `Loading ${OMMI_MEDIA_FILTERS[selectedFilter].toLowerCase()}…`);
+  ommiMediaSetLoading(true);
   try {
-    const payload = await ommiMediaFetchJson(`/api/jellyfin/search?q=${encodeURIComponent(q)}&limit=60`);
+    const params = new URLSearchParams({
+      q,
+      limit: "60",
+      filter: selectedFilter,
+    });
+    const payload = await ommiMediaFetchJson(`/api/jellyfin/search?${params}`);
+    if (requestSerial !== openMmiMedia.requestSerial) return;
     if (payload.error) ommiMediaSetMessage(payload.error, "error");
     else ommiMediaSetMessage("Tap any track to play locally.");
     ommiMediaRenderResults(payload.items || []);
   } catch (err) {
+    if (requestSerial !== openMmiMedia.requestSerial) return;
     ommiMediaSetMessage(`Could not load library: ${err.message}`, "error");
     ommiMediaRenderResults([]);
+  } finally {
+    if (requestSerial === openMmiMedia.requestSerial) ommiMediaSetLoading(false);
   }
-  ommiMediaFitViewport();
+  if (requestSerial === openMmiMedia.requestSerial) ommiMediaFitViewport();
 }
 
 async function ommiMediaRefreshStatus() {
   ommiMediaPage();
+  if (window.openMmiMediaSources && !window.openMmiMediaSources.shouldUseJellyfin()) { window.openMmiMediaSources.renderPlaceholder(); return; }
   try {
     const status = await ommiMediaFetchJson("/api/jellyfin/status");
     const remote = document.querySelector("#ommiMediaRemoteState");
@@ -683,6 +986,7 @@ async function ommiMediaRefreshStatus() {
 
 async function ommiMediaPlayIndex(index) {
   ommiMediaPage();
+  if (window.openMmiMediaSources && !window.openMmiMediaSources.shouldUseJellyfin()) { window.openMmiMediaSources.renderPlaceholder(); return; }
   const audio = document.querySelector("#ommiMediaAudio");
   const item = openMmiMedia.queue[Number(index)];
   if (!audio || !item) return;
@@ -724,6 +1028,7 @@ function ommiMediaBind() {
   const root = document.querySelector("#openMmiMediaRoot");
   const audio = document.querySelector("#ommiMediaAudio");
   if (!root || !audio) return;
+  ommiMediaBindLiveSearch(root);
 
   root.addEventListener("click", async (event) => {
     const trackButton = event.target.closest?.("[data-open-mmi-track]");
@@ -732,11 +1037,10 @@ function ommiMediaBind() {
       await ommiMediaPlayIndex(trackButton.dataset.openMmiTrack);
       return;
     }
-    if (event.target.closest?.("#ommiMediaSearchBtn")) return ommiMediaLoadLibrary(document.querySelector("#ommiMediaSearch")?.value || "");
-    if (event.target.closest?.("#ommiMediaRecentBtn")) {
-      const input = document.querySelector("#ommiMediaSearch");
-      if (input) input.value = "";
-      return ommiMediaLoadLibrary("");
+    if (event.target.closest?.("#ommiMediaSearchBtn")) {
+      return ommiMediaRunSearchNow(
+        document.querySelector("#ommiMediaSearch")?.value || "",
+      );
     }
     if (event.target.closest?.("#ommiMediaPrev")) return ommiMediaPrev();
     if (event.target.closest?.("#ommiMediaNext")) return ommiMediaNext();
@@ -773,7 +1077,10 @@ function ommiMediaBind() {
   });
 
   root.addEventListener("keydown", (event) => {
-    if (event.key === "Enter" && event.target?.id === "ommiMediaSearch") ommiMediaLoadLibrary(event.target.value || "");
+    if (event.key === "Enter" && event.target?.id === "ommiMediaSearch") {
+      event.preventDefault();
+      ommiMediaRunSearchNow(event.target.value || "");
+    }
   });
 
   audio.addEventListener("timeupdate", ommiMediaUpdateProgress);
@@ -788,8 +1095,1388 @@ function ommiMediaBind() {
   openMmiMedia.bound = true;
 }
 
+
+// --- Open MMI media source shell v1 start ---
+(function openMmiMediaSourceShellV1() {
+  if (window.__openMmiMediaSourceShellV1Loaded) return;
+  window.__openMmiMediaSourceShellV1Loaded = true;
+
+  const STORE_KEY = "openmmi.dashboard.settings.v1";
+  const SOURCES = [
+    { id: "jellyfin", label: "Jellyfin", note: "Local library", planned: false },
+    { id: "radio", label: "Internet radio", note: "Radio Browser stations", planned: false },
+    { id: "usb", label: "USB", note: "read-only local media", planned: false },
+    { id: "bluetooth", label: "Bluetooth", note: "connected phone playback controls", planned: false },
+  ];
+
+  const DEFAULT_MEDIA = {
+    mediaActiveSource: "jellyfin",
+    mediaDefaultSource: "jellyfin",
+    mediaSources: {
+      jellyfin: true,
+      radio: false,
+      usb: false,
+      bluetooth: false,
+    },
+  };
+
+  const $ = (selector) => document.querySelector(selector);
+  const $$ = (selector) => Array.from(document.querySelectorAll(selector));
+  const sourceById = (id) => SOURCES.find((source) => source.id === id) || SOURCES[0];
+
+  function loadPrefs() {
+    let saved = {};
+    try { saved = JSON.parse(localStorage.getItem(STORE_KEY) || "{}"); }
+    catch (_) { saved = {}; }
+    const mediaSources = Object.assign({}, DEFAULT_MEDIA.mediaSources, saved.mediaSources || {});
+    const prefs = Object.assign({}, DEFAULT_MEDIA, saved, { mediaSources });
+
+    if (!sourceById(prefs.mediaDefaultSource)) prefs.mediaDefaultSource = "jellyfin";
+    if (!sourceById(prefs.mediaActiveSource)) prefs.mediaActiveSource = prefs.mediaDefaultSource || "jellyfin";
+    return prefs;
+  }
+
+  function savePrefs(prefs) {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(prefs)); } catch (_) {}
+    window.openMmiDashboardSettings = Object.assign({}, window.openMmiDashboardSettings || {}, prefs);
+  }
+
+  function isEnabled(id, prefs = loadPrefs()) {
+    return prefs.mediaSources?.[id] === true;
+  }
+
+  function firstEnabled(prefs = loadPrefs()) {
+    return SOURCES.find((source) => isEnabled(source.id, prefs))?.id || "";
+  }
+
+  function activeSourceId(prefs = loadPrefs()) {
+    if (isEnabled(prefs.mediaActiveSource, prefs)) return prefs.mediaActiveSource;
+    if (isEnabled(prefs.mediaDefaultSource, prefs)) return prefs.mediaDefaultSource;
+    return firstEnabled(prefs);
+  }
+
+  function setSourceEnabled(id, enabled) {
+    const prefs = loadPrefs();
+    prefs.mediaSources[id] = !!enabled;
+
+    if (!activeSourceId(prefs)) {
+      const fallback = enabled ? id : firstEnabled(prefs);
+      prefs.mediaActiveSource = fallback || id;
+      prefs.mediaDefaultSource = fallback || prefs.mediaDefaultSource || id;
+    } else if (!isEnabled(prefs.mediaActiveSource, prefs)) {
+      prefs.mediaActiveSource = activeSourceId(prefs);
+    }
+
+    if (!isEnabled(prefs.mediaDefaultSource, prefs)) {
+      prefs.mediaDefaultSource = activeSourceId(prefs) || prefs.mediaDefaultSource;
+    }
+
+    savePrefs(prefs);
+    apply();
+  }
+
+  function setDefaultSource(id) {
+    const prefs = loadPrefs();
+    if (!isEnabled(id, prefs)) return;
+    prefs.mediaDefaultSource = id;
+    savePrefs(prefs);
+    apply();
+  }
+
+  function setActiveSource(id) {
+    const prefs = loadPrefs();
+    if (!isEnabled(id, prefs)) return;
+    prefs.mediaActiveSource = id;
+    savePrefs(prefs);
+    apply();
+
+    if (id === "jellyfin") {
+      try { if (typeof ommiMediaRefreshStatus === "function") ommiMediaRefreshStatus(); } catch (_) {}
+      try {
+        if (typeof ommiMediaLoadLibrary === "function" && (!window.openMmiMedia || !window.openMmiMedia.queue || !window.openMmiMedia.queue.length)) {
+          ommiMediaLoadLibrary("");
+        }
+      } catch (_) {}
+    }
+  }
+
+  function shouldUseJellyfin() {
+    // Historical name retained for compatibility. The source shell should render
+    // the real Media UI for every implemented source, not only Jellyfin.
+    const prefs = loadPrefs();
+    const active = activeSourceId(prefs);
+    return ["jellyfin", "radio", "usb", "bluetooth"].includes(active) && isEnabled(active, prefs);
+  }
+  function renderSourceBar(root = $("#openMmiMediaRoot")) {
+    if (!root) return;
+    root.classList.add("openmmi-media-source-shell");
+    let bar = root.querySelector("#openMmiMediaSourceBar");
+    if (!bar) {
+      bar = document.createElement("div");
+      bar.id = "openMmiMediaSourceBar";
+      bar.className = "openmmi-media-source-bar";
+      root.insertBefore(bar, root.firstChild);
+    }
+
+    const prefs = loadPrefs();
+    const active = activeSourceId(prefs);
+    const visibleSources = SOURCES.filter((source) => isEnabled(source.id, prefs));
+    root.classList.toggle("openmmi-media-no-enabled-sources", visibleSources.length === 0);
+
+    bar.innerHTML = visibleSources.map((source) => {
+      const selected = source.id === active;
+      const planned = source.planned ? '<span class="openmmi-media-source-planned">planned</span>' : '';
+      return `
+        <button type="button" class="openmmi-media-source-btn${selected ? " is-selected" : ""}" data-openmmi-media-source="${source.id}" aria-pressed="${selected ? "true" : "false"}" title="Switch media source">
+          <span>${source.label}</span>${planned}
+        </button>`;
+    }).join("");
+  }
+
+  function renderPlaceholder() {
+    const root = $("#openMmiMediaRoot");
+    if (!root) return;
+    renderSourceBar(root);
+
+    if (shouldUseJellyfin()) {
+      root.classList.remove("openmmi-media-source-placeholder-active");
+      root.querySelector("#openMmiMediaSourcePlaceholder")?.remove();
+      return;
+    }
+
+    const prefs = loadPrefs();
+    const active = activeSourceId(prefs);
+    const source = active ? sourceById(active) : null;
+    root.classList.add("openmmi-media-source-placeholder-active");
+
+    let placeholder = root.querySelector("#openMmiMediaSourcePlaceholder");
+    if (!placeholder) {
+      placeholder = document.createElement("section");
+      placeholder.id = "openMmiMediaSourcePlaceholder";
+      placeholder.className = "openmmi-media-source-placeholder";
+      root.appendChild(placeholder);
+    }
+
+    if (!source) {
+      placeholder.innerHTML = `
+        <div class="openmmi-media-source-empty-kicker">Media source</div>
+        <h2>No media source enabled</h2>
+        <p>Enable Jellyfin, radio, USB or Bluetooth from Settings → Media.</p>`;
+      return;
+    }
+
+    const disabledJellyfin = source.id === "jellyfin" && !isEnabled("jellyfin", prefs);
+    placeholder.innerHTML = `
+      <div class="openmmi-media-source-empty-kicker">${source.label}</div>
+      <h2>${disabledJellyfin ? "Jellyfin disabled" : `${source.label} source placeholder`}</h2>
+      <p>${disabledJellyfin ? "Jellyfin is disabled in Settings → Media. No Jellyfin API calls are made while it is disabled." : `${source.note}. This source is available in the selector shell but has no playback backend yet.`}</p>`;
+  }
+
+  function settingsRow(title, note, controls) {
+    return `<div class="openmmi-setting-row"><div><strong>${title}</strong><small>${note}</small></div><div class="openmmi-setting-controls">${controls}</div></div>`;
+  }
+
+  function sourceToggleRow(source, prefs) {
+    const enabled = isEnabled(source.id, prefs);
+    return settingsRow(
+      source.label,
+      source.planned ? `${source.note}; can be exposed as a placeholder source.` : source.id === "usb" ? "Read-only local media roots configured or discovered by the dashboard server." : source.id === "bluetooth" ? "Controls an already-connected Bluetooth media player through BlueZ; pairing stays in the operating system." : "Configured server-side with URL/token environment variables.",
+      `<button type="button" class="openmmi-setting-pill${enabled ? "" : " is-selected"}" data-openmmi-media-source-enable="${source.id}" data-openmmi-media-source-value="off" aria-pressed="${enabled ? "false" : "true"}">off</button>` +
+      `<button type="button" class="openmmi-setting-pill${enabled ? " is-selected" : ""}" data-openmmi-media-source-enable="${source.id}" data-openmmi-media-source-value="on" aria-pressed="${enabled ? "true" : "false"}">on</button>`
+    );
+  }
+
+  function defaultControls(prefs) {
+    return SOURCES.map((source) => {
+      const enabled = isEnabled(source.id, prefs);
+      const selected = prefs.mediaDefaultSource === source.id;
+      return `<button type="button" class="openmmi-setting-pill${selected ? " is-selected" : ""}" data-openmmi-media-default-source="${source.id}" ${enabled ? "" : "disabled"} aria-pressed="${selected ? "true" : "false"}">${source.label}</button>`;
+    }).join("");
+  }
+
+  function renderSettingsPanel() {
+    const active = document.querySelector("[data-openmmi-settings-section].active")?.dataset?.openmmiSettingsSection;
+    const panel = $("#openmmiSettingsPanel");
+    if (active !== "media" || !panel) return;
+
+    const prefs = loadPrefs();
+    const activeId = activeSourceId(prefs);
+    const activeLabel = activeId ? sourceById(activeId).label : "None";
+    const defaultLabel = sourceById(prefs.mediaDefaultSource).label;
+
+    panel.innerHTML = `
+      <div data-openmmi-media-settings-panel="true">
+        <div class="openmmi-settings-panel-head"><span>Media</span><small>sources</small></div>
+        <div class="openmmi-settings-metric"><span>Active source</span><strong>${activeLabel}</strong></div>
+        <div class="openmmi-settings-metric"><span>Default source</span><strong>${defaultLabel}</strong></div>
+        ${settingsRow("Default source", "Used when the Media page opens or the active source is disabled.", defaultControls(prefs))}
+        ${SOURCES.map((source) => sourceToggleRow(source, prefs)).join("")}
+        ${settingsRow("Token privacy", "Jellyfin URL/token stay server-side. Source enablement is a browser-local dashboard preference.", '<button type="button" class="openmmi-setting-pill is-selected" disabled>locked</button>')}
+        ${settingsRow("Media keys", "Browser/system media controls follow the currently selected source where supported.", '<button type="button" class="openmmi-setting-pill is-selected" disabled>active</button>')}
+      </div>`;
+  }
+
+  function apply() {
+    const root = $("#openMmiMediaRoot");
+    if (root) {
+      renderSourceBar(root);
+      if (shouldUseJellyfin()) {
+        root.classList.remove("openmmi-media-source-placeholder-active");
+        root.querySelector("#openMmiMediaSourcePlaceholder")?.remove();
+      } else {
+        renderPlaceholder();
+      }
+    }
+    renderSettingsPanel();
+  }
+
+  document.addEventListener("click", (event) => {
+    const sourceButton = event.target.closest?.("[data-openmmi-media-source]");
+    if (sourceButton) {
+      setActiveSource(sourceButton.dataset.openmmiMediaSource);
+      return;
+    }
+
+    const enableButton = event.target.closest?.("[data-openmmi-media-source-enable]");
+    if (enableButton) {
+      setSourceEnabled(enableButton.dataset.openmmiMediaSourceEnable, enableButton.dataset.openmmiMediaSourceValue === "on");
+      return;
+    }
+
+    const defaultButton = event.target.closest?.("[data-openmmi-media-default-source]");
+    if (defaultButton) {
+      setDefaultSource(defaultButton.dataset.openmmiMediaDefaultSource);
+      return;
+    }
+
+    if (event.target.closest?.('[data-openmmi-settings-section="media"]')) {
+      requestAnimationFrame(renderSettingsPanel);
+    }
+  });
+
+  window.addEventListener("openmmi:pagechange", () => requestAnimationFrame(apply));
+  document.addEventListener("DOMContentLoaded", () => requestAnimationFrame(apply));
+
+  const observer = new MutationObserver(() => {
+    const active = document.querySelector("[data-openmmi-settings-section].active")?.dataset?.openmmiSettingsSection;
+    const panel = $("#openmmiSettingsPanel");
+    if (active === "media" && panel && !panel.querySelector("[data-openmmi-media-settings-panel]")) {
+      renderSettingsPanel();
+    }
+  });
+  try { observer.observe(document.body, { childList: true, subtree: true }); } catch (_) {}
+
+  window.openMmiMediaSources = {
+    apply,
+    activeSourceId,
+    isEnabled,
+    loadPrefs,
+    renderPlaceholder,
+    setActiveSource,
+    shouldUseJellyfin,
+  };
+})();
+// --- Open MMI media source shell v1 end ---
+
+// --- Open MMI Internet Radio privacy consent start ---
+(function openMmiRadioPrivacyConsent() {
+  if (window.__openMmiRadioPrivacyConsentLoaded) return;
+  window.__openMmiRadioPrivacyConsentLoaded = true;
+
+  const SETTINGS_KEY = "openmmi.dashboard.settings.v1";
+  const CONSENT_KEY = "openmmi.media.radio.privacy-consent.v1";
+  const NOTICE_VERSION = "2026-07-11-v1";
+  let pendingEnableButton = null;
+  let bypassRadioEnableGate = false;
+
+  function readJson(key, fallback = {}) {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(key) || "null");
+      return parsed && typeof parsed === "object" ? parsed : fallback;
+    } catch (_) {
+      return fallback;
+    }
+  }
+
+  function writeJson(key, value) {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function hasCurrentConsent() {
+    const consent = readJson(CONSENT_KEY, {});
+    return consent.notice_version === NOTICE_VERSION && Boolean(consent.accepted_at);
+  }
+
+  function saveConsent() {
+    return writeJson(CONSENT_KEY, {
+      notice_version: NOTICE_VERSION,
+      accepted_at: new Date().toISOString(),
+    });
+  }
+
+  function fallbackSource(mediaSources) {
+    if (mediaSources?.jellyfin === true) return "jellyfin";
+    return Object.entries(mediaSources || {})
+      .find(([id, enabled]) => id !== "radio" && enabled === true)?.[0] || "jellyfin";
+  }
+
+  function disableRadioPreference() {
+    const prefs = readJson(SETTINGS_KEY, {});
+    const mediaSources = {
+      jellyfin: true,
+      radio: false,
+      usb: false,
+      bluetooth: false,
+      ...(prefs.mediaSources || {}),
+    };
+    const wasEnabled = mediaSources.radio === true;
+    mediaSources.radio = false;
+    const fallback = fallbackSource(mediaSources);
+    if (prefs.mediaActiveSource === "radio") prefs.mediaActiveSource = fallback;
+    if (prefs.mediaDefaultSource === "radio") prefs.mediaDefaultSource = fallback;
+    prefs.mediaSources = mediaSources;
+    writeJson(SETTINGS_KEY, prefs);
+    window.openMmiDashboardSettings = {
+      ...(window.openMmiDashboardSettings || {}),
+      ...prefs,
+    };
+    return wasEnabled;
+  }
+
+  function syncAfterPreferenceChange() {
+    try { window.openMmiMediaSources?.apply?.(); } catch (_) {}
+    try { window.openMmiMediaAdapters?.syncActiveSource?.(true); } catch (_) {}
+    requestAnimationFrame(ensureSettingsReviewControl);
+  }
+
+  function ensureDialog() {
+    let overlay = document.querySelector("#openMmiRadioPrivacyOverlay");
+    if (overlay) return overlay;
+
+    overlay = document.createElement("div");
+    overlay.id = "openMmiRadioPrivacyOverlay";
+    overlay.className = "openmmi-radio-privacy-overlay";
+    overlay.hidden = true;
+    overlay.innerHTML = `
+      <section class="openmmi-radio-privacy-dialog" role="dialog" aria-modal="true" aria-labelledby="openMmiRadioPrivacyTitle" aria-describedby="openMmiRadioPrivacySummary">
+        <div class="openmmi-radio-privacy-heading">
+          <div>
+            <p class="openmmi-radio-privacy-kicker">External network service</p>
+            <h2 id="openMmiRadioPrivacyTitle">Before enabling Internet Radio</h2>
+          </div>
+          <button type="button" class="btn openmmi-radio-privacy-close" data-openmmi-radio-privacy-close aria-label="Close privacy notice">×</button>
+        </div>
+
+        <p id="openMmiRadioPrivacySummary" class="openmmi-radio-privacy-summary">
+          Internet Radio is not a local-only feature. Open MMI contacts the community Radio Browser directory and, when you play a station, that station or its hosting provider. Open MMI proxies those connections through the dashboard server, but this does not make them anonymous.
+        </p>
+
+        <h3>What external services may receive</h3>
+        <ul>
+          <li><strong>Radio Browser directory:</strong> the dashboard server's public IP address, request time, the search text and country/language filters you use, station identifiers, the Open MMI application/version User-Agent, and a station-click notification when playback starts.</li>
+          <li><strong>Radio station or streaming host:</strong> the dashboard server's public IP address, request time, the requested stream, connection duration and data transferred, and ordinary HTTP request headers. The operator may infer an approximate location from the public IP address.</li>
+          <li><strong>Other providers:</strong> a station may use a CDN, hosting company, analytics service, or redirect to another provider. Their logging, retention, and sharing practices are controlled by them, not by Open MMI.</li>
+        </ul>
+
+        <h3>What Open MMI does and does not send</h3>
+        <ul>
+          <li>Open MMI does <strong>not</strong> send your Jellyfin token, Jellyfin library contents, radio favourites, or a unique Open MMI user identifier to Radio Browser or a station.</li>
+          <li>Open MMI does not request GPS location. If available, the browser locale may be used to choose an initial country filter; that selected country filter is then included in directory searches.</li>
+          <li>Your acknowledgement, Radio enablement, favourites, and country/language preferences are stored in this browser's local storage. They do not automatically sync to other devices.</li>
+          <li>If this dashboard is self-hosted at home, the external services will usually see your household's public IP. If it runs on a remote server, they will usually see that server's public IP.</li>
+        </ul>
+
+        <p class="openmmi-radio-privacy-caveat">
+          Open MMI cannot promise how long external operators keep logs or how they combine them with other information. Use Internet Radio only if you accept those external connections.
+        </p>
+
+        <p id="openMmiRadioPrivacyError" class="openmmi-radio-privacy-error" role="alert" hidden></p>
+
+        <label class="openmmi-radio-privacy-ack" for="openMmiRadioPrivacyAck">
+          <input type="checkbox" id="openMmiRadioPrivacyAck">
+          <span>I understand this notice and want to enable Internet Radio.</span>
+        </label>
+
+        <div class="openmmi-radio-privacy-actions">
+          <button type="button" class="btn btn-outline-light" data-openmmi-radio-privacy-cancel>Cancel</button>
+          <button type="button" class="btn btn-outline-light openmmi-radio-privacy-forget" data-openmmi-radio-privacy-forget hidden>Disable Radio and forget acknowledgement</button>
+          <button type="button" class="btn btn-light" data-openmmi-radio-privacy-accept disabled>Enable Internet Radio</button>
+        </div>
+      </section>`;
+    document.body.appendChild(overlay);
+
+    const checkbox = overlay.querySelector("#openMmiRadioPrivacyAck");
+    const accept = overlay.querySelector("[data-openmmi-radio-privacy-accept]");
+    checkbox?.addEventListener("change", () => {
+      if (accept) accept.disabled = !checkbox.checked;
+    });
+
+    overlay.addEventListener("click", (event) => {
+      if (
+        event.target === overlay
+        || event.target.closest?.("[data-openmmi-radio-privacy-close]")
+        || event.target.closest?.("[data-openmmi-radio-privacy-cancel]")
+      ) {
+        closeDialog();
+        return;
+      }
+      if (event.target.closest?.("[data-openmmi-radio-privacy-forget]")) {
+        try { localStorage.removeItem(CONSENT_KEY); } catch (_) {}
+        disableRadioPreference();
+        try { window.openMmiMediaAdapters?.stopPlayback?.(true); } catch (_) {}
+        closeDialog();
+        syncAfterPreferenceChange();
+        return;
+      }
+      if (event.target.closest?.("[data-openmmi-radio-privacy-accept]")) {
+        if (!checkbox?.checked) return;
+        if (!saveConsent() || !hasCurrentConsent()) {
+          const error = overlay.querySelector("#openMmiRadioPrivacyError");
+          if (error) {
+            error.textContent = "Open MMI could not store the acknowledgement in this browser, so Internet Radio remains disabled.";
+            error.hidden = false;
+          }
+          return;
+        }
+        const enableButton = pendingEnableButton;
+        closeDialog();
+        ensureSettingsReviewControl();
+        if (enableButton?.isConnected) {
+          bypassRadioEnableGate = true;
+          try { enableButton.click(); } finally { bypassRadioEnableGate = false; }
+        }
+      }
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !overlay.hidden) closeDialog();
+    });
+    return overlay;
+  }
+
+  function openDialog(mode = "enable", enableButton = null) {
+    const overlay = ensureDialog();
+    pendingEnableButton = enableButton;
+    const checkbox = overlay.querySelector("#openMmiRadioPrivacyAck");
+    const ack = overlay.querySelector(".openmmi-radio-privacy-ack");
+    const accept = overlay.querySelector("[data-openmmi-radio-privacy-accept]");
+    const forget = overlay.querySelector("[data-openmmi-radio-privacy-forget]");
+    const review = mode === "review";
+    const error = overlay.querySelector("#openMmiRadioPrivacyError");
+
+    if (error) { error.hidden = true; error.textContent = ""; }
+    if (checkbox) checkbox.checked = false;
+    if (ack) ack.hidden = review;
+    if (accept) {
+      accept.hidden = review;
+      accept.disabled = true;
+    }
+    if (forget) forget.hidden = !review || !hasCurrentConsent();
+    overlay.hidden = false;
+    document.body.classList.add("openmmi-radio-privacy-open");
+    requestAnimationFrame(() => {
+      (review
+        ? overlay.querySelector("[data-openmmi-radio-privacy-close]")
+        : checkbox)?.focus?.();
+    });
+  }
+
+  function closeDialog() {
+    const overlay = document.querySelector("#openMmiRadioPrivacyOverlay");
+    if (overlay) overlay.hidden = true;
+    document.body.classList.remove("openmmi-radio-privacy-open");
+    pendingEnableButton = null;
+  }
+
+  function interceptRadioEnable(event) {
+    if (bypassRadioEnableGate || hasCurrentConsent()) return;
+    const enableButton = event.target.closest?.(
+      '[data-openmmi-media-source-enable="radio"][data-openmmi-media-source-value="on"]',
+    );
+    const sourceButton = event.target.closest?.('[data-openmmi-media-source="radio"]');
+    const defaultButton = event.target.closest?.('[data-openmmi-media-default-source="radio"]');
+    if (!enableButton && !sourceButton && !defaultButton) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    openDialog("enable", enableButton);
+  }
+
+  function ensureSettingsReviewControl() {
+    const enableButton = document.querySelector(
+      '[data-openmmi-media-source-enable="radio"][data-openmmi-media-source-value="on"]',
+    );
+    if (!enableButton) return;
+    const controls = enableButton.parentElement;
+    if (!controls) return;
+    let review = controls.querySelector("[data-openmmi-radio-privacy-review]");
+    if (!review) {
+      review = document.createElement("button");
+      review.type = "button";
+      review.className = "btn openmmi-radio-privacy-review";
+      review.dataset.openmmiRadioPrivacyReview = "true";
+      review.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        openDialog("review");
+      });
+      controls.appendChild(review);
+    }
+    review.textContent = hasCurrentConsent() ? "Privacy details" : "Privacy notice required";
+    review.title = hasCurrentConsent()
+      ? "Review the Internet Radio privacy notice"
+      : "Acknowledge the privacy notice before enabling Internet Radio";
+  }
+
+  // Fail closed even if browser storage becomes unwritable: source adapters
+  // cannot select Radio without a current, readable acknowledgement.
+  const mediaSourceApi = window.openMmiMediaSources;
+  if (mediaSourceApi?.activeSourceId && !mediaSourceApi.__radioPrivacyWrapped) {
+    const originalActiveSourceId = mediaSourceApi.activeSourceId.bind(mediaSourceApi);
+    mediaSourceApi.activeSourceId = (...args) => {
+      const sourceId = originalActiveSourceId(...args);
+      if (sourceId !== "radio" || hasCurrentConsent()) return sourceId;
+      const prefs = readJson(SETTINGS_KEY, {});
+      return fallbackSource(prefs.mediaSources || {});
+    };
+    mediaSourceApi.__radioPrivacyWrapped = true;
+  }
+
+  // A material notice change deliberately invalidates old consent. Existing
+  // Radio enablement is disabled before the source adapters begin making calls.
+  const revokedExistingEnablement = !hasCurrentConsent() && disableRadioPreference();
+
+  document.addEventListener("click", interceptRadioEnable, true);
+  window.addEventListener("openmmi:pagechange", () => requestAnimationFrame(ensureSettingsReviewControl));
+  document.addEventListener("DOMContentLoaded", () => requestAnimationFrame(ensureSettingsReviewControl));
+  const observer = new MutationObserver(() => requestAnimationFrame(ensureSettingsReviewControl));
+  try { observer.observe(document.body, { childList: true, subtree: true }); } catch (_) {}
+  requestAnimationFrame(() => {
+    ensureSettingsReviewControl();
+    if (revokedExistingEnablement) syncAfterPreferenceChange();
+  });
+
+  window.openMmiRadioPrivacy = {
+    consentKey: CONSENT_KEY,
+    noticeVersion: NOTICE_VERSION,
+    hasCurrentConsent,
+    openNotice: () => openDialog("review"),
+  };
+})();
+// --- Open MMI Internet Radio privacy consent end ---
+// --- Open MMI media source adapters/radio start ---
+(function openMmiMediaSourceAdaptersRadio() {
+  if (window.__openMmiMediaSourceAdaptersRadioLoaded) return;
+  window.__openMmiMediaSourceAdaptersRadioLoaded = true;
+
+  const RADIO_FAVORITES_KEY = "openmmi.media.radio.favorites.v1";
+  const RADIO_FILTER_PREFS_KEY = "openmmi.media.radio.filters.v1";
+  let radioOptionsPromise = null;
+
+  function readStoredJson(key, fallback) {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(key) || "null");
+      return parsed && typeof parsed === "object" ? parsed : fallback;
+    } catch (_) {
+      return fallback;
+    }
+  }
+
+  function writeStoredJson(key, value) {
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch (_) {}
+  }
+
+  function browserCountryCode() {
+    try {
+      const locale = new Intl.Locale(navigator.language || "");
+      if (locale.region && /^[A-Za-z]{2}$/.test(locale.region)) return locale.region.toUpperCase();
+    } catch (_) {}
+    const match = String(navigator.language || "").match(/[-_]([A-Za-z]{2})$/);
+    return match ? match[1].toUpperCase() : "";
+  }
+
+  function loadRadioFilterPrefs() {
+    const stored = readStoredJson(RADIO_FILTER_PREFS_KEY, {});
+    const hasStoredCountry = Object.prototype.hasOwnProperty.call(stored, "country");
+    const storedCountry = String(stored.country || "");
+    return {
+      country: hasStoredCountry
+        ? (/^[A-Za-z]{2}$/.test(storedCountry) ? storedCountry.toUpperCase() : "")
+        : browserCountryCode(),
+      language: String(stored.language || "").slice(0, 64),
+    };
+  }
+
+  function saveRadioFilterPrefs(prefs) {
+    writeStoredJson(RADIO_FILTER_PREFS_KEY, {
+      country: /^[A-Za-z]{2}$/.test(String(prefs.country || ""))
+        ? String(prefs.country).toUpperCase()
+        : "",
+      language: String(prefs.language || "").slice(0, 64),
+    });
+  }
+
+  function loadRadioFavorites() {
+    const stored = readStoredJson(RADIO_FAVORITES_KEY, {});
+    return Object.fromEntries(
+      Object.entries(stored).filter(([id, item]) => id && item && typeof item === "object"),
+    );
+  }
+
+  function safeFavoriteStation(item) {
+    if (!item || item.source !== "radio" || !item.id) return null;
+    return {
+      id: String(item.id),
+      source: "radio",
+      is_live: true,
+      name: String(item.name || "Unnamed station"),
+      artist: String(item.artist || item.country || "Internet radio"),
+      album: String(item.album || "Live station"),
+      duration_seconds: null,
+      image_url: null,
+      codec: item.codec || null,
+      bitrate: Number(item.bitrate) || null,
+      country: item.country || item.artist || null,
+      country_code: item.country_code || null,
+      language: item.language || null,
+      language_codes: item.language_codes || null,
+    };
+  }
+
+  function isRadioFavorite(stationId) {
+    return Boolean(stationId && loadRadioFavorites()[String(stationId)]);
+  }
+
+  function toggleRadioFavorite(item) {
+    const station = safeFavoriteStation(item);
+    if (!station) return false;
+    const favorites = loadRadioFavorites();
+    const id = station.id;
+    const adding = !favorites[id];
+    if (adding) favorites[id] = station;
+    else delete favorites[id];
+    writeStoredJson(RADIO_FAVORITES_KEY, favorites);
+    return adding;
+  }
+
+  function filteredRadioFavorites(query = "") {
+    const prefs = loadRadioFilterPrefs();
+    const q = String(query || "").trim().toLocaleLowerCase();
+    return Object.values(loadRadioFavorites())
+      .filter((item) => {
+        if (prefs.country && String(item.country_code || "").toUpperCase() !== prefs.country) {
+          return false;
+        }
+        if (
+          prefs.language
+          && !String(item.language || "").toLocaleLowerCase().includes(prefs.language.toLocaleLowerCase())
+        ) {
+          return false;
+        }
+        if (!q) return true;
+        return [item.name, item.artist, item.album, item.language]
+          .filter(Boolean)
+          .some((value) => String(value).toLocaleLowerCase().includes(q));
+      })
+      .sort((left, right) => String(left.name).localeCompare(String(right.name)));
+  }
+
+  const adapters = {
+    jellyfin: {
+      id: "jellyfin",
+      label: "Jellyfin",
+      defaultFilter: "recent",
+      filters: {
+        recent: "Recent music",
+        favorites: "Favourites",
+        az: "A–Z",
+      },
+      searchPlaceholder: "Search music…",
+      searchLabel: "Search music; results update as you type",
+      emptyText: "No tracks found.",
+      loadingText: "Loading music…",
+      readyText: "Tap any track to play locally.",
+      statusUrl: "/api/jellyfin/status",
+      searchUrl(query, filter) {
+        return `/api/jellyfin/search?${new URLSearchParams({
+          q: query,
+          limit: "60",
+          filter,
+        })}`;
+      },
+      streamUrl(item) {
+        return `/api/jellyfin/stream/${encodeURIComponent(item.id)}`;
+      },
+    },
+    radio: {
+      id: "radio",
+      label: "Internet Radio",
+      defaultFilter: "popular",
+      filters: {
+        popular: "Popular stations",
+        votes: "Top rated",
+        recent: "Recently active",
+        favorites: "Favourites",
+      },
+      searchPlaceholder: "Search stations…",
+      searchLabel: "Search internet radio stations; results update as you type",
+      emptyText: "No stations found.",
+      loadingText: "Loading radio stations…",
+      readyText: "Tap a station to listen live.",
+      statusUrl: "/api/radio/status",
+      searchUrl(query, filter) {
+        const prefs = loadRadioFilterPrefs();
+        return `/api/radio/search?${new URLSearchParams({
+          q: query,
+          limit: "60",
+          filter,
+          country: prefs.country,
+          language: prefs.language,
+        })}`;
+      },
+      localItems(query, filter) {
+        return filter === "favorites" ? filteredRadioFavorites(query) : null;
+      },
+      streamUrl(item) {
+        return `/api/radio/stream/${encodeURIComponent(item.id)}`;
+      },
+    },
+  };
+
+  function activeSourceId() {
+    const value = window.openMmiMediaSources?.activeSourceId?.();
+    return typeof value === "string" ? value : "jellyfin";
+  }
+
+  function activeAdapter() {
+    return adapters[activeSourceId()] || null;
+  }
+
+  function itemAdapter(item) {
+    return adapters[item?.source] || activeAdapter() || adapters.jellyfin;
+  }
+
+  function fallbackIcon() {
+    if (typeof ommiMediaCleanMusicIcon === "function") return ommiMediaCleanMusicIcon();
+    return typeof ommiMediaIcon === "function" ? ommiMediaIcon("volume-up-fill") : "";
+  }
+
+  function clearSourcePlaceholder() {
+    const root = document.querySelector("#openMmiMediaRoot");
+    root?.classList.remove("openmmi-media-source-placeholder-active");
+    root?.querySelector("#openMmiMediaSourcePlaceholder")?.remove();
+  }
+
+  function radioCountryLabel(code) {
+    try {
+      return new Intl.DisplayNames([navigator.language || "en"], { type: "region" }).of(code) || code;
+    } catch (_) {
+      return code;
+    }
+  }
+
+  function titleCase(value) {
+    return String(value || "").replace(/(^|[\s-])([a-z])/g, (_match, prefix, letter) => `${prefix}${letter.toUpperCase()}`);
+  }
+
+  function populateRadioSelect(select, items, prefsValue, kind) {
+    if (!select) return;
+    const previous = String(prefsValue || "");
+    select.replaceChildren();
+    const all = document.createElement("option");
+    all.value = "";
+    all.textContent = kind === "country" ? "All countries" : "All languages";
+    select.appendChild(all);
+    const normalized = Array.isArray(items) ? [...items] : [];
+    normalized.sort((left, right) => {
+      const leftLabel = kind === "country" ? radioCountryLabel(left.code) : titleCase(left.name);
+      const rightLabel = kind === "country" ? radioCountryLabel(right.code) : titleCase(right.name);
+      return leftLabel.localeCompare(rightLabel);
+    });
+    normalized.forEach((item) => {
+      const value = kind === "country" ? String(item.code || "") : String(item.name || "");
+      if (!value) return;
+      const option = document.createElement("option");
+      option.value = value;
+      const label = kind === "country" ? radioCountryLabel(value) : titleCase(value);
+      const count = Number(item.station_count) || 0;
+      option.textContent = count ? `${label} (${count})` : label;
+      select.appendChild(option);
+    });
+    if (previous && !Array.from(select.options).some((option) => option.value === previous)) {
+      const option = document.createElement("option");
+      option.value = previous;
+      option.textContent = kind === "country" ? radioCountryLabel(previous) : titleCase(previous);
+      select.appendChild(option);
+    }
+    select.value = previous;
+  }
+
+  function ensureRadioFacetControls() {
+    const root = document.querySelector("#openMmiMediaRoot");
+    const filter = root?.querySelector("#ommiMediaFilter");
+    if (!root || !filter) return null;
+    let facets = root.querySelector("#ommiRadioFacets");
+    if (!facets) {
+      facets = document.createElement("div");
+      facets.id = "ommiRadioFacets";
+      facets.className = "ommi-radio-facets";
+      facets.innerHTML = `
+        <label class="visually-hidden" for="ommiRadioCountry">Station country</label>
+        <select id="ommiRadioCountry" class="form-select ommi-radio-facet-select" aria-label="Station country"><option value="">All countries</option></select>
+        <label class="visually-hidden" for="ommiRadioLanguage">Station language</label>
+        <select id="ommiRadioLanguage" class="form-select ommi-radio-facet-select" aria-label="Station language"><option value="">All languages</option></select>`;
+      filter.after(facets);
+      facets.addEventListener("change", (event) => {
+        if (!event.target.matches("select")) return;
+        saveRadioFilterPrefs({
+          country: facets.querySelector("#ommiRadioCountry")?.value || "",
+          language: facets.querySelector("#ommiRadioLanguage")?.value || "",
+        });
+        const input = document.querySelector("#ommiMediaSearch");
+        const value = input?.value || "";
+        if (typeof ommiMediaRunSearchNow === "function") ommiMediaRunSearchNow(value);
+        else ommiMediaLoadLibrary(value, openMmiMedia.filter);
+      });
+    }
+    facets.hidden = activeAdapter()?.id !== "radio";
+    if (!facets.hidden) loadRadioFilterOptions();
+    return facets;
+  }
+
+  async function loadRadioFilterOptions() {
+    const facets = document.querySelector("#ommiRadioFacets");
+    if (!facets) return;
+    const prefs = loadRadioFilterPrefs();
+    const country = facets.querySelector("#ommiRadioCountry");
+    const language = facets.querySelector("#ommiRadioLanguage");
+    if (!radioOptionsPromise) {
+      radioOptionsPromise = ommiMediaFetchJson("/api/radio/options").catch((error) => {
+        radioOptionsPromise = null;
+        throw error;
+      });
+    }
+    try {
+      const payload = await radioOptionsPromise;
+      populateRadioSelect(country, payload.countries, prefs.country, "country");
+      populateRadioSelect(language, payload.languages, prefs.language, "language");
+    } catch (error) {
+      if (country) country.value = prefs.country;
+      if (language) language.value = prefs.language;
+      ommiMediaSetMessage(`Could not load radio filters: ${error.message}`, "error");
+    }
+  }
+
+  function radioFavoriteIcon(filled) {
+    return filled
+      ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2.7 2.78 5.63 6.22.9-4.5 4.39 1.06 6.2L12 16.9l-5.56 2.92 1.06-6.2L3 9.23l6.22-.9L12 2.7Z" fill="currentColor"/></svg>'
+      : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3.9 2.38 4.82.28.56.62.09 5.32.77-3.85 3.75-.45.44.11.62.91 5.3-4.76-2.5-.56-.3-.56.3-4.76 2.5.91-5.3.11-.62-.45-.44-3.85-3.75 5.32-.77.62-.09.28-.56L12 3.9Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>';
+  }
+
+  function ensureRadioFavoriteButton() {
+    const root = document.querySelector("#openMmiMediaRoot");
+    const stop = root?.querySelector("#ommiMediaStop");
+    if (!root || !stop) return null;
+    let button = root.querySelector("#ommiMediaFavoriteBtn");
+    if (!button) {
+      button = document.createElement("button");
+      button.type = "button";
+      button.id = "ommiMediaFavoriteBtn";
+      button.className = "btn ommi-icon-btn ommi-radio-favorite-btn";
+      stop.before(button);
+    }
+    button.hidden = activeAdapter()?.id !== "radio";
+    syncRadioFavoriteButton();
+    return button;
+  }
+
+  function syncRadioFavoriteButton(item = openMmiMedia.current) {
+    const button = document.querySelector("#ommiMediaFavoriteBtn");
+    if (!button) return;
+    const available = activeAdapter()?.id === "radio" && item?.source === "radio";
+    const filled = available && isRadioFavorite(item.id);
+    button.disabled = !available;
+    button.hidden = activeAdapter()?.id !== "radio";
+    button.setAttribute("aria-pressed", String(filled));
+    button.setAttribute("aria-label", filled ? "Remove station from favourites" : "Add station to favourites");
+    button.title = button.getAttribute("aria-label");
+    button.innerHTML = radioFavoriteIcon(filled);
+  }
+
+  function applySourceUi(adapter = activeAdapter()) {
+    if (!adapter) return;
+    const root = document.querySelector("#openMmiMediaRoot");
+    if (!root) return;
+    clearSourcePlaceholder();
+    root.classList.remove("openmmi-media-source-jellyfin", "openmmi-media-source-radio", "openmmi-media-source-usb", "openmmi-media-source-bluetooth");
+    root.classList.add(`openmmi-media-source-${adapter.id}`);
+    root.dataset.openMmiMediaSource = adapter.id;
+
+    const input = root.querySelector("#ommiMediaSearch");
+    if (input) {
+      input.placeholder = adapter.searchPlaceholder;
+      input.setAttribute("aria-label", adapter.searchLabel);
+    }
+    const search = root.querySelector("#ommiMediaSearchBtn");
+    if (search) {
+      search.title = adapter.id === "radio" ? "Search stations" : "Search music";
+      search.setAttribute("aria-label", search.title);
+    }
+    const player = root.querySelector(".ommi-player-col");
+    const browser = root.querySelector(".ommi-browser-col");
+    player?.setAttribute("aria-label", `${adapter.label} player`);
+    browser?.setAttribute("aria-label", `${adapter.label} browser`);
+    ensureRadioFacetControls();
+    ensureRadioFavoriteButton();
+  }
+
+  function resetRequestState() {
+    if (openMmiMedia.searchTimer) {
+      clearTimeout(openMmiMedia.searchTimer);
+      openMmiMedia.searchTimer = null;
+    }
+    if (typeof ommiMediaInvalidateRequest === "function") {
+      ommiMediaInvalidateRequest();
+    } else {
+      openMmiMedia.requestSerial = (Number(openMmiMedia.requestSerial) || 0) + 1;
+    }
+  }
+
+  function stopPlayback(clearSelection = true) {
+    const audio = document.querySelector("#ommiMediaAudio");
+    if (audio) {
+      audio.pause();
+      try { audio.currentTime = 0; } catch (_) {}
+      audio.removeAttribute("src");
+      try { audio.load(); } catch (_) {}
+    }
+    if (clearSelection) {
+      openMmiMedia.current = null;
+      openMmiMedia.index = -1;
+      document
+        .querySelectorAll(".ommi-track.is-playing")
+        .forEach((node) => node.classList.remove("is-playing", "active"));
+      ommiMediaSetNowPlaying(null);
+    }
+    ommiMediaUpdateProgress();
+    ommiMediaUpdatePlayState();
+  }
+
+  ommiMediaInstallFilters = function ommiMediaInstallSourceFilters() {
+    const adapter = activeAdapter();
+    if (!adapter) return;
+    let select = document.querySelector("#ommiMediaFilter");
+    const recent = document.querySelector("#ommiMediaRecentBtn");
+    if (!select && recent) {
+      select = document.createElement("select");
+      select.id = "ommiMediaFilter";
+      select.className = "form-select ommi-filter-select";
+      recent.replaceWith(select);
+    }
+    if (!select) return;
+
+    if (select.dataset.openMmiAdapterBound !== "true") {
+      const clean = select.cloneNode(false);
+      select.replaceWith(clean);
+      select = clean;
+      select.dataset.openMmiAdapterBound = "true";
+      select.addEventListener("change", () => {
+        const current = activeAdapter();
+        if (!current) return;
+        const input = document.querySelector("#ommiMediaSearch");
+        if (input) input.value = "";
+        openMmiMedia.filter = select.value || current.defaultFilter;
+        if (typeof ommiMediaRunSearchNow === "function") ommiMediaRunSearchNow("");
+        else ommiMediaLoadLibrary("", openMmiMedia.filter);
+      });
+    }
+
+    if (select.dataset.openMmiSource !== adapter.id) {
+      select.replaceChildren();
+      Object.entries(adapter.filters).forEach(([value, label]) => {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = label;
+        select.appendChild(option);
+      });
+      select.dataset.openMmiSource = adapter.id;
+    }
+    if (!Object.prototype.hasOwnProperty.call(adapter.filters, openMmiMedia.filter)) {
+      openMmiMedia.filter = adapter.defaultFilter;
+    }
+    select.value = openMmiMedia.filter;
+    select.setAttribute(
+      "aria-label",
+      adapter.id === "radio" ? "Radio station view" : "Music library view",
+    );
+    select.title = adapter.id === "radio" ? "Choose station view" : "Choose music library view";
+    applySourceUi(adapter);
+  };
+
+  ommiMediaUpdateFilters = function ommiMediaUpdateSourceFilters() {
+    const adapter = activeAdapter();
+    const select = document.querySelector("#ommiMediaFilter");
+    if (!adapter || !select) return;
+    if (!Object.prototype.hasOwnProperty.call(adapter.filters, openMmiMedia.filter)) {
+      openMmiMedia.filter = adapter.defaultFilter;
+    }
+    if (select.value !== openMmiMedia.filter) select.value = openMmiMedia.filter;
+  };
+
+  ommiMediaRenderResults = function ommiMediaRenderSourceResults(items) {
+    const adapter = activeAdapter() || adapters.jellyfin;
+    const results = document.querySelector("#ommiMediaResults");
+    const count = document.querySelector("#ommiMediaCount");
+    if (!results) return;
+    openMmiMedia.queue = Array.isArray(items)
+      ? items
+          .filter((item) => item && item.id)
+          .map((item) => ({
+            ...item,
+            source: item.source || adapter.id,
+            is_live: item.is_live === true || adapter.id === "radio",
+          }))
+      : [];
+    if (count) count.textContent = String(openMmiMedia.queue.length);
+    if (!openMmiMedia.queue.length) {
+      results.innerHTML = `<div class="ommi-empty">${ommiMediaEsc(adapter.emptyText)}</div>`;
+      return;
+    }
+    const icon = fallbackIcon();
+    results.innerHTML = openMmiMedia.queue.map((item, index) => `
+      <button type="button" class="list-group-item list-group-item-action d-grid ommi-track" data-open-mmi-track="${index}" role="listitem" aria-label="Play ${ommiMediaEsc(item.name || "item")}">
+        <span class="ommi-track-art">${item.image_url ? `<img src="${ommiMediaEsc(item.image_url)}" alt="">` : icon}</span>
+        <span class="ommi-track-copy"><strong>${ommiMediaEsc(item.name || "Untitled")}</strong><small>${ommiMediaEsc([item.artist, item.album].filter(Boolean).join(" · ") || adapter.label)}</small></span>
+        <span class="ommi-track-duration${item.is_live ? " ommi-live" : ""}">${item.is_live ? "LIVE" : ommiMediaTime(item.duration_seconds)}</span>
+      </button>`).join("");
+  };
+
+  ommiMediaSetNowPlaying = function ommiMediaSetSourceNowPlaying(item) {
+    const adapter = itemAdapter(item);
+    const title = document.querySelector("#ommiMediaTitle");
+    const subtitle = document.querySelector("#ommiMediaSubtitle");
+    if (!title || !subtitle) return;
+    if (!item) {
+      title.textContent = adapter.id === "radio" ? "Select a station" : "Select music";
+      subtitle.textContent = adapter.id === "radio"
+        ? "Tap a station to listen live"
+        : "Tap a track to play through this dashboard";
+      ommiMediaSetArtwork(null);
+      syncRadioFavoriteButton(null);
+      return;
+    }
+    title.textContent = ommiMediaText(item.name, "Untitled");
+    subtitle.textContent = [item.artist, item.album].filter(Boolean).join(" · ") || adapter.label;
+    ommiMediaSetArtwork(item);
+    syncRadioFavoriteButton(item);
+  };
+
+  ommiMediaUpdateProgress = function ommiMediaUpdateSourceProgress() {
+    const audio = document.querySelector("#ommiMediaAudio");
+    const elapsed = document.querySelector("#ommiMediaElapsed");
+    const duration = document.querySelector("#ommiMediaDuration");
+    const fill = document.querySelector("#ommiMediaProgressFill");
+    const track = document.querySelector("#ommiMediaProgressTrack");
+    if (!audio || !elapsed || !duration || !fill) return;
+    const live = openMmiMedia.current?.is_live === true;
+    track?.classList.toggle("is-live", live);
+    track?.setAttribute("aria-disabled", String(live));
+    if (live) {
+      elapsed.textContent = "LIVE";
+      duration.textContent = "";
+      fill.style.width = audio.paused ? "0%" : "100%";
+      track?.setAttribute("aria-valuenow", audio.paused ? "0" : "100");
+      return;
+    }
+    const dur = Number.isFinite(audio.duration) && audio.duration > 0
+      ? audio.duration
+      : Number(openMmiMedia.current?.duration_seconds || 0);
+    const pct = dur > 0 ? Math.max(0, Math.min(100, (audio.currentTime / dur) * 100)) : 0;
+    elapsed.textContent = ommiMediaTime(audio.currentTime);
+    duration.textContent = ommiMediaTime(dur);
+    fill.style.width = `${pct}%`;
+    track?.setAttribute("aria-valuenow", String(Math.round(pct)));
+  };
+
+  ommiMediaLoadLibrary = async function ommiMediaLoadSource(
+    query = "",
+    filter = openMmiMedia.filter,
+  ) {
+    ommiMediaPage();
+    const adapter = activeAdapter();
+    if (!adapter) {
+      window.openMmiMediaSources?.renderPlaceholder?.();
+      return;
+    }
+    clearSourcePlaceholder();
+    applySourceUi(adapter);
+    ommiMediaInstallFilters();
+    const q = String(query || "").trim();
+    const selectedFilter = Object.prototype.hasOwnProperty.call(adapter.filters, filter)
+      ? filter
+      : adapter.defaultFilter;
+    const requestSerial = (Number(openMmiMedia.requestSerial) || 0) + 1;
+    openMmiMedia.requestSerial = requestSerial;
+    openMmiMedia.lastQuery = q;
+    openMmiMedia.filter = selectedFilter;
+    ommiMediaUpdateFilters();
+
+    const listTitle = document.querySelector("#ommiMediaListTitle");
+    if (listTitle) {
+      listTitle.textContent = q
+        ? `Search results · ${adapter.filters[selectedFilter]}`
+        : adapter.filters[selectedFilter];
+    }
+    const localItems = typeof adapter.localItems === "function"
+      ? adapter.localItems(q, selectedFilter)
+      : null;
+    if (Array.isArray(localItems)) {
+      ommiMediaSetLoading(false);
+      ommiMediaSetMessage(localItems.length ? "Tap a favourite station to listen live." : "No favourite stations match these filters.");
+      ommiMediaRenderResults(localItems);
+      ommiMediaFitViewport();
+      return;
+    }
+    ommiMediaSetMessage(q ? "Searching…" : adapter.loadingText);
+    ommiMediaSetLoading(true);
+    try {
+      const payload = await ommiMediaFetchJson(adapter.searchUrl(q, selectedFilter));
+      if (requestSerial !== openMmiMedia.requestSerial) return;
+      if (payload.error) ommiMediaSetMessage(payload.error, "error");
+      else ommiMediaSetMessage(adapter.readyText);
+      ommiMediaRenderResults(payload.items || []);
+    } catch (err) {
+      if (requestSerial !== openMmiMedia.requestSerial) return;
+      ommiMediaSetMessage(`Could not load ${adapter.label}: ${err.message}`, "error");
+      ommiMediaRenderResults([]);
+    } finally {
+      if (requestSerial === openMmiMedia.requestSerial) ommiMediaSetLoading(false);
+    }
+    if (requestSerial === openMmiMedia.requestSerial) ommiMediaFitViewport();
+  };
+
+  ommiMediaRefreshStatus = async function ommiMediaRefreshSourceStatus() {
+    ommiMediaPage();
+    const adapter = activeAdapter();
+    if (!adapter) return;
+    clearSourcePlaceholder();
+    applySourceUi(adapter);
+    try {
+      const status = await ommiMediaFetchJson(adapter.statusUrl);
+      const remote = document.querySelector("#ommiMediaRemoteState");
+      if (remote) {
+        const label = status?.configured
+          ? (status?.state_label || status?.status || "ready")
+          : "not configured";
+        remote.textContent = String(label).toUpperCase();
+        remote.title = status?.subtitle || "";
+      }
+      if (!status?.configured) {
+        ommiMediaSetMessage(status?.subtitle || `${adapter.label} is not configured`, "error");
+      }
+    } catch (err) {
+      const remote = document.querySelector("#ommiMediaRemoteState");
+      if (remote) remote.textContent = "ERROR";
+      ommiMediaSetMessage(`${adapter.label} status failed: ${err.message}`, "error");
+    }
+  };
+
+  ommiMediaPlayIndex = async function ommiMediaPlaySourceIndex(index) {
+    ommiMediaPage();
+    const audio = document.querySelector("#ommiMediaAudio");
+    const item = openMmiMedia.queue[Number(index)];
+    if (!audio || !item) return;
+    const adapter = itemAdapter(item);
+    openMmiMedia.index = Number(index);
+    openMmiMedia.current = item;
+    ommiMediaSetNowPlaying(item);
+    ommiMediaSetMessage(item.is_live ? "Connecting to live station…" : "Loading audio…");
+    document
+      .querySelectorAll(".ommi-track.is-playing")
+      .forEach((node) => node.classList.remove("is-playing", "active"));
+    document
+      .querySelector(`[data-open-mmi-track="${openMmiMedia.index}"]`)
+      ?.classList.add("is-playing", "active");
+    audio.preload = item.is_live ? "none" : "metadata";
+    audio.src = adapter.streamUrl(item);
+    audio.load();
+    try {
+      await audio.play();
+      ommiMediaSetMessage(item.is_live ? "Playing live radio." : "Playing locally on this dashboard.");
+    } catch (err) {
+      ommiMediaSetMessage(`Tap play to start audio: ${err.message}`, "error");
+    }
+    ommiMediaUpdatePlayState();
+    ommiMediaUpdateProgress();
+    ommiMediaFitViewport();
+  };
+
+  ommiMediaBind = function ommiMediaBindSourcePlayer() {
+    if (openMmiMedia.bound) return;
+    const root = document.querySelector("#openMmiMediaRoot");
+    const audio = document.querySelector("#ommiMediaAudio");
+    if (!root || !audio) return;
+    if (typeof ommiMediaBindLiveSearch === "function") ommiMediaBindLiveSearch(root);
+
+    root.addEventListener("click", async (event) => {
+      if (event.target.closest?.("#ommiMediaFavoriteBtn")) {
+        const item = openMmiMedia.current;
+        const adding = toggleRadioFavorite(item);
+        syncRadioFavoriteButton(item);
+        ommiMediaSetMessage(adding ? "Station added to favourites." : "Station removed from favourites.");
+        if (openMmiMedia.filter === "favorites") {
+          ommiMediaLoadLibrary(openMmiMedia.lastQuery || "", "favorites");
+        }
+        return;
+      }
+      const trackButton = event.target.closest?.("[data-open-mmi-track]");
+      if (trackButton) {
+        event.preventDefault();
+        await ommiMediaPlayIndex(trackButton.dataset.openMmiTrack);
+        return;
+      }
+      if (event.target.closest?.("#ommiMediaSearchBtn")) {
+        const value = document.querySelector("#ommiMediaSearch")?.value || "";
+        if (typeof ommiMediaRunSearchNow === "function") return ommiMediaRunSearchNow(value);
+        return ommiMediaLoadLibrary(value);
+      }
+      if (event.target.closest?.("#ommiMediaPrev")) return ommiMediaPrev();
+      if (event.target.closest?.("#ommiMediaNext")) return ommiMediaNext();
+      if (event.target.closest?.("#ommiMediaStop")) {
+        stopPlayback(true);
+        ommiMediaSetMessage("Stopped.");
+        return;
+      }
+      if (event.target.closest?.("#ommiMediaPlay")) {
+        if (!openMmiMedia.current && openMmiMedia.queue.length) return ommiMediaPlayIndex(0);
+        if (audio.paused) {
+          try {
+            await audio.play();
+            ommiMediaSetMessage(openMmiMedia.current?.is_live ? "Playing live radio." : "Playing locally on this dashboard.");
+          } catch (err) {
+            ommiMediaSetMessage(`Could not start audio: ${err.message}`, "error");
+          }
+        } else {
+          audio.pause();
+        }
+        ommiMediaUpdatePlayState();
+        ommiMediaUpdateProgress();
+        return;
+      }
+      const progress = event.target.closest?.("#ommiMediaProgressTrack");
+      if (
+        progress
+        && !openMmiMedia.current?.is_live
+        && Number.isFinite(audio.duration)
+        && audio.duration > 0
+      ) {
+        const rect = progress.getBoundingClientRect();
+        const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+        audio.currentTime = ratio * audio.duration;
+        ommiMediaUpdateProgress();
+      }
+    });
+
+    audio.addEventListener("timeupdate", ommiMediaUpdateProgress);
+    audio.addEventListener("durationchange", ommiMediaUpdateProgress);
+    audio.addEventListener("loadedmetadata", ommiMediaUpdateProgress);
+    audio.addEventListener("play", () => {
+      ommiMediaUpdatePlayState();
+      ommiMediaUpdateProgress();
+    });
+    audio.addEventListener("pause", () => {
+      ommiMediaUpdatePlayState();
+      ommiMediaUpdateProgress();
+    });
+    audio.addEventListener("ended", () => {
+      if (openMmiMedia.current?.is_live) {
+        ommiMediaSetMessage("Radio stream ended. Select the station again to reconnect.", "error");
+        ommiMediaUpdatePlayState();
+        return;
+      }
+      ommiMediaNext();
+    });
+    audio.addEventListener("error", () => {
+      const adapter = itemAdapter(openMmiMedia.current);
+      ommiMediaSetMessage(
+        adapter.id === "radio"
+          ? "Radio stream interrupted. Select the station again to reconnect."
+          : "Audio stream failed. Check Jellyfin access and codec support.",
+        "error",
+      );
+    });
+    window.addEventListener("resize", ommiMediaFitViewport);
+    window.addEventListener("orientationchange", () => setTimeout(ommiMediaFitViewport, 100));
+    openMmiMedia.bound = true;
+  };
+
+  function syncActiveSource(force = false) {
+    const sourceId = activeSourceId();
+    const adapter = adapters[sourceId] || null;
+    if (!adapter) {
+      if (force || openMmiMedia.sourceId !== sourceId) {
+        openMmiMedia.sourceId = sourceId;
+        resetRequestState();
+        stopPlayback(true);
+        openMmiMedia.queue = [];
+      }
+      return;
+    }
+    if (!force && openMmiMedia.sourceId === adapter.id) {
+      applySourceUi(adapter);
+      return;
+    }
+    openMmiMedia.sourceId = adapter.id;
+    resetRequestState();
+    stopPlayback(true);
+    openMmiMedia.queue = [];
+    openMmiMedia.filter = adapter.defaultFilter;
+    openMmiMedia.lastQuery = "";
+    const input = document.querySelector("#ommiMediaSearch");
+    if (input) input.value = "";
+    applySourceUi(adapter);
+    ommiMediaInstallFilters();
+    ommiMediaRefreshStatus();
+    ommiMediaLoadLibrary("", adapter.defaultFilter);
+  }
+
+  document.addEventListener("click", (event) => {
+    if (
+      event.target.closest?.("[data-openmmi-media-source]")
+      || event.target.closest?.("[data-openmmi-media-source-enable]")
+      || event.target.closest?.("[data-openmmi-media-default-source]")
+    ) {
+      requestAnimationFrame(() => syncActiveSource());
+    }
+  });
+  window.addEventListener("openmmi:pagechange", () => {
+    requestAnimationFrame(() => syncActiveSource());
+  });
+  document.addEventListener("DOMContentLoaded", () => {
+    requestAnimationFrame(() => syncActiveSource(true));
+  });
+  requestAnimationFrame(() => syncActiveSource(true));
+
+  window.openMmiMediaAdapters = {
+    adapters,
+    activeAdapter,
+    activeSourceId,
+    applySourceUi,
+    isRadioFavorite,
+    loadRadioFilterPrefs,
+    stopPlayback,
+    syncActiveSource,
+    toggleRadioFavorite,
+  };
+})();
+// --- Open MMI media source adapters/radio end ---
 function ommiMediaBoot() {
   ommiMediaPage();
+  if (window.openMmiMediaSources && !window.openMmiMediaSources.shouldUseJellyfin()) { window.openMmiMediaSources.renderPlaceholder(); return; }
   ommiMediaSetNowPlaying(openMmiMedia.current);
   ommiMediaRefreshStatus();
   if (!openMmiMedia.queue.length) ommiMediaLoadLibrary("");
@@ -1629,7 +3316,75 @@ try {
     badge.textContent = `TEST ${Array.from(new Set([...FORCED_FROM_URL, ...forcedFromKeyboard])).join(" ")}`;
   }
 
+
+  const OPENMMI_SETTINGS_KEY = "openmmi.dashboard.settings.v1";
+  let openMmiSettingsTelltaleTestActive = false;
+
+  function openMmiReadDashboardPrefs() {
+    try {
+      return JSON.parse(localStorage.getItem(OPENMMI_SETTINGS_KEY) || "{}");
+    } catch (_) {
+      return {};
+    }
+  }
+
+  function openMmiRefreshSettingsTelltaleTest() {
+    const prefs = openMmiReadDashboardPrefs();
+    openMmiSettingsTelltaleTestActive = String(prefs.telltaleTest || "off").toLowerCase() === "on";
+    document.documentElement.classList.toggle("openmmi-telltale-test-active", openMmiSettingsTelltaleTestActive);
+  }
+
+  function openMmiApplySettingsTelltaleTestPayload(payload) {
+    if (!openMmiSettingsTelltaleTestActive) return payload;
+
+    const next = Object.assign({}, payload || {});
+    const state = Object.assign({}, next.state || {});
+    const lighting = Object.assign({}, state.lighting || {});
+    const vehicle = Object.assign({}, state.vehicle || {});
+
+    // Use broad decoded names so the existing footer renderer can pick up the
+    // fields it already understands across old/new payload shapes.
+    lighting.lights_on = true;
+    lighting.mode = "main_beam_rear_fog";
+    lighting.position_lights = true;
+    lighting.sidelights = true;
+    lighting.low_beam = true;
+    lighting.dipped_beam = true;
+    lighting.dip_beam = true;
+    lighting.high_beam = true;
+    lighting.main_beam = true;
+    lighting.rear_fog = true;
+    lighting.rear_fog_light = true;
+    lighting.left_indicator = true;
+    lighting.right_indicator = true;
+    lighting.indicator_left = true;
+    lighting.indicator_right = true;
+    lighting.hazard = true;
+    lighting.hazards = true;
+    lighting.hazard_warning = true;
+    lighting.bulb_failure = true;
+    lighting.exterior_bulb_failure = true;
+    lighting.bulb_out = true;
+    lighting.bulb_fault = true;
+    lighting.bulb_warning = true;
+    lighting.lamp_failure = true;
+
+    vehicle.handbrake = true;
+    vehicle.parking_brake = true;
+    vehicle.park_brake = true;
+
+    state.lighting = lighting;
+    state.vehicle = vehicle;
+    next.state = state;
+    return next;
+  }
+
+  openMmiRefreshSettingsTelltaleTest();
+  window.addEventListener("storage", openMmiRefreshSettingsTelltaleTest);
+  window.addEventListener("openmmi:settingschange", openMmiRefreshSettingsTelltaleTest);
+
   function renderStableFooterTelltales(payload) {
+    payload = openMmiApplySettingsTelltaleTestPayload(payload);
     lastPayload = payload || lastPayload || {};
     const state = (lastPayload && lastPayload.state) || {};
     const vehicle = state.vehicle || {};
@@ -1724,3 +3479,3668 @@ try {
 })();
 // --- Open MMI proper light tell-tales end ---
 
+// --- Open MMI V1 roadmap: home/menu navigation start ---
+(function openMmiHomeMenuNavigation() {
+  if (window.__openMmiHomeMenuNavigationLoaded) return;
+  window.__openMmiHomeMenuNavigationLoaded = true;
+
+  const QUICK_PAGES = [
+    { id: "pageElectrical", title: "Media", label: "Media" },
+    { id: "pageHome", title: "Home", label: "Home" },
+    { id: "pageDrive", title: "Drive", label: "Drive" },
+  ];
+  const MENU_PAGES = {
+    climate: { id: "pageClimate", title: "Climate" },
+    vehicle: { id: "pageVehicle", title: "Vehicle" },
+  };
+  const HOME_INDEX = 1;
+
+  const one = (selector) => document.querySelector(selector);
+  const many = (selector) => Array.from(document.querySelectorAll(selector));
+
+  function homeFmtNumber(value, digits = 0, fallback = "--") {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return fallback;
+    return n.toFixed(digits);
+  }
+
+  function homeKmhToMph(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return "--";
+    return Math.round(n * 0.621371).toString();
+  }
+
+  function homeText(value, fallback = "--") {
+    return value === null || value === undefined || value === "" ? fallback : String(value);
+  }
+
+  function ensureHomePage() {
+    let page = one("#pageHome");
+    if (!page) {
+      page = document.createElement("section");
+      page.id = "pageHome";
+      page.className = "page page-home";
+      page.setAttribute("aria-label", "Home menu");
+
+      const firstPage = one(".page");
+      if (firstPage && firstPage.parentNode) firstPage.parentNode.insertBefore(page, firstPage);
+      else {
+        const footer = one("footer.status-strip") || one("footer");
+        (footer?.parentNode || document.body).insertBefore(page, footer || null);
+      }
+    }
+
+    page.innerHTML = `
+      <div class="openmmi-home-shell">
+        <section class="openmmi-home-card openmmi-home-hero" aria-label="Open MMI summary">
+          <div class="openmmi-home-kicker">Open MMI</div>
+          <h2>Home</h2>
+          <p class="openmmi-home-copy">Local, read-only vehicle status built from decoded signals.</p>
+          <div class="openmmi-home-status-grid" aria-label="Live status summary">
+            <div class="openmmi-home-stat">
+              <span>Speed</span>
+              <strong><b id="homeSpeed">--</b><small>mph</small></strong>
+            </div>
+            <div class="openmmi-home-stat">
+              <span>RPM</span>
+              <strong><b id="homeRpm">--</b><small>rpm</small></strong>
+            </div>
+            <div class="openmmi-home-stat">
+              <span>Lights</span>
+              <strong id="homeLights">--</strong>
+            </div>
+            <div class="openmmi-home-stat">
+              <span>Range</span>
+              <strong><b id="homeRange">--</b><small>mi</small></strong>
+            </div>
+          </div>
+        </section>
+
+        <section class="openmmi-home-card openmmi-home-menu" aria-label="Dashboard menu">
+          <div class="openmmi-home-menu-head">
+            <span>Quick access</span>
+            <small>Media ← Home → Drive</small>
+          </div>
+          <div class="openmmi-home-actions">
+            <button type="button" class="openmmi-home-action openmmi-primary" data-openmmi-page="2">
+              <span>Drive</span><small>Speed and tell-tales</small>
+            </button>
+            <button type="button" class="openmmi-home-action openmmi-primary" data-openmmi-page="0">
+              <span>Media</span><small>Local Jellyfin player</small>
+            </button>
+            <button type="button" class="openmmi-home-action" data-openmmi-menu="climate">
+              <span>Climate</span><small>HVAC and outside temperature</small>
+            </button>
+            <button type="button" class="openmmi-home-action" data-openmmi-menu="vehicle">
+              <span>Vehicle</span><small>Doors, reverse and status</small>
+            </button>
+            <button type="button" class="openmmi-home-action" data-openmmi-settings="true">
+              <span>Settings</span><small>Units, display and diagnostics</small>
+            </button>
+          </div>
+        </section>
+      </div>
+    `;
+  }
+
+  function syncQuickArrays() {
+    try {
+      if (Array.isArray(PAGE_NAMES)) {
+        PAGE_NAMES.length = 0;
+        QUICK_PAGES.forEach((page) => PAGE_NAMES.push(page.title));
+      }
+      if (Array.isArray(PAGE_IDS)) {
+        PAGE_IDS.length = 0;
+        QUICK_PAGES.forEach((page) => PAGE_IDS.push(page.id));
+      }
+    } catch (_) {}
+  }
+
+  function rebuildPager() {
+    const pager = one(".pager");
+    if (!pager) return;
+    pager.innerHTML = QUICK_PAGES.map((page, idx) => `
+      <button type="button" data-page="${idx}" aria-label="${page.label}" title="${page.label}"></button>
+    `).join("");
+    pager.querySelectorAll("button[data-page]").forEach((button) => {
+      button.addEventListener("click", () => setPage(Number(button.dataset.page)));
+    });
+  }
+
+  function setActivePageElement(id) {
+    many(".page").forEach((page) => page.classList.toggle("active", page.id === id));
+  }
+
+  function setPagerActive(index) {
+    many(".pager button").forEach((button, idx) => button.classList.toggle("active", idx === index));
+  }
+
+  function showPageById(id, title, quickIndex = HOME_INDEX) {
+    setActivePageElement(id);
+    setPagerActive(quickIndex);
+    const titleEl = one("#pageTitle");
+    if (titleEl) titleEl.textContent = title;
+    try { activePage = quickIndex; } catch (_) {}
+    window.dispatchEvent(new CustomEvent("openmmi:pagechange", { detail: { id, title, quickIndex } }));
+  }
+
+  function installNavigationOverride() {
+    const nextSetPage = function openMmiSetQuickPage(index) {
+      const safeIndex = Number.isFinite(Number(index)) ? Number(index) : HOME_INDEX;
+      const idx = ((Math.trunc(safeIndex) % QUICK_PAGES.length) + QUICK_PAGES.length) % QUICK_PAGES.length;
+      const page = QUICK_PAGES[idx] || QUICK_PAGES[HOME_INDEX];
+      showPageById(page.id, page.title, idx);
+    };
+    nextSetPage.__openMmiHomeMenu = true;
+    try { setPage = nextSetPage; } catch (_) {}
+  }
+
+  function bindHomeButtons() {
+    const page = one("#pageHome");
+    if (!page) return;
+    page.querySelectorAll("[data-openmmi-page]").forEach((button) => {
+      button.addEventListener("click", () => setPage(Number(button.dataset.openmmiPage)));
+    });
+    page.querySelectorAll("[data-openmmi-menu]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const target = MENU_PAGES[button.dataset.openmmiMenu];
+        if (target) showPageById(target.id, target.title, HOME_INDEX);
+      });
+    });
+  }
+
+  function updateHome(payload) {
+    const state = payload?.state || {};
+    const vehicle = state.vehicle || {};
+    const engine = state.engine || {};
+    const fuel = state.fuel || {};
+    const lighting = state.lighting || {};
+
+    const speed = one("#homeSpeed");
+    if (speed) speed.textContent = homeKmhToMph(vehicle.speed_kmh);
+
+    const rpm = one("#homeRpm");
+    if (rpm) rpm.textContent = homeFmtNumber(engine.speed_rpm, 0);
+
+    const range = one("#homeRange");
+    if (range) range.textContent = homeKmhToMph(fuel.range_km);
+
+    const lights = one("#homeLights");
+    if (lights) lights.textContent = homeText(lighting.mode).replaceAll("_", " ");
+  }
+
+  function wrapRenderForHome() {
+    try {
+      if (typeof render !== "function" || render.__openMmiHomeWrapped) return;
+      const previousRender = render;
+      const wrapped = function openMmiRenderWithHome(payload) {
+        previousRender(payload);
+        updateHome(payload);
+      };
+      wrapped.__openMmiHomeWrapped = true;
+      render = wrapped;
+    } catch (_) {}
+  }
+
+  function bindHomeKey() {
+    window.addEventListener("keydown", (event) => {
+      const target = event.target;
+      if (
+        target instanceof Element
+        && target.closest("input, textarea, select, [contenteditable='true'], [contenteditable='']")
+      ) return;
+      if (event.key === "Home" || event.key === "h" || event.key === "H") {
+        event.preventDefault();
+        setPage(HOME_INDEX);
+      }
+    });
+  }
+
+  ensureHomePage();
+  syncQuickArrays();
+  rebuildPager();
+  installNavigationOverride();
+  bindHomeButtons();
+  wrapRenderForHome();
+  bindHomeKey();
+  setPage(HOME_INDEX);
+})();
+// --- Open MMI V1 roadmap: home/menu navigation end ---
+
+// --- Open MMI V1 roadmap: settings shell start ---
+(function openMmiSettingsOptionTree() {
+  if (window.__openMmiSettingsOptionTreeLoaded) return;
+  window.__openMmiSettingsOptionTreeLoaded = true;
+
+  const one = (selector) => document.querySelector(selector);
+  const many = (selector) => Array.from(document.querySelectorAll(selector));
+  const state = { section: "units", payload: null };
+
+  function fmt(value, digits = 0, fallback = "--") {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return fallback;
+    return n.toFixed(digits);
+  }
+
+  function text(value, fallback = "--") {
+    return value === null || value === undefined || value === "" ? fallback : String(value);
+  }
+
+  function boolText(value) {
+    if (value === true) return "on";
+    if (value === false) return "off";
+    return text(value);
+  }
+
+  function firstValue(...values) {
+    for (const value of values) {
+      if (value !== undefined && value !== null && value !== "") return value;
+    }
+    return undefined;
+  }
+
+  function tempText(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return text(value);
+    return `${n.toFixed(1)} °C`;
+  }
+
+  function voltsText(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return text(value);
+    return `${n.toFixed(1)} V`;
+  }
+
+  function rpmText(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return text(value);
+    return `${Math.round(n)} rpm`;
+  }
+
+  function statusParts(payload) {
+    const root = payload || {};
+    const s = root.state || {};
+    const vehicle = s.vehicle || {};
+    const lighting = s.lighting || {};
+    const climate = s.climate || s.hvac || {};
+    const engine = s.engine || {};
+    const electrical = s.electrical || s.power || {};
+    const media = s.media || {};
+    const meta = root.meta || root.status || {};
+    const ageValue = root.age_s ?? root.age_seconds ?? meta.age_s ?? meta.age_seconds ?? s.age_s;
+    return { root, s, vehicle, lighting, climate, engine, electrical, media, meta, ageValue };
+  }
+
+  function pill(label, selected = false) {
+    return `<button type="button" class="openmmi-setting-pill${selected ? " is-selected" : ""}">${label}</button>`;
+  }
+
+  function row(title, note, controls = "") {
+    return `<div class="openmmi-setting-row"><div><strong>${title}</strong><small>${note}</small></div><div class="openmmi-setting-controls">${controls}</div></div>`;
+  }
+
+  function metric(label, value) {
+    return `<div class="openmmi-settings-metric"><span>${label}</span><strong>${value}</strong></div>`;
+  }
+
+  function diagnosticsTemplate(payload) {
+    const { vehicle, lighting, climate, engine, electrical, ageValue } = statusParts(payload);
+    const lightingText = text(lighting.mode).replaceAll("_", " ");
+    const ageText = Number.isFinite(Number(ageValue)) ? `${fmt(ageValue, 1)} s` : "live";
+    const outsideDisplay = firstValue(climate.outside_temp_c, climate.outside_c, vehicle.outside_temp_c, vehicle.outside_temperature_c);
+    const outsideRaw = firstValue(
+      climate.outside_unfiltered_c,
+      climate.outside_raw_c,
+      climate.raw_outside_temp_c,
+      climate.outside_sensor_c,
+      vehicle.outside_unfiltered_c,
+      vehicle.outside_raw_c
+    );
+    const coolant = firstValue(engine.coolant_temp_c, engine.coolant_c, vehicle.coolant_temp_c);
+    const voltage = firstValue(electrical.voltage_v, electrical.battery_v, vehicle.voltage_v, vehicle.battery_v);
+    const rpm = firstValue(engine.rpm, vehicle.rpm);
+
+    return `
+      <div class="openmmi-settings-panel-head"><span>Diagnostics</span><small>live decoded state</small></div>
+      ${metric("Status age", ageText)}
+      ${metric("Lighting mode", lightingText)}
+      ${metric("Outside display", tempText(outsideDisplay))}
+      ${metric("Outside raw", tempText(outsideRaw))}
+      ${metric("Coolant", tempText(coolant))}
+      ${metric("Voltage", voltsText(voltage))}
+      ${metric("RPM", rpmText(rpm))}
+      ${metric("Reverse", boolText(vehicle.reverse ?? vehicle.reverse_selected))}
+      ${metric("Handbrake", boolText(vehicle.handbrake ?? vehicle.parking_brake))}
+      <a class="openmmi-settings-link" href="/api/status" target="_blank" rel="noreferrer">Open raw /api/status</a>
+    `;
+  }
+
+  function sectionTemplate(section, payload) {
+    const { vehicle } = statusParts(payload);
+
+    if (section === "display") {
+      return `
+        <div class="openmmi-settings-panel-head"><span>Display</span><small>visual preferences</small></div>
+        ${row("Dim mode", "Low-light dashboard theme; Boost raises contrast for bright cabins.", pill("off", true) + pill("on") + pill("boost"))}
+        ${row("Reduced animation", "For older tablets or distraction reduction.", pill("off", true) + pill("on"))}
+        ${row("Tell-tale test", "Frontend-only icon check; no backend or CAN state changes.", pill("off", true) + pill("on"))}
+      `;
+    }
+
+    if (section === "diagnostics") {
+      return diagnosticsTemplate(payload);
+    }
+
+    if (section === "media") {
+      return `
+        <div class="openmmi-settings-panel-head"><span>Media</span><small>server-side</small></div>
+        ${metric("Jellyfin", "env configured")}
+        ${row("Token privacy", "Jellyfin URL/token remain server-side, never in browser settings.", pill("locked"))}
+        ${row("Media keys", "Browser/system media controls stay handled by the dashboard.", pill("active", true))}
+      `;
+    }
+
+    if (section === "reverse") {
+      return `
+        <div class="openmmi-settings-panel-head"><span>Reverse assist</span><small>placeholder</small></div>
+        ${row("Reverse popup", "Foundation for a future camera/PDC overlay.", pill("popup", true) + pill("off") + pill("PDC") + pill("camera"))}
+        ${row("Auto-dismiss", "Later: hide overlay shortly after leaving reverse.", pill("next"))}
+        ${metric("Reverse selected", boolText(vehicle.reverse ?? vehicle.reverse_selected))}
+      `;
+    }
+
+    return `
+      <div class="openmmi-settings-panel-head"><span>Units</span><small>driver display</small></div>
+      ${row("Speed", "Dashboard speed and distance display.", pill("mph", true) + pill("km/h"))}
+      ${row("Temperature", "Climate and outside temperature display.", pill("°C", true) + pill("°F"))}
+`;
+  }
+
+  function renderSettingsPanel() {
+    const panel = one("#openmmiSettingsPanel");
+    if (panel) panel.innerHTML = sectionTemplate(state.section, state.payload);
+    openMmiApplyDriverDashboardCleanupV2();
+
+    many("[data-openmmi-settings-section]").forEach((button) => {
+      button.classList.toggle("active", button.dataset.openmmiSettingsSection === state.section);
+    });
+  }
+
+  function ensureSettingsPage() {
+    let page = one("#pageSettings");
+    if (!page) {
+      page = document.createElement("section");
+      page.id = "pageSettings";
+      page.className = "page page-settings";
+      page.setAttribute("aria-label", "Settings");
+
+      const home = one("#pageHome");
+      if (home && home.parentNode) home.parentNode.insertBefore(page, home.nextSibling);
+      else {
+        const footer = one("footer.status-strip") || one("footer");
+        (footer?.parentNode || document.body).insertBefore(page, footer || null);
+      }
+    }
+
+    page.innerHTML = `
+      <div class="openmmi-settings-shell">
+        <section class="openmmi-settings-sidebar-card" aria-label="Settings categories">
+          <div class="openmmi-settings-kicker">V1 roadmap</div>
+          <h2>Settings</h2>
+          <p>Preferences and diagnostics live here so Drive and Media stay clean.</p>
+          <nav class="openmmi-settings-tree" aria-label="Settings tree">
+            <button type="button" data-openmmi-settings-section="units">Units <small>mph, °C, raw values</small></button>
+            <button type="button" data-openmmi-settings-section="display">Display <small>dim mode, animation</small></button>
+            <button type="button" data-openmmi-settings-section="diagnostics">Diagnostics <small>live decoded state</small></button>
+            <button type="button" data-openmmi-settings-section="media">Media <small>Jellyfin and keys</small></button>
+            <button type="button" data-openmmi-settings-section="reverse">Reverse assist <small>PDC/camera path</small></button>
+          </nav>
+        </section>
+        <section class="openmmi-settings-panel-card" aria-label="Selected settings"><div id="openmmiSettingsStaticControls" class="openmmi-settings-static-controls" hidden></div><div id="openmmiSettingsPanel"></div></section>
+      </div>
+    `;
+
+    many("[data-openmmi-settings-section]").forEach((button) => {
+      button.addEventListener("click", () => {
+        state.section = button.dataset.openmmiSettingsSection || "units";
+        renderSettingsPanel();
+      });
+    });
+
+    renderSettingsPanel();
+  }
+
+  function showSettingsPage() {
+    ensureSettingsPage();
+    many(".page").forEach((page) => page.classList.toggle("active", page.id === "pageSettings"));
+    many(".pager button").forEach((button, idx) => button.classList.toggle("active", idx === 1));
+    const titleEl = one("#pageTitle");
+    if (titleEl) titleEl.textContent = "Settings";
+    try { activePage = 1; } catch (_) {}
+    window.dispatchEvent(new CustomEvent("openmmi:pagechange", { detail: { id: "pageSettings", title: "Settings", quickIndex: 1 } }));
+  }
+
+  function bindSettingsButtons() {
+    many("[data-openmmi-settings]").forEach((button) => {
+      if (button.__openMmiSettingsBound) return;
+      button.__openMmiSettingsBound = true;
+      button.disabled = false;
+      button.classList.remove("openmmi-disabled");
+      button.addEventListener("click", showSettingsPage);
+    });
+  }
+
+  function updateSettings(payload) { state.payload = payload; if (one("#pageSettings.active") && state.section === "diagnostics") renderSettingsPanel(); window.dispatchEvent(new CustomEvent("openmmi:settingsrender")); }
+
+  function wrapRenderForSettings() {
+    try {
+      if (typeof render !== "function" || render.__openMmiSettingsWrapped) return;
+      const previousRender = render;
+      const wrapped = function openMmiRenderWithSettings(payload) {
+        previousRender(payload);
+        updateSettings(payload);
+        bindSettingsButtons();
+      };
+      wrapped.__openMmiSettingsWrapped = true;
+      render = wrapped;
+    } catch (_) {}
+  }
+
+  ensureSettingsPage();
+  bindSettingsButtons();
+  wrapRenderForSettings();
+  window.openMmiShowSettingsPage = showSettingsPage;
+  window.addEventListener("openmmi:pagechange", bindSettingsButtons);
+})();
+// --- Open MMI V1 roadmap: settings shell end ---
+
+
+
+// --- Open MMI V1 roadmap: settings wiring v4 stability start ---
+(function openMmiSettingsWiringV4Stability() {
+  if (window.__openMmiSettingsWiringV4Loaded) return;
+  window.__openMmiSettingsWiringV4Loaded = true;
+
+  const STORE_KEY = "openmmi.dashboard.settings.v1";
+  const defaults = {
+    speedUnit: "mph",
+    tempUnit: "c",
+    showRaw: false,
+    dimMode: false,
+    reducedMotion: false,
+    reverseAssist: "popup",
+  };
+
+  function loadPrefs() {
+    try { return Object.assign({}, defaults, JSON.parse(localStorage.getItem(STORE_KEY) || "{}")); }
+    catch (_) { return Object.assign({}, defaults); }
+  }
+
+  function savePrefs(prefs) {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(prefs)); } catch (_) {}
+  }
+
+  function setPref(key, value) {
+    const prefs = loadPrefs();
+    prefs[key] = value;
+    savePrefs(prefs);
+    applyPrefs();
+    requestAnimationFrame(syncSettingsControls);
+  }
+
+  function norm(value) {
+    return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+  }
+
+  function currentSection() {
+    const active = document.querySelector("[data-openmmi-settings-section].active");
+    return active?.dataset?.openmmiSettingsSection || "units";
+  }
+
+  function applyPrefs() {
+    const prefs = loadPrefs();
+    const root = document.documentElement;
+    const dimMode = prefs.dimMode === "boost" ? "boost" : (prefs.dimMode ? "on" : "off");
+    root.dataset.openmmiDisplayMode = dimMode;
+    root.classList.toggle("openmmi-dim-mode", dimMode === "on");
+    root.classList.toggle("openmmi-boost-mode", dimMode === "boost");
+    root.classList.toggle("openmmi-reduced-motion", !!prefs.reducedMotion);
+    root.classList.toggle("openmmi-reverse-assist-off", prefs.reverseAssist === "off");
+    window.openMmiDashboardSettings = prefs;
+  }
+
+  function setPills(row, selectedLabels) {
+    if (!row) return;
+    const wanted = new Set([].concat(selectedLabels).map(norm));
+    row.querySelectorAll(".openmmi-setting-pill").forEach((pill) => {
+      pill.disabled = false;
+      const label = norm(pill.textContent);
+      const selected = wanted.has(label);
+      pill.classList.toggle("is-selected", selected);
+      pill.setAttribute("aria-pressed", selected ? "true" : "false");
+      pill.setAttribute("role", "button");
+      pill.setAttribute("tabindex", "0");
+    });
+  }
+
+  function rowTitle(row) {
+    const strong = row?.querySelector?.("strong");
+    return norm(strong ? strong.textContent : row?.textContent);
+  }
+
+  function ensureStaticControlsHost() {
+    let host = document.querySelector("#openmmiSettingsStaticControls");
+    const panel = document.querySelector("#openmmiSettingsPanel");
+    if (host || !panel) return host;
+
+    // Runtime fallback for older markup: create the static controls immediately
+    // before the live-refreshing panel.
+    host = document.createElement("div");
+    host.id = "openmmiSettingsStaticControls";
+    host.className = "openmmi-settings-static-controls";
+    host.hidden = true;
+    panel.parentNode.insertBefore(host, panel);
+    return host;
+  }
+
+  function rawToggleHtml() {
+    return '<div class="openmmi-setting-row" data-openmmi-raw-static-row="true"><div><strong>Raw/debug values</strong><small>Show low-level decoded values in this diagnostics panel.</small></div><div class="openmmi-setting-controls"><button type="button" class="openmmi-setting-pill">hide</button><button type="button" class="openmmi-setting-pill">show</button></div></div>';
+  }
+
+  function hideRawMetrics(panel, showRaw) {
+    panel?.querySelectorAll?.(".openmmi-settings-metric").forEach((metric) => {
+      const label = norm(metric.querySelector("span")?.textContent || metric.textContent);
+      const rawish = label.includes("outside raw") || label.includes("raw") || label.includes("unfiltered");
+      if (rawish) metric.hidden = !showRaw;
+    });
+  }
+
+  function syncSettingsControls() {
+    applyPrefs();
+    const prefs = loadPrefs();
+    const panel = document.querySelector("#openmmiSettingsPanel");
+    const host = ensureStaticControlsHost();
+
+
+    if (host) {
+      if (currentSection() === "diagnostics") {
+        host.hidden = false;
+        if (!host.querySelector("[data-openmmi-raw-static-row]")) host.innerHTML = rawToggleHtml();
+        setPills(host.querySelector("[data-openmmi-raw-static-row]"), prefs.showRaw ? "show" : "hide");
+      } else {
+        host.hidden = true;
+        host.innerHTML = "";
+      }
+    }
+
+    // Make every visible settings pill interactive and selected without relying
+    // on the page being rebuilt.
+    panel?.querySelectorAll?.(".openmmi-setting-pill").forEach((pill) => { pill.disabled = false; });
+    panel?.querySelectorAll?.(".openmmi-setting-row").forEach((row) => {
+      const title = rowTitle(row);
+      if (title.includes("speed")) setPills(row, prefs.speedUnit === "kmh" ? "km/h" : "mph");
+      else if (title.includes("temperature")) setPills(row, prefs.tempUnit === "f" ? "°f" : "°c");
+      else if (title.includes("raw") || title.includes("debug")) setPills(row, prefs.showRaw ? "show" : "hide");
+      else if (title.includes("dim")) { const dim = prefs.dimMode === "boost" ? "boost" : (prefs.dimMode ? "on" : "off"); setPills(row, dim); }
+      else if (title.includes("reduced")) setPills(row, prefs.reducedMotion ? "on" : "off");
+      else if (title.includes("reverse popup")) setPills(row, prefs.reverseAssist);
+    });
+
+    hideRawMetrics(panel, prefs.showRaw);
+  }
+
+  function handlePill(pill) {
+    const row = pill.closest(".openmmi-setting-row");
+    if (!row) return;
+    const title = rowTitle(row);
+    const label = norm(pill.textContent);
+
+    if (title.includes("speed")) setPref("speedUnit", label.includes("km") ? "kmh" : "mph");
+    else if (title.includes("temperature")) setPref("tempUnit", label.includes("f") ? "f" : "c");
+    else if (title.includes("raw") || title.includes("debug")) setPref("showRaw", label.includes("show"));
+    else if (title.includes("dim")) setPref("dimMode", label.includes("boost") ? "boost" : label.includes("on"));
+    else if (title.includes("reduced")) setPref("reducedMotion", label.includes("on"));
+    else if (title.includes("reverse popup")) {
+      if (label.includes("off")) setPref("reverseAssist", "off");
+      else if (label.includes("camera")) setPref("reverseAssist", "camera");
+      else if (label.includes("pdc")) setPref("reverseAssist", "pdc");
+      else setPref("reverseAssist", "popup");
+    }
+  }
+
+  document.addEventListener("click", (event) => {
+    const pill = event.target.closest?.("#openmmiSettingsStaticControls .openmmi-setting-pill, #openmmiSettingsPanel .openmmi-setting-pill");
+    if (!pill) return;
+    event.preventDefault();
+    handlePill(pill);
+  }, true);
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const pill = event.target.closest?.("#openmmiSettingsStaticControls .openmmi-setting-pill, #openmmiSettingsPanel .openmmi-setting-pill");
+    if (!pill) return;
+    event.preventDefault();
+    handlePill(pill);
+  }, true);
+
+  window.addEventListener("openmmi:settingsrender", () => requestAnimationFrame(syncSettingsControls));
+  window.addEventListener("openmmi:pagechange", () => requestAnimationFrame(syncSettingsControls));
+  document.addEventListener("DOMContentLoaded", () => requestAnimationFrame(syncSettingsControls));
+
+  applyPrefs();
+  requestAnimationFrame(syncSettingsControls);
+  setTimeout(syncSettingsControls, 100);
+})();// --- Open MMI V1 roadmap: settings wiring v4 stability end ---
+
+// --- Open MMI V1 roadmap: settings stable wiring v3 start ---
+(function openMmiSettingsStableWiringV3() {
+  if (window.__openMmiSettingsStableWiringV3Loaded) return;
+  window.__openMmiSettingsStableWiringV3Loaded = true;
+
+  const STORE_KEY = "openmmi.dashboard.settings.v1";
+  const defaults = {
+    speedUnit: "mph",
+    tempUnit: "c",
+    showRaw: false,
+    dimMode: false,
+    reducedMotion: false,
+    reverseAssist: "popup",
+  };
+
+  function loadPrefs() {
+    try {
+      return Object.assign({}, defaults, JSON.parse(localStorage.getItem(STORE_KEY) || "{}"));
+    } catch (_) {
+      return Object.assign({}, defaults);
+    }
+  }
+
+  function savePrefs(prefs) {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(prefs)); } catch (_) {}
+  }
+
+  function setPref(key, value) {
+    const prefs = loadPrefs();
+    prefs[key] = value;
+    savePrefs(prefs);
+    applyPrefs();
+    updateSettingsSelection();
+  }
+
+  function norm(value) {
+    return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+  }
+
+  function rowTitle(row) {
+    const strong = row?.querySelector?.("strong");
+    return norm(strong ? strong.textContent : row?.textContent);
+  }
+
+  function currentSection() {
+    const active = document.querySelector("[data-openmmi-settings-section].active");
+    return active?.dataset?.openmmiSettingsSection || "units";
+  }
+
+  function applyPrefs() {
+    const prefs = loadPrefs();
+    const root = document.documentElement;
+    const dimMode = prefs.dimMode === "boost" ? "boost" : (prefs.dimMode ? "on" : "off");
+    root.dataset.openmmiDisplayMode = dimMode;
+    root.classList.toggle("openmmi-dim-mode", dimMode === "on");
+    root.classList.toggle("openmmi-boost-mode", dimMode === "boost");
+    root.classList.toggle("openmmi-reduced-motion", !!prefs.reducedMotion);
+    root.classList.toggle("openmmi-reverse-assist-off", prefs.reverseAssist === "off");
+    window.openMmiDashboardSettings = prefs;
+  }
+
+  function setRowSelected(row, selectedLabels) {
+    if (!row) return;
+    const wanted = new Set([].concat(selectedLabels).map(norm));
+    row.querySelectorAll(".openmmi-setting-pill").forEach((pill) => {
+      const label = norm(pill.textContent);
+      pill.classList.toggle("is-selected", wanted.has(label));
+      pill.setAttribute("aria-pressed", wanted.has(label) ? "true" : "false");
+      if (!pill.hasAttribute("role")) pill.setAttribute("role", "button");
+      if (!pill.hasAttribute("tabindex")) pill.setAttribute("tabindex", "0");
+    });
+  }
+
+  function updateSettingsSelection() {
+    const panel = document.querySelector("#openmmiSettingsPanel");
+    if (!panel) return;
+    const prefs = loadPrefs();
+    panel.querySelectorAll(".openmmi-setting-row").forEach((row) => {
+      const title = rowTitle(row);
+      if (title.includes("speed")) setRowSelected(row, prefs.speedUnit === "kmh" ? "km/h" : "mph");
+      else if (title.includes("temperature")) setRowSelected(row, prefs.tempUnit === "f" ? "°f" : "°c");
+      else if (title.includes("raw") || title.includes("debug")) setRowSelected(row, prefs.showRaw ? "show" : "hide");
+      else if (title.includes("dim")) { const dim = prefs.dimMode === "boost" ? "boost" : (prefs.dimMode ? "on" : "off"); setRowSelected(row, dim); }
+      else if (title.includes("reduced")) setRowSelected(row, prefs.reducedMotion ? "on" : "off");
+      else if (title.includes("reverse popup")) setRowSelected(row, prefs.reverseAssist);
+    });
+
+    panel.querySelectorAll(".openmmi-settings-metric").forEach((metric) => {
+      const label = norm(metric.querySelector("span")?.textContent || metric.textContent);
+      const rawish = label.includes("outside raw") || label.includes("raw") || label.includes("unfiltered");
+      if (rawish) metric.hidden = !prefs.showRaw;
+    });
+  }
+
+  function handlePill(pill) {
+    const row = pill.closest(".openmmi-setting-row");
+    if (!row) return;
+    const title = rowTitle(row);
+    const label = norm(pill.textContent);
+    if (title.includes("speed")) setPref("speedUnit", label.includes("km") ? "kmh" : "mph");
+    else if (title.includes("temperature")) setPref("tempUnit", label.includes("f") ? "f" : "c");
+    else if (title.includes("raw") || title.includes("debug")) setPref("showRaw", label.includes("show"));
+    else if (title.includes("dim")) setPref("dimMode", label.includes("boost") ? "boost" : label.includes("on"));
+    else if (title.includes("reduced")) setPref("reducedMotion", label.includes("on"));
+    else if (title.includes("reverse popup")) {
+      if (label.includes("off")) setPref("reverseAssist", "off");
+      else if (label.includes("camera")) setPref("reverseAssist", "camera");
+      else if (label.includes("pdc")) setPref("reverseAssist", "pdc");
+      else setPref("reverseAssist", "popup");
+    }
+  }
+
+  document.addEventListener("click", (event) => {
+    const pill = event.target.closest?.("#openmmiSettingsPanel .openmmi-setting-pill");
+    if (!pill) return;
+    event.preventDefault();
+    handlePill(pill);
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const pill = event.target.closest?.("#openmmiSettingsPanel .openmmi-setting-pill");
+    if (!pill) return;
+    event.preventDefault();
+    handlePill(pill);
+  });
+
+  window.addEventListener("openmmi:settingsrender", () => requestAnimationFrame(updateSettingsSelection));
+  window.addEventListener("openmmi:pagechange", () => requestAnimationFrame(updateSettingsSelection));
+  document.addEventListener("DOMContentLoaded", () => {
+    applyPrefs();
+    requestAnimationFrame(updateSettingsSelection);
+  });
+  applyPrefs();
+  requestAnimationFrame(updateSettingsSelection);
+})();
+// --- Open MMI V1 roadmap: settings stable wiring v3 end ---
+
+// --- Open MMI V1 roadmap: door overlay start ---
+(function openMmiDoorOverlayV1() {
+  if (window.__openMmiDoorOverlayV1Loaded) return;
+  window.__openMmiDoorOverlayV1Loaded = true;
+
+  const state = {
+    currentSignature: "",
+    dismissedSignature: "",
+  };
+
+  const LABELS = {
+    driver: "Driver door",
+    driver_door: "Driver door",
+    front_left: "Front left door",
+    front_left_door: "Front left door",
+    passenger: "Passenger door",
+    passenger_door: "Passenger door",
+    front_right: "Front right door",
+    front_right_door: "Front right door",
+    rear_left: "Rear left door",
+    rear_left_door: "Rear left door",
+    rear_right: "Rear right door",
+    rear_right_door: "Rear right door",
+    boot: "Boot",
+    trunk: "Boot",
+    tailgate: "Tailgate",
+    hatch: "Tailgate",
+    bonnet: "Bonnet",
+    hood: "Bonnet",
+  };
+
+  const one = (selector) => document.querySelector(selector);
+
+  function normaliseKey(key) {
+    return String(key || "")
+      .trim()
+      .toLowerCase()
+      .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+      .replace(/[\s\-.]+/g, "_")
+      .replace(/^is_/, "")
+      .replace(/^door_/, "")
+      .replace(/_status$/, "")
+      .replace(/_state$/, "")
+      .replace(/_ajar$/, "")
+      .replace(/_open$/, "")
+      .replace(/^open_/, "")
+      .replace(/^ajar_/, "");
+  }
+
+  function labelFor(path) {
+    const normalised = normaliseKey(path);
+    if (LABELS[normalised]) return LABELS[normalised];
+
+    const parts = normalised.split("_").filter(Boolean);
+    const hasDoorWord = parts.includes("door");
+    const joined = parts.filter((part) => part !== "door").join("_");
+    if (LABELS[joined]) return LABELS[joined];
+
+    if (normalised.includes("driver")) return "Driver door";
+    if (normalised.includes("passenger")) return "Passenger door";
+    if (normalised.includes("front_left") || normalised.includes("left_front")) return "Front left door";
+    if (normalised.includes("front_right") || normalised.includes("right_front")) return "Front right door";
+    if (normalised.includes("rear_left") || normalised.includes("left_rear")) return "Rear left door";
+    if (normalised.includes("rear_right") || normalised.includes("right_rear")) return "Rear right door";
+    if (normalised.includes("boot") || normalised.includes("trunk")) return "Boot";
+    if (normalised.includes("tailgate") || normalised.includes("hatch")) return "Tailgate";
+    if (normalised.includes("bonnet") || normalised.includes("hood")) return "Bonnet";
+
+    const readable = parts
+      .filter((part) => part && part !== "open" && part !== "ajar" && part !== "status" && part !== "state")
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ");
+    return hasDoorWord ? readable : `${readable || "Door"} door`;
+  }
+
+  function looksDoorRelated(path) {
+    const p = String(path || "").toLowerCase();
+    if (/(lock|locked|unlock|window|mirror|seat|module|count)/.test(p)) return false;
+    return /(door|boot|trunk|tailgate|hatch|bonnet|hood)/.test(p);
+  }
+
+  function isOpenValue(value) {
+    if (value === true) return true;
+    if (value === false || value === null || value === undefined) return false;
+    if (typeof value === "number") return Number.isFinite(value) && value !== 0;
+    const text = String(value).trim().toLowerCase();
+    if (!text) return false;
+    if (["open", "opened", "ajar", "unlatched", "active", "true", "yes", "on", "1"].includes(text)) return true;
+    if (["closed", "shut", "latched", "inactive", "false", "no", "off", "0"].includes(text)) return false;
+    return /\b(open|ajar|unlatched)\b/.test(text);
+  }
+
+  function addDoor(map, label, value) {
+    if (!isOpenValue(value)) return;
+    map.set(label, true);
+  }
+
+  function scanObject(obj, basePath, out) {
+    if (!obj || typeof obj !== "object") return;
+    if (Array.isArray(obj)) {
+      obj.forEach((item, idx) => scanObject(item, `${basePath}[${idx}]`, out));
+      return;
+    }
+
+    for (const [key, value] of Object.entries(obj)) {
+      const path = basePath ? `${basePath}.${key}` : key;
+      if (value && typeof value === "object") {
+        scanObject(value, path, out);
+        continue;
+      }
+      if (looksDoorRelated(path)) addDoor(out, labelFor(path), value);
+    }
+  }
+
+  function collectOpenDoors(payload) {
+    const root = payload || {};
+    const decoded = root.state || root.decoded || root;
+    const vehicle = decoded.vehicle || {};
+    const body = decoded.body || decoded.comfort || decoded.central_convenience || {};
+    const doors = decoded.doors || vehicle.doors || body.doors || {};
+    const out = new Map();
+
+    scanObject(doors, "doors", out);
+    scanObject(vehicle, "vehicle", out);
+    scanObject(body, "body", out);
+    scanObject(decoded.doors_status || decoded.door_status || {}, "door_status", out);
+
+    return Array.from(out.keys()).sort((a, b) => a.localeCompare(b));
+  }
+
+
+  function syncDoorOverlayVehicleVisual(overlay) {
+    if (!overlay) return;
+    const host = overlay.querySelector("#openMmiDoorOverlayCarHost");
+    const source = document.querySelector("#carShell");
+    if (!host || !source) return;
+
+    let clone = host.querySelector(".car-shell");
+    if (!clone) {
+      clone = source.cloneNode(true);
+      clone.removeAttribute("id");
+      clone.classList.add("openmmi-door-overlay-car-shell");
+      clone.setAttribute("aria-hidden", "true");
+      host.replaceChildren(clone);
+    }
+
+    clone.classList.toggle("any-open", source.classList.contains("any-open"));
+    clone.querySelectorAll("[data-door-mark]").forEach((mark) => {
+      const key = mark.getAttribute("data-door-mark");
+      const liveMark = source.querySelector(`[data-door-mark="${key}"]`);
+      mark.classList.toggle("open", !!liveMark?.classList.contains("open"));
+    });
+
+    const list = overlay.querySelector("#openMmiDoorOverlayList");
+    if (list) {
+      list.textContent = "";
+      list.hidden = true;
+      list.setAttribute("aria-hidden", "true");
+    }
+  }
+
+  function ensureOverlay() {
+    let overlay = one("#openMmiVehicleOverlay");
+    if (overlay) return overlay;
+
+    overlay = document.createElement("div");
+    overlay.id = "openMmiVehicleOverlay";
+    overlay.className = "openmmi-vehicle-overlay";
+    overlay.setAttribute("aria-live", "polite");
+    overlay.setAttribute("hidden", "");
+    overlay.innerHTML = `
+      <div class="openmmi-vehicle-overlay-card openmmi-door-overlay-visual-card" role="status" aria-label="Door open alert">
+        <div class="openmmi-door-overlay-car-host" id="openMmiDoorOverlayCarHost" aria-hidden="true"></div>
+        <div class="openmmi-vehicle-overlay-list" id="openMmiDoorOverlayList" hidden aria-hidden="true"></div>
+        <button type="button" class="openmmi-vehicle-overlay-dismiss" id="openMmiDoorOverlayDismiss">Dismiss</button>
+      </div>
+    `;
+
+    const footer = document.querySelector("footer.status-strip") || document.querySelector("footer");
+    (footer?.parentNode || document.body).insertBefore(overlay, footer || null);
+
+    syncDoorOverlayVehicleVisual(overlay);
+
+    overlay.querySelector("#openMmiDoorOverlayDismiss")?.addEventListener("click", () => {
+      state.dismissedSignature = state.currentSignature;
+      hideOverlay();
+    });
+
+    return overlay;
+  }
+
+  function hideOverlay() {
+    const overlay = one("#openMmiVehicleOverlay");
+    if (!overlay) return;
+    overlay.setAttribute("hidden", "");
+    overlay.classList.remove("is-visible");
+  }
+
+  function showOverlay(openDoors) {
+    const overlay = ensureOverlay();
+    const list = overlay.querySelector("#openMmiDoorOverlayList");
+    if (list) {
+      list.textContent = "";
+      list.hidden = true;
+      list.setAttribute("aria-hidden", "true");
+    }
+    overlay.removeAttribute("hidden");
+    overlay.classList.add("is-visible");
+  }
+
+  function updateDoorOverlay(payload) {
+    const openDoors = collectOpenDoors(payload);
+    const signature = openDoors.join("|");
+    state.currentSignature = signature;
+
+    if (!signature) {
+      state.dismissedSignature = "";
+      hideOverlay();
+      return;
+    }
+
+    if (signature === state.dismissedSignature) {
+      hideOverlay();
+      return;
+    }
+
+    showOverlay(openDoors);
+  }
+
+  function wrapRenderForDoorOverlay() {
+    try {
+      if (typeof render !== "function" || render.__openMmiDoorOverlayWrapped) return;
+      const previousRender = render;
+      const wrapped = function openMmiRenderWithDoorOverlay(payload) {
+        previousRender(payload);
+        updateDoorOverlay(payload);
+      };
+      wrapped.__openMmiDoorOverlayWrapped = true;
+      render = wrapped;
+    } catch (_) {}
+  }
+
+  ensureOverlay();
+  wrapRenderForDoorOverlay();
+  window.openMmiDoorOverlayState = state;
+})();
+// --- Open MMI V1 roadmap: door overlay end ---
+
+// --- Open MMI V1 roadmap: reverse overlay start ---
+(function openMmiReverseOverlayV1() {
+  if (window.__openMmiReverseOverlayV1Loaded) return;
+  window.__openMmiReverseOverlayV1Loaded = true;
+
+  const state = {
+    active: false,
+    dismissedThisReverse: false,
+  };
+
+  const one = (selector) => document.querySelector(selector);
+
+  function normalText(value) {
+    return String(value ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  }
+
+  function truthyReverseValue(value) {
+    if (value === true) return true;
+    if (value === false || value === null || value === undefined) return false;
+    if (typeof value === "number") return Number.isFinite(value) && value !== 0;
+
+    const text = normalText(value);
+    if (!text) return false;
+    if (["false", "no", "off", "0", "inactive", "not_reverse", "not_reversing", "park", "parking", "neutral", "drive", "d"].includes(text)) return false;
+    if (["true", "yes", "on", "1", "active", "reverse", "reversing", "reverse_selected", "r", "gear_r"].includes(text)) return true;
+    return /(^|_)(reverse|reversing)(_|$)/.test(text) || text === "r";
+  }
+
+  function firstValue(...values) {
+    for (const value of values) {
+      if (value !== undefined && value !== null && value !== "") return value;
+    }
+    return undefined;
+  }
+
+  function scanForReverse(obj, basePath = "") {
+    if (!obj || typeof obj !== "object") return false;
+    if (Array.isArray(obj)) return obj.some((item, idx) => scanForReverse(item, `${basePath}[${idx}]`));
+
+    for (const [key, value] of Object.entries(obj)) {
+      const path = basePath ? `${basePath}.${key}` : key;
+      const p = path.toLowerCase();
+      if (value && typeof value === "object") {
+        if (scanForReverse(value, path)) return true;
+        continue;
+      }
+      if (/(reverse|reversing|gear|selector|transmission)/.test(p) && !/(assist|overlay|camera|pdc|setting|mode)/.test(p)) {
+        if (truthyReverseValue(value)) return true;
+      }
+    }
+    return false;
+  }
+
+  function reverseSelected(payload) {
+    const root = payload || {};
+    const decoded = root.state || root.decoded || root;
+    const vehicle = decoded.vehicle || {};
+    const drivetrain = decoded.drivetrain || decoded.transmission || decoded.gearbox || {};
+    const status = decoded.status || root.status || {};
+
+    const direct = firstValue(
+      vehicle.reverse,
+      vehicle.reverse_selected,
+      vehicle.reverse_gear,
+      vehicle.reversing,
+      drivetrain.reverse,
+      drivetrain.reverse_selected,
+      drivetrain.gear,
+      drivetrain.selector,
+      status.reverse,
+      status.reverse_selected,
+      decoded.reverse,
+      decoded.reverse_selected
+    );
+
+    if (truthyReverseValue(direct)) return true;
+    if (direct !== undefined && direct !== null && direct !== "") return false;
+    return scanForReverse(decoded);
+  }
+
+  function ensureOverlay() {
+    let overlay = one("#openMmiReverseOverlay");
+    if (overlay) return overlay;
+
+    overlay = document.createElement("div");
+    overlay.id = "openMmiReverseOverlay";
+    overlay.className = "openmmi-reverse-overlay";
+    overlay.setAttribute("aria-live", "polite");
+    overlay.setAttribute("hidden", "");
+    overlay.innerHTML = `
+      <div class="openmmi-reverse-overlay-card" role="status" aria-label="Reverse assist alert">
+        <div class="openmmi-reverse-overlay-kicker">Reverse assist</div>
+        <h2>Reverse selected</h2>
+        <p>Camera/PDC overlay placeholder. Rear assist settings will live under Settings → Reverse assist.</p>
+        <div class="openmmi-reverse-overlay-grid" aria-hidden="true">
+          <span></span><span></span><span></span><span></span>
+        </div>
+        <button type="button" class="openmmi-reverse-overlay-dismiss" id="openMmiReverseOverlayDismiss">Dismiss</button>
+      </div>
+    `;
+
+    const footer = document.querySelector("footer.status-strip") || document.querySelector("footer");
+    (footer?.parentNode || document.body).insertBefore(overlay, footer || null);
+
+    overlay.querySelector("#openMmiReverseOverlayDismiss")?.addEventListener("click", () => {
+      state.dismissedThisReverse = true;
+      hideOverlay();
+    });
+
+    return overlay;
+  }
+
+  function hideOverlay() {
+    const overlay = one("#openMmiReverseOverlay");
+    if (!overlay) return;
+    overlay.setAttribute("hidden", "");
+    overlay.classList.remove("is-visible");
+  }
+
+  function showOverlay() {
+    const overlay = ensureOverlay();
+    overlay.removeAttribute("hidden");
+    overlay.classList.add("is-visible");
+  }
+
+  function updateReverseOverlay(payload) {
+    const active = reverseSelected(payload);
+    state.active = active;
+
+    if (!active) {
+      state.dismissedThisReverse = false;
+      hideOverlay();
+      return;
+    }
+
+    if (state.dismissedThisReverse) {
+      hideOverlay();
+      return;
+    }
+
+    showOverlay();
+  }
+
+  function wrapRenderForReverseOverlay() {
+    try {
+      if (typeof render !== "function" || render.__openMmiReverseOverlayWrapped) return;
+      const previousRender = render;
+      const wrapped = function openMmiRenderWithReverseOverlay(payload) {
+        previousRender(payload);
+        updateReverseOverlay(payload);
+      };
+      wrapped.__openMmiReverseOverlayWrapped = true;
+      render = wrapped;
+    } catch (_) {}
+  }
+
+  ensureOverlay();
+  wrapRenderForReverseOverlay();
+  window.openMmiReverseOverlayState = state;
+})();
+// --- Open MMI V1 roadmap: reverse overlay end ---
+
+/* open-mmi dashboard display setting: frontend-only tell-tale visual test */
+(function openMmiTellTaleTestSetting() {
+  if (window.__openMmiTellTaleTestSettingBound) return;
+  window.__openMmiTellTaleTestSettingBound = true;
+
+  const STORE_KEY = "openmmi.dashboard.settings.v1";
+
+  function readPrefs() {
+    try {
+      return JSON.parse(localStorage.getItem(STORE_KEY) || "{}") || {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  function writePrefs(prefs) {
+    try {
+      localStorage.setItem(STORE_KEY, JSON.stringify(prefs));
+    } catch (_) {}
+  }
+
+  function tellTaleTestEnabled() {
+    return readPrefs().telltaleTest === "on";
+  }
+
+  function setTellTaleTest(value) {
+    const prefs = readPrefs();
+    prefs.telltaleTest = value === "on" ? "on" : "off";
+    writePrefs(prefs);
+    applyTellTaleTest();
+    syncTellTaleSettingButtons();
+  }
+
+  function icon(src, label, extraClass = "") {
+    return `<span class="openmmi-telltale-test-item ${extraClass}" title="${label}" aria-label="${label}" role="img">` +
+      `<img src="${src}" alt="" aria-hidden="true" loading="eager" decoding="async" draggable="false">` +
+      `<small>${label}</small>` +
+      `</span>`;
+  }
+
+  function buildStrip() {
+    const strip = document.createElement("div");
+    strip.id = "openMmiTellTaleTestStrip";
+    strip.className = "openmmi-telltale-test-strip";
+    strip.setAttribute("role", "status");
+    strip.setAttribute("aria-label", "Open MMI frontend tell-tale visual test");
+    strip.innerHTML = `
+      <span class="openmmi-telltale-test-badge">TEST</span>
+      ${icon("icons/telltales/A16L_Left_turn_signal.svg", "Left", "is-green")}
+      ${icon("icons/telltales/A16R_Right_turn_signal.svg", "Right", "is-green")}
+      ${icon("icons/telltales/A19_Hazard_warning.svg", "Hazard", "is-red")}
+      ${icon("icons/telltales/A09_Position_lights.png", "Side", "is-green")}
+      ${icon("icons/telltales/A02_Low_Beam_Indicator.png", "Dip", "is-green")}
+      ${icon("icons/telltales/A01_High_Beam_Indicator.png", "Main", "is-blue")}
+      ${icon("icons/telltales/A06_Rear_fog_light.png", "Rear fog", "is-amber")}
+      ${icon("icons/telltales/A14_Exterior_bulb_failure.svg", "Bulb", "is-amber")}
+      ${icon("icons/telltales/B02_Parking_brake_indication.svg", "Brake", "is-red")}
+    `;
+    return strip;
+  }
+
+  function footerHost() {
+    return document.querySelector("footer.status-strip") || document.querySelector(".status-strip") || document.querySelector("footer");
+  }
+
+  function applyTellTaleTest() {
+    const enabled = tellTaleTestEnabled();
+    document.documentElement.classList.toggle("openmmi-telltale-test-enabled", enabled);
+    document.body?.classList.toggle("openmmi-telltale-test-enabled", enabled);
+
+    let strip = document.querySelector("#openMmiTellTaleTestStrip");
+    if (!enabled) {
+      strip?.remove();
+      return;
+    }
+
+    const host = footerHost();
+    if (!host) return;
+    if (!strip) strip = buildStrip();
+    if (strip.parentElement !== host) host.appendChild(strip);
+  }
+
+  function settingRowFromButton(button) {
+    let node = button;
+    while (node && node !== document.body) {
+      const text = (node.textContent || "").toLowerCase();
+      if (text.includes("tell-tale test")) return node;
+      node = node.parentElement;
+    }
+    return null;
+  }
+
+  function syncTellTaleSettingButtons() {
+    const enabled = tellTaleTestEnabled();
+    document.querySelectorAll("#openmmiSettingsPanel button, #openmmiSettingsPanel .openmmi-settings-pill, #openmmiSettingsPanel .openmmi-pill").forEach((button) => {
+      const row = settingRowFromButton(button);
+      if (!row) return;
+      const label = (button.textContent || "").trim().toLowerCase();
+      if (label !== "on" && label !== "off") return;
+      const active = enabled ? label === "on" : label === "off";
+      button.classList.toggle("active", active);
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-pressed", active ? "true" : "false");
+    });
+  }
+
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest?.("button, .openmmi-settings-pill, .openmmi-pill");
+    if (!button) return;
+    const row = settingRowFromButton(button);
+    if (!row) {
+      setTimeout(syncTellTaleSettingButtons, 0);
+      return;
+    }
+    const label = (button.textContent || "").trim().toLowerCase();
+    if (label === "on" || label === "off") setTellTaleTest(label);
+  }, true);
+
+  window.openMmiApplyTellTaleTest = applyTellTaleTest;
+  window.openMmiSyncTellTaleSettingButtons = syncTellTaleSettingButtons;
+
+  document.addEventListener("DOMContentLoaded", () => {
+    applyTellTaleTest();
+    syncTellTaleSettingButtons();
+  });
+  setInterval(() => {
+    applyTellTaleTest();
+    syncTellTaleSettingButtons();
+  }, 750);
+})();
+/* end open-mmi dashboard display setting: frontend-only tell-tale visual test */
+
+// --- Open MMI V1 roadmap: tell-tale test existing icons v2 start ---
+(function openMmiTelltaleTestExistingIconsV2() {
+  if (window.__openMmiTelltaleTestExistingIconsV2Loaded) return;
+  window.__openMmiTelltaleTestExistingIconsV2Loaded = true;
+
+  const STORE_KEY = "openmmi.dashboard.settings.v1";
+  const MODE_KEY = "telltaleTest";
+
+  function readPrefs() {
+    try { return JSON.parse(localStorage.getItem(STORE_KEY) || "{}"); }
+    catch (_) { return {}; }
+  }
+
+  function writePrefs(next) {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(next)); } catch (_) {}
+  }
+
+  function currentMode() {
+    const prefs = readPrefs();
+    return String(
+      prefs[MODE_KEY] ??
+      prefs.tellTaleTest ??
+      prefs.telltaleTestMode ??
+      "off"
+    ).toLowerCase() === "on" ? "on" : "off";
+  }
+
+  function testActive() {
+    return currentMode() === "on";
+  }
+
+  function setMode(mode) {
+    const normalised = String(mode).toLowerCase() === "on" ? "on" : "off";
+    const prefs = readPrefs();
+    prefs[MODE_KEY] = normalised;
+    prefs.tellTaleTest = normalised;
+    prefs.telltaleTestMode = normalised;
+    writePrefs(prefs);
+    window.dispatchEvent(new CustomEvent("openmmi:settingschange", { detail: { telltaleTest: normalised } }));
+  }
+
+  function removeLegacyVisualTestStrips() {
+    document.querySelectorAll([
+      "#openMmiTelltaleVisualTestStrip",
+      "#openMmiTelltaleTestStrip",
+      "#openMmiDisplayTelltaleTestStrip",
+      ".openmmi-telltale-visual-test-strip",
+      ".openmmi-display-telltale-test-strip",
+      ".openmmi-telltale-test-strip"
+    ].join(",")).forEach((node) => node.remove());
+  }
+
+  function labelBase(slot) {
+    return String(slot.getAttribute("aria-label") || slot.getAttribute("title") || "Tell-tale")
+      .replace(/:\s*(on|off|test|active|inactive)\s*$/i, "");
+  }
+
+  function fallbackSetRealFooterSlots(active) {
+    document.documentElement.classList.toggle("openmmi-telltale-test-active", active);
+    if (!active) return;
+
+    document.querySelectorAll("#openMmiFooterTelltales [data-openmmi-telltale-slot]").forEach((slot) => {
+      const base = labelBase(slot);
+      slot.classList.remove("is-inactive");
+      slot.classList.add("is-active", "openmmi-test-forced");
+      slot.setAttribute("aria-label", `${base}: test`);
+      slot.setAttribute("title", `${base}: test`);
+      const sr = slot.querySelector(".openmmi-footer-telltale-sr");
+      if (sr) sr.textContent = `${base}: test`;
+    });
+  }
+
+  function applyTelltaleTestMode() {
+    const active = testActive();
+    removeLegacyVisualTestStrips();
+
+    if (window.openMmiTelltaleTest && typeof window.openMmiTelltaleTest.set === "function") {
+      window.openMmiTelltaleTest.set(active);
+    } else {
+      fallbackSetRealFooterSlots(active);
+    }
+  }
+
+  function setRowSelected(row, selectedLabel) {
+    row.querySelectorAll(".openmmi-setting-pill").forEach((pill) => {
+      const label = String(pill.textContent || "").trim().toLowerCase();
+      pill.classList.toggle("is-selected", label === selectedLabel);
+      pill.setAttribute("aria-pressed", label === selectedLabel ? "true" : "false");
+    });
+  }
+
+  function ensureSettingsControls() {
+    const panel = document.querySelector("#openmmiSettingsPanel");
+    if (!panel) return;
+
+    panel.querySelectorAll(".openmmi-setting-row").forEach((row) => {
+      const title = String(row.querySelector("strong")?.textContent || "").trim().toLowerCase();
+      if (!title.includes("tell-tale") && !title.includes("telltale")) return;
+
+      const controls = row.querySelector(".openmmi-setting-controls");
+      if (controls && !controls.querySelector("[data-openmmi-telltale-test-mode]")) {
+        controls.innerHTML =
+          '<button type="button" class="openmmi-setting-pill" data-openmmi-telltale-test-mode="off">off</button>' +
+          '<button type="button" class="openmmi-setting-pill" data-openmmi-telltale-test-mode="on">on</button>';
+      }
+
+      const note = row.querySelector("small");
+      if (note) note.textContent = "Frontend-only test using the existing footer tell-tale icons.";
+      setRowSelected(row, currentMode());
+    });
+  }
+
+  document.addEventListener("click", (event) => {
+    const pill = event.target.closest?.("#openmmiSettingsPanel .openmmi-setting-pill");
+    if (!pill) return;
+
+    const row = pill.closest(".openmmi-setting-row");
+    const title = String(row?.querySelector("strong")?.textContent || "").trim().toLowerCase();
+    if (!title.includes("tell-tale") && !title.includes("telltale")) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const explicit = pill.dataset.openmmiTelltaleTestMode;
+    const label = String(explicit || pill.textContent || "").trim().toLowerCase();
+    setMode(label === "on" ? "on" : "off");
+    ensureSettingsControls();
+    applyTelltaleTestMode();
+  }, true);
+
+  ["openmmi:settingsrender", "openmmi:pagechange", "openmmi:settingschange"].forEach((name) => {
+    window.addEventListener(name, () => {
+      requestAnimationFrame(() => {
+        ensureSettingsControls();
+        applyTelltaleTestMode();
+      });
+    });
+  });
+
+  document.addEventListener("DOMContentLoaded", () => {
+    ensureSettingsControls();
+    applyTelltaleTestMode();
+  });
+
+  // While active, keep any older experimental visual strip out of the DOM and
+  // keep the real footer slots forced through the existing tell-tale API.
+  setInterval(() => {
+    if (testActive()) applyTelltaleTestMode();
+    else removeLegacyVisualTestStrips();
+  }, 1000);
+
+  ensureSettingsControls();
+  applyTelltaleTestMode();
+})();
+// --- Open MMI V1 roadmap: tell-tale test existing icons v2 end ---
+
+// --- Open MMI V1 roadmap: tell-tale test render-path settings start ---
+(function openMmiTelltaleTestRenderPathSettingsV4() {
+  if (window.__openMmiTelltaleTestRenderPathSettingsV4Loaded) return;
+  window.__openMmiTelltaleTestRenderPathSettingsV4Loaded = true;
+
+  const STORE_KEY = "openmmi.dashboard.settings.v1";
+
+  function readPrefs() {
+    try { return JSON.parse(localStorage.getItem(STORE_KEY) || "{}"); }
+    catch (_) { return {}; }
+  }
+
+  function writePrefs(prefs) {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(prefs)); } catch (_) {}
+    window.openMmiDashboardSettings = Object.assign({}, window.openMmiDashboardSettings || {}, prefs);
+    window.dispatchEvent(new CustomEvent("openmmi:settingschange", { detail: prefs }));
+  }
+
+  function rowTitle(row) {
+    return (row?.querySelector?.("strong")?.textContent || "").trim().toLowerCase();
+  }
+
+  function setSelected(row, selectedLabel) {
+    row?.querySelectorAll?.(".openmmi-setting-pill").forEach((button) => {
+      const label = (button.textContent || "").trim().toLowerCase();
+      button.classList.toggle("is-selected", label === selectedLabel);
+      button.classList.remove("openmmi-disabled");
+      button.disabled = false;
+      button.removeAttribute("disabled");
+    });
+  }
+
+  function syncTellTaleRow() {
+    const prefs = readPrefs();
+    const selected = String(prefs.telltaleTest || "off").toLowerCase() === "on" ? "on" : "off";
+    document.querySelectorAll("#openmmiSettingsPanel .openmmi-setting-row, #openmmiSettingsStaticControls .openmmi-setting-row").forEach((row) => {
+      if (rowTitle(row).includes("tell-tale test")) setSelected(row, selected);
+    });
+  }
+
+  document.addEventListener("click", (event) => {
+    const pill = event.target.closest?.("#openmmiSettingsPanel .openmmi-setting-pill, #openmmiSettingsStaticControls .openmmi-setting-pill");
+    if (!pill) return;
+
+    const row = pill.closest(".openmmi-setting-row");
+    if (!rowTitle(row).includes("tell-tale test")) return;
+
+    const label = (pill.textContent || "").trim().toLowerCase();
+    if (label !== "on" && label !== "off") return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const prefs = readPrefs();
+    prefs.telltaleTest = label;
+    writePrefs(prefs);
+    setSelected(row, label);
+
+    if (window.openMmiLastStatusPayload && typeof render === "function") {
+      try { render(window.openMmiLastStatusPayload); } catch (_) {}
+    }
+  }, true);
+
+  window.addEventListener("openmmi:settingsrender", () => requestAnimationFrame(syncTellTaleRow));
+  window.addEventListener("openmmi:pagechange", () => requestAnimationFrame(syncTellTaleRow));
+  window.addEventListener("openmmi:settingschange", () => requestAnimationFrame(syncTellTaleRow));
+  document.addEventListener("DOMContentLoaded", syncTellTaleRow);
+  syncTellTaleRow();
+})();
+// --- Open MMI V1 roadmap: tell-tale test render-path settings end ---
+
+
+
+// --- openmmi door overlay reuse vehicle visual v3 ---
+
+document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanupV2);
+
+// --- Open MMI browser performance diagnostics start ---
+(function openMmiBrowserPerformanceDiagnostics() {
+  if (window.__openMmiBrowserPerformanceDiagnosticsLoaded) return;
+  window.__openMmiBrowserPerformanceDiagnosticsLoaded = true;
+
+  const LATEST_KEY = "openmmi.performance.latest.v1";
+  const BASELINE_KEY = "openmmi.performance.baseline.v1";
+  const STATUS_PATH = "/api/status";
+  const STATUS_INTERVAL_MS = 200;
+  const SAMPLES_PER_SCENARIO = 50;
+  const RUNS_PER_SCENARIO = 5;
+  const WARMUP_SAMPLES = 10;
+  const SCENARIO_TIMEOUT_MS = 15000;
+  const REPORT_SCHEMA = 3;
+  const REQUIRED_PASSING_RUNS = 4;
+  const SAMPLE_ID = Symbol("openMmiPerformanceSampleId");
+
+  const state = {
+    running: false,
+    capture: false,
+    captureTarget: 0,
+    captureAccepted: 0,
+    scenario: "",
+    sampleSequence: 0,
+    samples: [],
+    parsedQueue: [],
+    inFlight: 0,
+    maxInFlight: 0,
+    completionOrder: [],
+    longTasks: [],
+    latest: readJson(LATEST_KEY, null),
+    baseline: readJson(BASELINE_KEY, null),
+    originalFetch: null,
+    originalRender: null,
+    longTaskObserver: null,
+    visibilityInvalidation: null,
+    visibilityHandler: null,
+    pageHideHandler: null,
+  };
+
+  function readJson(key, fallback) {
+    try {
+      const value = JSON.parse(localStorage.getItem(key) || "null");
+      return value && typeof value === "object" ? value : fallback;
+    } catch (_) {
+      return fallback;
+    }
+  }
+
+  function writeJson(key, value) {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#39;");
+  }
+
+  function percentile(values, quantile) {
+    const data = values
+      .map(Number)
+      .filter(Number.isFinite)
+      .sort((left, right) => left - right);
+    if (!data.length) return null;
+    if (data.length === 1) return data[0];
+    const position = (data.length - 1) * quantile;
+    const lower = Math.floor(position);
+    const upper = Math.ceil(position);
+    if (lower === upper) return data[lower];
+    return data[lower] + (data[upper] - data[lower]) * (position - lower);
+  }
+
+  function describe(values) {
+    const data = values.map(Number).filter(Number.isFinite);
+    if (!data.length) {
+      return { count: 0, mean: null, median: null, p95: null, p99: null, maximum: null };
+    }
+    const mean = data.reduce((sum, value) => sum + value, 0) / data.length;
+    return {
+      count: data.length,
+      mean: round(mean),
+      median: round(percentile(data, 0.5)),
+      p95: round(percentile(data, 0.95)),
+      p99: round(percentile(data, 0.99)),
+      maximum: round(Math.max(...data)),
+    };
+  }
+
+  function round(value) {
+    return Number.isFinite(value) ? Math.round(value * 1000) / 1000 : null;
+  }
+
+  function sleep(milliseconds) {
+    return new Promise((resolve) => setTimeout(resolve, milliseconds));
+  }
+
+  async function waitUntil(predicate, timeoutMs, intervalMs = 50) {
+    const deadline = performance.now() + timeoutMs;
+    while (performance.now() < deadline) {
+      if (state.visibilityInvalidation) return false;
+      try {
+        if (predicate()) return true;
+      } catch (_) {}
+      await sleep(intervalMs);
+      if (state.visibilityInvalidation) return false;
+    }
+    return false;
+  }
+
+  function activeVisibilityContext() {
+    const sampleKey = String(state.scenario || "");
+    const match = sampleKey.match(/^(.*)__(setup|warmup|run_(\d+))$/);
+    return {
+      sample_key: sampleKey || null,
+      scenario: match?.[1] || sampleKey || null,
+      phase: match?.[2] === "setup"
+        ? "setup"
+        : match?.[2] === "warmup"
+          ? "warmup"
+          : match?.[2]
+            ? "measured_run"
+            : "setup",
+      run: match?.[3] ? Number(match[3]) : null,
+    };
+  }
+
+  function invalidateForVisibility(eventType) {
+    if (!state.running || state.visibilityInvalidation) return;
+    state.visibilityInvalidation = {
+      occurred_at: new Date().toISOString(),
+      event: String(eventType || "visibilitychange"),
+      visibility_state: document.visibilityState,
+      ...activeVisibilityContext(),
+    };
+    state.capture = false;
+    setProgress("Benchmark invalidated — keep this tab visible", 0);
+  }
+
+  function installVisibilityGuard() {
+    state.visibilityInvalidation = null;
+    state.visibilityHandler = () => {
+      if (document.hidden) invalidateForVisibility("visibilitychange");
+    };
+    state.pageHideHandler = () => invalidateForVisibility("pagehide");
+    document.addEventListener("visibilitychange", state.visibilityHandler);
+    window.addEventListener("pagehide", state.pageHideHandler);
+    if (document.hidden) invalidateForVisibility("started_hidden");
+  }
+
+  function removeVisibilityGuard() {
+    if (state.visibilityHandler) {
+      document.removeEventListener("visibilitychange", state.visibilityHandler);
+    }
+    if (state.pageHideHandler) {
+      window.removeEventListener("pagehide", state.pageHideHandler);
+    }
+    state.visibilityHandler = null;
+    state.pageHideHandler = null;
+  }
+
+  function throwIfVisibilityInvalidated() {
+    if (!state.visibilityInvalidation) return;
+    const error = new Error("Benchmark tab lost visibility");
+    error.code = "OPENMMI_PERFORMANCE_VISIBILITY_INTERRUPTED";
+    throw error;
+  }
+
+  function activeSettingsSection() {
+    return document.querySelector("[data-openmmi-settings-section].active")
+      ?.dataset?.openmmiSettingsSection || "";
+  }
+
+  function currentPageId() {
+    return document.querySelector(".page.active")?.id || "pageHome";
+  }
+
+  function pageIndex(pageId) {
+    try {
+      return Array.isArray(PAGE_IDS) ? PAGE_IDS.indexOf(pageId) : -1;
+    } catch (_) {
+      return -1;
+    }
+  }
+
+  function showPage(pageId) {
+    if (pageId === "pageSettings" && typeof window.openMmiShowSettingsPage === "function") {
+      window.openMmiShowSettingsPage();
+      return true;
+    }
+    const index = pageIndex(pageId);
+    try {
+      if (index >= 0 && typeof setPage === "function") {
+        setPage(index);
+        window.dispatchEvent(
+          new CustomEvent("openmmi:pagechange", { detail: { id: pageId } }),
+        );
+        return true;
+      }
+    } catch (_) {}
+    const page = document.getElementById(pageId);
+    if (!page) return false;
+    document.querySelectorAll(".page").forEach((candidate) => {
+      candidate.classList.toggle("active", candidate === page);
+    });
+    window.dispatchEvent(
+      new CustomEvent("openmmi:pagechange", { detail: { id: pageId } }),
+    );
+    return true;
+  }
+
+  function mediaPageId() {
+    return document.querySelector("#openMmiMediaRoot")?.closest(".page")?.id
+      || (pageIndex("pageElectrical") >= 0 ? "pageElectrical" : "pageElectrical");
+  }
+
+  function activeSourceId() {
+    try {
+      return window.openMmiMediaSources?.activeSourceId?.()
+        || window.openMmiMediaAdapters?.activeSourceId?.()
+        || "jellyfin";
+    } catch (_) {
+      return "jellyfin";
+    }
+  }
+
+  function sourceEnabled(sourceId) {
+    try {
+      return Boolean(window.openMmiMediaSources?.isEnabled?.(sourceId));
+    } catch (_) {
+      return sourceId === "jellyfin";
+    }
+  }
+
+  async function activateSource(sourceId) {
+    const started = performance.now();
+    if (!sourceEnabled(sourceId)) {
+      return { skipped: true, reason: `${sourceId} is disabled`, setup_ms: null };
+    }
+    try {
+      window.openMmiMediaSources?.setActiveSource?.(sourceId);
+      window.openMmiMediaAdapters?.syncActiveSource?.(true);
+    } catch (error) {
+      return { skipped: true, reason: String(error?.message || error), setup_ms: null };
+    }
+    showPage(mediaPageId());
+    const ready = await waitUntil(() => {
+      const root = document.querySelector("#openMmiMediaRoot");
+      if (!root) return false;
+      const selected = root.dataset.openMmiMediaSource || activeSourceId();
+      if (selected !== sourceId) return false;
+      if (root.getAttribute("aria-busy") === "true") return false;
+      const results = root.querySelector("#ommiMediaResults");
+      const realRows = results?.querySelectorAll(
+        ".ommi-track:not(.ommi-track-skeleton-v8b), .list-group-item:not(.ommi-track-skeleton-v8b)",
+      ).length || 0;
+      const message = root.querySelector("#ommiMediaMessage")?.textContent || "";
+      return realRows > 0 || /no |ready|tap|error|failed|not configured|could not/i.test(message);
+    }, 12000, 75);
+    return {
+      skipped: false,
+      ready,
+      setup_ms: round(performance.now() - started),
+    };
+  }
+
+  function statusUrl(input) {
+    try {
+      const raw = typeof input === "string" ? input : input?.url;
+      if (!raw) return false;
+      const parsed = new URL(raw, location.href);
+      return parsed.origin === location.origin && parsed.pathname === STATUS_PATH;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function installInstrumentation() {
+    if (state.originalFetch || state.originalRender) return;
+    state.originalFetch = window.fetch;
+    window.fetch = async function openMmiMeasuredFetch(input, init) {
+      if (!state.capture || !statusUrl(input)) {
+        return state.originalFetch.call(window, input, init);
+      }
+      if (state.captureAccepted >= state.captureTarget) {
+        return state.originalFetch.call(window, input, init);
+      }
+      state.captureAccepted += 1;
+      const sample = {
+        id: ++state.sampleSequence,
+        scenario: state.scenario,
+        started_at_ms: performance.now(),
+        response_at_ms: null,
+        json_at_ms: null,
+        render_start_ms: null,
+        render_end_ms: null,
+        paint_at_ms: null,
+        ok: false,
+        error: null,
+      };
+      state.samples.push(sample);
+      state.inFlight += 1;
+      sample.in_flight = state.inFlight;
+      state.maxInFlight = Math.max(state.maxInFlight, state.inFlight);
+      try {
+        const response = await state.originalFetch.call(window, input, init);
+        sample.response_at_ms = performance.now();
+        sample.ok = response.ok;
+        const originalJson = response.json.bind(response);
+        try {
+          Object.defineProperty(response, "json", {
+            configurable: true,
+            value: async function openMmiMeasuredStatusJson() {
+              const payload = await originalJson();
+              sample.json_at_ms = performance.now();
+              state.parsedQueue.push(sample.id);
+              try {
+                Object.defineProperty(payload, SAMPLE_ID, {
+                  configurable: true,
+                  value: sample.id,
+                });
+              } catch (_) {}
+              return payload;
+            },
+          });
+        } catch (_) {}
+        return response;
+      } catch (error) {
+        sample.error = String(error?.message || error);
+        throw error;
+      } finally {
+        state.inFlight = Math.max(0, state.inFlight - 1);
+        state.completionOrder.push(sample.id);
+      }
+    };
+
+    try {
+      if (typeof render === "function") {
+        state.originalRender = render;
+        render = function openMmiMeasuredRender(payload) {
+          let sampleId = payload?.[SAMPLE_ID];
+          if (sampleId) {
+            const queueIndex = state.parsedQueue.indexOf(sampleId);
+            if (queueIndex >= 0) state.parsedQueue.splice(queueIndex, 1);
+          } else {
+            sampleId = state.parsedQueue.shift();
+          }
+          const sample = state.samples.find((entry) => entry.id === sampleId);
+          if (sample && state.capture) sample.render_start_ms = performance.now();
+          const result = state.originalRender(payload);
+          if (sample && state.capture) {
+            sample.render_end_ms = performance.now();
+            requestAnimationFrame(() => {
+              sample.paint_at_ms = performance.now();
+            });
+          }
+          return result;
+        };
+      }
+    } catch (_) {
+      state.originalRender = null;
+    }
+
+    try {
+      state.longTaskObserver = new PerformanceObserver((list) => {
+        if (!state.capture) return;
+        for (const entry of list.getEntries()) {
+          state.longTasks.push({
+            scenario: state.scenario,
+            start_ms: round(entry.startTime),
+            duration_ms: round(entry.duration),
+          });
+        }
+      });
+      state.longTaskObserver.observe({ entryTypes: ["longtask"] });
+    } catch (_) {
+      state.longTaskObserver = null;
+    }
+  }
+
+  function removeInstrumentation() {
+    state.capture = false;
+    if (state.originalFetch) {
+      window.fetch = state.originalFetch;
+      state.originalFetch = null;
+    }
+    try {
+      if (state.originalRender) render = state.originalRender;
+    } catch (_) {}
+    state.originalRender = null;
+    try {
+      state.longTaskObserver?.disconnect();
+    } catch (_) {}
+    state.longTaskObserver = null;
+    state.parsedQueue.length = 0;
+  }
+
+  function scenarioSamples(name) {
+    return state.samples.filter((sample) => sample.scenario === name);
+  }
+
+  function completionDisorder(samples) {
+    const wanted = new Set(samples.map((sample) => sample.id));
+    let maximum = -Infinity;
+    let count = 0;
+    for (const id of state.completionOrder) {
+      if (!wanted.has(id)) continue;
+      if (id < maximum) count += 1;
+      maximum = Math.max(maximum, id);
+    }
+    return count;
+  }
+
+  function summariseScenario(name, setup, sampleKey = name) {
+    const samples = scenarioSamples(sampleKey);
+    const starts = samples.map((sample) => sample.started_at_ms);
+    const paints = samples
+      .map((sample) => sample.paint_at_ms)
+      .filter(Number.isFinite)
+      .sort((left, right) => left - right);
+    const gaps = (values) => values.slice(1).map((value, index) => value - values[index]);
+    const longTasks = state.longTasks.filter((entry) => entry.scenario === sampleKey);
+    return {
+      name,
+      sample_key: sampleKey,
+      skipped: Boolean(setup?.skipped),
+      skip_reason: setup?.reason || null,
+      source_ready: setup?.ready ?? null,
+      source_setup_ms: setup?.setup_ms ?? null,
+      samples: samples.length,
+      successful_requests: samples.filter((sample) => sample.ok && !sample.error).length,
+      failed_requests: samples.filter((sample) => sample.error || !sample.ok).length,
+      max_in_flight: Math.max(0, ...samples.map((sample) => Number(sample.in_flight) || 0)),
+      out_of_order_completions: completionDisorder(samples),
+      request_ms: describe(samples.map((sample) =>
+        Number.isFinite(sample.response_at_ms)
+          ? sample.response_at_ms - sample.started_at_ms
+          : NaN,
+      )),
+      json_ms: describe(samples.map((sample) =>
+        Number.isFinite(sample.json_at_ms) && Number.isFinite(sample.response_at_ms)
+          ? sample.json_at_ms - sample.response_at_ms
+          : NaN,
+      )),
+      render_cpu_ms: describe(samples.map((sample) =>
+        Number.isFinite(sample.render_end_ms) && Number.isFinite(sample.render_start_ms)
+          ? sample.render_end_ms - sample.render_start_ms
+          : NaN,
+      )),
+      response_to_paint_ms: describe(samples.map((sample) =>
+        Number.isFinite(sample.paint_at_ms) && Number.isFinite(sample.response_at_ms)
+          ? sample.paint_at_ms - sample.response_at_ms
+          : NaN,
+      )),
+      request_to_paint_ms: describe(samples.map((sample) =>
+        Number.isFinite(sample.paint_at_ms)
+          ? sample.paint_at_ms - sample.started_at_ms
+          : NaN,
+      )),
+      request_start_gap_ms: describe(gaps(starts)),
+      paint_gap_ms: describe(gaps(paints)),
+      long_tasks: {
+        supported: Boolean(state.longTaskObserver || longTasks.length),
+        count: longTasks.length,
+        total_ms: round(longTasks.reduce((sum, entry) => sum + entry.duration_ms, 0)),
+        maximum_ms: round(Math.max(0, ...longTasks.map((entry) => entry.duration_ms))),
+      },
+    };
+  }
+
+  async function captureScenarioRun(name, setup, runNumber, targetSamples, warmup = false) {
+    const sampleKey = `${name}__${warmup ? "warmup" : `run_${runNumber}`}`;
+    const runLabel = warmup ? "warm-up" : `run ${runNumber}/${RUNS_PER_SCENARIO}`;
+    setProgress(`Preparing ${name.replaceAll("_", " ")} ${runLabel}…`, 0);
+    const setupResult = await setup();
+    throwIfVisibilityInvalidated();
+    if (setupResult?.skipped) return summariseScenario(name, setupResult, sampleKey);
+    await sleep(warmup ? 250 : 350);
+    throwIfVisibilityInvalidated();
+    const startingCount = scenarioSamples(sampleKey).length;
+    state.scenario = sampleKey;
+    state.captureTarget = Math.max(0, Number(targetSamples) || 0);
+    state.captureAccepted = 0;
+    state.capture = true;
+    const started = performance.now();
+    const completed = await waitUntil(() => {
+      const count = scenarioSamples(sampleKey).filter((sample) =>
+        Number.isFinite(sample.response_at_ms),
+      ).length - startingCount;
+      const ratio = Math.min(1, count / targetSamples);
+      setProgress(
+        `${name.replaceAll("_", " ")} ${runLabel}… ${count}/${targetSamples}`,
+        ratio,
+      );
+      return count >= targetSamples;
+    }, SCENARIO_TIMEOUT_MS, 50);
+    throwIfVisibilityInvalidated();
+    if (state.originalRender) {
+      await waitUntil(() => {
+        const samples = scenarioSamples(sampleKey).slice(startingCount);
+        const completedResponses = samples.filter((sample) => Number.isFinite(sample.response_at_ms)).length;
+        const painted = samples.filter((sample) => Number.isFinite(sample.paint_at_ms)).length;
+        return painted >= Math.min(completedResponses, targetSamples);
+      }, 2000, 25);
+      throwIfVisibilityInvalidated();
+    }
+    state.capture = false;
+    state.captureTarget = 0;
+    state.captureAccepted = 0;
+    throwIfVisibilityInvalidated();
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const summary = summariseScenario(name, setupResult || {}, sampleKey);
+    summary.run = warmup ? 0 : runNumber;
+    summary.warmup = warmup;
+    summary.completed_target = completed;
+    summary.capture_ms = round(performance.now() - started);
+    return summary;
+  }
+
+  function aggregateDistribution(runs, group) {
+    const fields = ["mean", "median", "p95", "p99", "maximum"];
+    const result = { count: runs.reduce((sum, run) => sum + Number(run?.[group]?.count || 0), 0) };
+    for (const field of fields) {
+      result[field] = round(percentile(
+        runs.map((run) => Number(run?.[group]?.[field])).filter(Number.isFinite),
+        0.5,
+      ));
+    }
+    const runP95 = runs.map((run) => Number(run?.[group]?.p95)).filter(Number.isFinite);
+    result.worst_p95 = runP95.length ? round(Math.max(...runP95)) : null;
+    result.best_p95 = runP95.length ? round(Math.min(...runP95)) : null;
+    result.p95_spread = runP95.length
+      ? round(Math.max(...runP95) - Math.min(...runP95))
+      : null;
+    return result;
+  }
+
+  function stabilityForScenario(requestStats, paintStats) {
+    const requestMedian = Number(requestStats?.p95);
+    const requestSpread = Number(requestStats?.p95_spread);
+    const paintMedian = Number(paintStats?.p95);
+    const paintSpread = Number(paintStats?.p95_spread);
+    const requestLimit = Number.isFinite(requestMedian)
+      ? Math.max(10, requestMedian * 0.75)
+      : null;
+    const paintLimit = Number.isFinite(paintMedian)
+      ? Math.max(50, paintMedian * 0.25)
+      : null;
+    const requestStable = !Number.isFinite(requestSpread)
+      || !Number.isFinite(requestLimit)
+      || requestSpread <= requestLimit;
+    const paintStable = !Number.isFinite(paintSpread)
+      || !Number.isFinite(paintLimit)
+      || paintSpread <= paintLimit;
+    return {
+      stable: requestStable && paintStable,
+      request_p95_spread_ms: round(requestSpread),
+      request_p95_spread_limit_ms: round(requestLimit),
+      paint_gap_p95_spread_ms: round(paintSpread),
+      paint_gap_p95_spread_limit_ms: round(paintLimit),
+    };
+  }
+
+  function reportIsStable(report) {
+    const measured = (report?.scenarios || []).filter((scenario) => !scenario.skipped);
+    return Number(report?.schema) === REPORT_SCHEMA
+      && measured.length > 0
+      && report?.visibility_guard?.remained_visible !== false
+      && measured.every((scenario) =>
+        scenario.run_count === RUNS_PER_SCENARIO
+        && scenario.failed_requests === 0
+        && scenario.completed_target
+        && scenario.availability?.ready !== false
+        && scenario.valid_run_count >= REQUIRED_PASSING_RUNS,
+      );
+  }
+
+
+  function aggregateScenario(name, runs, coldSetup = null, skippedSetup = null) {
+    if (!runs.length) {
+      const summary = summariseScenario(name, skippedSetup || {
+        skipped: true,
+        reason: "No measured runs completed",
+      }, `${name}__none`);
+      summary.availability = {
+        ready: coldSetup?.ready !== false && !coldSetup?.skipped,
+        setup_ms: round(coldSetup?.setup_ms),
+        failure_reason: coldSetup?.ready === false
+          ? String(coldSetup?.reason || "Source did not become ready")
+          : coldSetup?.skipped
+            ? String(coldSetup?.reason || "Source was skipped")
+            : null,
+      };
+      summary.benchmark_kind = "cold_activation_only";
+      summary.run_count = 0;
+      summary.valid_run_count = 0;
+      return summary;
+    }
+    const longTaskCounts = runs.map((run) => Number(run.long_tasks?.count || 0));
+    const requestStats = aggregateDistribution(runs, "request_ms");
+    const jsonStats = aggregateDistribution(runs, "json_ms");
+    const renderStats = aggregateDistribution(runs, "render_cpu_ms");
+    const responsePaintStats = aggregateDistribution(runs, "response_to_paint_ms");
+    const requestPaintStats = aggregateDistribution(runs, "request_to_paint_ms");
+    const requestGapStats = aggregateDistribution(runs, "request_start_gap_ms");
+    const paintGapStats = aggregateDistribution(runs, "paint_gap_ms");
+    const validRuns = runs.filter((run) =>
+      run.completed_target
+      && Number(run.failed_requests || 0) === 0
+      && Number(run.max_in_flight || 0) <= 1,
+    );
+    return {
+      name,
+      benchmark_kind: "cold_activation_plus_five_warm_runs",
+      skipped: false,
+      skip_reason: null,
+      source_ready: coldSetup?.ready !== false,
+      source_setup_ms: round(coldSetup?.setup_ms),
+      source_setup_worst_ms: round(coldSetup?.setup_ms),
+      availability: {
+        ready: coldSetup?.ready !== false,
+        setup_ms: round(coldSetup?.setup_ms),
+        failure_reason: coldSetup?.ready === false
+          ? String(coldSetup?.reason || "Source did not become ready")
+          : null,
+      },
+      run_count: runs.length,
+      valid_run_count: validRuns.length,
+      required_passing_runs: REQUIRED_PASSING_RUNS,
+      samples: runs.reduce((sum, run) => sum + Number(run.samples || 0), 0),
+      successful_requests: runs.reduce((sum, run) => sum + Number(run.successful_requests || 0), 0),
+      failed_requests: runs.reduce((sum, run) => sum + Number(run.failed_requests || 0), 0),
+      max_in_flight: Math.max(0, ...runs.map((run) => Number(run.max_in_flight || 0))),
+      out_of_order_completions: runs.reduce(
+        (sum, run) => sum + Number(run.out_of_order_completions || 0),
+        0,
+      ),
+      request_ms: requestStats,
+      json_ms: jsonStats,
+      render_cpu_ms: renderStats,
+      response_to_paint_ms: responsePaintStats,
+      request_to_paint_ms: requestPaintStats,
+      request_start_gap_ms: requestGapStats,
+      paint_gap_ms: paintGapStats,
+      stability: {
+        stable: validRuns.length >= REQUIRED_PASSING_RUNS,
+        valid_runs: validRuns.length,
+        required_runs: REQUIRED_PASSING_RUNS,
+      },
+      long_tasks: {
+        supported: runs.some((run) => run.long_tasks?.supported),
+        count: longTaskCounts.reduce((sum, value) => sum + value, 0),
+        total_ms: round(runs.reduce((sum, run) => sum + Number(run.long_tasks?.total_ms || 0), 0)),
+        maximum_ms: round(Math.max(0, ...runs.map((run) => Number(run.long_tasks?.maximum_ms || 0)))),
+      },
+      completed_target: validRuns.length >= REQUIRED_PASSING_RUNS,
+      capture_ms: round(runs.reduce((sum, run) => sum + Number(run.capture_ms || 0), 0)),
+      runs,
+    };
+  }
+
+
+  async function benchmarkScenario(name, setup) {
+    state.scenario = `${name}__setup`;
+    setProgress(`Cold activation: ${name.replaceAll("_", " ")}…`, 0);
+    const coldSetup = await setup();
+    throwIfVisibilityInvalidated();
+    if (coldSetup?.skipped) {
+      return aggregateScenario(name, [], coldSetup, coldSetup);
+    }
+    if (coldSetup?.ready === false) {
+      return aggregateScenario(name, [], coldSetup, {
+        skipped: false,
+        reason: coldSetup?.reason || "Source did not become ready",
+      });
+    }
+
+    const settledSetup = async () => ({
+      skipped: false,
+      ready: true,
+      setup_ms: 0,
+    });
+    const warmup = await captureScenarioRun(
+      name,
+      settledSetup,
+      0,
+      WARMUP_SAMPLES,
+      true,
+    );
+    if (warmup.skipped) return aggregateScenario(name, [], coldSetup, warmup);
+
+    const runs = [];
+    for (let run = 1; run <= RUNS_PER_SCENARIO; run += 1) {
+      if (run > 1) await sleep(250);
+      const result = await captureScenarioRun(
+        name,
+        settledSetup,
+        run,
+        SAMPLES_PER_SCENARIO,
+        false,
+      );
+      throwIfVisibilityInvalidated();
+      if (result.skipped) break;
+      runs.push(result);
+    }
+    return aggregateScenario(name, runs, coldSetup);
+  }
+
+
+  function compareMetric(
+    baselineScenario,
+    candidateScenario,
+    group,
+    metric,
+    allowedRatio,
+    absoluteToleranceMs = 0,
+  ) {
+    const oldValue = Number(baselineScenario?.[group]?.[metric]);
+    if (!Number.isFinite(oldValue)) return null;
+    const candidateRuns = (candidateScenario?.runs || [])
+      .map((run) => Number(run?.[group]?.[metric]))
+      .filter(Number.isFinite);
+    const baselineRuns = (baselineScenario?.runs || [])
+      .map((run) => Number(run?.[group]?.[metric]))
+      .filter(Number.isFinite);
+    if (baselineRuns.length < REQUIRED_PASSING_RUNS) return null;
+
+    // The acceptance anchor is the slowest baseline run that must pass.
+    // With a four-of-five policy this is the fourth-best run, not the median.
+    // Small latency values also need an absolute floor: a harmless one- or
+    // two-millisecond shift should not look like a large percentage regression.
+    const sortedBaselineRuns = [...baselineRuns].sort((left, right) => left - right);
+    const baselineAcceptanceAnchor = sortedBaselineRuns[REQUIRED_PASSING_RUNS - 1];
+    const relativeLimit = baselineAcceptanceAnchor * (1 + allowedRatio);
+    const absoluteLimit = baselineAcceptanceAnchor
+      + Math.max(0, Number(absoluteToleranceMs) || 0);
+    const limit = Math.max(relativeLimit, absoluteLimit);
+    const decisionLimitMs = Math.round(limit);
+    const candidateDecisionValues = candidateRuns.map((value) => Math.round(value));
+    const baselineDecisionValues = baselineRuns.map((value) => Math.round(value));
+    const passedRuns = candidateDecisionValues.filter(
+      (value) => value <= decisionLimitMs,
+    ).length;
+    return {
+      baseline: round(oldValue),
+      baseline_acceptance_anchor: round(baselineAcceptanceAnchor),
+      candidate: round(candidateScenario?.[group]?.[metric]),
+      limit: round(limit),
+      decision_limit_ms: decisionLimitMs,
+      comparison_resolution_ms: 1,
+      relative_tolerance: allowedRatio,
+      absolute_tolerance_ms: round(absoluteToleranceMs),
+      passed_runs: passedRuns,
+      measured_runs: candidateRuns.length,
+      required_runs: REQUIRED_PASSING_RUNS,
+      passed: candidateRuns.length === RUNS_PER_SCENARIO
+        && passedRuns >= REQUIRED_PASSING_RUNS,
+      baseline_run_values: baselineRuns.map(round),
+      candidate_run_values: candidateRuns.map(round),
+      baseline_run_decision_values: baselineDecisionValues,
+      candidate_run_decision_values: candidateDecisionValues,
+    };
+  }
+
+  function compareReports(baseline, candidate) {
+    if (candidate?.visibility_guard?.remained_visible === false) {
+      return {
+        passed: null,
+        compatible: true,
+        category: "visibility",
+        reason: "Benchmark tab lost visibility; rerun with this tab kept in the foreground",
+        scenarios: [],
+      };
+    }
+    if (!baseline?.scenarios || !candidate?.scenarios) return null;
+    const compatible = Number(baseline.schema) === REPORT_SCHEMA
+      && Number(baseline.configuration?.runs_per_scenario) === RUNS_PER_SCENARIO
+      && Number(baseline.configuration?.samples_per_run) === SAMPLES_PER_SCENARIO
+      && Number(baseline.configuration?.warmup_samples) === WARMUP_SAMPLES
+      && Number(baseline.configuration?.required_passing_runs) === REQUIRED_PASSING_RUNS;
+    if (!compatible) {
+      return {
+        passed: null,
+        compatible: false,
+        reason: "The saved baseline uses an older or different benchmark profile. Save a new baseline before judging regressions.",
+        scenarios: [],
+      };
+    }
+    const results = [];
+    for (const scenario of candidate.scenarios) {
+      const old = baseline.scenarios.find((entry) => entry.name === scenario.name);
+      if (!old || scenario.skipped || old.skipped) continue;
+
+      if (scenario.availability?.ready === false) {
+        results.push({
+          name: scenario.name,
+          passed: false,
+          inconclusive: false,
+          category: "availability",
+          reason: scenario.availability?.failure_reason || "Source did not become ready",
+          checks: {},
+        });
+        continue;
+      }
+
+      const checks = {
+        request_p95: compareMetric(old, scenario, "request_ms", "p95", 0.10, 5),
+        response_to_paint_p95: compareMetric(old, scenario, "response_to_paint_ms", "p95", 0.10, 5),
+        paint_gap_p95: compareMetric(old, scenario, "paint_gap_ms", "p95", 0.20, 0),
+      };
+      const valid = scenario.valid_run_count >= REQUIRED_PASSING_RUNS
+        && scenario.run_count === RUNS_PER_SCENARIO
+        && scenario.failed_requests === 0
+        && scenario.completed_target;
+      const failed = Object.values(checks).filter(Boolean).some((check) => !check.passed)
+        || scenario.out_of_order_completions > 0
+        || Number(scenario.long_tasks?.maximum_ms || 0) >= 1000;
+      results.push({
+        name: scenario.name,
+        passed: valid ? !failed : null,
+        inconclusive: !valid,
+        category: valid ? "performance" : "invalid_capture",
+        reason: valid
+          ? null
+          : `Only ${Number(scenario.valid_run_count || 0)} of ${RUNS_PER_SCENARIO} runs were valid`,
+        checks,
+      });
+    }
+    const hasFailure = results.some((entry) => entry.passed === false);
+    const hasInconclusive = results.some((entry) => entry.passed === null);
+    return {
+      passed: hasFailure ? false : hasInconclusive ? null : true,
+      compatible: true,
+      scenarios: results,
+    };
+  }
+
+
+  async function runSuite() {
+    if (state.running) return;
+    state.running = true;
+    state.samples = [];
+    state.parsedQueue = [];
+    state.longTasks = [];
+    state.completionOrder = [];
+    state.maxInFlight = 0;
+    state.sampleSequence = 0;
+    installVisibilityGuard();
+    const originalPage = currentPageId();
+    const originalSource = activeSourceId();
+    const audio = document.querySelector("#ommiMediaAudio");
+    const interruptedPlayback = Boolean(audio && !audio.paused);
+    updateButtons();
+    showProgress(true);
+    installInstrumentation();
+
+    const report = {
+      schema: REPORT_SCHEMA,
+      generated_at: new Date().toISOString(),
+      label: "browser-automated-suite",
+      configuration: {
+        status_interval_ms: STATUS_INTERVAL_MS,
+        runs_per_scenario: RUNS_PER_SCENARIO,
+        samples_per_run: SAMPLES_PER_SCENARIO,
+        warmup_samples: WARMUP_SAMPLES,
+        scenario_timeout_ms: SCENARIO_TIMEOUT_MS,
+        aggregation: "one cold activation plus five warm runs; four-of-five agreement",
+        required_passing_runs: REQUIRED_PASSING_RUNS,
+      },
+      environment: {
+        viewport: `${window.innerWidth}x${window.innerHeight}`,
+        device_pixel_ratio: window.devicePixelRatio || 1,
+        visibility_state: document.visibilityState,
+      },
+      playback_was_interrupted: interruptedPlayback,
+      visibility_guard: {
+        required: true,
+        remained_visible: true,
+        interruptions: [],
+      },
+      scenarios: [],
+    };
+
+    try {
+      report.scenarios.push(await benchmarkScenario("home_idle", async () => {
+        showPage("pageHome");
+        return { skipped: false, ready: true, setup_ms: 0 };
+      }));
+
+      if (sourceEnabled("jellyfin")) {
+        report.scenarios.push(await benchmarkScenario("media_jellyfin_browse", () =>
+          activateSource("jellyfin"),
+        ));
+      } else {
+        report.scenarios.push(aggregateScenario("media_jellyfin_browse", [], null, {
+          skipped: true,
+          reason: "Jellyfin is disabled",
+        }));
+      }
+
+      if (sourceEnabled("radio")) {
+        report.scenarios.push(await benchmarkScenario("media_radio_browse", () =>
+          activateSource("radio"),
+        ));
+      } else {
+        report.scenarios.push(aggregateScenario("media_radio_browse", [], null, {
+          skipped: true,
+          reason: "Internet Radio is disabled or not acknowledged",
+        }));
+      }
+
+      report.comparison = compareReports(state.baseline, report);
+      state.latest = report;
+      writeJson(LATEST_KEY, report);
+    } catch (error) {
+      if (state.visibilityInvalidation
+          || error?.code === "OPENMMI_PERFORMANCE_VISIBILITY_INTERRUPTED") {
+        report.visibility_guard.remained_visible = false;
+        report.visibility_guard.interruptions = state.visibilityInvalidation
+          ? [state.visibilityInvalidation]
+          : [];
+        report.inconclusive_reason = "Benchmark tab lost visibility";
+        report.comparison = compareReports(state.baseline, report) || {
+          passed: null,
+          compatible: true,
+          category: "visibility",
+          reason: "Benchmark tab lost visibility; rerun with this tab kept in the foreground",
+          scenarios: [],
+        };
+      } else {
+        report.error = String(error?.message || error);
+      }
+      state.latest = report;
+      writeJson(LATEST_KEY, report);
+    } finally {
+      state.capture = false;
+      removeVisibilityGuard();
+      removeInstrumentation();
+      try {
+        if (sourceEnabled(originalSource)) {
+          window.openMmiMediaSources?.setActiveSource?.(originalSource);
+          window.openMmiMediaAdapters?.syncActiveSource?.(true);
+        }
+      } catch (_) {}
+      showPage(originalPage);
+      if (originalPage === "pageSettings") {
+        window.openMmiShowSettingsPage?.();
+        await sleep(50);
+        document.querySelector('[data-openmmi-settings-section="diagnostics"]')?.click();
+      }
+      state.running = false;
+      showProgress(false);
+      updateButtons();
+      renderReport();
+    }
+  }
+
+  function formatMs(value) {
+    return Number.isFinite(Number(value)) ? `${Number(value).toFixed(1)} ms` : "—";
+  }
+
+  function scenarioCard(scenario) {
+    if (scenario.skipped) {
+      return `<article class="openmmi-perf-card is-skipped"><strong>${escapeHtml(scenario.name.replaceAll("_", " "))}</strong><span>${escapeHtml(scenario.skip_reason || "Skipped")}</span></article>`;
+    }
+    const comparison = state.latest?.comparison?.scenarios?.find((entry) => entry.name === scenario.name);
+    const badge = comparison
+      ? comparison.category === "availability"
+        ? '<span class="openmmi-perf-badge is-fail">availability failed</span>'
+        : comparison.passed === null
+          ? '<span class="openmmi-perf-badge is-warn">inconclusive</span>'
+          : `<span class="openmmi-perf-badge ${comparison.passed ? "is-pass" : "is-fail"}">${comparison.passed ? "within baseline" : "regression"}</span>`
+      : scenario.availability?.ready === false
+        ? '<span class="openmmi-perf-badge is-fail">availability failed</span>'
+        : "";
+    const method = scenario.run_count
+      ? `Cold activation + ${Number(scenario.run_count)} warm runs (${Number(scenario.valid_run_count || 0)} valid)`
+      : "Cold activation only";
+    const readiness = scenario.availability?.ready === false
+      ? escapeHtml(scenario.availability?.failure_reason || "Failed")
+      : formatMs(scenario.availability?.setup_ms);
+    return `<article class="openmmi-perf-card">
+      <header><strong>${escapeHtml(scenario.name.replaceAll("_", " "))}</strong>${badge}</header>
+      <p class="openmmi-perf-method">${escapeHtml(method)}</p>
+      <dl>
+        <div><dt>Status p95</dt><dd>${formatMs(scenario.request_ms?.p95)}</dd></div>
+        <div><dt>Response → paint p95</dt><dd>${formatMs(scenario.response_to_paint_ms?.p95)}</dd></div>
+        <div><dt>Paint gap p95</dt><dd>${formatMs(scenario.paint_gap_ms?.p95)}</dd></div>
+        <div><dt>Cold activation</dt><dd>${readiness}</dd></div>
+        <div><dt>Valid warm runs</dt><dd>${Number(scenario.valid_run_count || 0)}/${Number(scenario.run_count || 0)}</dd></div>
+        <div><dt>Failures</dt><dd>${Number(scenario.failed_requests || 0)}</dd></div>
+        <div><dt>Long tasks</dt><dd>${Number(scenario.long_tasks?.count || 0)}</dd></div>
+      </dl>
+    </article>`;
+  }
+
+
+  function renderReport() {
+    const output = document.querySelector("#openMmiPerformanceResults");
+    if (!output) return;
+    if (!state.latest) {
+      output.innerHTML = '<p class="openmmi-perf-empty">No browser diagnostic run has been recorded yet.</p>';
+      return;
+    }
+    const comparisonText = state.latest.visibility_guard?.remained_visible === false
+      ? "Benchmark inconclusive because this tab lost visibility"
+      : !state.latest.comparison
+        ? "No browser baseline saved"
+        : state.latest.comparison.compatible === false
+        ? state.latest.comparison.reason
+        : state.latest.comparison.scenarios?.some((entry) => entry.category === "availability")
+          ? "A source failed its cold activation check"
+          : state.latest.comparison.passed === null
+            ? "Comparison is inconclusive because fewer than four warm runs were valid"
+            : state.latest.comparison.passed
+              ? "At least four of five runs are within the saved baseline"
+              : "Fewer than four of five runs met the saved baseline";
+    output.innerHTML = `
+      <div class="openmmi-perf-summary ${state.latest.comparison?.passed === false ? "is-fail" : ""}">
+        <strong>${escapeHtml(comparisonText)}</strong>
+        <span>${escapeHtml(new Date(state.latest.generated_at).toLocaleString())}</span>
+      </div>
+      <div class="openmmi-perf-grid">${(state.latest.scenarios || []).map(scenarioCard).join("")}</div>
+    `;
+  }
+
+
+  function downloadLatest() {
+    if (!state.latest) return;
+    const blob = new Blob([`${JSON.stringify(state.latest, null, 2)}\n`], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `open-mmi-browser-performance-${new Date().toISOString().replaceAll(":", "-")}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function saveBaseline() {
+    if (!state.latest || !reportIsStable(state.latest)) return;
+    state.baseline = typeof structuredClone === "function"
+      ? structuredClone(state.latest)
+      : JSON.parse(JSON.stringify(state.latest));
+    state.baseline.comparison = null;
+    writeJson(BASELINE_KEY, state.baseline);
+    state.latest.comparison = compareReports(state.baseline, state.latest);
+    writeJson(LATEST_KEY, state.latest);
+    updateButtons();
+    renderReport();
+  }
+
+  function clearBaseline() {
+    try {
+      localStorage.removeItem(BASELINE_KEY);
+    } catch (_) {}
+    state.baseline = null;
+    if (state.latest) {
+      state.latest.comparison = null;
+      writeJson(LATEST_KEY, state.latest);
+    }
+    updateButtons();
+    renderReport();
+  }
+
+  function setProgress(label, ratio) {
+    const overlay = document.querySelector("#openMmiPerformanceProgress");
+    if (!overlay) return;
+    const text = overlay.querySelector("[data-openmmi-perf-progress-label]");
+    const bar = overlay.querySelector("[data-openmmi-perf-progress-bar]");
+    if (text) text.textContent = label;
+    if (bar) bar.style.width = `${Math.max(0, Math.min(1, Number(ratio) || 0)) * 100}%`;
+  }
+
+  function showProgress(show) {
+    const overlay = document.querySelector("#openMmiPerformanceProgress");
+    if (!overlay) return;
+    overlay.hidden = !show;
+    overlay.setAttribute("aria-hidden", show ? "false" : "true");
+  }
+
+  function updateButtons() {
+    const run = document.querySelector("#openMmiPerformanceRun");
+    const download = document.querySelector("#openMmiPerformanceDownload");
+    const baseline = document.querySelector("#openMmiPerformanceSaveBaseline");
+    const clear = document.querySelector("#openMmiPerformanceClearBaseline");
+    if (run) {
+      run.disabled = state.running;
+      run.textContent = state.running ? "Running…" : "Run robust suite";
+    }
+    if (download) download.disabled = !state.latest || state.running;
+    if (baseline) baseline.disabled = !state.latest || state.running || !reportIsStable(state.latest);
+    if (clear) clear.disabled = !state.baseline || state.running;
+    const baselineState = document.querySelector("#openMmiPerformanceBaselineState");
+    if (baselineState) {
+      baselineState.textContent = state.baseline
+        ? Number(state.baseline.schema) === REPORT_SCHEMA
+          ? `Browser baseline saved ${new Date(state.baseline.generated_at).toLocaleString()}`
+          : "Saved baseline uses an older benchmark format"
+        : "No browser baseline saved";
+    }
+  }
+
+
+  function ensureProgressOverlay() {
+    if (document.querySelector("#openMmiPerformanceProgress")) return;
+    const overlay = document.createElement("div");
+    overlay.id = "openMmiPerformanceProgress";
+    overlay.className = "openmmi-performance-progress";
+    overlay.hidden = true;
+    overlay.setAttribute("role", "status");
+    overlay.setAttribute("aria-live", "polite");
+    overlay.innerHTML = `
+      <strong data-openmmi-perf-progress-label>Preparing diagnostics…</strong>
+      <div class="openmmi-performance-progress-track"><span data-openmmi-perf-progress-bar></span></div>
+      <small>Keep this tab visible. Leaving it invalidates the suite. One cold activation and five warm runs per scenario. Four matching runs are required.</small>
+    `;
+    document.body.appendChild(overlay);
+  }
+
+
+  function ensurePanel() {
+    const page = document.querySelector("#pageSettings");
+    const panel = document.querySelector("#openmmiSettingsPanel");
+    if (!page || !panel) return;
+    let host = document.querySelector("#openMmiSettingsPerformanceHost");
+    if (!host) {
+      host = document.createElement("section");
+      host.id = "openMmiSettingsPerformanceHost";
+      host.className = "openmmi-performance-settings";
+      host.innerHTML = `
+        <header>
+          <div><span>Diagnostics</span><h3>Automated browser performance</h3></div>
+          <span id="openMmiPerformanceBaselineState" class="openmmi-perf-baseline-state"></span>
+        </header>
+        <p><strong>Keep this tab visible for the entire run.</strong> Switching tabs, minimising the browser, or navigating away invalidates the suite and prevents baseline saving. Runs Home, Jellyfin browsing, and Internet Radio browsing automatically. Each scenario records one cold activation, then a warm-up and five measured passes. Four of five runs must agree. Allow about three minutes. Radio is tested only when already enabled and privacy-acknowledged. The suite does not start audio; existing playback may stop and will not resume automatically.</p>
+        <p class="openmmi-perf-privacy">Results contain timings and scenario names only. Status payloads, telltale values, Jellyfin credentials, station favourites, and search text are not stored or uploaded.</p>
+        <div class="openmmi-perf-actions">
+          <button type="button" id="openMmiPerformanceRun">Run robust suite</button>
+          <button type="button" id="openMmiPerformanceDownload">Download JSON</button>
+          <button type="button" id="openMmiPerformanceSaveBaseline">Save as baseline</button>
+          <button type="button" id="openMmiPerformanceClearBaseline">Clear baseline</button>
+        </div>
+        <div id="openMmiPerformanceResults" class="openmmi-performance-results" aria-live="polite"></div>
+      `;
+      const staticControls = document.querySelector("#openmmiSettingsStaticControls");
+      if (staticControls?.parentNode === panel.parentNode) {
+        panel.parentNode.insertBefore(host, panel);
+      } else {
+        panel.parentNode?.insertBefore(host, panel);
+      }
+      requestAnimationFrame(() => {
+        host.scrollIntoView?.({ block: "start", behavior: "auto" });
+      });
+      host.querySelector("#openMmiPerformanceRun")?.addEventListener("click", runSuite);
+      host.querySelector("#openMmiPerformanceDownload")?.addEventListener("click", downloadLatest);
+      host.querySelector("#openMmiPerformanceSaveBaseline")?.addEventListener("click", saveBaseline);
+      host.querySelector("#openMmiPerformanceClearBaseline")?.addEventListener("click", clearBaseline);
+    }
+    host.hidden = activeSettingsSection() !== "diagnostics";
+    updateButtons();
+    renderReport();
+  }
+
+
+  function schedulePanel() {
+    requestAnimationFrame(ensurePanel);
+  }
+
+  window.addEventListener("openmmi:settingsrender", schedulePanel);
+  window.addEventListener("openmmi:pagechange", schedulePanel);
+  document.addEventListener("DOMContentLoaded", () => {
+    ensureProgressOverlay();
+    schedulePanel();
+  });
+  if (document.readyState !== "loading") {
+    ensureProgressOverlay();
+    schedulePanel();
+  }
+
+  window.openMmiPerformanceDiagnostics = {
+    runSuite,
+    getLatestReport: () => state.latest,
+    getBaseline: () => state.baseline,
+    saveLatestAsBaseline: saveBaseline,
+  };
+})();
+// --- Open MMI browser performance diagnostics end ---
+
+// --- Open MMI USB media source start ---
+(function openMmiUsbMediaSource() {
+  if (window.__openMmiUsbMediaSourceLoaded) return;
+  window.__openMmiUsbMediaSourceLoaded = true;
+
+  const state = {
+    directoryId: "",
+    parentId: null,
+    breadcrumbs: [],
+    installed: false,
+    durationCache: new Map(),
+    durationGeneration: 0,
+  };
+
+  function usbFolderIcon() {
+    return `<svg class="ommi-music-icon ommi-usb-folder-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M2.75 5.5A2.75 2.75 0 0 1 5.5 2.75h4.1c.73 0 1.43.29 1.94.81l1.19 1.19h5.77a2.75 2.75 0 0 1 2.75 2.75v9A2.75 2.75 0 0 1 18.5 19.25h-13A2.75 2.75 0 0 1 2.75 16.5v-11Z"/></svg>`;
+  }
+
+  function adapterApi() {
+    return window.openMmiMediaAdapters || null;
+  }
+
+  function activeUsb() {
+    try {
+      return adapterApi()?.activeSourceId?.() === "usb";
+    } catch (_) {
+      return false;
+    }
+  }
+
+
+  function usbDurationText(seconds) {
+    const value = Number(seconds);
+    if (!Number.isFinite(value) || value <= 0) return "…";
+    if (typeof ommiMediaTime === "function") return ommiMediaTime(value);
+    const total = Math.max(0, Math.round(value));
+    const minutes = Math.floor(total / 60);
+    const remainder = String(total % 60).padStart(2, "0");
+    return `${minutes}:${remainder}`;
+  }
+
+  function commitUsbDuration(index, item, seconds, generation = state.durationGeneration) {
+    const value = Number(seconds);
+    if (!item?.id || !Number.isFinite(value) || value <= 0) return false;
+    state.durationCache.set(item.id, value);
+    item.duration_seconds = value;
+    if (generation !== state.durationGeneration) return true;
+    const queueItem = openMmiMedia.queue?.[Number(index)];
+    if (!queueItem || queueItem.id !== item.id || queueItem.source !== "usb") return true;
+    queueItem.duration_seconds = value;
+    const duration = document.querySelector(
+      `[data-open-mmi-track="${Number(index)}"] .ommi-track-duration`,
+    );
+    if (duration) {
+      duration.textContent = usbDurationText(value);
+      duration.removeAttribute("title");
+    }
+    if (openMmiMedia.current?.id === item.id && typeof ommiMediaUpdateProgress === "function") {
+      ommiMediaUpdateProgress();
+    }
+    return true;
+  }
+
+  function probeUsbDuration(entry, generation) {
+    return new Promise((resolve) => {
+      if (generation !== state.durationGeneration) {
+        resolve();
+        return;
+      }
+      const audio = document.createElement("audio");
+      let finished = false;
+      let timeout = 0;
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        if (timeout) clearTimeout(timeout);
+        audio.removeEventListener("loadedmetadata", accept);
+        audio.removeEventListener("durationchange", accept);
+        audio.removeEventListener("canplay", accept);
+        audio.removeEventListener("error", finish);
+        try {
+          audio.pause();
+          audio.removeAttribute("src");
+          audio.load();
+        } catch (_) {}
+        resolve();
+      };
+      const accept = () => {
+        if (commitUsbDuration(entry.index, entry.item, audio.duration, generation)) finish();
+      };
+      audio.preload = "metadata";
+      audio.addEventListener("loadedmetadata", accept);
+      audio.addEventListener("durationchange", accept);
+      audio.addEventListener("canplay", accept);
+      audio.addEventListener("error", finish, { once: true });
+      timeout = window.setTimeout(finish, 8000);
+      audio.src = usbAdapter().streamUrl(entry.item);
+      audio.load();
+    });
+  }
+
+  async function hydrateUsbDurations(entries, generation) {
+    let cursor = 0;
+    const workerCount = Math.min(2, entries.length);
+    const workers = Array.from({ length: workerCount }, async () => {
+      while (generation === state.durationGeneration && cursor < entries.length) {
+        const entry = entries[cursor];
+        cursor += 1;
+        await probeUsbDuration(entry, generation);
+      }
+    });
+    await Promise.all(workers);
+  }
+
+
+  function syncUsbSourceChrome(sourceId = null) {
+    const controls = document.querySelector("#ommiUsbBrowserControls");
+    if (!controls) return;
+    let selected = String(sourceId || "");
+    if (!selected) {
+      try {
+        selected = String(adapterApi()?.activeSourceId?.() || "");
+      } catch (_) {
+        selected = "";
+      }
+    }
+    controls.hidden = selected !== "usb";
+  }
+
+  function usbAdapter() {
+    return {
+      id: "usb",
+      label: "USB Media",
+      defaultFilter: "browse",
+      filters: {
+        browse: "Folders first",
+        az: "A–Z",
+        recent: "Recently modified",
+      },
+      searchPlaceholder: "Search this USB folder…",
+      searchLabel: "Search USB media; results update as you type",
+      emptyText: "No supported audio files or folders found.",
+      loadingText: "Loading USB media…",
+      readyText: "Tap a folder to browse or a track to play.",
+      statusUrl: "/api/usb/status",
+      searchUrl(query, filter) {
+        return `/api/usb/browse?${new URLSearchParams({
+          dir: state.directoryId || "",
+          q: String(query || ""),
+          limit: "60",
+          filter: filter || "browse",
+        })}`;
+      },
+      streamUrl(item) {
+        return `/api/usb/stream/${encodeURIComponent(item.id)}`;
+      },
+    };
+  }
+
+  function ensureBrowserControls() {
+    const root = document.querySelector("#openMmiMediaRoot");
+    const results = root?.querySelector("#ommiMediaResults");
+    if (!root || !results) return null;
+    let controls = root.querySelector("#ommiUsbBrowserControls");
+    if (!controls) {
+      controls = document.createElement("nav");
+      controls.id = "ommiUsbBrowserControls";
+      controls.className = "ommi-usb-browser-controls";
+      controls.setAttribute("aria-label", "USB folder navigation");
+      controls.innerHTML = `<button type="button" class="btn ommi-usb-up" data-openmmi-usb-up aria-label="Go to parent folder" title="Parent folder">← Up</button><span class="ommi-usb-path" aria-live="polite">USB media roots</span>`;
+      results.before(controls);
+      controls.querySelector("[data-openmmi-usb-up]")?.addEventListener("click", () => {
+        state.directoryId = state.parentId ?? "";
+        const input = document.querySelector("#ommiMediaSearch");
+        if (input) input.value = "";
+        usbLoadLibrary("", openMmiMedia.filter || "browse");
+      });
+    }
+    controls.hidden = !activeUsb();
+    return controls;
+  }
+
+  function updateBrowserControls(payload = {}) {
+    const controls = ensureBrowserControls();
+    if (!controls) return;
+    state.parentId = payload.parent_id ?? null;
+    state.breadcrumbs = Array.isArray(payload.breadcrumbs) ? payload.breadcrumbs : [];
+    const up = controls.querySelector("[data-openmmi-usb-up]");
+    if (up) {
+      up.disabled = payload.parent_id === null || payload.parent_id === undefined;
+      up.hidden = up.disabled;
+    }
+    const path = controls.querySelector(".ommi-usb-path");
+    if (path) {
+      path.textContent = state.breadcrumbs.length
+        ? state.breadcrumbs.map((crumb) => crumb.label).join(" / ")
+        : "USB media roots";
+    }
+  }
+
+  function decorateUsbResults(generation) {
+    if (!activeUsb() || !openMmiMedia?.queue) return;
+    const unresolved = [];
+    openMmiMedia.queue.forEach((item, index) => {
+      if (item?.source !== "usb") return;
+      const button = document.querySelector(`[data-open-mmi-track="${index}"]`);
+      if (!button) return;
+      const duration = button.querySelector(".ommi-track-duration");
+      if (item.kind === "directory") {
+        button.classList.add("ommi-usb-directory");
+        button.setAttribute("aria-label", `Open folder ${item.name || "USB folder"}`);
+        const art = button.querySelector(".ommi-track-art");
+        if (art) art.innerHTML = usbFolderIcon();
+        if (duration) {
+          duration.textContent = "›";
+          duration.classList.add("ommi-usb-folder-chevron");
+        }
+        return;
+      }
+      if (item.kind !== "audio" || !duration) return;
+      const supplied = Number(item.duration_seconds);
+      const cached = Number(state.durationCache.get(item.id));
+      if (Number.isFinite(supplied) && supplied > 0) {
+        commitUsbDuration(index, item, supplied, generation);
+      } else if (Number.isFinite(cached) && cached > 0) {
+        commitUsbDuration(index, item, cached, generation);
+      } else {
+        duration.textContent = "…";
+        duration.title = "Reading track duration";
+        unresolved.push({ index, item });
+      }
+    });
+    if (unresolved.length) void hydrateUsbDurations(unresolved, generation);
+  }
+
+  async function usbLoadLibrary(query = "", filter = openMmiMedia.filter || "browse") {
+    ommiMediaPage();
+    const api = adapterApi();
+    const adapter = api?.adapters?.usb;
+    if (!adapter || !activeUsb()) return;
+    api.applySourceUi?.(adapter);
+    const searchButton = document.querySelector("#ommiMediaSearchBtn");
+    if (searchButton) {
+      searchButton.title = "Search USB media";
+      searchButton.setAttribute("aria-label", "Search USB media");
+    }
+    ommiMediaInstallFilters();
+    const filterSelect = document.querySelector("#ommiMediaFilter");
+    if (filterSelect) {
+      filterSelect.title = "Choose USB media view";
+      filterSelect.setAttribute("aria-label", "USB media view");
+    }
+    ensureBrowserControls();
+
+    const q = String(query || "").trim();
+    const selectedFilter = Object.prototype.hasOwnProperty.call(adapter.filters, filter)
+      ? filter
+      : adapter.defaultFilter;
+    const requestSerial = (Number(openMmiMedia.requestSerial) || 0) + 1;
+    openMmiMedia.requestSerial = requestSerial;
+    openMmiMedia.lastQuery = q;
+    openMmiMedia.filter = selectedFilter;
+    ommiMediaUpdateFilters();
+    ommiMediaSetMessage(q ? "Searching USB media…" : adapter.loadingText);
+    ommiMediaSetLoading(true);
+    try {
+      const payload = await ommiMediaFetchJson(adapter.searchUrl(q, selectedFilter));
+      if (requestSerial !== openMmiMedia.requestSerial) return;
+      state.directoryId = String(payload.directory_id || "");
+      updateBrowserControls(payload);
+      const listTitle = document.querySelector("#ommiMediaListTitle");
+      if (listTitle) {
+        listTitle.textContent = q
+          ? `Search results · ${payload.title || "USB media"}`
+          : (payload.title || "USB media");
+      }
+      if (payload.error) ommiMediaSetMessage(payload.error, "error");
+      else if (payload.truncated) ommiMediaSetMessage("Showing the first matching USB items; refine the search for more.");
+      else ommiMediaSetMessage(adapter.readyText);
+      ommiMediaRenderResults(payload.items || []);
+    } catch (error) {
+      if (requestSerial !== openMmiMedia.requestSerial) return;
+      ommiMediaSetMessage(`Could not load USB media: ${error.message}`, "error");
+      ommiMediaRenderResults([]);
+    } finally {
+      if (requestSerial === openMmiMedia.requestSerial) ommiMediaSetLoading(false);
+    }
+    if (requestSerial === openMmiMedia.requestSerial) ommiMediaFitViewport();
+  }
+
+  function patchMediaFunctions() {
+    if (state.installed) return;
+    const api = adapterApi();
+    if (!api?.adapters) return;
+    api.adapters.usb = usbAdapter();
+
+    const originalLoadLibrary = ommiMediaLoadLibrary;
+    ommiMediaLoadLibrary = function ommiMediaLoadUsbAware(query = "", filter = openMmiMedia.filter) {
+      const usbIsActive = activeUsb();
+      syncUsbSourceChrome(usbIsActive ? "usb" : null);
+      return usbIsActive
+        ? usbLoadLibrary(query, filter || "browse")
+        : originalLoadLibrary(query, filter);
+    };
+
+    const originalRenderResults = ommiMediaRenderResults;
+    ommiMediaRenderResults = function ommiMediaRenderUsbAware(items) {
+      syncUsbSourceChrome();
+      state.durationGeneration += 1;
+      const generation = state.durationGeneration;
+      originalRenderResults(items);
+      decorateUsbResults(generation);
+    };
+
+    const originalPlayIndex = ommiMediaPlayIndex;
+    ommiMediaPlayIndex = async function ommiMediaPlayUsbAware(index) {
+      const item = openMmiMedia.queue?.[Number(index)];
+      if (item?.source === "usb" && item.kind === "directory") {
+        state.directoryId = item.id;
+        const input = document.querySelector("#ommiMediaSearch");
+        if (input) input.value = "";
+        return usbLoadLibrary("", openMmiMedia.filter || "browse");
+      }
+      return originalPlayIndex(index);
+    };
+
+    const originalSetNowPlaying = ommiMediaSetNowPlaying;
+    ommiMediaSetNowPlaying = function ommiMediaSetUsbNowPlaying(item) {
+      originalSetNowPlaying(item);
+      if (!item && activeUsb()) {
+        const title = document.querySelector("#ommiMediaTitle");
+        const subtitle = document.querySelector("#ommiMediaSubtitle");
+        if (title) title.textContent = "Select USB music";
+        if (subtitle) subtitle.textContent = "Browse a folder and tap a track to play locally";
+      }
+    };
+
+    const playerAudio = document.querySelector("#ommiMediaAudio");
+    if (playerAudio && playerAudio.dataset.openMmiUsbDurationSync !== "1") {
+      playerAudio.dataset.openMmiUsbDurationSync = "1";
+      playerAudio.addEventListener("loadedmetadata", () => {
+        const item = openMmiMedia.current;
+        if (item?.source !== "usb" || item.kind !== "audio") return;
+        const index = openMmiMedia.queue?.findIndex((candidate) => candidate?.id === item.id) ?? -1;
+        commitUsbDuration(index, item, playerAudio.duration, state.durationGeneration);
+      });
+    }
+
+    state.installed = true;
+    ensureBrowserControls();
+    try { api.syncActiveSource?.(true); } catch (_) {}
+  }
+
+  function install() {
+    if (!adapterApi()?.adapters || typeof ommiMediaLoadLibrary !== "function") {
+      setTimeout(install, 25);
+      return;
+    }
+    patchMediaFunctions();
+  }
+
+  document.addEventListener("click", (event) => {
+    const sourceButton = event.target.closest?.("[data-openmmi-media-source]");
+    if (!sourceButton) return;
+    const sourceId = String(sourceButton.getAttribute("data-openmmi-media-source") || "");
+    syncUsbSourceChrome(sourceId);
+    if (sourceId !== "usb") return;
+    requestAnimationFrame(() => {
+      ensureBrowserControls();
+      if (activeUsb()) usbLoadLibrary("", "browse");
+    });
+  });
+  window.addEventListener("openmmi:pagechange", () => requestAnimationFrame(() => {
+    ensureBrowserControls();
+    syncUsbSourceChrome();
+  }));
+  document.addEventListener("DOMContentLoaded", install);
+  install();
+
+  window.openMmiUsbMedia = {
+    state,
+    load: usbLoadLibrary,
+  };
+})();
+// --- Open MMI USB media source end ---
+
+// --- Open MMI Bluetooth media source start ---
+(function openMmiBluetoothMediaSource() {
+  if (window.__openMmiBluetoothMediaSourceLoaded) return;
+  window.__openMmiBluetoothMediaSourceLoaded = true;
+
+  const state = {
+    installed: false,
+    pollTimer: null,
+    progressTimer: null,
+    requestSerial: 0,
+    payload: null,
+    payloadReceivedAt: 0,
+    controlBusy: false,
+    playbackOverride: null,
+    playbackOverridePosition: 0,
+    playbackOverrideStartedAt: 0,
+    lastServerPosition: null,
+    lastServerObservedAt: 0,
+  };
+
+  function adapterApi() {
+    return window.openMmiMediaAdapters || null;
+  }
+
+  function activeBluetooth() {
+    return adapterApi()?.activeSourceId?.() === "bluetooth";
+  }
+
+  function bluetoothAdapter() {
+    return {
+      id: "bluetooth",
+      label: "Bluetooth",
+      defaultFilter: "now",
+      filters: { now: "Now playing" },
+      searchPlaceholder: "Bluetooth uses the connected player",
+      searchLabel: "Bluetooth media does not support library search",
+      emptyText: "No Bluetooth track metadata is available.",
+      loadingText: "Checking connected Bluetooth media…",
+      readyText: "Controls are sent to the connected Bluetooth player.",
+      statusUrl: "/api/bluetooth/status",
+      searchUrl() { return "/api/bluetooth/status"; },
+      streamUrl() { return ""; },
+    };
+  }
+
+  function setBluetoothOnlyUi(active) {
+    const input = document.querySelector("#ommiMediaSearch");
+    input?.closest(".input-group")?.classList.toggle("openmmi-bluetooth-hidden", active);
+    document.querySelector("#ommiMediaFilter")?.classList.toggle("openmmi-bluetooth-hidden", active);
+    const root = document.querySelector("#openMmiMediaRoot");
+    root?.classList.toggle("openmmi-media-source-bluetooth", active);
+    const progress = document.querySelector("#ommiMediaProgressTrack");
+    if (!active && progress) {
+      progress.classList.remove("is-bluetooth-readonly");
+      progress.removeAttribute("aria-disabled");
+      progress.removeAttribute("title");
+    }
+    if (!active) return;
+    const listTitle = document.querySelector("#ommiMediaListTitle");
+    if (listTitle) listTitle.textContent = "Connected Bluetooth player";
+  }
+
+  function setButtonState(selector, enabled) {
+    const button = document.querySelector(selector);
+    if (!button) return;
+    button.disabled = !enabled || state.controlBusy;
+    button.setAttribute("aria-disabled", String(button.disabled));
+  }
+
+  function normalizePlaybackStatus(payload = state.payload) {
+    const status = String(payload?.playback_status || "stopped").toLowerCase();
+    return ["playing", "paused", "stopped", "forward-seek", "reverse-seek"].includes(status)
+      ? status
+      : "stopped";
+  }
+
+  function effectivePlaybackStatus(payload = state.payload) {
+    return state.playbackOverride || normalizePlaybackStatus(payload);
+  }
+
+  function rawBluetoothPosition(payload = state.payload) {
+    return Math.max(0, Number(payload?.position_seconds || 0));
+  }
+
+  function currentBluetoothPosition(payload = state.payload) {
+    const duration = Math.max(0, Number(payload?.duration_seconds || 0));
+    const overrideStatus = state.playbackOverride;
+    let position = overrideStatus
+      ? Math.max(0, Number(state.playbackOverridePosition || 0))
+      : rawBluetoothPosition(payload);
+    if (overrideStatus === "playing") {
+      position += Math.max(
+        0,
+        (performance.now() - Number(state.playbackOverrideStartedAt || performance.now())) / 1000,
+      );
+    }
+    return duration > 0 ? Math.min(duration, position) : position;
+  }
+
+  function reconcilePlaybackOverride(payload) {
+    const now = performance.now();
+    const serverPosition = rawBluetoothPosition(payload);
+    const previousPosition = state.lastServerPosition;
+    const previousObservedAt = state.lastServerObservedAt;
+    state.lastServerPosition = serverPosition;
+    state.lastServerObservedAt = now;
+
+    if (!state.playbackOverride) return;
+    // Dashboard-issued Bluetooth transport state is authoritative. YouTube and
+    // other Android browser players can report both stale Status and a falsely
+    // advancing Position while paused, so polls may never release Pause. During
+    // an explicit Play state, though, a material Position discontinuity is a
+    // useful remote-seek signal and should re-anchor the local elapsed clock.
+    if (state.playbackOverride === "playing") {
+      const displayedPosition = currentBluetoothPosition(payload);
+      const observedSeconds = Math.max(
+        0,
+        (now - Number(previousObservedAt || now)) / 1000,
+      );
+      const serverDelta = previousPosition === null
+        ? 0
+        : serverPosition - Number(previousPosition);
+      const drift = serverPosition - displayedPosition;
+      const remoteSeek = (
+        previousPosition !== null
+        && (serverDelta < -1.5 || serverDelta >= observedSeconds + 1.5)
+      ) || Math.abs(drift) >= 4;
+      if (remoteSeek) {
+        state.playbackOverridePosition = serverPosition;
+        state.playbackOverrideStartedAt = now;
+      }
+      return;
+    }
+    if (state.playbackOverride === "stopped") {
+      state.playbackOverridePosition = 0;
+    }
+  }
+
+  function applyOptimisticControlState(action) {
+    const currentStatus = effectivePlaybackStatus(state.payload);
+    const currentPosition = currentBluetoothPosition(state.payload);
+    let nextStatus = null;
+    if (action === "play_pause") {
+      nextStatus = ["playing", "forward-seek", "reverse-seek"].includes(currentStatus)
+        ? "paused"
+        : "playing";
+    } else if (["play", "pause", "stop"].includes(action)) {
+      nextStatus = action === "play" ? "playing" : action === "pause" ? "paused" : "stopped";
+    }
+    if (!nextStatus) return;
+    state.playbackOverride = nextStatus;
+    state.playbackOverridePosition = nextStatus === "stopped" ? 0 : currentPosition;
+    state.playbackOverrideStartedAt = performance.now();
+    updateTransportUi(state.payload || {});
+    updateProgressUi(state.payload || {});
+    scheduleProgressTicker();
+  }
+
+  function clearProgressTicker() {
+    if (state.progressTimer !== null) {
+      clearInterval(state.progressTimer);
+      state.progressTimer = null;
+    }
+  }
+
+  function scheduleProgressTicker() {
+    clearProgressTicker();
+    if (
+      !activeBluetooth()
+      || document.visibilityState !== "visible"
+      || state.playbackOverride !== "playing"
+    ) return;
+    state.progressTimer = window.setInterval(() => {
+      if (
+        !activeBluetooth()
+        || document.visibilityState !== "visible"
+        || state.playbackOverride !== "playing"
+      ) {
+        clearProgressTicker();
+        return;
+      }
+      updateTransportUi(state.payload || {});
+      updateProgressUi(state.payload || {});
+    }, 250);
+  }
+
+  function updateTransportUi(payload) {
+    const controls = payload?.controls || {};
+    const playing = ["playing", "forward-seek", "reverse-seek"].includes(
+      effectivePlaybackStatus(payload),
+    );
+    const play = document.querySelector("#ommiMediaPlay");
+    if (play) {
+      play.innerHTML = typeof ommiMediaIcon === "function"
+        ? ommiMediaIcon(playing ? "pause-fill" : "play-fill")
+        : (playing ? "Pause" : "Play");
+      play.title = playing ? "Pause Bluetooth playback" : "Play Bluetooth media";
+      play.setAttribute("aria-label", play.title);
+      play.disabled = !controls.play_pause || state.controlBusy;
+      play.setAttribute("aria-disabled", String(play.disabled));
+    }
+    setButtonState("#ommiMediaPrev", controls.previous === true);
+    setButtonState("#ommiMediaNext", controls.next === true);
+    setButtonState("#ommiMediaStop", controls.stop === true);
+  }
+
+  function updateProgressUi(payload) {
+    const position = currentBluetoothPosition(payload);
+    const duration = Math.max(0, Number(payload?.duration_seconds || 0));
+    const percent = duration > 0 ? Math.max(0, Math.min(100, (position / duration) * 100)) : 0;
+    const elapsed = document.querySelector("#ommiMediaElapsed");
+    const total = document.querySelector("#ommiMediaDuration");
+    const fill = document.querySelector("#ommiMediaProgressFill");
+    const track = document.querySelector("#ommiMediaProgressTrack");
+    if (elapsed) elapsed.textContent = typeof ommiMediaTime === "function" ? ommiMediaTime(position) : "0:00";
+    if (total) total.textContent = typeof ommiMediaTime === "function" ? ommiMediaTime(duration) : "0:00";
+    if (fill) fill.style.width = `${percent}%`;
+    if (track) {
+      track.classList.add("is-bluetooth-readonly");
+      track.setAttribute("aria-valuenow", String(Math.round(percent)));
+      track.setAttribute("aria-disabled", "true");
+      track.title = "Seeking is not exposed by BlueZ Bluetooth media control";
+    }
+  }
+
+  function renderPayload(payload) {
+    if (!activeBluetooth()) return;
+    state.payload = payload || {};
+    state.payloadReceivedAt = performance.now();
+    reconcilePlaybackOverride(state.payload);
+    setBluetoothOnlyUi(true);
+    const remote = document.querySelector("#ommiMediaRemoteState");
+    if (remote) {
+      remote.textContent = String(payload?.state_label || payload?.status || "unavailable").toUpperCase();
+      remote.title = String(payload?.subtitle || "");
+    }
+
+    if (!payload?.available) {
+      state.playbackOverride = null;
+      state.playbackOverridePosition = 0;
+      openMmiMedia.queue = [];
+      openMmiMedia.current = null;
+      openMmiMedia.index = -1;
+      ommiMediaRenderResults([]);
+      const title = document.querySelector("#ommiMediaTitle");
+      const subtitle = document.querySelector("#ommiMediaSubtitle");
+      if (title) title.textContent = "Connect Bluetooth audio";
+      if (subtitle) subtitle.textContent = String(payload?.subtitle || "No remote media player was found");
+      if (typeof ommiMediaSetArtwork === "function") ommiMediaSetArtwork(null);
+      ommiMediaSetMessage(String(payload?.subtitle || "Bluetooth media is unavailable"), payload?.status === "error" ? "error" : "");
+      updateTransportUi(payload);
+      updateProgressUi(payload);
+      scheduleProgressTicker();
+      return;
+    }
+
+    const item = payload.track || null;
+    if (item) {
+      ommiMediaRenderResults([item]);
+      openMmiMedia.index = 0;
+      openMmiMedia.current = openMmiMedia.queue[0] || item;
+      ommiMediaSetNowPlaying(openMmiMedia.current);
+      document.querySelector('[data-open-mmi-track="0"]')?.classList.add("is-playing", "active");
+    } else {
+      ommiMediaRenderResults([]);
+      openMmiMedia.index = -1;
+      openMmiMedia.current = null;
+      const title = document.querySelector("#ommiMediaTitle");
+      const subtitle = document.querySelector("#ommiMediaSubtitle");
+      if (title) title.textContent = String(payload.device_name || "Bluetooth device");
+      if (subtitle) subtitle.textContent = String(payload.player_name || "Connected remote media player");
+      if (typeof ommiMediaSetArtwork === "function") ommiMediaSetArtwork(null);
+    }
+    ommiMediaSetMessage(
+      item
+        ? `${payload.device_name || "Bluetooth device"} · controls stay on the connected player`
+        : "Connected; start media on the Bluetooth device to show track details.",
+    );
+    updateTransportUi(payload);
+    updateProgressUi(payload);
+    scheduleProgressTicker();
+    if (typeof ommiMediaFitViewport === "function") ommiMediaFitViewport();
+  }
+
+  function clearPoll() {
+    if (state.pollTimer !== null) {
+      clearTimeout(state.pollTimer);
+      state.pollTimer = null;
+    }
+  }
+
+  function schedulePoll(delay = 1000) {
+    clearPoll();
+    if (!activeBluetooth() || document.visibilityState !== "visible") return;
+    state.pollTimer = window.setTimeout(() => refresh(false), delay);
+  }
+
+  async function refresh(showLoading = false) {
+    clearPoll();
+    if (!activeBluetooth()) {
+      setBluetoothOnlyUi(false);
+      return;
+    }
+    const serial = ++state.requestSerial;
+    adapterApi()?.applySourceUi?.(adapterApi()?.adapters?.bluetooth);
+    setBluetoothOnlyUi(true);
+    if (showLoading) {
+      ommiMediaSetMessage("Checking connected Bluetooth media…");
+      ommiMediaSetLoading(true);
+    }
+    try {
+      const payload = await ommiMediaFetchJson("/api/bluetooth/status");
+      if (serial !== state.requestSerial || !activeBluetooth()) return;
+      renderPayload(payload);
+    } catch (error) {
+      if (serial !== state.requestSerial || !activeBluetooth()) return;
+      renderPayload({
+        configured: false,
+        available: false,
+        status: "error",
+        state_label: "error",
+        subtitle: `Bluetooth status failed: ${error.message}`,
+        controls: {},
+      });
+    } finally {
+      if (serial === state.requestSerial && showLoading) ommiMediaSetLoading(false);
+      if (serial === state.requestSerial) schedulePoll(1000);
+    }
+  }
+
+  function bluetoothPlayButtonAction() {
+    const status = effectivePlaybackStatus(state.payload);
+    return ["playing", "forward-seek", "reverse-seek"].includes(status)
+      ? "pause"
+      : "play";
+  }
+
+  async function sendControl(action) {
+    if (!activeBluetooth() || state.controlBusy) return;
+    const playerId = state.payload?.player_id;
+    if (!playerId) {
+      ommiMediaSetMessage("No Bluetooth media player is connected.", "error");
+      return;
+    }
+    state.controlBusy = true;
+    updateTransportUi(state.payload);
+    try {
+      const response = await fetch("/api/bluetooth/control", {
+        method: "POST",
+        cache: "no-store",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ player_id: playerId, action }),
+      });
+      let payload = {};
+      try { payload = await response.json(); } catch (_) {}
+      if (!response.ok || payload?.ok === false) {
+        throw new Error(payload?.error || `HTTP ${response.status}`);
+      }
+      const performedAction = String(payload?.performed_action || action).toLowerCase();
+      if (payload?.playback_status) {
+        state.payload = {
+          ...(state.payload || {}),
+          playback_status: String(payload.playback_status).toLowerCase(),
+        };
+      }
+      applyOptimisticControlState(performedAction);
+      ommiMediaSetMessage(`Bluetooth ${performedAction.replace("_", " ")} sent.`);
+    } catch (error) {
+      ommiMediaSetMessage(`Bluetooth control failed: ${error.message}`, "error");
+    } finally {
+      state.controlBusy = false;
+      window.setTimeout(() => refresh(false), 350);
+    }
+  }
+
+  function bindCaptureControls() {
+    const root = document.querySelector("#openMmiMediaRoot");
+    if (!root || root.dataset.openMmiBluetoothBound === "true") return;
+    root.dataset.openMmiBluetoothBound = "true";
+    root.addEventListener("click", (event) => {
+      if (!activeBluetooth()) return;
+      let action = null;
+      if (event.target.closest?.("#ommiMediaPlay")) action = bluetoothPlayButtonAction();
+      else if (event.target.closest?.("#ommiMediaPrev")) action = "previous";
+      else if (event.target.closest?.("#ommiMediaNext")) action = "next";
+      else if (event.target.closest?.("#ommiMediaStop")) action = "stop";
+      else if (event.target.closest?.("[data-open-mmi-track]")) action = "play";
+      else if (event.target.closest?.("#ommiMediaProgressTrack")) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        ommiMediaSetMessage("Bluetooth seeking is not exposed by BlueZ.");
+        return;
+      }
+      if (!action) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      sendControl(action);
+    }, true);
+  }
+
+  function patchMediaFunctions() {
+    if (state.installed) return;
+    const api = adapterApi();
+    if (!api?.adapters || typeof ommiMediaLoadLibrary !== "function") return;
+    api.adapters.bluetooth = bluetoothAdapter();
+
+    const originalLoadLibrary = ommiMediaLoadLibrary;
+    ommiMediaLoadLibrary = function ommiMediaLoadBluetoothAware(query = "", filter = openMmiMedia.filter) {
+      if (!activeBluetooth()) {
+        setBluetoothOnlyUi(false);
+        return originalLoadLibrary(query, filter);
+      }
+      return refresh(true);
+    };
+
+    const originalRefreshStatus = ommiMediaRefreshStatus;
+    ommiMediaRefreshStatus = function ommiMediaRefreshBluetoothAware() {
+      if (!activeBluetooth()) {
+        setBluetoothOnlyUi(false);
+        return originalRefreshStatus();
+      }
+      return refresh(false);
+    };
+
+    const originalPlayIndex = ommiMediaPlayIndex;
+    ommiMediaPlayIndex = function ommiMediaPlayBluetoothAware(index) {
+      if (!activeBluetooth()) return originalPlayIndex(index);
+      return sendControl("play");
+    };
+
+    if (typeof ommiMediaPrev === "function") {
+      const originalPrev = ommiMediaPrev;
+      ommiMediaPrev = function ommiMediaPreviousBluetoothAware() {
+        return activeBluetooth() ? sendControl("previous") : originalPrev();
+      };
+    }
+    if (typeof ommiMediaNext === "function") {
+      const originalNext = ommiMediaNext;
+      ommiMediaNext = function ommiMediaNextBluetoothAware() {
+        return activeBluetooth() ? sendControl("next") : originalNext();
+      };
+    }
+    if (typeof ommiMediaUpdateProgress === "function") {
+      const originalUpdateProgress = ommiMediaUpdateProgress;
+      ommiMediaUpdateProgress = function ommiMediaProgressBluetoothAware() {
+        if (!activeBluetooth()) return originalUpdateProgress();
+        updateProgressUi(state.payload || {});
+      };
+    }
+    if (typeof ommiMediaUpdatePlayState === "function") {
+      const originalUpdatePlayState = ommiMediaUpdatePlayState;
+      ommiMediaUpdatePlayState = function ommiMediaPlayStateBluetoothAware() {
+        if (!activeBluetooth()) return originalUpdatePlayState();
+        updateTransportUi(state.payload || {});
+      };
+    }
+
+    state.installed = true;
+    bindCaptureControls();
+    try { api.syncActiveSource?.(true); } catch (_) {}
+  }
+
+  function syncPresence() {
+    const active = activeBluetooth();
+    setBluetoothOnlyUi(active);
+    if (active) refresh(false);
+    else {
+      state.requestSerial += 1;
+      state.payload = null;
+      state.playbackOverride = null;
+      state.playbackOverridePosition = 0;
+      state.lastServerPosition = null;
+      clearPoll();
+      clearProgressTicker();
+    }
+  }
+
+  function install() {
+    if (!adapterApi()?.adapters || typeof ommiMediaLoadLibrary !== "function") {
+      setTimeout(install, 25);
+      return;
+    }
+    patchMediaFunctions();
+  }
+
+  document.addEventListener("click", (event) => {
+    if (event.target.closest?.(
+      "[data-openmmi-media-source], [data-openmmi-media-source-enable], [data-openmmi-media-default-source]",
+    )) {
+      requestAnimationFrame(syncPresence);
+    }
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && activeBluetooth()) {
+      refresh(false);
+      scheduleProgressTicker();
+    } else {
+      clearPoll();
+      clearProgressTicker();
+    }
+  });
+  window.addEventListener("openmmi:pagechange", () => requestAnimationFrame(syncPresence));
+  document.addEventListener("DOMContentLoaded", install);
+  install();
+
+  window.openMmiBluetoothMedia = {
+    state,
+    refresh: () => refresh(false),
+    control: sendControl,
+  };
+})();
+// --- Open MMI Bluetooth media source end ---

@@ -268,7 +268,9 @@
       "mask": "0x04",
       "true": "0x04",
       "false": "0x00",
-      "raw_path": "climate.klima_status_raw"
+      "raw_path": "climate.klima_status_raw",
+      "state": "toggle_latch",
+      "initial": false
     },
     {
       "id": "0x3E1",

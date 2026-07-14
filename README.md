@@ -55,7 +55,7 @@ It is intended to make decoded vehicle state visible as a practical in-car inter
 Current web dashboard pages:
 
 * **Drive** — speed, RPM, coolant, voltage, range/odometer, outside temperature, and OEM-style footer tell-tales.
-* **Media** — optional Jellyfin music search/playback using a server-side API token and local browser audio playback.
+* **Media** — optional Jellyfin music search/playback using server-side credentials, user/library scoping, and local browser audio playback.
 * **Climate** — blower load, outside temperature, demist/compressor/heater/intake state where available from the status snapshot.
 * **Vehicle** — doors, reverse, dimmer and body-state information where available from the status snapshot.
 
@@ -1381,3 +1381,30 @@ python3 ui/web_dashboard/server.py --demo --demo-scenario traffic
 More details, including Jellyfin configuration, tell-tale test mode, media keys, and icon attribution notes, are in [`ui/web_dashboard/README.md`](ui/web_dashboard/README.md).
 
 <!-- OPEN_MMI_WEB_DASHBOARD_DOCS_END -->
+
+<!-- OPENMMI_DASHBOARD_STATUS_START -->
+## Current dashboard status
+
+Open MMI's web dashboard is now the main user-facing interface for the project. It is still a pre-V1/public-beta surface, but the dashboard now includes the core V1 interaction model:
+
+- Home/Menu navigation between Drive, Media, Climate, Vehicle and Settings.
+- Drive page with decoded speed, RPM, coolant, voltage, range, odometer and footer tell-tales.
+- Optional local Jellyfin-backed Media page, with browser playback and media-key handling.
+- Climate and Vehicle pages for decoded read-only vehicle state.
+- Settings page for local display preferences: units, dim mode, boost mode, reduced animation, and frontend-only tell-tale test.
+- Diagnostics panel for live decoded status and raw/debug inspection.
+- Door-open and reverse-selected overlays as non-control, dashboard-only alerts.
+
+The dashboard remains read-only. It consumes decoded local vehicle state and does not transmit CAN frames or expose vehicle control actions from the web UI.
+
+Compatibility claims are intentionally conservative: SEAT León 1P is the confirmed development vehicle. Wider PQ35-family testing is planned, but Golf Mk5, Audi A3 8P, Octavia/Yeti and related vehicles should be treated as pending validation until logs and compatibility reports exist.
+<!-- OPENMMI_DASHBOARD_STATUS_END -->
+
+<!-- open-mmi-media-sources-start -->
+### Media sources
+
+The dashboard Media page has a persisted source selector. Jellyfin and Internet
+Jellyfin, Internet Radio, USB, and Bluetooth are functional media sources.
+Internet Radio uses Radio Browser for discovery and a same-origin, UUID-based audio
+proxy with public-address validation.
+<!-- open-mmi-media-sources-end -->

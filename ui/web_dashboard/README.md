@@ -118,6 +118,17 @@ export OPEN_MMI_JELLYFIN_TOKEN='your-api-key'
 python3 ui/web_dashboard/server.py
 ```
 
+Assigned-user login is also supported. This keeps Jellyfin credentials server-side and avoids exposing them to the browser:
+
+```bash
+export OPEN_MMI_JELLYFIN_URL='https://your-jellyfin'
+export OPEN_MMI_JELLYFIN_USERNAME='open-mmi'
+export OPEN_MMI_JELLYFIN_PASSWORD='...'
+```
+
+Token mode still works and takes priority when `OPEN_MMI_JELLYFIN_TOKEN` is set. `OPEN_MMI_JELLYFIN_INSECURE_TLS=1` is only for self-signed or otherwise untrusted local TLS certificates.
+
+
 For a self-signed or local HTTPS certificate:
 
 ```bash
@@ -149,6 +160,58 @@ Search test:
 ```bash
 curl 'http://127.0.0.1:8765/api/jellyfin/search?limit=5' | python3 -m json.tool
 ```
+
+<!-- open-mmi-items-4-6:start -->
+### Security and library scope
+
+Use a dedicated, non-administrator Jellyfin user with access only to the music
+libraries that should be visible in the car. User scope is required by default:
+
+```bash
+export OPEN_MMI_JELLYFIN_USER_ID='user-id'
+```
+
+A server API key is not a user session, so token mode does not use `/Users/Me`.
+Set `OPEN_MMI_JELLYFIN_USER_ID`, or set `OPEN_MMI_JELLYFIN_USERNAME` without a
+password to resolve an exact username through the API key. To restrict the Media
+page to one Jellyfin library, also set:
+
+```bash
+export OPEN_MMI_JELLYFIN_LIBRARY_ID='music-library-id'
+```
+
+Search results, audio streams, and artwork are checked against the configured
+user/library scope. Legacy server API keys that genuinely need global access must
+opt in explicitly:
+
+```bash
+export OPEN_MMI_JELLYFIN_ALLOW_GLOBAL=1
+```
+
+Global mode is intentionally not the default. Do not use it on a dashboard exposed
+to an untrusted network.
+
+Remote session status is also opt-in. Set an exact session ID or exact device/client
+name; the dashboard no longer falls back to another user's active session:
+
+```bash
+export OPEN_MMI_JELLYFIN_SESSION_ID='session-id'
+# or
+export OPEN_MMI_JELLYFIN_DEVICE='Dashboard'
+```
+
+The dashboard binds to `127.0.0.1` by default. When binding to `0.0.0.0`, protect the
+port with a host firewall or an authenticated reverse proxy.
+
+The Media page exposes recently added, favourites, and A–Z through one compact dropdown.
+Equivalent API checks are:
+
+```bash
+curl 'http://127.0.0.1:8765/api/jellyfin/search?filter=recent&limit=5'
+curl 'http://127.0.0.1:8765/api/jellyfin/search?filter=favorites&limit=5'
+curl 'http://127.0.0.1:8765/api/jellyfin/search?filter=az&limit=5'
+```
+<!-- open-mmi-items-4-6:end -->
 
 ### Media keys and steering-wheel controls
 
@@ -210,6 +273,7 @@ Run these before committing dashboard changes:
 ```bash
 python3 -m py_compile ui/web_dashboard/server.py
 node --check ui/web_dashboard/static/app.js
+python3 -m unittest discover -s tests
 python3 ui/web_dashboard/server.py --demo --demo-scenario warnings
 ```
 
@@ -249,3 +313,228 @@ OPEN_MMI_GPS_SOURCE=gpsd
 OPEN_MMI_GPSD_HOST=127.0.0.1
 OPEN_MMI_GPSD_PORT=2947
 ```
+
+<!-- OPENMMI_WEB_SETTINGS_DOCS_START -->
+## Settings and local preferences
+
+The Settings page is local to the dashboard/browser and is designed for display behaviour, not vehicle control.
+
+Current Settings areas:
+
+- Units: speed/distance display can be shown as mph/mi or km/h/km; temperature display can be shown as °C or °F.
+- Display: normal, dim and boost modes are available for different cabin/tablet lighting conditions.
+- Display: reduced animation can be enabled for older tablets or lower-distraction use.
+- Display: tell-tale test lights the existing footer tell-tale icons through the normal frontend render path. It is frontend-only and does not write to `/api/status` or transmit anything to the car.
+- Diagnostics: shows live decoded state and optional raw/debug detail for development.
+- Media: documents the server-side Jellyfin integration path.
+- Reverse assist: provides a placeholder overlay path for later PDC/camera work.
+
+These preferences are stored in browser local storage under the dashboard settings key. They change presentation only; backend decoding and vehicle state remain unchanged.
+
+## Read-only operation
+
+The web dashboard is a read-only MMI surface. It polls local decoded state and renders it for the driver/passenger display. It should not be used as a path for CAN transmit, actuator control, coding, adaptation, or security access.
+
+For live vehicle testing, use listen-only CAN wiring and removable harness/adaptor setups. Do not cut or permanently modify the vehicle loom for dashboard testing.
+<!-- OPENMMI_WEB_SETTINGS_DOCS_END -->
+
+<!-- open-mmi-internet-radio-start -->
+## Internet Radio source
+
+The existing Media source selector now supports **Internet Radio** through the
+community Radio Browser directory. Enable it in **Settings → Media**, then select
+**Internet Radio** on the Media page. Search is live and the browse menu offers
+popular, top-rated, recently active, and browser-local favourite stations. Country
+and language selectors appear beneath the browse control. On first use, the country
+follows the browser locale when it contains a region; choosing **All countries**
+overrides that default.
+
+Use the star beside the playback controls to add or remove the current station. Radio
+favourites and country/language preferences are stored in browser local storage and
+do not sync between devices.
+
+The dashboard sends only station UUIDs to its own server. The browser never receives
+or opens arbitrary catalogue stream URLs directly. Before proxying a station, the
+server resolves the stream host and rejects loopback, private, link-local, multicast,
+reserved, and unspecified addresses. Redirect targets are checked again before they
+are followed.
+
+Optional configuration:
+
+```bash
+export OPEN_MMI_RADIO_BROWSER_URL='https://all.api.radio-browser.info'
+export OPEN_MMI_RADIO_USER_AGENT='Open-MMI/0.1 (+https://github.com/open-mmi/open-mmi)'
+export OPEN_MMI_RADIO_CATALOG_TIMEOUT='6'
+export OPEN_MMI_RADIO_STREAM_TIMEOUT='12'
+```
+
+Private-network station targets are blocked by default. A trusted deployment that
+intentionally uses a private stream can opt in explicitly:
+
+```bash
+export OPEN_MMI_RADIO_ALLOW_PRIVATE_STREAMS=1
+```
+
+Do not enable that escape hatch on a dashboard exposed to untrusted users.
+
+API checks:
+
+```bash
+curl 'http://127.0.0.1:8765/api/radio/status'
+curl 'http://127.0.0.1:8765/api/radio/search?filter=popular&limit=5'
+curl 'http://127.0.0.1:8765/api/radio/search?q=bbc&country=GB&language=english&limit=5'
+curl 'http://127.0.0.1:8765/api/radio/options'
+```
+<!-- open-mmi-internet-radio-end -->
+
+<!-- open-mmi-radio-privacy-consent-start -->
+### Internet Radio privacy acknowledgement
+
+Internet Radio is an optional external-network feature. The dashboard requires a
+versioned, explicit acknowledgement before it can be enabled in **Settings →
+Media**. A material change to the notice version invalidates the old acknowledgement
+and disables Radio until the updated notice is accepted.
+
+The in-dashboard notice explains, in plain language, that:
+
+- Radio Browser directory requests can expose the dashboard server's public IP,
+  request times, search text, selected country/language filters, station IDs, the
+  Open MMI application User-Agent, and the station-click request made when playback
+  starts.
+- The selected station, its stream host, CDN, redirects, or analytics providers may
+  receive the dashboard server's public IP, timestamps, requested stream, ordinary
+  HTTP headers, connection duration, and transferred byte counts. They may infer an
+  approximate location from the public IP and control their own retention/sharing.
+- Open MMI does not send Jellyfin credentials, Jellyfin library contents, Radio
+  favourites, GPS coordinates, or a unique Open MMI user identifier to those
+  services. Browser locale may choose an initial country filter, and that filter is
+  sent in directory searches.
+- The acknowledgement, source preference, favourites, and country/language filters
+  remain in browser local storage and do not automatically sync between devices.
+
+The acknowledgement is stored under
+`openmmi.media.radio.privacy-consent.v1` with the current notice version and an
+acceptance timestamp. Users can review the notice at any time from the Radio row in
+Settings and can choose **Disable Radio and forget acknowledgement**.
+
+This acknowledgement is a transparency and informed-choice control; it is not a
+claim that external providers retain no logs. Open MMI does not control the privacy,
+retention, or sharing practices of Radio Browser mirrors, station operators, stream
+hosts, CDNs, redirects, or analytics providers.
+<!-- open-mmi-radio-privacy-consent-end -->
+
+<!-- open-mmi-usb-media-start -->
+## USB media
+
+USB Media is a read-only local source. The dashboard never mounts, unmounts,
+formats, renames, deletes, or writes to a device. It only exposes supported audio
+files from readable roots through same-origin browser playback.
+
+The server automatically looks one directory below these conventional per-user
+mount locations:
+
+```text
+/run/media/$USER
+/media/$USER
+```
+
+You can provide one or more explicit roots with the Linux path separator (`:`):
+
+```bash
+export OPEN_MMI_USB_MEDIA_ROOTS='/media/pitto/MUSIC:/srv/car-music'
+python3 ui/web_dashboard/server.py
+```
+
+Useful controls:
+
+```bash
+# Disable conventional mount discovery and use explicit roots only.
+export OPEN_MMI_USB_AUTO_DISCOVER=0
+
+# Override the directories whose immediate children are treated as discovered roots.
+export OPEN_MMI_USB_DISCOVERY_ROOTS='/run/media/pitto:/media/pitto'
+
+# Include dotfiles and dot-directories. Hidden entries are omitted by default.
+export OPEN_MMI_USB_INCLUDE_HIDDEN=1
+
+# Optional tag/duration extraction when the third-party mutagen package is installed.
+# It is disabled by default; filename/folder metadata remains available without it.
+export OPEN_MMI_USB_READ_METADATA=1
+```
+
+Enable **USB** from Settings → Media after the server reports a readable root.
+The browser can navigate folders, search recursively from the current folder,
+sort folders/files, play supported audio, seek with byte-range requests, and use
+sidecar album art named `cover`, `folder`, `front`, or `album` with JPEG, PNG, or
+WebP extensions.
+
+Browse rows resolve missing durations lazily with the browser's metadata loader. Only two local metadata probes run concurrently, results are cached by opaque item ID, and playback metadata updates the matching row as a fallback. Enabling `OPEN_MMI_USB_READ_METADATA=1` remains optional and can populate tags and durations server-side when `mutagen` is installed.
+
+USB search is tokenised and separator-insensitive: spaces, underscores, hyphens, and folder boundaries can all separate search terms. Every entered term must match the track name or its relative folder path. USB folder navigation is shown only while USB is the active Media source.
+
+Security boundary:
+
+- browser-visible item IDs are opaque and resolved afresh on every request;
+- absolute paths and `..` traversal are rejected;
+- symlink components are never followed;
+- every browse, artwork, and stream request must remain within a currently allowed root;
+- hidden entries are omitted unless explicitly enabled;
+- only allowlisted audio and image extensions are served;
+- no filesystem path is returned to the browser.
+
+Quick checks:
+
+```bash
+curl 'http://127.0.0.1:8765/api/usb/status'
+curl 'http://127.0.0.1:8765/api/usb/browse?filter=browse&limit=10'
+```
+<!-- open-mmi-usb-media-end -->
+
+<!-- open-mmi-bluetooth-media-start -->
+## Bluetooth media source
+
+Bluetooth Media controls an already-connected phone or remote player through
+BlueZ's `org.bluez.MediaPlayer1` interface on the system D-Bus. The dashboard
+does not pair devices, request browser Bluetooth permission, change PipeWire or
+PulseAudio routes, or copy the remote audio stream into the browser. Audio keeps
+playing through the operating system's configured Bluetooth input/profile.
+
+Requirements:
+
+- Linux with BlueZ and `busctl` available.
+- A connected device exposing AVRCP media controls.
+- The dashboard server must run with access to the system D-Bus.
+
+Enable **Bluetooth** under **Settings → Media**, connect the phone using the
+operating system, then start playback on the phone. The dashboard displays the
+track title, artist, album, duration, position, device name, and remote player
+name when BlueZ provides them. Play/pause, stop, previous, and next are sent back
+to the selected BlueZ player.
+
+BlueZ's remote `MediaPlayer1` API does not expose arbitrary seek positioning or
+artwork, so the progress bar is read-only and generic artwork is used.
+
+Optional configuration:
+
+```bash
+# Prefer a player whose device name, player name, or BlueZ object path contains
+# this case-insensitive text when more than one remote player is connected.
+export OPEN_MMI_BLUETOOTH_PLAYER='Pixel'
+
+# Disable the source backend explicitly.
+export OPEN_MMI_BLUETOOTH_DISABLE=1
+
+# Override the D-Bus command timeout (0.25 to 8 seconds).
+export OPEN_MMI_BLUETOOTH_DBUS_TIMEOUT=2
+```
+
+API checks:
+
+```bash
+curl 'http://127.0.0.1:8765/api/bluetooth/status'
+```
+
+Controls require a current opaque `player_id` from the status response and a
+same-origin JSON POST. Raw BlueZ object paths and Bluetooth addresses are never
+returned to the browser.
+<!-- open-mmi-bluetooth-media-end -->
