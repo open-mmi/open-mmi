@@ -6,7 +6,7 @@ import sys
 import unittest
 from pathlib import Path
 
-from ui.web_dashboard import radio, server, usb
+from ui.web_dashboard import jellyfin, radio, server, usb
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -46,6 +46,42 @@ class DashboardModuleBoundaryTests(unittest.TestCase):
         self.assertIs(server._safe_radio_station_id, radio._safe_radio_station_id)
         self.assertIs(server._radio_open_stream, radio._radio_open_stream)
         self.assertIs(server._radio_proxy_audio, radio._radio_proxy_audio)
+
+
+    def test_jellyfin_provider_does_not_depend_on_dashboard_handler(self):
+        self.assertFalse(hasattr(jellyfin, "DashboardHandler"))
+        source = inspect.getsource(jellyfin)
+        self.assertNotIn("from ui.web_dashboard.server", source)
+        self.assertNotIn("import server", source)
+
+    def test_jellyfin_can_import_without_importing_server(self):
+        command = (
+            "import sys; "
+            "import ui.web_dashboard.jellyfin; "
+            "assert 'ui.web_dashboard.server' not in sys.modules"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", command],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_server_routes_delegate_to_jellyfin_provider(self):
+        source = inspect.getsource(server.DashboardHandler.do_GET)
+        self.assertIn("jellyfin_backend._jellyfin_status_payload(self.demo_mode)", source)
+        self.assertIn("jellyfin_backend._jellyfin_search_payload(", source)
+        self.assertIn("jellyfin_backend._jellyfin_proxy_audio(self, item_id)", source)
+        self.assertIn("jellyfin_backend._jellyfin_proxy_image(self, item_id)", source)
+
+    def test_private_jellyfin_server_aliases_remain_compatible_during_extraction(self):
+        self.assertIs(server._jellyfin_config, jellyfin._jellyfin_config)
+        self.assertIs(server._jellyfin_request_json, jellyfin._jellyfin_request_json)
+        self.assertIs(server._jellyfin_proxy_audio, jellyfin._jellyfin_proxy_audio)
+        self.assertIs(server._jellyfin_proxy_image, jellyfin._jellyfin_proxy_image)
+        self.assertIs(server._JELLYFIN_LOGIN_CACHE, jellyfin._JELLYFIN_LOGIN_CACHE)
 
 
     def test_usb_provider_does_not_depend_on_dashboard_handler(self):

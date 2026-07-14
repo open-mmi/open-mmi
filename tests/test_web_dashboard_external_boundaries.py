@@ -12,7 +12,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 from urllib.error import HTTPError
 
-from ui.web_dashboard import radio, usb
+from ui.web_dashboard import jellyfin, radio, usb
 
 ROOT = Path(__file__).resolve().parents[1]
 SERVER_PATH = ROOT / "ui" / "web_dashboard" / "server.py"
@@ -224,7 +224,7 @@ class RadioPinnedConnectionTests(unittest.TestCase):
 
 class JellyfinBoundaryTests(unittest.TestCase):
     def setUp(self):
-        server._JELLYFIN_LOGIN_CACHE.clear()
+        jellyfin._JELLYFIN_LOGIN_CACHE.clear()
 
     def config(self, **overrides):
         config = {
@@ -247,16 +247,16 @@ class JellyfinBoundaryTests(unittest.TestCase):
 
     def test_bounded_reader_rejects_declared_and_streamed_oversize_responses(self):
         declared = FakeResponse(
-            b"small", headers={"Content-Length": str(server.JELLYFIN_JSON_MAX_BYTES + 1)}
+            b"small", headers={"Content-Length": str(jellyfin.JELLYFIN_JSON_MAX_BYTES + 1)}
         )
         with self.assertRaisesRegex(RuntimeError, "exceeded"):
-            server._read_bounded_response(
-                declared, server.JELLYFIN_JSON_MAX_BYTES, "Jellyfin JSON response"
+            jellyfin._read_bounded_response(
+                declared, jellyfin.JELLYFIN_JSON_MAX_BYTES, "Jellyfin JSON response"
             )
 
         streamed = FakeResponse(b"x" * 17)
         with self.assertRaisesRegex(RuntimeError, "exceeded"):
-            server._read_bounded_response(streamed, 16, "response")
+            jellyfin._read_bounded_response(streamed, 16, "response")
 
     def test_login_cache_identity_changes_when_password_changes(self):
         first = self.config(
@@ -267,22 +267,22 @@ class JellyfinBoundaryTests(unittest.TestCase):
             auth_mode="username",
         )
         second = dict(first, password="second-secret")
-        first_key = server._jellyfin_login_cache_key(first)
-        second_key = server._jellyfin_login_cache_key(second)
+        first_key = jellyfin._jellyfin_login_cache_key(first)
+        second_key = jellyfin._jellyfin_login_cache_key(second)
         self.assertNotEqual(first_key, second_key)
         self.assertNotIn("first-secret", first_key)
         self.assertNotIn("second-secret", second_key)
 
     def test_expired_login_entries_are_pruned(self):
-        server._JELLYFIN_LOGIN_CACHE.update(
+        jellyfin._JELLYFIN_LOGIN_CACHE.update(
             {
                 "expired": {"token": "old", "cached_at": 0.0},
                 "current": {"token": "new", "cached_at": 950.0},
             }
         )
-        server._jellyfin_prune_login_cache(1000.0)
-        self.assertNotIn("expired", server._JELLYFIN_LOGIN_CACHE)
-        self.assertIn("current", server._JELLYFIN_LOGIN_CACHE)
+        jellyfin._jellyfin_prune_login_cache(1000.0)
+        self.assertNotIn("expired", jellyfin._JELLYFIN_LOGIN_CACHE)
+        self.assertIn("current", jellyfin._JELLYFIN_LOGIN_CACHE)
 
     def test_expired_login_cache_is_replaced(self):
         config = self.config(
@@ -292,8 +292,8 @@ class JellyfinBoundaryTests(unittest.TestCase):
             username_configured=True,
             auth_mode="username",
         )
-        key = server._jellyfin_login_cache_key(config)
-        server._JELLYFIN_LOGIN_CACHE[key] = {
+        key = jellyfin._jellyfin_login_cache_key(config)
+        jellyfin._JELLYFIN_LOGIN_CACHE[key] = {
             "token": "expired-token",
             "user_id": "user-1",
             "user_name": "Open MMI",
@@ -301,14 +301,14 @@ class JellyfinBoundaryTests(unittest.TestCase):
         }
         body = b'{"AccessToken":"fresh-token","User":{"Id":"user-1","Name":"Open MMI"}}'
         response = FakeResponse(body, headers={"Content-Length": str(len(body))})
-        with patch.object(server.time, "monotonic", return_value=1000.0), patch.object(
-            server, "_jellyfin_urlopen", return_value=response
+        with patch.object(jellyfin.time, "monotonic", return_value=1000.0), patch.object(
+            jellyfin, "_jellyfin_urlopen", return_value=response
         ) as open_url:
-            login = server._jellyfin_login(config)
+            login = jellyfin._jellyfin_login(config)
 
         self.assertEqual(login["token"], "fresh-token")
         self.assertNotIn("cached_at", login)
-        self.assertEqual(server._JELLYFIN_LOGIN_CACHE[key]["token"], "fresh-token")
+        self.assertEqual(jellyfin._JELLYFIN_LOGIN_CACHE[key]["token"], "fresh-token")
         open_url.assert_called_once()
 
     def test_username_auth_retries_once_after_unauthorized_response(self):
@@ -328,15 +328,15 @@ class JellyfinBoundaryTests(unittest.TestCase):
         )
         response = FakeResponse(b'{"Id":"user-1"}', headers={"Content-Length": "15"})
         with patch.object(
-            server,
+            jellyfin,
             "_jellyfin_auth_headers",
             side_effect=[{"Authorization": "old"}, {"Authorization": "new"}],
         ), patch.object(
-            server, "_jellyfin_urlopen", side_effect=[unauthorized, response]
+            jellyfin, "_jellyfin_urlopen", side_effect=[unauthorized, response]
         ) as open_url, patch.object(
-            server, "_jellyfin_invalidate_login", wraps=server._jellyfin_invalidate_login
+            jellyfin, "_jellyfin_invalidate_login", wraps=jellyfin._jellyfin_invalidate_login
         ) as invalidate:
-            payload = server._jellyfin_request_json(config, "/Users/Me")
+            payload = jellyfin._jellyfin_request_json(config, "/Users/Me")
 
         self.assertEqual(payload["Id"], "user-1")
         self.assertEqual(open_url.call_count, 2)
@@ -354,7 +354,7 @@ class JellyfinBoundaryTests(unittest.TestCase):
                     b"",
                     headers={
                         "Content-Type": "image/jpeg",
-                        "Content-Length": str(server.JELLYFIN_IMAGE_MAX_BYTES + 1),
+                        "Content-Length": str(jellyfin.JELLYFIN_IMAGE_MAX_BYTES + 1),
                     },
                 ),
                 "exceeded",
@@ -362,13 +362,13 @@ class JellyfinBoundaryTests(unittest.TestCase):
         ]:
             handler = FakeHandler()
             with self.subTest(phrase=phrase), patch.object(
-                server, "_jellyfin_config", return_value=dict(config)
+                jellyfin, "_jellyfin_config", return_value=dict(config)
             ), patch.object(
-                server, "_jellyfin_validate_item_access", return_value="user-1"
+                jellyfin, "_jellyfin_validate_item_access", return_value="user-1"
             ), patch.object(
-                server, "_jellyfin_authenticated_urlopen", return_value=response
+                jellyfin, "_jellyfin_authenticated_urlopen", return_value=response
             ):
-                server._jellyfin_proxy_image(handler, "track-1")
+                jellyfin._jellyfin_proxy_image(handler, "track-1")
             self.assertEqual(handler.errors[0][0], 502)
             self.assertIn(phrase, handler.errors[0][1])
             self.assertEqual(handler.wfile.getvalue(), b"")
@@ -379,12 +379,12 @@ class JellyfinBoundaryTests(unittest.TestCase):
             b"image-data",
             headers={"Content-Type": "image/webp; charset=binary", "Content-Length": "10"},
         )
-        with patch.object(server, "_jellyfin_config", return_value=self.config()), patch.object(
-            server, "_jellyfin_validate_item_access", return_value="user-1"
+        with patch.object(jellyfin, "_jellyfin_config", return_value=self.config()), patch.object(
+            jellyfin, "_jellyfin_validate_item_access", return_value="user-1"
         ), patch.object(
-            server, "_jellyfin_authenticated_urlopen", return_value=response
+            jellyfin, "_jellyfin_authenticated_urlopen", return_value=response
         ):
-            server._jellyfin_proxy_image(handler, "track-1")
+            jellyfin._jellyfin_proxy_image(handler, "track-1")
 
         self.assertEqual(handler.responses, [200])
         self.assertIn(("Content-Type", "image/webp"), handler.sent_headers)

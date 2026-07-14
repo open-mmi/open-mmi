@@ -110,6 +110,12 @@ Keyboard shortcuts while the dashboard is focused:
 
 ## Jellyfin media player
 
+The Jellyfin backend lives in `ui/web_dashboard/jellyfin.py`. The main
+`server.py` module owns HTTP routing only and delegates configuration, scoped
+catalogue access, authentication, bounded responses, and media proxying to that
+provider. The Jellyfin module does not import the dashboard handler, keeping the
+provider boundary acyclic and independently testable.
+
 The Media page can connect to Jellyfin using environment variables. Keep the API key server-side; do not put it in `app.js`, `index.html`, or any committed file.
 
 ```bash
@@ -275,7 +281,7 @@ Before adding or replacing icons, confirm the source licence and update `NOTICE.
 Run these before committing dashboard changes:
 
 ```bash
-python3 -m py_compile ui/web_dashboard/server.py ui/web_dashboard/radio.py ui/web_dashboard/usb.py
+python3 -m py_compile ui/web_dashboard/server.py ui/web_dashboard/jellyfin.py ui/web_dashboard/radio.py ui/web_dashboard/usb.py
 node --check ui/web_dashboard/static/app.js
 python3 -m unittest discover -s tests
 python3 ui/web_dashboard/server.py --demo --demo-scenario warnings
