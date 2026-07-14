@@ -14,7 +14,7 @@ import can
 from canbusd.can_runtime import CanRuntimeConfig, item_matches_bus, resolve_can_runtime
 from canbusd.dispatcher import dispatch
 from canbusd.status_bus import publish as publish_status
-from canbusd.status_rules import evaluate_status_rules, parse_status_rules
+from canbusd.status_rules import StatusRuleState, evaluate_status_rules, parse_status_rules
 
 
 log_level = os.getenv("OPEN_MMI_LOG_LEVEL", "INFO").upper()
@@ -317,96 +317,121 @@ def _check_presence(
             _publish_presence(p, is_present, bindings)
 
 
-def main():
+def main(max_iterations: Optional[int] = None) -> None:
+    """Run the CAN receive loop.
+
+    ``max_iterations`` is intentionally a test hook. Production callers leave
+    it as ``None`` for the normal unbounded daemon loop.
+    """
+
     rules, mtime, presence, status_rules, cfg_path, runtime = _load_config(None, None)
     bindings = _load_bindings()
 
-    last_seen = {}
-    last_codes = {}
-    present_state = {}
+    last_seen: Dict[int, float] = {}
+    last_codes: Dict[Tuple[int, int, Optional[int]], int] = {}
+    present_state: Dict[int, Optional[bool]] = {}
+    status_state = StatusRuleState()
     bus = None
     opened_interface: Optional[str] = None
-    last_check = 0
+    last_check = 0.0
+    iterations = 0
 
     logger.info("canbusd starting")
     logger.info("vehicle=%s bindings=%s config_dir=%s", VEHICLE, BINDINGS, USER_CONFIG_DIR)
 
-    while True:
-        now = time.monotonic()
+    try:
+        while max_iterations is None or iterations < max_iterations:
+            iterations += 1
+            now = time.monotonic()
 
-        if now - last_check > RELOAD_INTERVAL:
-            rules, mtime, presence, status_rules, cfg_path, runtime = _load_config(
-                rules,
-                mtime,
-                presence,
-                status_rules,
-                cfg_path,
-                runtime,
-            )
-            bindings = _load_bindings()
-            last_check = now
+            if now - last_check > RELOAD_INTERVAL:
+                previous_status_rules = status_rules
+                (
+                    rules,
+                    mtime,
+                    presence,
+                    status_rules,
+                    cfg_path,
+                    runtime,
+                ) = _load_config(
+                    rules,
+                    mtime,
+                    presence,
+                    status_rules,
+                    cfg_path,
+                    runtime,
+                )
+                if status_rules is not previous_status_rules:
+                    status_state.reset()
+                bindings = _load_bindings()
+                last_check = now
 
-        if opened_interface != IFACE:
-            if bus:
-                bus.shutdown()
-                bus = None
+            if opened_interface != IFACE:
+                if bus:
+                    bus.shutdown()
+                    bus = None
 
-            opened_interface = IFACE
-            last_seen.clear()
-            present_state.clear()
+                opened_interface = IFACE
+                last_seen.clear()
+                present_state.clear()
+                status_state.reset()
 
-        if not Path(f"/sys/class/net/{IFACE}").exists():
-            if bus:
-                bus.shutdown()
-                bus = None
+            if not Path(f"/sys/class/net/{IFACE}").exists():
+                if bus:
+                    bus.shutdown()
+                    bus = None
 
-            _check_presence(presence, last_seen, present_state, bindings, now)
-            time.sleep(1)
-            continue
+                _check_presence(presence, last_seen, present_state, bindings, now)
+                time.sleep(1)
+                continue
 
-        if bus is None:
-            logger.info("Opening CAN bus '%s' on interface '%s'", CAN_BUS, IFACE)
-            bus = can.interface.Bus(channel=IFACE, interface="socketcan")
+            if bus is None:
+                logger.info("Opening CAN bus '%s' on interface '%s'", CAN_BUS, IFACE)
+                bus = can.interface.Bus(channel=IFACE, interface="socketcan")
 
-        msg = bus.recv(timeout=0.2)
-        now = time.monotonic()
+            msg = bus.recv(timeout=0.2)
+            now = time.monotonic()
 
-        if msg is None:
-            _check_presence(presence, last_seen, present_state, bindings, now)
-            continue
+            if msg is None:
+                _check_presence(presence, last_seen, present_state, bindings, now)
+                continue
 
-        last_seen[msg.arbitration_id] = now
-        cid = msg.arbitration_id
+            last_seen[msg.arbitration_id] = now
+            cid = msg.arbitration_id
 
-        if cid in status_rules:
-            status_update = evaluate_status_rules(
-                status_rules[cid],
-                msg.data,
-                msg.dlc,
-            )
-            if status_update:
-                publish_status(status_update)
+            if cid in status_rules:
+                status_update = evaluate_status_rules(
+                    status_rules[cid],
+                    msg.data,
+                    msg.dlc,
+                    state=status_state,
+                )
+                if status_update:
+                    publish_status(status_update)
 
-        if cid in rules:
-            for b, v, event in rules[cid]:
-                if msg.dlc <= b:
-                    continue
+            if cid in rules:
+                for b, v, event in rules[cid]:
+                    if msg.dlc <= b:
+                        continue
 
-                code = msg.data[b]
-                key = (cid, b, v)
+                    code = msg.data[b]
+                    key = (cid, b, v)
 
-                if v is None:
-                    if last_codes.get(key) != code:
-                        dispatch(event, bindings.get(event), [code])
+                    if v is None:
+                        if last_codes.get(key) != code:
+                            dispatch(event, bindings.get(event), [code])
+                        last_codes[key] = code
+                        continue
+
+                    if last_codes.get(key) == 0 and code == v:
+                        dispatch(event, bindings.get(event))
+
                     last_codes[key] = code
-                    continue
 
-                if last_codes.get(key) == 0 and code == v:
-                    dispatch(event, bindings.get(event))
-
-                last_codes[key] = code
-
-        _check_presence(presence, last_seen, present_state, bindings, now)
+            _check_presence(presence, last_seen, present_state, bindings, now)
+    finally:
+        if bus:
+            bus.shutdown()
 
 
 if __name__ == "__main__":

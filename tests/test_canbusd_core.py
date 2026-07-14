@@ -1,0 +1,260 @@
+import sys
+import types
+import unittest
+from types import SimpleNamespace
+from unittest import mock
+
+try:
+    import can  # noqa: F401
+except ModuleNotFoundError:
+    fake_can = types.ModuleType("can")
+    fake_can.interface = SimpleNamespace(Bus=None)
+    sys.modules["can"] = fake_can
+
+from canbusd import core
+from canbusd.can_runtime import CanRuntimeConfig
+from canbusd.status_rules import parse_status_rules
+
+
+class FakeBus:
+    def __init__(self, messages):
+        self.messages = list(messages)
+        self.shutdown_calls = 0
+
+    def recv(self, timeout):
+        if not self.messages:
+            return None
+        item = self.messages.pop(0)
+        if isinstance(item, BaseException):
+            raise item
+        return item
+
+    def shutdown(self):
+        self.shutdown_calls += 1
+
+
+class CanbusdCoreTests(unittest.TestCase):
+    def setUp(self):
+        self.runtime = CanRuntimeConfig(
+            name="comfort",
+            default_bus="comfort",
+            interface="can0",
+            interface_source="test",
+        )
+
+    def _config(self, rules=None, presence=None, status_rules=None):
+        return (
+            rules or {},
+            1.0,
+            presence or [],
+            status_rules or {},
+            core.Path("/tmp/test-open-mmi-profile.json"),
+            self.runtime,
+        )
+
+    def _run_main(self, bus, config, iterations, monotonic=None, reload_interval=60):
+        monotonic = monotonic or mock.Mock(return_value=1.0)
+        with (
+            mock.patch.object(core, "_load_config", return_value=config),
+            mock.patch.object(core, "_load_bindings", return_value={}),
+            mock.patch.object(core.Path, "exists", return_value=True),
+            mock.patch.object(core.time, "monotonic", monotonic),
+            mock.patch.object(core.time, "sleep"),
+            mock.patch.object(core.can.interface, "Bus", return_value=bus) as open_bus,
+            mock.patch.object(core, "IFACE", "can0"),
+            mock.patch.object(core, "CAN_BUS", "comfort"),
+            mock.patch.object(core, "RELOAD_INTERVAL", reload_interval),
+        ):
+            core.main(max_iterations=iterations)
+        return open_bus
+
+    def test_status_frame_is_decoded_published_and_bus_is_closed(self):
+        status_rules = parse_status_rules(
+            [
+                {
+                    "id": "0x100",
+                    "byte": 0,
+                    "type": "bool",
+                    "path": "vehicle.reverse",
+                    "true": "0x01",
+                    "false": "0x00",
+                }
+            ]
+        )
+        message = SimpleNamespace(arbitration_id=0x100, data=bytes([1]), dlc=1)
+        bus = FakeBus([message])
+
+        with mock.patch.object(core, "publish_status") as publish:
+            open_bus = self._run_main(bus, self._config(status_rules=status_rules), 1)
+
+        publish.assert_called_once_with({"vehicle": {"reverse": True}})
+        open_bus.assert_called_once_with(channel="can0", interface="socketcan")
+        self.assertEqual(bus.shutdown_calls, 1)
+
+    def test_short_frames_do_not_publish_or_dispatch(self):
+        status_rules = parse_status_rules(
+            [
+                {
+                    "id": "0x100",
+                    "byte": 2,
+                    "type": "bool",
+                    "path": "vehicle.reverse",
+                    "true": "0x01",
+                    "false": "0x00",
+                }
+            ]
+        )
+        event_rules = {0x100: [(2, 1, "reverse:on")]}
+        message = SimpleNamespace(arbitration_id=0x100, data=bytes([1]), dlc=1)
+        bus = FakeBus([message])
+
+        with (
+            mock.patch.object(core, "publish_status") as publish,
+            mock.patch.object(core, "dispatch") as dispatch,
+        ):
+            self._run_main(
+                bus,
+                self._config(rules=event_rules, status_rules=status_rules),
+                1,
+            )
+
+        publish.assert_not_called()
+        dispatch.assert_not_called()
+        self.assertEqual(bus.shutdown_calls, 1)
+
+    def test_fixed_value_event_dispatches_only_on_zero_to_value_edge(self):
+        event_rules = {0x200: [(0, 1, "button:pressed")]}
+        messages = [
+            SimpleNamespace(arbitration_id=0x200, data=bytes([0]), dlc=1),
+            SimpleNamespace(arbitration_id=0x200, data=bytes([1]), dlc=1),
+            SimpleNamespace(arbitration_id=0x200, data=bytes([1]), dlc=1),
+        ]
+        bus = FakeBus(messages)
+
+        with mock.patch.object(core, "dispatch") as dispatch:
+            self._run_main(bus, self._config(rules=event_rules), 3)
+
+        dispatch.assert_called_once_with("button:pressed", None)
+
+    def test_presence_transitions_publish_once_per_state_change(self):
+        presence_rule = {
+            "id": 0x65F,
+            "timeout_ms": 1000,
+            "status_path": "vehicle.present",
+            "on_present": "vehicle:on",
+            "on_absent": "vehicle:off",
+        }
+        last_seen = {}
+        present_state = {}
+
+        with mock.patch.object(core, "_publish_presence") as publish_presence:
+            core._check_presence([presence_rule], last_seen, present_state, {}, 0.0)
+            core._check_presence([presence_rule], last_seen, present_state, {}, 0.5)
+            last_seen[0x65F] = 1.0
+            core._check_presence([presence_rule], last_seen, present_state, {}, 1.1)
+            core._check_presence([presence_rule], last_seen, present_state, {}, 1.5)
+            core._check_presence([presence_rule], last_seen, present_state, {}, 2.1)
+
+        self.assertEqual(
+            publish_presence.call_args_list,
+            [
+                mock.call(presence_rule, False, {}),
+                mock.call(presence_rule, True, {}),
+                mock.call(presence_rule, False, {}),
+            ],
+        )
+
+    def test_profile_reload_resets_toggle_latch_state(self):
+        first_rules = parse_status_rules(
+            [
+                {
+                    "id": "0x3E1",
+                    "byte": 0,
+                    "type": "bool",
+                    "path": "climate.rear_window_heater_requested",
+                    "mask": "0x04",
+                    "true": "0x04",
+                    "false": "0x00",
+                    "state": "toggle_latch",
+                    "initial": False,
+                }
+            ]
+        )
+        reloaded_rules = parse_status_rules(
+            [
+                {
+                    "id": "0x3E1",
+                    "byte": 0,
+                    "type": "bool",
+                    "path": "climate.rear_window_heater_requested",
+                    "mask": "0x04",
+                    "true": "0x04",
+                    "false": "0x00",
+                    "state": "toggle_latch",
+                    "initial": False,
+                }
+            ]
+        )
+        messages = [
+            SimpleNamespace(arbitration_id=0x3E1, data=bytes([0x04]), dlc=1),
+            SimpleNamespace(arbitration_id=0x3E1, data=bytes([0x00]), dlc=1),
+        ]
+        bus = FakeBus(messages)
+        load_results = [
+            self._config(status_rules=first_rules),
+            self._config(status_rules=first_rules),
+            self._config(status_rules=reloaded_rules),
+        ]
+        monotonic = mock.Mock(side_effect=[1.0, 1.1, 2.0, 2.1])
+
+        with (
+            mock.patch.object(core, "_load_config", side_effect=load_results),
+            mock.patch.object(core, "_load_bindings", return_value={}),
+            mock.patch.object(core.Path, "exists", return_value=True),
+            mock.patch.object(core.time, "monotonic", monotonic),
+            mock.patch.object(core.can.interface, "Bus", return_value=bus),
+            mock.patch.object(core, "publish_status") as publish,
+            mock.patch.object(core, "IFACE", "can0"),
+            mock.patch.object(core, "CAN_BUS", "comfort"),
+            mock.patch.object(core, "RELOAD_INTERVAL", 0.5),
+        ):
+            core.main(max_iterations=2)
+
+        self.assertEqual(
+            publish.call_args_list,
+            [
+                mock.call({"climate": {"rear_window_heater_requested": True}}),
+                mock.call({"climate": {"rear_window_heater_requested": False}}),
+            ],
+        )
+        self.assertEqual(bus.shutdown_calls, 1)
+
+    def test_bus_is_closed_when_receive_raises(self):
+        bus = FakeBus([RuntimeError("CAN receive failed")])
+
+        with self.assertRaisesRegex(RuntimeError, "CAN receive failed"):
+            self._run_main(bus, self._config(), 1)
+
+        self.assertEqual(bus.shutdown_calls, 1)
+
+    def test_missing_interface_does_not_open_socketcan(self):
+        bus = FakeBus([])
+        with (
+            mock.patch.object(core, "_load_config", return_value=self._config()),
+            mock.patch.object(core, "_load_bindings", return_value={}),
+            mock.patch.object(core.Path, "exists", return_value=False),
+            mock.patch.object(core.time, "monotonic", return_value=1.0),
+            mock.patch.object(core.time, "sleep") as sleep,
+            mock.patch.object(core.can.interface, "Bus", return_value=bus) as open_bus,
+            mock.patch.object(core, "IFACE", "can0"),
+            mock.patch.object(core, "RELOAD_INTERVAL", 60),
+        ):
+            core.main(max_iterations=2)
+
+        open_bus.assert_not_called()
+        self.assertEqual(sleep.call_count, 2)
+        self.assertEqual(bus.shutdown_calls, 0)
+
+
+if __name__ == "__main__":
+    unittest.main()

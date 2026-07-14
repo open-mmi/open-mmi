@@ -30,28 +30,61 @@ def _bool_default(value: Any, default: bool = False) -> bool:
     return bool(value)
 
 
-_TOGGLE_LATCH_STATE: Dict[str, Dict[str, Any]] = {}
+class StatusRuleState:
+    """Mutable decoder state owned by one daemon/profile runtime.
 
+    Stateless rule types do not use this object. Stateful rules, such as
+    ``toggle_latch``, keep their edge and latch history here so state cannot
+    leak between daemon instances, vehicle profiles, or unit tests.
+    """
 
-def _toggle_latch_value(rule: Dict[str, Any], active: bool) -> bool:
-    # A false/inactive frame preserves the current latched value. A rising
-    # active edge toggles the latched value. This is intended for decoded
-    # status bits that are button/event requests rather than held states.
-    key = str(rule.get("state_key") or rule.get("path") or id(rule))
-    state = _TOGGLE_LATCH_STATE.setdefault(
-        key,
-        {
-            "latched": _bool_default(rule.get("initial"), False),
-            "previous_active": False,
-        },
-    )
+    def __init__(self) -> None:
+        self._toggle_latches: Dict[str, Dict[str, bool]] = {}
 
-    was_active = bool(state.get("previous_active", False))
-    if active and not was_active:
-        state["latched"] = not bool(state.get("latched", False))
+    def reset(self) -> None:
+        """Discard all state after a profile/runtime lifecycle boundary."""
 
-    state["previous_active"] = bool(active)
-    return bool(state.get("latched", False))
+        self._toggle_latches.clear()
+
+    @staticmethod
+    def _toggle_key(rule: Dict[str, Any]) -> str:
+        explicit = rule.get("state_key")
+        if explicit not in (None, ""):
+            return str(explicit)
+
+        # Use signal identity rather than only the output path. Two independent
+        # CAN signals may intentionally publish to similarly named paths, and
+        # they must not share edge history by accident. Parsed rules include the
+        # numeric CAN id; direct callers still get a deterministic fallback.
+        identity = (
+            rule.get("id", "unknown"),
+            rule.get("byte", 0),
+            rule.get("path", ""),
+            rule.get("mask", ""),
+            rule.get("true", ""),
+            rule.get("false", ""),
+        )
+        return "|".join(str(part) for part in identity)
+
+    def toggle_latch_value(self, rule: Dict[str, Any], active: bool) -> bool:
+        # A false/inactive frame preserves the current latched value. A rising
+        # active edge toggles the latched value. This is intended for decoded
+        # status bits that are button/event requests rather than held states.
+        key = self._toggle_key(rule)
+        state = self._toggle_latches.setdefault(
+            key,
+            {
+                "latched": _bool_default(rule.get("initial"), False),
+                "previous_active": False,
+            },
+        )
+
+        was_active = bool(state.get("previous_active", False))
+        if active and not was_active:
+            state["latched"] = not bool(state.get("latched", False))
+
+        state["previous_active"] = bool(active)
+        return bool(state.get("latched", False))
 
 
 def _join_path(prefix: Optional[str], key: str) -> str:
@@ -213,7 +246,12 @@ def _evaluate_uint_le(rule: Dict[str, Any], data: bytes, dlc: int) -> Dict[str, 
     return update
 
 
-def evaluate_rule(rule: Dict[str, Any], data: bytes, dlc: int) -> Dict[str, Any]:
+def evaluate_rule(
+    rule: Dict[str, Any],
+    data: bytes,
+    dlc: int,
+    state: Optional[StatusRuleState] = None,
+) -> Dict[str, Any]:
     kind = rule.get("type", "raw")
     update: Dict[str, Any] = {}
 
@@ -252,9 +290,11 @@ def evaluate_rule(rule: Dict[str, Any], data: bytes, dlc: int) -> Dict[str, Any]
 
         if state_mode == "toggle_latch":
             if value_raw == true_value:
-                _set_path(update, rule["path"], _toggle_latch_value(rule, True))
+                runtime_state = state or StatusRuleState()
+                _set_path(update, rule["path"], runtime_state.toggle_latch_value(rule, True))
             elif false_value is not None and value_raw == false_value:
-                _set_path(update, rule["path"], _toggle_latch_value(rule, False))
+                runtime_state = state or StatusRuleState()
+                _set_path(update, rule["path"], runtime_state.toggle_latch_value(rule, False))
         elif value_raw == true_value:
             _set_path(update, rule["path"], True)
         elif false_value is not None and value_raw == false_value:
@@ -291,11 +331,17 @@ def evaluate_rule(rule: Dict[str, Any], data: bytes, dlc: int) -> Dict[str, Any]
     return update
 
 
-def evaluate_status_rules(rules: Iterable[Dict[str, Any]], data: bytes, dlc: int) -> Dict[str, Any]:
+def evaluate_status_rules(
+    rules: Iterable[Dict[str, Any]],
+    data: bytes,
+    dlc: int,
+    state: Optional[StatusRuleState] = None,
+) -> Dict[str, Any]:
     update: Dict[str, Any] = {}
+    runtime_state = state or StatusRuleState()
 
     for rule in rules:
-        partial = evaluate_rule(rule, data, dlc)
+        partial = evaluate_rule(rule, data, dlc, runtime_state)
         _deep_merge(update, partial)
 
     return update

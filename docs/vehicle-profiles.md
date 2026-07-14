@@ -174,6 +174,32 @@ handbrake active when mask 0x20 is set
 
 This allows one byte to contain several independent status flags.
 
+### Toggle-latched boolean rules
+
+Some CAN bits represent a momentary button/request edge rather than a held state. A boolean
+rule may declare `"state": "toggle_latch"` so each rising edge toggles the published value:
+
+```json
+{
+  "id": "0x3E1",
+  "byte": 0,
+  "type": "bool",
+  "path": "climate.rear_window_heater_requested",
+  "mask": "0x04",
+  "true": "0x04",
+  "false": "0x00",
+  "state": "toggle_latch",
+  "initial": false
+}
+```
+
+The daemon owns latch state per active profile runtime. State is reset when the daemon starts,
+when status rules are reloaded, or when the active CAN interface changes. Inactive frames and
+ordinary periods without traffic preserve the current latch value.
+
+By default, state identity includes the CAN id, byte, output path, mask, and true/false values.
+An explicit `state_key` may be used only when multiple rules intentionally share one latch.
+
 ### Signed or scaled values
 
 Some values are not simple on/off states. Steering angle is an example where the profile
