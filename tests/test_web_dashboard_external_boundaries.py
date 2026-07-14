@@ -12,7 +12,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 from urllib.error import HTTPError
 
-from ui.web_dashboard import radio
+from ui.web_dashboard import radio, usb
 
 ROOT = Path(__file__).resolve().parents[1]
 SERVER_PATH = ROOT / "ui" / "web_dashboard" / "server.py"
@@ -408,16 +408,16 @@ class UsbDescriptorSafetyTests(unittest.TestCase):
             clear=False,
         )
         self.env.start()
-        server._USB_ID_REGISTRY.clear()
-        root = server._usb_roots()[0]
-        self.item_id = server._usb_encode_id(root["id"], Path("Album/track.mp3"))
+        usb._USB_ID_REGISTRY.clear()
+        root = usb._usb_roots()[0]
+        self.item_id = usb._usb_encode_id(root["id"], Path("Album/track.mp3"))
 
     def tearDown(self):
         self.env.stop()
         self.temp.cleanup()
 
     def test_descriptor_relative_open_reads_regular_file(self):
-        _root, relative, source, opened = server._usb_open_file(self.item_id)
+        _root, relative, source, opened = usb._usb_open_file(self.item_id)
         with source:
             self.assertEqual(source.read(), b"0123456789")
         self.assertEqual(relative, Path("Album/track.mp3"))
@@ -437,14 +437,14 @@ class UsbDescriptorSafetyTests(unittest.TestCase):
                 self.track.symlink_to(outside)
             return real_open(path, flags, mode, dir_fd=dir_fd)
 
-        with patch.object(server.os, "open", side_effect=racing_open):
+        with patch.object(usb.os, "open", side_effect=racing_open):
             with self.assertRaises(PermissionError):
-                server._usb_open_file(self.item_id)
+                usb._usb_open_file(self.item_id)
         self.assertTrue(swapped)
 
     def test_streaming_range_uses_descriptor_opened_file(self):
         handler = FakeHandler(range_header="bytes=2-5")
-        server._usb_send_file(handler, self.item_id)
+        usb._usb_send_file(handler, self.item_id)
         self.assertEqual(handler.responses, [206])
         self.assertIn(("Content-Range", "bytes 2-5/10"), handler.sent_headers)
         self.assertEqual(handler.wfile.getvalue(), b"2345")
@@ -453,7 +453,7 @@ class UsbDescriptorSafetyTests(unittest.TestCase):
         source = io.BytesIO(b"data")
         handler = FakeHandler(range_header="bytes=99-100")
         with patch.object(
-            server,
+            usb,
             "_usb_open_file",
             return_value=(
                 {"path": self.root},
@@ -462,7 +462,7 @@ class UsbDescriptorSafetyTests(unittest.TestCase):
                 SimpleNamespace(st_size=4),
             ),
         ):
-            server._usb_send_file(handler, self.item_id)
+            usb._usb_send_file(handler, self.item_id)
 
         self.assertTrue(source.closed)
         self.assertEqual(handler.responses, [416])

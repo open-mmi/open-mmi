@@ -8,6 +8,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from ui.web_dashboard import usb
+
 from dashboard_contract_helpers import (
     implemented_source_ids,
     javascript_function_body,
@@ -55,7 +57,7 @@ class UsbMediaTests(unittest.TestCase):
         self.temp.cleanup()
 
     def test_status_exposes_labels_not_paths(self):
-        payload = server._usb_status_payload()
+        payload = usb._usb_status_payload()
         self.assertTrue(payload["configured"])
         self.assertEqual(payload["root_count"], 1)
         self.assertEqual(payload["roots"][0]["label"], "Road Music")
@@ -63,16 +65,16 @@ class UsbMediaTests(unittest.TestCase):
         self.assertTrue(payload["read_only"])
 
     def test_root_and_folder_browsing(self):
-        roots = server._usb_browse_payload("", "", 60, "browse")
+        roots = usb._usb_browse_payload("", "", 60, "browse")
         self.assertEqual(len(roots["items"]), 1)
         root_item = roots["items"][0]
         self.assertEqual(root_item["kind"], "directory")
 
-        first = server._usb_browse_payload(root_item["id"], "", 60, "browse")
+        first = usb._usb_browse_payload(root_item["id"], "", 60, "browse")
         artist = next(item for item in first["items"] if item["name"] == "Artist")
-        second = server._usb_browse_payload(artist["id"], "", 60, "browse")
+        second = usb._usb_browse_payload(artist["id"], "", 60, "browse")
         album = next(item for item in second["items"] if item["name"] == "Album")
-        tracks = server._usb_browse_payload(album["id"], "", 60, "browse")
+        tracks = usb._usb_browse_payload(album["id"], "", 60, "browse")
         names = [item["name"] for item in tracks["items"]]
         self.assertIn("Track One", names)
         self.assertIn("Second", names)
@@ -90,25 +92,25 @@ class UsbMediaTests(unittest.TestCase):
         }
         for query, expected in cases.items():
             with self.subTest(query=query):
-                payload = server._usb_browse_payload("", query, 60, "az")
+                payload = usb._usb_browse_payload("", query, 60, "az")
                 names = [item["name"] for item in payload["items"]]
                 self.assertIn(expected, names)
-        item = server._usb_browse_payload("", "track one", 60, "az")["items"][0]
+        item = usb._usb_browse_payload("", "track one", 60, "az")["items"][0]
         self.assertEqual(item["source"], "usb")
         self.assertEqual(item["kind"], "audio")
         self.assertTrue(item["image_url"].startswith("/api/usb/art/"))
         self.assertNotIn(str(self.root), str(item))
 
     def test_ids_resolve_only_inside_current_root(self):
-        root = server._usb_roots()[0]
-        valid = server._usb_encode_id(root["id"], Path("Artist/Album/Track_One.mp3"))
-        _root, relative, resolved = server._usb_resolve_id(valid)
+        root = usb._usb_roots()[0]
+        valid = usb._usb_encode_id(root["id"], Path("Artist/Album/Track_One.mp3"))
+        _root, relative, resolved = usb._usb_resolve_id(valid)
         self.assertEqual(relative.as_posix(), "Artist/Album/Track_One.mp3")
         self.assertEqual(resolved, self.album / "Track_One.mp3")
         with self.assertRaises(ValueError):
-            server._usb_encode_id(root["id"], Path("../outside.mp3"))
+            usb._usb_encode_id(root["id"], Path("../outside.mp3"))
         with self.assertRaises(ValueError):
-            server._usb_resolve_id("u" + "0" * 39 + "z")
+            usb._usb_resolve_id("u" + "0" * 39 + "z")
 
     def test_symlink_components_are_rejected(self):
         outside = Path(self.temp.name) / "outside"
@@ -119,21 +121,21 @@ class UsbMediaTests(unittest.TestCase):
             link.symlink_to(outside, target_is_directory=True)
         except (OSError, NotImplementedError):
             self.skipTest("symlinks are unavailable")
-        root = server._usb_roots()[0]
-        item_id = server._usb_encode_id(root["id"], Path("link/escape.mp3"))
+        root = usb._usb_roots()[0]
+        item_id = usb._usb_encode_id(root["id"], Path("link/escape.mp3"))
         with self.assertRaises(PermissionError):
-            server._usb_resolve_id(item_id)
-        payload = server._usb_browse_payload(server._usb_encode_id(root["id"]), "", 60, "browse")
+            usb._usb_resolve_id(item_id)
+        payload = usb._usb_browse_payload(usb._usb_encode_id(root["id"]), "", 60, "browse")
         self.assertNotIn("link", [item["name"] for item in payload["items"]])
 
     def test_range_parsing(self):
-        self.assertEqual(server._usb_parse_range("bytes=2-5", 10), (2, 5))
-        self.assertEqual(server._usb_parse_range("bytes=7-", 10), (7, 9))
-        self.assertEqual(server._usb_parse_range("bytes=-3", 10), (7, 9))
+        self.assertEqual(usb._usb_parse_range("bytes=2-5", 10), (2, 5))
+        self.assertEqual(usb._usb_parse_range("bytes=7-", 10), (7, 9))
+        self.assertEqual(usb._usb_parse_range("bytes=-3", 10), (7, 9))
         with self.assertRaises(ValueError):
-            server._usb_parse_range("bytes=20-30", 10)
+            usb._usb_parse_range("bytes=20-30", 10)
         with self.assertRaises(ValueError):
-            server._usb_parse_range("bytes=1-2,4-5", 10)
+            usb._usb_parse_range("bytes=1-2,4-5", 10)
 
     def test_frontend_registration_and_routes_are_semantic(self):
         app = read_repo_text("ui/web_dashboard/static/app.js")

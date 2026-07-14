@@ -275,7 +275,7 @@ Before adding or replacing icons, confirm the source licence and update `NOTICE.
 Run these before committing dashboard changes:
 
 ```bash
-python3 -m py_compile ui/web_dashboard/server.py ui/web_dashboard/radio.py
+python3 -m py_compile ui/web_dashboard/server.py ui/web_dashboard/radio.py ui/web_dashboard/usb.py
 node --check ui/web_dashboard/static/app.js
 python3 -m unittest discover -s tests
 python3 ui/web_dashboard/server.py --demo --demo-scenario warnings
@@ -438,6 +438,12 @@ hosts, CDNs, redirects, or analytics providers.
 
 <!-- open-mmi-usb-media-start -->
 ## USB media
+
+The USB backend lives in `ui/web_dashboard/usb.py`. The main `server.py` module
+owns HTTP routing only and delegates root discovery, browsing, opaque identifiers,
+descriptor-safe opening, range handling, and streaming to that provider. The USB
+module does not import the dashboard handler, keeping the filesystem boundary
+acyclic and independently testable.
 
 USB Media is a read-only local source. The dashboard never mounts, unmounts,
 formats, renames, deletes, or writes to a device. It only exposes supported audio

@@ -15,6 +15,7 @@ REQUIRED_PATHS = {
     "ui/dashboard/status_cli.py",
     "ui/web_dashboard/radio.py",
     "ui/web_dashboard/server.py",
+    "ui/web_dashboard/usb.py",
     "ui/web_dashboard/static/app.js",
     "ui/web_dashboard/static/index.html",
     "ui/web_dashboard/static/styles.css",

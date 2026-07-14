@@ -90,7 +90,7 @@ jobs:
           import bindings
           import canbusd
           import ui.web_dashboard
-          from ui.web_dashboard import radio
+          from ui.web_dashboard import radio, usb
           import vehicles
 
           roots = {
@@ -98,6 +98,7 @@ jobs:
               "vehicle": Path(vehicles.__file__).parent / "seat_1p" / "config.json",
               "dashboard": Path(ui.web_dashboard.__file__).parent / "static" / "index.html",
               "radio": Path(radio.__file__),
+              "usb": Path(usb.__file__),
           }
           missing = [f"{name}: {path}" for name, path in roots.items() if not path.is_file()]
           if missing:
