@@ -181,8 +181,12 @@ export OPEN_MMI_JELLYFIN_LIBRARY_ID='music-library-id'
 ```
 
 Search results, audio streams, and artwork are checked against the configured
-user/library scope. Legacy server API keys that genuinely need global access must
-opt in explicitly:
+user/library scope. JSON responses are capped at 4 MiB, proxied artwork is capped
+at 8 MiB, and only JPEG, PNG, WebP, GIF, and AVIF image media types are accepted.
+Assigned-user login tokens are cached for at most 15 minutes, keyed to the server,
+username, password, and device identity, and are invalidated and retried once after
+an upstream 401 or 403 response. Legacy server API keys that genuinely need global
+access must opt in explicitly:
 
 ```bash
 export OPEN_MMI_JELLYFIN_ALLOW_GLOBAL=1
@@ -356,8 +360,11 @@ do not sync between devices.
 The dashboard sends only station UUIDs to its own server. The browser never receives
 or opens arbitrary catalogue stream URLs directly. Before proxying a station, the
 server resolves the stream host and rejects loopback, private, link-local, multicast,
-reserved, and unspecified addresses. Redirect targets are checked again before they
-are followed.
+reserved, and unspecified addresses. The outbound socket connects directly to the
+validated numeric address while retaining the original hostname for the HTTP Host
+header, TLS SNI, and certificate verification. Every redirect is resolved, validated,
+and pinned independently before it is followed, closing the validation/connect DNS
+rebinding gap.
 
 Optional configuration:
 
@@ -477,6 +484,8 @@ Security boundary:
 - browser-visible item IDs are opaque and resolved afresh on every request;
 - absolute paths and `..` traversal are rejected;
 - symlink components are never followed;
+- stream and artwork files are opened relative to directory descriptors with
+  `O_NOFOLLOW`, so replacing a checked path with a symlink cannot escape the root;
 - every browse, artwork, and stream request must remain within a currently allowed root;
 - hidden entries are omitted unless explicitly enabled;
 - only allowlisted audio and image extensions are served;

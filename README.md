@@ -347,7 +347,6 @@ open-mmi/
 │   ├── event_bus.py         ← in-process pub/sub for events
 │   ├── status_bus.py        ← persistent vehicle state snapshots
 │   ├── status_rules.py      ← generic profile-driven status evaluator
-│   ├── state.py             ← simple in-process state helper
 │   └── __init__.py
 │
 ├── vehicles/

@@ -269,6 +269,16 @@ def demo_status(scenario: str, started_at: float) -> Dict[str, Any]:
 JELLYFIN_TIMEOUT_SECONDS = 4.0
 JELLYFIN_ACTIVE_WITHIN_SECONDS = 600
 JELLYFIN_AUDIO_CHUNK_BYTES = 64 * 1024
+JELLYFIN_JSON_MAX_BYTES = 4 * 1024 * 1024
+JELLYFIN_IMAGE_MAX_BYTES = 8 * 1024 * 1024
+JELLYFIN_LOGIN_CACHE_SECONDS = 15 * 60
+JELLYFIN_IMAGE_CONTENT_TYPES = {
+    "image/avif",
+    "image/gif",
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+}
 JELLYFIN_CLIENT_NAME = "Open MMI"
 JELLYFIN_DEVICE_ID = "open-mmi-dashboard"
 JELLYFIN_CLIENT_VERSION = "0.1.0"
@@ -317,6 +327,58 @@ def _jellyfin_login_auth_header(config: Dict[str, Any]) -> str:
     )
 
 
+def _jellyfin_login_cache_key(config: Dict[str, Any]) -> str:
+    import hashlib
+
+    device_id = os.getenv("OPEN_MMI_JELLYFIN_DEVICE_ID", "").strip() or JELLYFIN_DEVICE_ID
+    material = "\0".join(
+        [
+            str(config.get("url") or ""),
+            str(config.get("username") or ""),
+            str(config.get("password") or ""),
+            device_id,
+        ]
+    )
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+
+def _jellyfin_invalidate_login(config: Dict[str, Any]) -> None:
+    _JELLYFIN_LOGIN_CACHE.pop(_jellyfin_login_cache_key(config), None)
+    if config.get("auth_mode") == "username":
+        config["token"] = ""
+
+
+def _jellyfin_prune_login_cache(now: float | None = None) -> None:
+    current = time.monotonic() if now is None else now
+    for key, cached in list(_JELLYFIN_LOGIN_CACHE.items()):
+        cached_at = float(cached.get("cached_at") or 0.0)
+        if current - cached_at >= JELLYFIN_LOGIN_CACHE_SECONDS:
+            _JELLYFIN_LOGIN_CACHE.pop(key, None)
+
+
+def _read_bounded_response(response: Any, maximum: int, label: str) -> bytes:
+    raw_length = response.headers.get("Content-Length")
+    if raw_length:
+        try:
+            declared = int(raw_length)
+        except (TypeError, ValueError):
+            declared = -1
+        if declared > maximum:
+            raise RuntimeError(f"{label} exceeded the {maximum}-byte limit")
+
+    chunks = []
+    total = 0
+    while total <= maximum:
+        chunk = response.read(min(64 * 1024, maximum + 1 - total))
+        if not chunk:
+            break
+        chunks.append(chunk)
+        total += len(chunk)
+    if total > maximum:
+        raise RuntimeError(f"{label} exceeded the {maximum}-byte limit")
+    return b"".join(chunks)
+
+
 def _jellyfin_login(config: Dict[str, Any]) -> Dict[str, Any]:
     from urllib.error import HTTPError, URLError
     from urllib.request import Request
@@ -324,11 +386,17 @@ def _jellyfin_login(config: Dict[str, Any]) -> Dict[str, Any]:
     if not config.get("username_configured"):
         raise RuntimeError("Jellyfin username/password is not configured")
 
-    device_id = os.getenv("OPEN_MMI_JELLYFIN_DEVICE_ID", "").strip() or JELLYFIN_DEVICE_ID
-    cache_key = "|".join([str(config.get("url") or ""), str(config.get("username") or ""), device_id])
+    cache_key = _jellyfin_login_cache_key(config)
+    now = time.monotonic()
+    _jellyfin_prune_login_cache(now)
     cached = _JELLYFIN_LOGIN_CACHE.get(cache_key)
     if cached and cached.get("token"):
-        return cached
+        cached_at = float(cached.get("cached_at") or 0.0)
+        if now - cached_at < JELLYFIN_LOGIN_CACHE_SECONDS:
+            return {
+                key: value for key, value in cached.items() if key != "cached_at"
+            }
+        _JELLYFIN_LOGIN_CACHE.pop(cache_key, None)
 
     url = f"{config['url']}/Users/AuthenticateByName"
     body = json.dumps({"Username": config.get("username", ""), "Pw": config.get("password", "")}).encode("utf-8")
@@ -345,13 +413,16 @@ def _jellyfin_login(config: Dict[str, Any]) -> Dict[str, Any]:
 
     try:
         with _jellyfin_urlopen(request, config, timeout=JELLYFIN_TIMEOUT_SECONDS) as response:
-            payload = json.loads(response.read().decode("utf-8"))
+            raw = _read_bounded_response(response, JELLYFIN_JSON_MAX_BYTES, "Jellyfin login response")
+            payload = json.loads(raw.decode("utf-8"))
     except HTTPError as exc:
         raise RuntimeError(f"Jellyfin login HTTP {exc.code}") from exc
     except URLError as exc:
         raise RuntimeError(f"Jellyfin login connection failed: {exc.reason}") from exc
     except TimeoutError as exc:
         raise RuntimeError("Jellyfin login timed out") from exc
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError("Jellyfin login returned invalid JSON") from exc
 
     if not isinstance(payload, dict) or not payload.get("AccessToken"):
         raise RuntimeError("Jellyfin login did not return an access token")
@@ -362,7 +433,10 @@ def _jellyfin_login(config: Dict[str, Any]) -> Dict[str, Any]:
         "user_id": str(user.get("Id") or ""),
         "user_name": str(user.get("Name") or config.get("username") or ""),
     }
-    _JELLYFIN_LOGIN_CACHE[cache_key] = login
+    _JELLYFIN_LOGIN_CACHE[cache_key] = {
+        **login,
+        "cached_at": now,
+    }
     return login
 
 
@@ -400,15 +474,47 @@ def _jellyfin_urlopen(request: Any, config: Dict[str, Any], *, timeout: float):
     return urlopen(request, timeout=timeout)
 
 
-def _jellyfin_request_json(config: Dict[str, Any], path: str) -> Any:
-    from urllib.error import HTTPError, URLError
+def _jellyfin_authenticated_urlopen(
+    config: Dict[str, Any],
+    url: str,
+    *,
+    headers: Dict[str, str] | None = None,
+    timeout: float = JELLYFIN_TIMEOUT_SECONDS,
+):
+    from urllib.error import HTTPError
     from urllib.request import Request
 
+    base_headers = dict(headers or {})
+    for attempt in range(2):
+        request_headers = _jellyfin_auth_headers(config)
+        request_headers.update(base_headers)
+        request = Request(url, headers=request_headers)
+        try:
+            return _jellyfin_urlopen(request, config, timeout=timeout)
+        except HTTPError as exc:
+            should_retry = (
+                attempt == 0
+                and exc.code in {401, 403}
+                and config.get("auth_mode") == "username"
+            )
+            if not should_retry:
+                raise
+            try:
+                exc.close()
+            except Exception:
+                pass
+            _jellyfin_invalidate_login(config)
+    raise RuntimeError("Jellyfin authentication retry failed")
+
+
+def _jellyfin_request_json(config: Dict[str, Any], path: str) -> Any:
+    from urllib.error import HTTPError, URLError
+
     url = f"{config['url']}{path}"
-    request = Request(url, headers=_jellyfin_auth_headers(config))
     try:
-        with _jellyfin_urlopen(request, config, timeout=JELLYFIN_TIMEOUT_SECONDS) as response:
-            return json.loads(response.read().decode("utf-8"))
+        with _jellyfin_authenticated_urlopen(config, url) as response:
+            raw = _read_bounded_response(response, JELLYFIN_JSON_MAX_BYTES, "Jellyfin JSON response")
+            return json.loads(raw.decode("utf-8"))
     except HTTPError as exc:
         try:
             detail = exc.read(512).decode("utf-8", errors="replace").strip()
@@ -420,6 +526,8 @@ def _jellyfin_request_json(config: Dict[str, Any], path: str) -> Any:
         raise RuntimeError(f"Jellyfin connection failed: {exc.reason}") from exc
     except TimeoutError as exc:
         raise RuntimeError("Jellyfin request timed out") from exc
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError("Jellyfin returned invalid JSON") from exc
 
 def _env_flag(name: str) -> bool:
     return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
@@ -780,7 +888,6 @@ def _jellyfin_search_payload(
 def _jellyfin_proxy_audio(handler: Any, item_id: str) -> None:
     from urllib.error import HTTPError, URLError
     from urllib.parse import quote, urlencode
-    from urllib.request import Request
 
     config = _jellyfin_config()
     if not config["configured"]:
@@ -808,13 +915,11 @@ def _jellyfin_proxy_audio(handler: Any, item_id: str) -> None:
     if user_id:
         params["UserId"] = user_id
     url = f"{config['url']}/Audio/{quote(safe_item_id, safe='')}/stream?" + urlencode(params)
-    headers = _jellyfin_auth_headers(config)
-    headers["Accept"] = "audio/*,*/*"
+    headers = {"Accept": "audio/*,*/*"}
     if handler.headers.get("Range"):
         headers["Range"] = handler.headers.get("Range")
-    request = Request(url, headers=headers)
     try:
-        with _jellyfin_urlopen(request, config, timeout=JELLYFIN_TIMEOUT_SECONDS) as response:
+        with _jellyfin_authenticated_urlopen(config, url, headers=headers) as response:
             status = getattr(response, "status", 200)
             handler.send_response(status)
             for header in [
@@ -845,7 +950,6 @@ def _jellyfin_proxy_audio(handler: Any, item_id: str) -> None:
 def _jellyfin_proxy_image(handler: Any, item_id: str) -> None:
     from urllib.error import HTTPError, URLError
     from urllib.parse import quote
-    from urllib.request import Request
 
     config = _jellyfin_config()
     if not config["configured"]:
@@ -868,13 +972,21 @@ def _jellyfin_proxy_image(handler: Any, item_id: str) -> None:
         f"{config['url']}/Items/{quote(safe_item_id, safe='')}/Images/Primary"
         "?maxHeight=480&quality=84"
     )
-    request = Request(image_url, headers=_jellyfin_auth_headers(config))
     try:
-        with _jellyfin_urlopen(request, config, timeout=JELLYFIN_TIMEOUT_SECONDS) as response:
-            body = response.read()
-            content_type = response.headers.get("Content-Type", "image/jpeg")
+        with _jellyfin_authenticated_urlopen(
+            config,
+            image_url,
+            headers={
+                "Accept": "image/avif,image/webp,image/png,image/jpeg,image/gif"
+            },
+        ) as response:
+            content_type = str(response.headers.get("Content-Type") or "").strip()
+            media_type = content_type.split(";", 1)[0].strip().lower()
+            if media_type not in JELLYFIN_IMAGE_CONTENT_TYPES:
+                raise RuntimeError(f"Jellyfin returned unsupported image type {media_type or 'unknown'}")
+            body = _read_bounded_response(response, JELLYFIN_IMAGE_MAX_BYTES, "Jellyfin image")
             handler.send_response(getattr(response, "status", 200))
-            handler.send_header("Content-Type", content_type)
+            handler.send_header("Content-Type", media_type)
             handler.send_header("Cache-Control", "private, max-age=60")
             handler.send_header("X-Content-Type-Options", "nosniff")
             handler.send_header("Cross-Origin-Resource-Policy", "same-origin")
@@ -883,7 +995,7 @@ def _jellyfin_proxy_image(handler: Any, item_id: str) -> None:
             handler.wfile.write(body)
     except HTTPError as exc:
         handler.send_error(exc.code, f"Jellyfin image HTTP {exc.code}")
-    except (URLError, TimeoutError) as exc:
+    except (URLError, TimeoutError, RuntimeError) as exc:
         handler.send_error(502, str(exc))
 
 # --- Open MMI Jellyfin local audio client end ---
@@ -1192,14 +1304,15 @@ def _radio_station_by_uuid(station_id: str) -> Dict[str, Any]:
     raise LookupError("Radio station was not found")
 
 
-def _radio_validate_stream_url(url: Any, allow_private: bool = False) -> str:
+def _radio_resolve_stream_target(url: Any, allow_private: bool = False) -> Dict[str, Any]:
     import ipaddress
     import socket
     from urllib.parse import urlsplit
 
     text = str(url or "").strip()
     parsed = urlsplit(text)
-    if parsed.scheme.lower() not in {"http", "https"}:
+    scheme = parsed.scheme.lower()
+    if scheme not in {"http", "https"}:
         raise ValueError("Radio stream must use HTTP or HTTPS")
     if parsed.username is not None or parsed.password is not None:
         raise ValueError("Radio stream URLs may not contain credentials")
@@ -1207,19 +1320,21 @@ def _radio_validate_stream_url(url: Any, allow_private: bool = False) -> str:
     if not hostname:
         raise ValueError("Radio stream URL has no hostname")
     try:
-        port = parsed.port or (443 if parsed.scheme.lower() == "https" else 80)
+        port = parsed.port or (443 if scheme == "https" else 80)
     except ValueError as exc:
         raise ValueError("Radio stream URL has an invalid port") from exc
 
     try:
-        addresses = socket.getaddrinfo(hostname, port, type=socket.SOCK_STREAM)
+        results = socket.getaddrinfo(hostname, port, type=socket.SOCK_STREAM)
     except OSError as exc:
         raise RuntimeError(f"Could not resolve radio stream host: {exc}") from exc
-    if not addresses:
+    if not results:
         raise RuntimeError("Radio stream host did not resolve")
 
-    for address in addresses:
-        raw_ip = address[4][0]
+    addresses = []
+    seen = set()
+    for family, socktype, protocol, _canonname, sockaddr in results:
+        raw_ip = sockaddr[0]
         try:
             ip = ipaddress.ip_address(raw_ip)
         except ValueError as exc:
@@ -1228,22 +1343,86 @@ def _radio_validate_stream_url(url: Any, allow_private: bool = False) -> str:
             raise PermissionError(
                 f"Radio stream resolved to a non-public address ({ip.compressed})"
             )
-    return text
+        key = (family, protocol, sockaddr)
+        if key not in seen:
+            seen.add(key)
+            addresses.append((family, protocol, sockaddr))
+
+    path = parsed.path or "/"
+    if parsed.query:
+        path += "?" + parsed.query
+    return {
+        "url": text,
+        "scheme": scheme,
+        "hostname": hostname,
+        "port": port,
+        "path": path,
+        "addresses": addresses,
+    }
 
 
-class _RadioRedirectHandler:
-    """Factory wrapper so urllib redirect targets are validated before following."""
+def _radio_validate_stream_url(url: Any, allow_private: bool = False) -> str:
+    return str(_radio_resolve_stream_target(url, allow_private=allow_private)["url"])
 
-    @staticmethod
-    def build(allow_private: bool):
-        from urllib.request import HTTPRedirectHandler
 
-        class SafeRedirect(HTTPRedirectHandler):
-            def redirect_request(self, req, fp, code, msg, headers, newurl):
-                _radio_validate_stream_url(newurl, allow_private=allow_private)
-                return super().redirect_request(req, fp, code, msg, headers, newurl)
+class _RadioPinnedResponse:
+    def __init__(self, response: Any, connection: Any):
+        self._response = response
+        self._connection = connection
 
-        return SafeRedirect()
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._response, name)
+
+    def close(self) -> None:
+        try:
+            self._response.close()
+        finally:
+            self._connection.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close()
+        return False
+
+
+def _radio_connection(target: Dict[str, Any], address: tuple[Any, ...], timeout: float):
+    import http.client
+    import socket
+
+    family, protocol, sockaddr = address
+
+    class PinnedHTTPConnection(http.client.HTTPConnection):
+        def connect(self):
+            sock = socket.socket(family, socket.SOCK_STREAM, protocol)
+            try:
+                sock.settimeout(self.timeout)
+                sock.connect(sockaddr)
+                self.sock = sock
+            except Exception:
+                sock.close()
+                raise
+
+    class PinnedHTTPSConnection(http.client.HTTPSConnection):
+        def connect(self):
+            sock = socket.socket(family, socket.SOCK_STREAM, protocol)
+            try:
+                sock.settimeout(self.timeout)
+                sock.connect(sockaddr)
+                self.sock = self._context.wrap_socket(
+                    sock, server_hostname=target["hostname"]
+                )
+            except Exception:
+                sock.close()
+                raise
+
+    connection_type = (
+        PinnedHTTPSConnection
+        if target["scheme"] == "https"
+        else PinnedHTTPConnection
+    )
+    return connection_type(target["hostname"], target["port"], timeout=timeout)
 
 
 def _radio_stream_url(station_id: str) -> str:
@@ -1267,12 +1446,11 @@ def _radio_stream_url(station_id: str) -> str:
 
 
 def _radio_open_stream(url: str, range_header: str | None = None):
-    from urllib.request import ProxyHandler, Request, build_opener
+    import http.client
+    from urllib.error import HTTPError, URLError
+    from urllib.parse import urljoin
 
     config = _radio_config()
-    validated = _radio_validate_stream_url(
-        url, allow_private=config["allow_private_streams"]
-    )
     headers = {
         "Accept": "audio/*,application/ogg,application/octet-stream;q=0.8,*/*;q=0.2",
         "User-Agent": config["user_agent"],
@@ -1280,13 +1458,52 @@ def _radio_open_stream(url: str, range_header: str | None = None):
     }
     if range_header:
         headers["Range"] = range_header
-    opener = build_opener(
-        ProxyHandler({}),
-        _RadioRedirectHandler.build(config["allow_private_streams"]),
-    )
-    return opener.open(
-        Request(validated, headers=headers), timeout=config["stream_timeout"]
-    )
+
+    current_url = url
+    for redirect_count in range(6):
+        target = _radio_resolve_stream_target(
+            current_url, allow_private=config["allow_private_streams"]
+        )
+        last_error = None
+        for address in target["addresses"]:
+            connection = _radio_connection(target, address, config["stream_timeout"])
+            try:
+                connection.request("GET", target["path"], headers=headers)
+                response = connection.getresponse()
+            except (OSError, TimeoutError, http.client.HTTPException) as exc:
+                last_error = exc
+                connection.close()
+                continue
+
+            if response.status in {301, 302, 303, 307, 308}:
+                status = response.status
+                response_headers = response.headers
+                location = response_headers.get("Location")
+                response.close()
+                connection.close()
+                if not location:
+                    raise RuntimeError(
+                        f"Radio stream HTTP {status} redirect had no Location"
+                    )
+                current_url = urljoin(current_url, location)
+                break
+            if response.status >= 400:
+                error = HTTPError(
+                    current_url,
+                    response.status,
+                    response.reason,
+                    response.headers,
+                    response,
+                )
+                connection.close()
+                raise error
+            return _RadioPinnedResponse(response, connection)
+        else:
+            raise URLError(last_error or "Radio stream connection failed")
+
+        if redirect_count == 5:
+            raise RuntimeError("Radio stream exceeded the redirect limit")
+    raise RuntimeError("Radio stream redirect handling failed")
 
 
 def _radio_proxy_audio(handler: Any, station_id: str) -> None:
@@ -1931,32 +2148,84 @@ def _usb_content_type(path: Path) -> str:
     return explicit.get(path.suffix.lower()) or mimetypes.guess_type(path.name)[0] or "application/octet-stream"
 
 
-def _usb_send_file(handler: Any, item_id: str, *, artwork: bool = False) -> None:
-    import os as _os
+def _usb_open_file(item_id: str, *, artwork: bool = False):
+    import errno
+    import stat
 
+    root_id, relative = _usb_decode_id(item_id)
+    root = _usb_root_map().get(root_id)
+    if not root:
+        raise FileNotFoundError("USB media root is unavailable")
+    if not relative.parts:
+        raise FileNotFoundError("USB media file was not found")
+
+    allowed = USB_ARTWORK_EXTENSIONS if artwork else USB_AUDIO_EXTENSIONS
+    if relative.suffix.lower() not in allowed:
+        raise FileNotFoundError("USB media file was not found")
+
+    nofollow = getattr(os, "O_NOFOLLOW", None)
+    directory = getattr(os, "O_DIRECTORY", None)
+    if nofollow is None or directory is None:
+        raise RuntimeError("Descriptor-safe USB access is unavailable on this platform")
+    cloexec = getattr(os, "O_CLOEXEC", 0)
+
+    descriptors = []
+    file_fd = None
+    try:
+        current_fd = os.open(
+            str(root["path"]), os.O_RDONLY | directory | nofollow | cloexec
+        )
+        descriptors.append(current_fd)
+        for part in relative.parts[:-1]:
+            next_fd = os.open(
+                part,
+                os.O_RDONLY | directory | nofollow | cloexec,
+                dir_fd=current_fd,
+            )
+            descriptors.append(next_fd)
+            current_fd = next_fd
+        file_fd = os.open(
+            relative.parts[-1],
+            os.O_RDONLY | nofollow | cloexec,
+            dir_fd=current_fd,
+        )
+        opened = os.fstat(file_fd)
+        if not stat.S_ISREG(opened.st_mode):
+            raise FileNotFoundError("USB media file was not found")
+        source = os.fdopen(file_fd, "rb", closefd=True)
+        file_fd = None
+        return root, relative, source, opened
+    except OSError as exc:
+        if exc.errno in {errno.ELOOP, errno.ENOTDIR}:
+            raise PermissionError("USB media symlinks are not followed") from exc
+        if exc.errno == errno.ENOENT:
+            raise FileNotFoundError("USB media file was not found") from exc
+        raise
+    finally:
+        if file_fd is not None:
+            os.close(file_fd)
+        for descriptor in reversed(descriptors):
+            os.close(descriptor)
+
+
+def _usb_send_file(handler: Any, item_id: str, *, artwork: bool = False) -> None:
     started = False
     try:
-        _root, _relative, path = _usb_resolve_id(item_id)
-        allowed = USB_ARTWORK_EXTENSIONS if artwork else USB_AUDIO_EXTENSIONS
-        if path.suffix.lower() not in allowed or not path.is_file():
-            raise FileNotFoundError("USB media file was not found")
-        before = path.stat()
-        size = before.st_size
-        try:
-            byte_range = _usb_parse_range(handler.headers.get("Range"), size)
-        except ValueError:
-            handler.send_response(416)
-            handler.send_header("Content-Range", f"bytes */{size}")
-            handler.send_header("Content-Length", "0")
-            handler.end_headers()
-            return
-        start, end = byte_range if byte_range else (0, max(0, size - 1))
-        length = end - start + 1 if size else 0
+        _root, relative, source, opened = _usb_open_file(item_id, artwork=artwork)
+        path = Path(relative.name)
+        size = opened.st_size
+        with source:
+            try:
+                byte_range = _usb_parse_range(handler.headers.get("Range"), size)
+            except ValueError:
+                handler.send_response(416)
+                handler.send_header("Content-Range", f"bytes */{size}")
+                handler.send_header("Content-Length", "0")
+                handler.end_headers()
+                return
+            start, end = byte_range if byte_range else (0, max(0, size - 1))
+            length = end - start + 1 if size else 0
 
-        with path.open("rb") as source:
-            opened = _os.fstat(source.fileno())
-            if (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino):
-                raise RuntimeError("USB media file changed while opening")
             handler.send_response(206 if byte_range else 200)
             started = True
             handler.send_header(

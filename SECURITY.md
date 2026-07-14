@@ -119,6 +119,27 @@ In particular, broad access to `uinput` is convenient for virtual input actions,
 
 For a dedicated car PC or tablet this may be acceptable. For a general-purpose multi-user machine, it may not be.
 
+
+## Dashboard network and media boundaries
+
+The dashboard binds to loopback by default. Treat any deployment bound to a LAN or
+other shared interface as an exposed web service and place it behind a host firewall
+or authenticated reverse proxy.
+
+Optional media integrations cross additional trust boundaries:
+
+- Internet Radio catalogue entries are untrusted external input. Stream hosts and
+  every redirect are resolved and checked against the public-address policy, and the
+  connection is pinned to the validated address.
+- USB media roots are trusted local mount points, but individual stream/artwork paths
+  are opened descriptor-relatively without following symlinks.
+- Jellyfin credentials remain server-side. JSON and image responses are bounded,
+  image types are allowlisted, and assigned-user login tokens have a bounded cache
+  lifetime with one authentication refresh after rejection.
+
+The private-radio override and Jellyfin global-scope or insecure-TLS options weaken
+these defaults. Enable them only for a deliberately trusted local deployment.
+
 ## Sensitive information
 
 Please avoid posting:
