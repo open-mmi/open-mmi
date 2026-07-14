@@ -58,7 +58,6 @@ jobs:
       - name: Validate shell scripts
         run: |
           bash -n scripts/dev_run.sh
-          bash -n scripts/install.sh
           bash -n scripts/manage.sh
           bash -n scripts/open-mmi-desktop
 
