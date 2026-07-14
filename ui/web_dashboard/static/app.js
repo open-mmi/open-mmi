@@ -4,9 +4,13 @@ const DOORS = ["front_left", "front_right", "rear_left", "rear_right", "boot", "
 
 const openMmiApiClient = window.openMmiApi;
 const openMmiPrefs = window.openMmiPreferences;
-if (!openMmiApiClient || !openMmiPrefs) {
+const openMmiStatusClient = window.openMmiStatus;
+if (!openMmiApiClient || !openMmiPrefs || !openMmiStatusClient) {
   throw new Error("Open MMI frontend modules did not load");
 }
+
+const openMmiStatusStore = openMmiStatusClient.createStore();
+window.openMmiStatusStore = openMmiStatusStore;
 
 let activePage = 0;
 
@@ -492,14 +496,6 @@ function updateTach(rpm) {
 })();
 /* end open-mmi dashboard ui pass 12 */
 
-async function fetchStatus() {
-  try {
-    render(await openMmiApiClient.getJson("/api/status", { requireOk: false }));
-  } catch (err) {
-    updateHealth({ health: { status: "error", age_seconds: null } });
-  }
-}
-
 function setPage(index) {
   activePage = (index + PAGE_IDS.length) % PAGE_IDS.length;
   PAGE_IDS.forEach((id, idx) => $("#" + id).classList.toggle("active", idx === activePage));
@@ -514,8 +510,16 @@ function init() {
     if (event.key === "ArrowLeft") setPage(activePage - 1);
   });
   setPage(0);
-  fetchStatus();
-  setInterval(fetchStatus, 200);
+
+  const statusPoller = openMmiStatusClient.createPoller({
+    api: openMmiApiClient,
+    store: openMmiStatusStore,
+    intervalMs: openMmiStatusClient.DEFAULT_STATUS_INTERVAL_MS,
+    onPayload(payload) { render(payload); },
+    onError() { updateHealth({ health: { status: "error", age_seconds: null } }); },
+  });
+  window.openMmiStatusPoller = statusPoller;
+  statusPoller.start();
 }
 
 init();
@@ -3419,7 +3423,8 @@ try {
   }
 
   function refreshAfterForceChange() {
-    if (window.openMmiLastStatusPayload && typeof render === "function") render(window.openMmiLastStatusPayload);
+    const currentPayload = openMmiStatusStore.getSnapshot().payload;
+    if (currentPayload && typeof render === "function") render(currentPayload);
     else scheduleStableFooterTelltales(lastPayload);
   }
 
@@ -3452,7 +3457,6 @@ try {
   if (typeof render === "function" && !render.__openMmiProperLightTelltalesWrapped) {
     const previousRender = render;
     render = function renderWithProperLightTelltales(payload) {
-      window.openMmiLastStatusPayload = payload;
       const patched = applyTestOverrides(payload);
       previousRender(patched);
       scheduleStableFooterTelltales(patched);
@@ -5019,8 +5023,9 @@ try {
     writePrefs(prefs);
     setSelected(row, label);
 
-    if (window.openMmiLastStatusPayload && typeof render === "function") {
-      try { render(window.openMmiLastStatusPayload); } catch (_) {}
+    const currentPayload = openMmiStatusStore.getSnapshot().payload;
+    if (currentPayload && typeof render === "function") {
+      try { render(currentPayload); } catch (_) {}
     }
   }, true);
 

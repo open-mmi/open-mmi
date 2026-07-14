@@ -18,6 +18,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 BENCHMARK_PATH = ROOT / "tools" / "dashboard_benchmark.py"
 APP_JS_PATH = ROOT / "ui" / "web_dashboard" / "static" / "app.js"
+STATUS_JS_PATH = ROOT / "ui" / "web_dashboard" / "static" / "status.js"
 
 spec = importlib.util.spec_from_file_location("dashboard_benchmark", BENCHMARK_PATH)
 if spec is None or spec.loader is None:
@@ -79,23 +80,28 @@ class BenchmarkMathTests(unittest.TestCase):
 
 class CurrentStatusPollingContractTests(unittest.TestCase):
     def setUp(self):
-        self.source = APP_JS_PATH.read_text(encoding="utf-8")
+        self.app_source = APP_JS_PATH.read_text(encoding="utf-8")
+        self.status_source = STATUS_JS_PATH.read_text(encoding="utf-8")
 
     def test_status_poll_reference_is_fixed_200ms_interval(self):
-        matches = re.findall(
-            r"setInterval\s*\(\s*fetchStatus\s*,\s*(\d+(?:\.\d+)?)\s*\)",
-            self.source,
+        self.assertIn(
+            "const DEFAULT_STATUS_INTERVAL_MS = 200;",
+            self.status_source,
+            "The known-good baseline polls status every 200 ms. Update this contract "
+            "only after collecting and approving a new tablet baseline.",
         )
         self.assertIn(
-            "200",
-            matches,
-            "The known-good baseline polls fetchStatus with setInterval(..., 200). "
-            "Update this contract only after collecting and approving a new tablet baseline.",
+            "intervalMs: openMmiStatusClient.DEFAULT_STATUS_INTERVAL_MS",
+            self.app_source,
         )
 
     def test_status_poll_is_not_completion_delayed(self):
+        self.assertRegex(
+            self.status_source,
+            r"setInterval\s*\(\s*fetchStatus\s*,\s*intervalMs\s*\)",
+        )
         self.assertIsNone(
-            re.search(r"setTimeout\s*\(\s*fetchStatus\b", self.source),
+            re.search(r"setTimeout\s*\(\s*fetchStatus\b", self.status_source),
             "A completion-delayed fetchStatus loop changed the effective telltale cadence.",
         )
 

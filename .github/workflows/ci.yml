@@ -105,6 +105,7 @@ jobs:
               "dashboard": Path(ui.web_dashboard.__file__).parent / "static" / "index.html",
               "frontend_api": Path(ui.web_dashboard.__file__).parent / "static" / "api.js",
               "frontend_preferences": Path(ui.web_dashboard.__file__).parent / "static" / "preferences.js",
+              "frontend_status": Path(ui.web_dashboard.__file__).parent / "static" / "status.js",
               "jellyfin": Path(jellyfin.__file__),
               "radio": Path(radio.__file__),
               "usb": Path(usb.__file__),
@@ -156,7 +157,7 @@ jobs:
           else:
               raise SystemExit(f"Dashboard did not become ready: {last_error}")
 
-          for endpoint in ("/", "/api.js", "/preferences.js", "/app.js", "/api/status", "/api/health"):
+          for endpoint in ("/", "/api.js", "/preferences.js", "/status.js", "/app.js", "/api/status", "/api/health"):
               with urlopen(base + endpoint, timeout=3) as response:
                   if response.status != 200:
                       raise SystemExit(f"{endpoint} returned {response.status}")

@@ -282,6 +282,7 @@ The browser loads small platform modules before the main dashboard application:
 
 - `static/api.js` owns same-origin JSON request behaviour.
 - `static/preferences.js` owns safe JSON persistence and the dashboard settings key.
+- `static/status.js` owns the shared status snapshot and fixed 200 ms `/api/status` polling lifecycle. It is DOM-independent, exposes subscriptions for later frontend modules, and keeps rendering callbacks in `app.js` during the migration.
 - `static/app.js` owns DOM rendering and feature controllers.
 
 The platform modules resolve `window.fetch` and `window.localStorage` at call time. This keeps performance instrumentation compatible and lets the dashboard fail safely when browser storage is unavailable or restricted.

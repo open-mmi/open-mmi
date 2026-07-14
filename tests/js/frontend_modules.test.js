@@ -89,3 +89,83 @@ test("API errors expose status and server payload", async () => {
     (error) => error.message === "denied" && error.status === 403,
   );
 });
+
+const status = require("../../ui/web_dashboard/static/status.js");
+
+test("status store publishes snapshots and isolates subscribers", () => {
+  const store = status.createStore();
+  const seen = [];
+  store.subscribe((payload, snapshot) => {
+    seen.push([payload.value, snapshot.version]);
+  });
+  store.subscribe(() => { throw new Error("observer failure"); });
+
+  const payload = { value: 7 };
+  assert.equal(store.publish(payload), payload);
+  assert.deepEqual(seen, [[7, 1]]);
+  assert.equal(store.getSnapshot().payload, payload);
+  assert.equal(store.getSnapshot().error, null);
+});
+
+test("status store supports current-value delivery and unsubscribe", () => {
+  const store = status.createStore({ value: 1 });
+  const seen = [];
+  const unsubscribe = store.subscribe((payload) => seen.push(payload.value), { emitCurrent: true });
+  store.publish({ value: 2 });
+  unsubscribe();
+  store.publish({ value: 3 });
+  assert.deepEqual(seen, [1, 2]);
+});
+
+test("status poller preserves immediate and fixed-interval polling", async () => {
+  let intervalCallback = null;
+  let intervalDelay = null;
+  let cleared = null;
+  const scheduler = {
+    setInterval(callback, delay) {
+      intervalCallback = callback;
+      intervalDelay = delay;
+      return 42;
+    },
+    clearInterval(identifier) {
+      cleared = identifier;
+    },
+  };
+  const payloads = [{ sequence: 1 }, { sequence: 2 }];
+  const api = {
+    async getJson(path, options) {
+      assert.equal(path, "/api/status");
+      assert.deepEqual(options, { requireOk: false });
+      return payloads.shift();
+    },
+  };
+  const seen = [];
+  const poller = status.createPoller({ api, scheduler, onPayload: (payload) => seen.push(payload.sequence) });
+
+  assert.equal(poller.start(), true);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(intervalDelay, 200);
+  assert.deepEqual(seen, [1]);
+  await intervalCallback();
+  assert.deepEqual(seen, [1, 2]);
+  assert.equal(poller.stop(), true);
+  assert.equal(cleared, 42);
+  assert.equal(poller.isRunning(), false);
+});
+
+test("status poller records failures and keeps the render error path separate", async () => {
+  const failure = new Error("offline");
+  const errors = [];
+  const store = status.createStore({ previous: true });
+  const poller = status.createPoller({
+    api: { async getJson() { throw failure; } },
+    store,
+    scheduler: { setInterval() { return 1; }, clearInterval() {} },
+    onError: (error) => errors.push(error),
+  });
+
+  assert.equal(await poller.fetchStatus(), null);
+  assert.equal(store.getSnapshot().payload.previous, true);
+  assert.equal(store.getSnapshot().error, failure);
+  assert.deepEqual(errors, [failure]);
+});

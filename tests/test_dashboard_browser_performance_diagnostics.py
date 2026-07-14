@@ -9,6 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "ui" / "web_dashboard" / "static" / "app.js"
+STATUS = ROOT / "ui" / "web_dashboard" / "static" / "status.js"
 DOCS = ROOT / "docs" / "performance-testing.md"
 
 JS_START = "// --- Open MMI browser performance diagnostics start ---"
@@ -27,18 +28,21 @@ class BrowserPerformanceMethodologyTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.app_source = APP.read_text(encoding="utf-8")
+        cls.status_source = STATUS.read_text(encoding="utf-8")
         cls.js = marked_block(cls.app_source, JS_START, JS_END)
         cls.docs = DOCS.read_text(encoding="utf-8")
 
     def test_known_good_status_poll_is_unchanged(self):
+        self.assertIn("const DEFAULT_STATUS_INTERVAL_MS = 200;", self.status_source)
         self.assertRegex(
-            self.app_source,
-            r"setInterval\s*\(\s*fetchStatus\s*,\s*200\s*\)",
+            self.status_source,
+            r"setInterval\s*\(\s*fetchStatus\s*,\s*intervalMs\s*\)",
         )
         self.assertNotRegex(
-            self.app_source,
+            self.status_source,
             r"setTimeout\s*\(\s*fetchStatus\b",
         )
+        self.assertIn("intervalMs: openMmiStatusClient.DEFAULT_STATUS_INTERVAL_MS", self.app_source)
 
     def test_schema_uses_one_cold_activation_and_five_warm_runs(self):
         self.assertIn("const REPORT_SCHEMA = 3;", self.js)
