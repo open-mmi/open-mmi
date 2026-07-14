@@ -138,7 +138,8 @@ class BluetoothMediaTests(unittest.TestCase):
         self.assertRegex(provider_source, r"content_type\s*!=\s*['\"]application/json['\"]")
         self.assertIn("bluetooth_backend._bluetooth_same_origin", server_source)
         self.assertIn("_BLUETOOTH_ACTION_METHODS", provider_source)
-        self.assertRegex(app, r"fetch\(\s*['\"]/api/bluetooth/control['\"]")
+        self.assertIn('openMmiApiClient.postJson(', app)
+        self.assertIn('\"/api/bluetooth/control\"', app)
         props = css_properties(
             styles,
             "#openMmiMediaRoot #ommiMediaProgressTrack.is-bluetooth-readonly",

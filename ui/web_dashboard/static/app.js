@@ -2,6 +2,12 @@ const PAGE_NAMES = ["Drive", "Climate", "Vehicle", "Media"];
 const PAGE_IDS = ["pageDrive", "pageClimate", "pageVehicle", "pageElectrical"];
 const DOORS = ["front_left", "front_right", "rear_left", "rear_right", "boot", "bonnet"];
 
+const openMmiApiClient = window.openMmiApi;
+const openMmiPrefs = window.openMmiPreferences;
+if (!openMmiApiClient || !openMmiPrefs) {
+  throw new Error("Open MMI frontend modules did not load");
+}
+
 let activePage = 0;
 
 const $ = (selector) => document.querySelector(selector);
@@ -102,12 +108,7 @@ function openMmiApplyDriverDashboardCleanupV2() {
 }
 
 function openMmiUnitPrefs() {
-  const defaults = { speedUnit: "mph", tempUnit: "c" };
-  try {
-    return Object.assign({}, defaults, JSON.parse(localStorage.getItem("openmmi.dashboard.settings.v1") || "{}"));
-  } catch (_) {
-    return defaults;
-  }
+  return openMmiPrefs.readDashboardSettings({ speedUnit: "mph", tempUnit: "c" });
 }
 
 function openMmiDistanceUnitLabel() {
@@ -493,8 +494,7 @@ function updateTach(rpm) {
 
 async function fetchStatus() {
   try {
-    const response = await fetch("/api/status", { cache: "no-store" });
-    render(await response.json());
+    render(await openMmiApiClient.getJson("/api/status", { requireOk: false }));
   } catch (err) {
     updateHealth({ health: { status: "error", age_seconds: null } });
   }
@@ -832,9 +832,7 @@ function ommiMediaUpdatePlayState() {
 }
 
 async function ommiMediaFetchJson(path) {
-  const response = await fetch(path, { cache: "no-store" });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  return response.json();
+  return openMmiApiClient.getJson(path);
 }
 
 const OMMI_MEDIA_FILTERS = {
@@ -1126,7 +1124,7 @@ function ommiMediaBind() {
 
   function loadPrefs() {
     let saved = {};
-    try { saved = JSON.parse(localStorage.getItem(STORE_KEY) || "{}"); }
+    try { saved = openMmiPrefs.readObject(STORE_KEY, {}); }
     catch (_) { saved = {}; }
     const mediaSources = Object.assign({}, DEFAULT_MEDIA.mediaSources, saved.mediaSources || {});
     const prefs = Object.assign({}, DEFAULT_MEDIA, saved, { mediaSources });
@@ -1137,7 +1135,7 @@ function ommiMediaBind() {
   }
 
   function savePrefs(prefs) {
-    try { localStorage.setItem(STORE_KEY, JSON.stringify(prefs)); } catch (_) {}
+    try { openMmiPrefs.writeJson(STORE_KEY, prefs); } catch (_) {}
     window.openMmiDashboardSettings = Object.assign({}, window.openMmiDashboardSettings || {}, prefs);
   }
 
@@ -1391,7 +1389,7 @@ function ommiMediaBind() {
 
   function readJson(key, fallback = {}) {
     try {
-      const parsed = JSON.parse(localStorage.getItem(key) || "null");
+      const parsed = openMmiPrefs.readJson(key, null);
       return parsed && typeof parsed === "object" ? parsed : fallback;
     } catch (_) {
       return fallback;
@@ -1399,12 +1397,7 @@ function ommiMediaBind() {
   }
 
   function writeJson(key, value) {
-    try {
-      localStorage.setItem(key, JSON.stringify(value));
-      return true;
-    } catch (_) {
-      return false;
-    }
+    return openMmiPrefs.writeJson(key, value);
   }
 
   function hasCurrentConsent() {
@@ -1526,7 +1519,7 @@ function ommiMediaBind() {
         return;
       }
       if (event.target.closest?.("[data-openmmi-radio-privacy-forget]")) {
-        try { localStorage.removeItem(CONSENT_KEY); } catch (_) {}
+        try { openMmiPrefs.remove(CONSENT_KEY); } catch (_) {}
         disableRadioPreference();
         try { window.openMmiMediaAdapters?.stopPlayback?.(true); } catch (_) {}
         closeDialog();
@@ -1679,7 +1672,7 @@ function ommiMediaBind() {
 
   function readStoredJson(key, fallback) {
     try {
-      const parsed = JSON.parse(localStorage.getItem(key) || "null");
+      const parsed = openMmiPrefs.readJson(key, null);
       return parsed && typeof parsed === "object" ? parsed : fallback;
     } catch (_) {
       return fallback;
@@ -1687,7 +1680,7 @@ function ommiMediaBind() {
   }
 
   function writeStoredJson(key, value) {
-    try { localStorage.setItem(key, JSON.stringify(value)); } catch (_) {}
+    try { openMmiPrefs.writeJson(key, value); } catch (_) {}
   }
 
   function browserCountryCode() {
@@ -3322,7 +3315,7 @@ try {
 
   function openMmiReadDashboardPrefs() {
     try {
-      return JSON.parse(localStorage.getItem(OPENMMI_SETTINGS_KEY) || "{}");
+      return openMmiPrefs.readObject(OPENMMI_SETTINGS_KEY, {});
     } catch (_) {
       return {};
     }
@@ -3972,12 +3965,12 @@ try {
   };
 
   function loadPrefs() {
-    try { return Object.assign({}, defaults, JSON.parse(localStorage.getItem(STORE_KEY) || "{}")); }
+    try { return Object.assign({}, defaults, openMmiPrefs.readObject(STORE_KEY, {})); }
     catch (_) { return Object.assign({}, defaults); }
   }
 
   function savePrefs(prefs) {
-    try { localStorage.setItem(STORE_KEY, JSON.stringify(prefs)); } catch (_) {}
+    try { openMmiPrefs.writeJson(STORE_KEY, prefs); } catch (_) {}
   }
 
   function setPref(key, value) {
@@ -4149,14 +4142,14 @@ try {
 
   function loadPrefs() {
     try {
-      return Object.assign({}, defaults, JSON.parse(localStorage.getItem(STORE_KEY) || "{}"));
+      return Object.assign({}, defaults, openMmiPrefs.readObject(STORE_KEY, {}));
     } catch (_) {
       return Object.assign({}, defaults);
     }
   }
 
   function savePrefs(prefs) {
-    try { localStorage.setItem(STORE_KEY, JSON.stringify(prefs)); } catch (_) {}
+    try { openMmiPrefs.writeJson(STORE_KEY, prefs); } catch (_) {}
   }
 
   function setPref(key, value) {
@@ -4689,7 +4682,7 @@ try {
 
   function readPrefs() {
     try {
-      return JSON.parse(localStorage.getItem(STORE_KEY) || "{}") || {};
+      return openMmiPrefs.readObject(STORE_KEY, {}) || {};
     } catch (_) {
       return {};
     }
@@ -4697,7 +4690,7 @@ try {
 
   function writePrefs(prefs) {
     try {
-      localStorage.setItem(STORE_KEY, JSON.stringify(prefs));
+      openMmiPrefs.writeJson(STORE_KEY, prefs);
     } catch (_) {}
   }
 
@@ -4821,12 +4814,12 @@ try {
   const MODE_KEY = "telltaleTest";
 
   function readPrefs() {
-    try { return JSON.parse(localStorage.getItem(STORE_KEY) || "{}"); }
+    try { return openMmiPrefs.readObject(STORE_KEY, {}); }
     catch (_) { return {}; }
   }
 
   function writePrefs(next) {
-    try { localStorage.setItem(STORE_KEY, JSON.stringify(next)); } catch (_) {}
+    try { openMmiPrefs.writeJson(STORE_KEY, next); } catch (_) {}
   }
 
   function currentMode() {
@@ -4976,12 +4969,12 @@ try {
   const STORE_KEY = "openmmi.dashboard.settings.v1";
 
   function readPrefs() {
-    try { return JSON.parse(localStorage.getItem(STORE_KEY) || "{}"); }
+    try { return openMmiPrefs.readObject(STORE_KEY, {}); }
     catch (_) { return {}; }
   }
 
   function writePrefs(prefs) {
-    try { localStorage.setItem(STORE_KEY, JSON.stringify(prefs)); } catch (_) {}
+    try { openMmiPrefs.writeJson(STORE_KEY, prefs); } catch (_) {}
     window.openMmiDashboardSettings = Object.assign({}, window.openMmiDashboardSettings || {}, prefs);
     window.dispatchEvent(new CustomEvent("openmmi:settingschange", { detail: prefs }));
   }
@@ -5087,7 +5080,7 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
 
   function readJson(key, fallback) {
     try {
-      const value = JSON.parse(localStorage.getItem(key) || "null");
+      const value = openMmiPrefs.readJson(key, null);
       return value && typeof value === "object" ? value : fallback;
     } catch (_) {
       return fallback;
@@ -5095,12 +5088,7 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
   }
 
   function writeJson(key, value) {
-    try {
-      localStorage.setItem(key, JSON.stringify(value));
-      return true;
-    } catch (_) {
-      return false;
-    }
+    return openMmiPrefs.writeJson(key, value);
   }
 
   function escapeHtml(value) {
@@ -6110,7 +6098,7 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
 
   function clearBaseline() {
     try {
-      localStorage.removeItem(BASELINE_KEY);
+      openMmiPrefs.remove(BASELINE_KEY);
     } catch (_) {}
     state.baseline = null;
     if (state.latest) {
@@ -6978,15 +6966,13 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
     state.controlBusy = true;
     updateTransportUi(state.payload);
     try {
-      const response = await fetch("/api/bluetooth/control", {
-        method: "POST",
-        cache: "no-store",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ player_id: playerId, action }),
-      });
-      let payload = {};
-      try { payload = await response.json(); } catch (_) {}
+      const result = await openMmiApiClient.postJson(
+        "/api/bluetooth/control",
+        { player_id: playerId, action },
+        { allowInvalidJson: true, includeResponse: true, requireOk: false },
+      );
+      const response = result.response;
+      const payload = result.payload || {};
       if (!response.ok || payload?.ok === false) {
         throw new Error(payload?.error || `HTTP ${response.status}`);
       }

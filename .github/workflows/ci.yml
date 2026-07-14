@@ -36,7 +36,12 @@ jobs:
         run: python -m unittest discover -s tests
 
       - name: Check JavaScript syntax
-        run: node --check ui/web_dashboard/static/app.js
+        run: |
+          find ui/web_dashboard/static -maxdepth 1 -name '*.js' -print0 \
+            | xargs -0 -n1 node --check
+
+      - name: Run frontend module tests
+        run: node --test tests/js/*.test.js
 
       - name: Validate JSON
         run: |
@@ -98,6 +103,8 @@ jobs:
               "bluetooth": Path(bluetooth.__file__),
               "vehicle": Path(vehicles.__file__).parent / "seat_1p" / "config.json",
               "dashboard": Path(ui.web_dashboard.__file__).parent / "static" / "index.html",
+              "frontend_api": Path(ui.web_dashboard.__file__).parent / "static" / "api.js",
+              "frontend_preferences": Path(ui.web_dashboard.__file__).parent / "static" / "preferences.js",
               "jellyfin": Path(jellyfin.__file__),
               "radio": Path(radio.__file__),
               "usb": Path(usb.__file__),
@@ -149,7 +156,7 @@ jobs:
           else:
               raise SystemExit(f"Dashboard did not become ready: {last_error}")
 
-          for endpoint in ("/", "/api/status", "/api/health"):
+          for endpoint in ("/", "/api.js", "/preferences.js", "/app.js", "/api/status", "/api/health"):
               with urlopen(base + endpoint, timeout=3) as response:
                   if response.status != 200:
                       raise SystemExit(f"{endpoint} returned {response.status}")

@@ -276,13 +276,25 @@ The dashboard currently uses instrument-cluster style tell-tales for indicators,
 
 Before adding or replacing icons, confirm the source licence and update `NOTICE.md` with the file name, source URL, author, and licence.
 
+## Frontend module boundaries
+
+The browser loads small platform modules before the main dashboard application:
+
+- `static/api.js` owns same-origin JSON request behaviour.
+- `static/preferences.js` owns safe JSON persistence and the dashboard settings key.
+- `static/app.js` owns DOM rendering and feature controllers.
+
+The platform modules resolve `window.fetch` and `window.localStorage` at call time. This keeps performance instrumentation compatible and lets the dashboard fail safely when browser storage is unavailable or restricted.
+
 ## Development checks
 
 Run these before committing dashboard changes:
 
 ```bash
 python3 -m py_compile ui/web_dashboard/server.py ui/web_dashboard/bluetooth.py ui/web_dashboard/jellyfin.py ui/web_dashboard/radio.py ui/web_dashboard/usb.py
-node --check ui/web_dashboard/static/app.js
+find ui/web_dashboard/static -maxdepth 1 -name '*.js' -print0 \
+  | xargs -0 -n1 node --check
+node --test tests/js/*.test.js
 python3 -m unittest discover -s tests
 python3 ui/web_dashboard/server.py --demo --demo-scenario warnings
 ```
