@@ -1,18 +1,22 @@
-const PAGE_NAMES = ["Drive", "Climate", "Vehicle", "Media"];
-const PAGE_IDS = ["pageDrive", "pageClimate", "pageVehicle", "pageElectrical"];
 const DOORS = ["front_left", "front_right", "rear_left", "rear_right", "boot", "bonnet"];
 
 const openMmiApiClient = window.openMmiApi;
 const openMmiPrefs = window.openMmiPreferences;
 const openMmiStatusClient = window.openMmiStatus;
-if (!openMmiApiClient || !openMmiPrefs || !openMmiStatusClient) {
+const openMmiNavigationClient = window.openMmiNavigation;
+const openMmiOverlaysClient = window.openMmiOverlays;
+if (!openMmiApiClient || !openMmiPrefs || !openMmiStatusClient || !openMmiNavigationClient || !openMmiOverlaysClient) {
   throw new Error("Open MMI frontend modules did not load");
 }
 
 const openMmiStatusStore = openMmiStatusClient.createStore();
+const openMmiNavigationController = openMmiNavigationClient.createController();
+const openMmiOverlaysController = openMmiOverlaysClient.createController();
 window.openMmiStatusStore = openMmiStatusStore;
-
-let activePage = 0;
+window.openMmiNavigationController = openMmiNavigationController;
+window.openMmiOverlaysController = openMmiOverlaysController;
+window.setPage = (index) => openMmiNavigationController.setPage(index);
+window.setPage.__openMmiHomeMenu = true;
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
@@ -496,21 +500,7 @@ function updateTach(rpm) {
 })();
 /* end open-mmi dashboard ui pass 12 */
 
-function setPage(index) {
-  activePage = (index + PAGE_IDS.length) % PAGE_IDS.length;
-  PAGE_IDS.forEach((id, idx) => $("#" + id).classList.toggle("active", idx === activePage));
-  $$(".pager button").forEach((button, idx) => button.classList.toggle("active", idx === activePage));
-  $("#pageTitle").textContent = PAGE_NAMES[activePage];
-}
-
 function init() {
-  $$(".pager button").forEach((button) => button.addEventListener("click", () => setPage(Number(button.dataset.page))));
-  window.addEventListener("keydown", (event) => {
-    if (event.key === "ArrowRight") setPage(activePage + 1);
-    if (event.key === "ArrowLeft") setPage(activePage - 1);
-  });
-  setPage(0);
-
   const statusPoller = openMmiStatusClient.createPoller({
     api: openMmiApiClient,
     store: openMmiStatusStore,
@@ -533,11 +523,6 @@ init();
   - measured viewport height so the Media page fits above the dashboard footer/status strip
   - local browser audio is primary; remote Jellyfin Web session is secondary status only
 */
-try {
-  if (Array.isArray(PAGE_NAMES)) PAGE_NAMES[3] = "Media";
-  if (Array.isArray(PAGE_IDS)) PAGE_IDS[3] = "pageElectrical";
-} catch (_) {}
-
 const openMmiMedia = {
   queue: [],
   index: -1,
@@ -3477,230 +3462,15 @@ try {
 // --- Open MMI proper light tell-tales end ---
 
 // --- Open MMI V1 roadmap: home/menu navigation start ---
-(function openMmiHomeMenuNavigation() {
-  if (window.__openMmiHomeMenuNavigationLoaded) return;
-  window.__openMmiHomeMenuNavigationLoaded = true;
-
-  const QUICK_PAGES = [
-    { id: "pageElectrical", title: "Media", label: "Media" },
-    { id: "pageHome", title: "Home", label: "Home" },
-    { id: "pageDrive", title: "Drive", label: "Drive" },
-  ];
-  const MENU_PAGES = {
-    climate: { id: "pageClimate", title: "Climate" },
-    vehicle: { id: "pageVehicle", title: "Vehicle" },
+openMmiNavigationController.init();
+(function openMmiInstallNavigationRendering() {
+  if (typeof render !== "function" || render.__openMmiNavigationWrapped) return;
+  const previousRender = render;
+  render = function openMmiRenderWithNavigation(payload) {
+    previousRender(payload);
+    openMmiNavigationController.update(payload);
   };
-  const HOME_INDEX = 1;
-
-  const one = (selector) => document.querySelector(selector);
-  const many = (selector) => Array.from(document.querySelectorAll(selector));
-
-  function homeFmtNumber(value, digits = 0, fallback = "--") {
-    const n = Number(value);
-    if (!Number.isFinite(n)) return fallback;
-    return n.toFixed(digits);
-  }
-
-  function homeKmhToMph(value) {
-    const n = Number(value);
-    if (!Number.isFinite(n)) return "--";
-    return Math.round(n * 0.621371).toString();
-  }
-
-  function homeText(value, fallback = "--") {
-    return value === null || value === undefined || value === "" ? fallback : String(value);
-  }
-
-  function ensureHomePage() {
-    let page = one("#pageHome");
-    if (!page) {
-      page = document.createElement("section");
-      page.id = "pageHome";
-      page.className = "page page-home";
-      page.setAttribute("aria-label", "Home menu");
-
-      const firstPage = one(".page");
-      if (firstPage && firstPage.parentNode) firstPage.parentNode.insertBefore(page, firstPage);
-      else {
-        const footer = one("footer.status-strip") || one("footer");
-        (footer?.parentNode || document.body).insertBefore(page, footer || null);
-      }
-    }
-
-    page.innerHTML = `
-      <div class="openmmi-home-shell">
-        <section class="openmmi-home-card openmmi-home-hero" aria-label="Open MMI summary">
-          <div class="openmmi-home-kicker">Open MMI</div>
-          <h2>Home</h2>
-          <p class="openmmi-home-copy">Local, read-only vehicle status built from decoded signals.</p>
-          <div class="openmmi-home-status-grid" aria-label="Live status summary">
-            <div class="openmmi-home-stat">
-              <span>Speed</span>
-              <strong><b id="homeSpeed">--</b><small>mph</small></strong>
-            </div>
-            <div class="openmmi-home-stat">
-              <span>RPM</span>
-              <strong><b id="homeRpm">--</b><small>rpm</small></strong>
-            </div>
-            <div class="openmmi-home-stat">
-              <span>Lights</span>
-              <strong id="homeLights">--</strong>
-            </div>
-            <div class="openmmi-home-stat">
-              <span>Range</span>
-              <strong><b id="homeRange">--</b><small>mi</small></strong>
-            </div>
-          </div>
-        </section>
-
-        <section class="openmmi-home-card openmmi-home-menu" aria-label="Dashboard menu">
-          <div class="openmmi-home-menu-head">
-            <span>Quick access</span>
-            <small>Media ← Home → Drive</small>
-          </div>
-          <div class="openmmi-home-actions">
-            <button type="button" class="openmmi-home-action openmmi-primary" data-openmmi-page="2">
-              <span>Drive</span><small>Speed and tell-tales</small>
-            </button>
-            <button type="button" class="openmmi-home-action openmmi-primary" data-openmmi-page="0">
-              <span>Media</span><small>Local Jellyfin player</small>
-            </button>
-            <button type="button" class="openmmi-home-action" data-openmmi-menu="climate">
-              <span>Climate</span><small>HVAC and outside temperature</small>
-            </button>
-            <button type="button" class="openmmi-home-action" data-openmmi-menu="vehicle">
-              <span>Vehicle</span><small>Doors, reverse and status</small>
-            </button>
-            <button type="button" class="openmmi-home-action" data-openmmi-settings="true">
-              <span>Settings</span><small>Units, display and diagnostics</small>
-            </button>
-          </div>
-        </section>
-      </div>
-    `;
-  }
-
-  function syncQuickArrays() {
-    try {
-      if (Array.isArray(PAGE_NAMES)) {
-        PAGE_NAMES.length = 0;
-        QUICK_PAGES.forEach((page) => PAGE_NAMES.push(page.title));
-      }
-      if (Array.isArray(PAGE_IDS)) {
-        PAGE_IDS.length = 0;
-        QUICK_PAGES.forEach((page) => PAGE_IDS.push(page.id));
-      }
-    } catch (_) {}
-  }
-
-  function rebuildPager() {
-    const pager = one(".pager");
-    if (!pager) return;
-    pager.innerHTML = QUICK_PAGES.map((page, idx) => `
-      <button type="button" data-page="${idx}" aria-label="${page.label}" title="${page.label}"></button>
-    `).join("");
-    pager.querySelectorAll("button[data-page]").forEach((button) => {
-      button.addEventListener("click", () => setPage(Number(button.dataset.page)));
-    });
-  }
-
-  function setActivePageElement(id) {
-    many(".page").forEach((page) => page.classList.toggle("active", page.id === id));
-  }
-
-  function setPagerActive(index) {
-    many(".pager button").forEach((button, idx) => button.classList.toggle("active", idx === index));
-  }
-
-  function showPageById(id, title, quickIndex = HOME_INDEX) {
-    setActivePageElement(id);
-    setPagerActive(quickIndex);
-    const titleEl = one("#pageTitle");
-    if (titleEl) titleEl.textContent = title;
-    try { activePage = quickIndex; } catch (_) {}
-    window.dispatchEvent(new CustomEvent("openmmi:pagechange", { detail: { id, title, quickIndex } }));
-  }
-
-  function installNavigationOverride() {
-    const nextSetPage = function openMmiSetQuickPage(index) {
-      const safeIndex = Number.isFinite(Number(index)) ? Number(index) : HOME_INDEX;
-      const idx = ((Math.trunc(safeIndex) % QUICK_PAGES.length) + QUICK_PAGES.length) % QUICK_PAGES.length;
-      const page = QUICK_PAGES[idx] || QUICK_PAGES[HOME_INDEX];
-      showPageById(page.id, page.title, idx);
-    };
-    nextSetPage.__openMmiHomeMenu = true;
-    try { setPage = nextSetPage; } catch (_) {}
-  }
-
-  function bindHomeButtons() {
-    const page = one("#pageHome");
-    if (!page) return;
-    page.querySelectorAll("[data-openmmi-page]").forEach((button) => {
-      button.addEventListener("click", () => setPage(Number(button.dataset.openmmiPage)));
-    });
-    page.querySelectorAll("[data-openmmi-menu]").forEach((button) => {
-      button.addEventListener("click", () => {
-        const target = MENU_PAGES[button.dataset.openmmiMenu];
-        if (target) showPageById(target.id, target.title, HOME_INDEX);
-      });
-    });
-  }
-
-  function updateHome(payload) {
-    const state = payload?.state || {};
-    const vehicle = state.vehicle || {};
-    const engine = state.engine || {};
-    const fuel = state.fuel || {};
-    const lighting = state.lighting || {};
-
-    const speed = one("#homeSpeed");
-    if (speed) speed.textContent = homeKmhToMph(vehicle.speed_kmh);
-
-    const rpm = one("#homeRpm");
-    if (rpm) rpm.textContent = homeFmtNumber(engine.speed_rpm, 0);
-
-    const range = one("#homeRange");
-    if (range) range.textContent = homeKmhToMph(fuel.range_km);
-
-    const lights = one("#homeLights");
-    if (lights) lights.textContent = homeText(lighting.mode).replaceAll("_", " ");
-  }
-
-  function wrapRenderForHome() {
-    try {
-      if (typeof render !== "function" || render.__openMmiHomeWrapped) return;
-      const previousRender = render;
-      const wrapped = function openMmiRenderWithHome(payload) {
-        previousRender(payload);
-        updateHome(payload);
-      };
-      wrapped.__openMmiHomeWrapped = true;
-      render = wrapped;
-    } catch (_) {}
-  }
-
-  function bindHomeKey() {
-    window.addEventListener("keydown", (event) => {
-      const target = event.target;
-      if (
-        target instanceof Element
-        && target.closest("input, textarea, select, [contenteditable='true'], [contenteditable='']")
-      ) return;
-      if (event.key === "Home" || event.key === "h" || event.key === "H") {
-        event.preventDefault();
-        setPage(HOME_INDEX);
-      }
-    });
-  }
-
-  ensureHomePage();
-  syncQuickArrays();
-  rebuildPager();
-  installNavigationOverride();
-  bindHomeButtons();
-  wrapRenderForHome();
-  bindHomeKey();
-  setPage(HOME_INDEX);
+  render.__openMmiNavigationWrapped = true;
 })();
 // --- Open MMI V1 roadmap: home/menu navigation end ---
 
@@ -3909,12 +3679,11 @@ try {
 
   function showSettingsPage() {
     ensureSettingsPage();
-    many(".page").forEach((page) => page.classList.toggle("active", page.id === "pageSettings"));
-    many(".pager button").forEach((button, idx) => button.classList.toggle("active", idx === 1));
-    const titleEl = one("#pageTitle");
-    if (titleEl) titleEl.textContent = "Settings";
-    try { activePage = 1; } catch (_) {}
-    window.dispatchEvent(new CustomEvent("openmmi:pagechange", { detail: { id: "pageSettings", title: "Settings", quickIndex: 1 } }));
+    openMmiNavigationController.showPageById(
+      "pageSettings",
+      "Settings",
+      openMmiNavigationClient.HOME_INDEX,
+    );
   }
 
   function bindSettingsButtons() {
@@ -4267,415 +4036,18 @@ try {
 })();
 // --- Open MMI V1 roadmap: settings stable wiring v3 end ---
 
-// --- Open MMI V1 roadmap: door overlay start ---
-(function openMmiDoorOverlayV1() {
-  if (window.__openMmiDoorOverlayV1Loaded) return;
-  window.__openMmiDoorOverlayV1Loaded = true;
-
-  const state = {
-    currentSignature: "",
-    dismissedSignature: "",
+// --- Open MMI V1 roadmap: vehicle overlays start ---
+openMmiOverlaysController.init();
+(function openMmiInstallVehicleOverlayRendering() {
+  if (typeof render !== "function" || render.__openMmiOverlaysWrapped) return;
+  const previousRender = render;
+  render = function openMmiRenderWithVehicleOverlays(payload) {
+    previousRender(payload);
+    openMmiOverlaysController.update(payload);
   };
-
-  const LABELS = {
-    driver: "Driver door",
-    driver_door: "Driver door",
-    front_left: "Front left door",
-    front_left_door: "Front left door",
-    passenger: "Passenger door",
-    passenger_door: "Passenger door",
-    front_right: "Front right door",
-    front_right_door: "Front right door",
-    rear_left: "Rear left door",
-    rear_left_door: "Rear left door",
-    rear_right: "Rear right door",
-    rear_right_door: "Rear right door",
-    boot: "Boot",
-    trunk: "Boot",
-    tailgate: "Tailgate",
-    hatch: "Tailgate",
-    bonnet: "Bonnet",
-    hood: "Bonnet",
-  };
-
-  const one = (selector) => document.querySelector(selector);
-
-  function normaliseKey(key) {
-    return String(key || "")
-      .trim()
-      .toLowerCase()
-      .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
-      .replace(/[\s\-.]+/g, "_")
-      .replace(/^is_/, "")
-      .replace(/^door_/, "")
-      .replace(/_status$/, "")
-      .replace(/_state$/, "")
-      .replace(/_ajar$/, "")
-      .replace(/_open$/, "")
-      .replace(/^open_/, "")
-      .replace(/^ajar_/, "");
-  }
-
-  function labelFor(path) {
-    const normalised = normaliseKey(path);
-    if (LABELS[normalised]) return LABELS[normalised];
-
-    const parts = normalised.split("_").filter(Boolean);
-    const hasDoorWord = parts.includes("door");
-    const joined = parts.filter((part) => part !== "door").join("_");
-    if (LABELS[joined]) return LABELS[joined];
-
-    if (normalised.includes("driver")) return "Driver door";
-    if (normalised.includes("passenger")) return "Passenger door";
-    if (normalised.includes("front_left") || normalised.includes("left_front")) return "Front left door";
-    if (normalised.includes("front_right") || normalised.includes("right_front")) return "Front right door";
-    if (normalised.includes("rear_left") || normalised.includes("left_rear")) return "Rear left door";
-    if (normalised.includes("rear_right") || normalised.includes("right_rear")) return "Rear right door";
-    if (normalised.includes("boot") || normalised.includes("trunk")) return "Boot";
-    if (normalised.includes("tailgate") || normalised.includes("hatch")) return "Tailgate";
-    if (normalised.includes("bonnet") || normalised.includes("hood")) return "Bonnet";
-
-    const readable = parts
-      .filter((part) => part && part !== "open" && part !== "ajar" && part !== "status" && part !== "state")
-      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-      .join(" ");
-    return hasDoorWord ? readable : `${readable || "Door"} door`;
-  }
-
-  function looksDoorRelated(path) {
-    const p = String(path || "").toLowerCase();
-    if (/(lock|locked|unlock|window|mirror|seat|module|count)/.test(p)) return false;
-    return /(door|boot|trunk|tailgate|hatch|bonnet|hood)/.test(p);
-  }
-
-  function isOpenValue(value) {
-    if (value === true) return true;
-    if (value === false || value === null || value === undefined) return false;
-    if (typeof value === "number") return Number.isFinite(value) && value !== 0;
-    const text = String(value).trim().toLowerCase();
-    if (!text) return false;
-    if (["open", "opened", "ajar", "unlatched", "active", "true", "yes", "on", "1"].includes(text)) return true;
-    if (["closed", "shut", "latched", "inactive", "false", "no", "off", "0"].includes(text)) return false;
-    return /\b(open|ajar|unlatched)\b/.test(text);
-  }
-
-  function addDoor(map, label, value) {
-    if (!isOpenValue(value)) return;
-    map.set(label, true);
-  }
-
-  function scanObject(obj, basePath, out) {
-    if (!obj || typeof obj !== "object") return;
-    if (Array.isArray(obj)) {
-      obj.forEach((item, idx) => scanObject(item, `${basePath}[${idx}]`, out));
-      return;
-    }
-
-    for (const [key, value] of Object.entries(obj)) {
-      const path = basePath ? `${basePath}.${key}` : key;
-      if (value && typeof value === "object") {
-        scanObject(value, path, out);
-        continue;
-      }
-      if (looksDoorRelated(path)) addDoor(out, labelFor(path), value);
-    }
-  }
-
-  function collectOpenDoors(payload) {
-    const root = payload || {};
-    const decoded = root.state || root.decoded || root;
-    const vehicle = decoded.vehicle || {};
-    const body = decoded.body || decoded.comfort || decoded.central_convenience || {};
-    const doors = decoded.doors || vehicle.doors || body.doors || {};
-    const out = new Map();
-
-    scanObject(doors, "doors", out);
-    scanObject(vehicle, "vehicle", out);
-    scanObject(body, "body", out);
-    scanObject(decoded.doors_status || decoded.door_status || {}, "door_status", out);
-
-    return Array.from(out.keys()).sort((a, b) => a.localeCompare(b));
-  }
-
-
-  function syncDoorOverlayVehicleVisual(overlay) {
-    if (!overlay) return;
-    const host = overlay.querySelector("#openMmiDoorOverlayCarHost");
-    const source = document.querySelector("#carShell");
-    if (!host || !source) return;
-
-    let clone = host.querySelector(".car-shell");
-    if (!clone) {
-      clone = source.cloneNode(true);
-      clone.removeAttribute("id");
-      clone.classList.add("openmmi-door-overlay-car-shell");
-      clone.setAttribute("aria-hidden", "true");
-      host.replaceChildren(clone);
-    }
-
-    clone.classList.toggle("any-open", source.classList.contains("any-open"));
-    clone.querySelectorAll("[data-door-mark]").forEach((mark) => {
-      const key = mark.getAttribute("data-door-mark");
-      const liveMark = source.querySelector(`[data-door-mark="${key}"]`);
-      mark.classList.toggle("open", !!liveMark?.classList.contains("open"));
-    });
-
-    const list = overlay.querySelector("#openMmiDoorOverlayList");
-    if (list) {
-      list.textContent = "";
-      list.hidden = true;
-      list.setAttribute("aria-hidden", "true");
-    }
-  }
-
-  function ensureOverlay() {
-    let overlay = one("#openMmiVehicleOverlay");
-    if (overlay) return overlay;
-
-    overlay = document.createElement("div");
-    overlay.id = "openMmiVehicleOverlay";
-    overlay.className = "openmmi-vehicle-overlay";
-    overlay.setAttribute("aria-live", "polite");
-    overlay.setAttribute("hidden", "");
-    overlay.innerHTML = `
-      <div class="openmmi-vehicle-overlay-card openmmi-door-overlay-visual-card" role="status" aria-label="Door open alert">
-        <div class="openmmi-door-overlay-car-host" id="openMmiDoorOverlayCarHost" aria-hidden="true"></div>
-        <div class="openmmi-vehicle-overlay-list" id="openMmiDoorOverlayList" hidden aria-hidden="true"></div>
-        <button type="button" class="openmmi-vehicle-overlay-dismiss" id="openMmiDoorOverlayDismiss">Dismiss</button>
-      </div>
-    `;
-
-    const footer = document.querySelector("footer.status-strip") || document.querySelector("footer");
-    (footer?.parentNode || document.body).insertBefore(overlay, footer || null);
-
-    syncDoorOverlayVehicleVisual(overlay);
-
-    overlay.querySelector("#openMmiDoorOverlayDismiss")?.addEventListener("click", () => {
-      state.dismissedSignature = state.currentSignature;
-      hideOverlay();
-    });
-
-    return overlay;
-  }
-
-  function hideOverlay() {
-    const overlay = one("#openMmiVehicleOverlay");
-    if (!overlay) return;
-    overlay.setAttribute("hidden", "");
-    overlay.classList.remove("is-visible");
-  }
-
-  function showOverlay(openDoors) {
-    const overlay = ensureOverlay();
-    const list = overlay.querySelector("#openMmiDoorOverlayList");
-    if (list) {
-      list.textContent = "";
-      list.hidden = true;
-      list.setAttribute("aria-hidden", "true");
-    }
-    overlay.removeAttribute("hidden");
-    overlay.classList.add("is-visible");
-  }
-
-  function updateDoorOverlay(payload) {
-    const openDoors = collectOpenDoors(payload);
-    const signature = openDoors.join("|");
-    state.currentSignature = signature;
-
-    if (!signature) {
-      state.dismissedSignature = "";
-      hideOverlay();
-      return;
-    }
-
-    if (signature === state.dismissedSignature) {
-      hideOverlay();
-      return;
-    }
-
-    showOverlay(openDoors);
-  }
-
-  function wrapRenderForDoorOverlay() {
-    try {
-      if (typeof render !== "function" || render.__openMmiDoorOverlayWrapped) return;
-      const previousRender = render;
-      const wrapped = function openMmiRenderWithDoorOverlay(payload) {
-        previousRender(payload);
-        updateDoorOverlay(payload);
-      };
-      wrapped.__openMmiDoorOverlayWrapped = true;
-      render = wrapped;
-    } catch (_) {}
-  }
-
-  ensureOverlay();
-  wrapRenderForDoorOverlay();
-  window.openMmiDoorOverlayState = state;
+  render.__openMmiOverlaysWrapped = true;
 })();
-// --- Open MMI V1 roadmap: door overlay end ---
-
-// --- Open MMI V1 roadmap: reverse overlay start ---
-(function openMmiReverseOverlayV1() {
-  if (window.__openMmiReverseOverlayV1Loaded) return;
-  window.__openMmiReverseOverlayV1Loaded = true;
-
-  const state = {
-    active: false,
-    dismissedThisReverse: false,
-  };
-
-  const one = (selector) => document.querySelector(selector);
-
-  function normalText(value) {
-    return String(value ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_");
-  }
-
-  function truthyReverseValue(value) {
-    if (value === true) return true;
-    if (value === false || value === null || value === undefined) return false;
-    if (typeof value === "number") return Number.isFinite(value) && value !== 0;
-
-    const text = normalText(value);
-    if (!text) return false;
-    if (["false", "no", "off", "0", "inactive", "not_reverse", "not_reversing", "park", "parking", "neutral", "drive", "d"].includes(text)) return false;
-    if (["true", "yes", "on", "1", "active", "reverse", "reversing", "reverse_selected", "r", "gear_r"].includes(text)) return true;
-    return /(^|_)(reverse|reversing)(_|$)/.test(text) || text === "r";
-  }
-
-  function firstValue(...values) {
-    for (const value of values) {
-      if (value !== undefined && value !== null && value !== "") return value;
-    }
-    return undefined;
-  }
-
-  function scanForReverse(obj, basePath = "") {
-    if (!obj || typeof obj !== "object") return false;
-    if (Array.isArray(obj)) return obj.some((item, idx) => scanForReverse(item, `${basePath}[${idx}]`));
-
-    for (const [key, value] of Object.entries(obj)) {
-      const path = basePath ? `${basePath}.${key}` : key;
-      const p = path.toLowerCase();
-      if (value && typeof value === "object") {
-        if (scanForReverse(value, path)) return true;
-        continue;
-      }
-      if (/(reverse|reversing|gear|selector|transmission)/.test(p) && !/(assist|overlay|camera|pdc|setting|mode)/.test(p)) {
-        if (truthyReverseValue(value)) return true;
-      }
-    }
-    return false;
-  }
-
-  function reverseSelected(payload) {
-    const root = payload || {};
-    const decoded = root.state || root.decoded || root;
-    const vehicle = decoded.vehicle || {};
-    const drivetrain = decoded.drivetrain || decoded.transmission || decoded.gearbox || {};
-    const status = decoded.status || root.status || {};
-
-    const direct = firstValue(
-      vehicle.reverse,
-      vehicle.reverse_selected,
-      vehicle.reverse_gear,
-      vehicle.reversing,
-      drivetrain.reverse,
-      drivetrain.reverse_selected,
-      drivetrain.gear,
-      drivetrain.selector,
-      status.reverse,
-      status.reverse_selected,
-      decoded.reverse,
-      decoded.reverse_selected
-    );
-
-    if (truthyReverseValue(direct)) return true;
-    if (direct !== undefined && direct !== null && direct !== "") return false;
-    return scanForReverse(decoded);
-  }
-
-  function ensureOverlay() {
-    let overlay = one("#openMmiReverseOverlay");
-    if (overlay) return overlay;
-
-    overlay = document.createElement("div");
-    overlay.id = "openMmiReverseOverlay";
-    overlay.className = "openmmi-reverse-overlay";
-    overlay.setAttribute("aria-live", "polite");
-    overlay.setAttribute("hidden", "");
-    overlay.innerHTML = `
-      <div class="openmmi-reverse-overlay-card" role="status" aria-label="Reverse assist alert">
-        <div class="openmmi-reverse-overlay-kicker">Reverse assist</div>
-        <h2>Reverse selected</h2>
-        <p>Camera/PDC overlay placeholder. Rear assist settings will live under Settings → Reverse assist.</p>
-        <div class="openmmi-reverse-overlay-grid" aria-hidden="true">
-          <span></span><span></span><span></span><span></span>
-        </div>
-        <button type="button" class="openmmi-reverse-overlay-dismiss" id="openMmiReverseOverlayDismiss">Dismiss</button>
-      </div>
-    `;
-
-    const footer = document.querySelector("footer.status-strip") || document.querySelector("footer");
-    (footer?.parentNode || document.body).insertBefore(overlay, footer || null);
-
-    overlay.querySelector("#openMmiReverseOverlayDismiss")?.addEventListener("click", () => {
-      state.dismissedThisReverse = true;
-      hideOverlay();
-    });
-
-    return overlay;
-  }
-
-  function hideOverlay() {
-    const overlay = one("#openMmiReverseOverlay");
-    if (!overlay) return;
-    overlay.setAttribute("hidden", "");
-    overlay.classList.remove("is-visible");
-  }
-
-  function showOverlay() {
-    const overlay = ensureOverlay();
-    overlay.removeAttribute("hidden");
-    overlay.classList.add("is-visible");
-  }
-
-  function updateReverseOverlay(payload) {
-    const active = reverseSelected(payload);
-    state.active = active;
-
-    if (!active) {
-      state.dismissedThisReverse = false;
-      hideOverlay();
-      return;
-    }
-
-    if (state.dismissedThisReverse) {
-      hideOverlay();
-      return;
-    }
-
-    showOverlay();
-  }
-
-  function wrapRenderForReverseOverlay() {
-    try {
-      if (typeof render !== "function" || render.__openMmiReverseOverlayWrapped) return;
-      const previousRender = render;
-      const wrapped = function openMmiRenderWithReverseOverlay(payload) {
-        previousRender(payload);
-        updateReverseOverlay(payload);
-      };
-      wrapped.__openMmiReverseOverlayWrapped = true;
-      render = wrapped;
-    } catch (_) {}
-  }
-
-  ensureOverlay();
-  wrapRenderForReverseOverlay();
-  window.openMmiReverseOverlayState = state;
-})();
-// --- Open MMI V1 roadmap: reverse overlay end ---
+// --- Open MMI V1 roadmap: vehicle overlays end ---
 
 /* open-mmi dashboard display setting: frontend-only tell-tale visual test */
 (function openMmiTellTaleTestSetting() {
@@ -5224,11 +4596,7 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
   }
 
   function pageIndex(pageId) {
-    try {
-      return Array.isArray(PAGE_IDS) ? PAGE_IDS.indexOf(pageId) : -1;
-    } catch (_) {
-      return -1;
-    }
+    return openMmiNavigationController.pageIndex(pageId);
   }
 
   function showPage(pageId) {
@@ -5236,25 +4604,7 @@ document.addEventListener("DOMContentLoaded", openMmiApplyDriverDashboardCleanup
       window.openMmiShowSettingsPage();
       return true;
     }
-    const index = pageIndex(pageId);
-    try {
-      if (index >= 0 && typeof setPage === "function") {
-        setPage(index);
-        window.dispatchEvent(
-          new CustomEvent("openmmi:pagechange", { detail: { id: pageId } }),
-        );
-        return true;
-      }
-    } catch (_) {}
-    const page = document.getElementById(pageId);
-    if (!page) return false;
-    document.querySelectorAll(".page").forEach((candidate) => {
-      candidate.classList.toggle("active", candidate === page);
-    });
-    window.dispatchEvent(
-      new CustomEvent("openmmi:pagechange", { detail: { id: pageId } }),
-    );
-    return true;
+    return !!openMmiNavigationController.showPage(pageId);
   }
 
   function mediaPageId() {

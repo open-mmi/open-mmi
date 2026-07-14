@@ -11,6 +11,8 @@ APP = STATIC / "app.js"
 API = STATIC / "api.js"
 PREFERENCES = STATIC / "preferences.js"
 STATUS = STATIC / "status.js"
+NAVIGATION = STATIC / "navigation.js"
+OVERLAYS = STATIC / "overlays.js"
 
 
 class FrontendModuleBoundaryTests(unittest.TestCase):
@@ -19,17 +21,26 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
         api_index = html.index('<script src="/api.js"></script>')
         preferences_index = html.index('<script src="/preferences.js"></script>')
         status_index = html.index('<script src="/status.js"></script>')
+        navigation_index = html.index('<script src="/navigation.js"></script>')
+        overlays_index = html.index('<script src="/overlays.js"></script>')
         app_index = html.index('<script src="/app.js"></script>')
         self.assertLess(api_index, preferences_index)
         self.assertLess(preferences_index, status_index)
-        self.assertLess(status_index, app_index)
+        self.assertLess(status_index, navigation_index)
+        self.assertLess(navigation_index, overlays_index)
+        self.assertLess(overlays_index, app_index)
 
     def test_application_uses_frontend_modules(self):
         source = APP.read_text(encoding="utf-8")
         self.assertIn("window.openMmiApi", source)
         self.assertIn("window.openMmiPreferences", source)
         self.assertIn("window.openMmiStatus", source)
+        self.assertIn("window.openMmiNavigation", source)
+        self.assertIn("window.openMmiOverlays", source)
         self.assertIn("openMmiStatusClient.createStore()", source)
+        self.assertIn("openMmiNavigationClient.createController()", source)
+        self.assertIn("openMmiOverlaysClient.createController()", source)
+        self.assertIn("window.setPage = (index) => openMmiNavigationController.setPage(index);", source)
         self.assertIn("openMmiStatusClient.createPoller({", source)
         self.assertIn("openMmiApiClient.postJson(", source)
         self.assertNotIn('openMmiApiClient.getJson("/api/status"', source)
@@ -39,10 +50,14 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
         api = API.read_text(encoding="utf-8")
         preferences = PREFERENCES.read_text(encoding="utf-8")
         status = STATUS.read_text(encoding="utf-8")
+        navigation = NAVIGATION.read_text(encoding="utf-8")
+        overlays = OVERLAYS.read_text(encoding="utf-8")
         for source, global_name in (
             (api, "openMmiApi"),
             (preferences, "openMmiPreferences"),
             (status, "openMmiStatus"),
+            (navigation, "openMmiNavigation"),
+            (overlays, "openMmiOverlays"),
         ):
             self.assertIn("typeof module === \"object\"", source)
             self.assertIn(f"root.{global_name}", source)
@@ -57,6 +72,29 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
         self.assertIn("function createPoller(options = {})", source)
         self.assertIn("scheduler.setInterval(fetchStatus, intervalMs)", source)
         self.assertNotIn("document.", source)
+
+
+    def test_navigation_module_owns_page_state_and_home_menu(self):
+        source = NAVIGATION.read_text(encoding="utf-8")
+        app = APP.read_text(encoding="utf-8")
+        self.assertIn("function createController(options = {})", source)
+        self.assertIn("function showPageById(id, title, quickIndex = HOME_INDEX)", source)
+        self.assertIn("function ensureHomePage()", source)
+        self.assertIn('windowRef.addEventListener("keydown", keyHandler)', source)
+        self.assertNotIn("function ensureHomePage()", app)
+        self.assertNotIn("const QUICK_PAGES =", app)
+
+    def test_overlay_module_owns_detection_and_visibility_lifecycle(self):
+        source = OVERLAYS.read_text(encoding="utf-8")
+        app = APP.read_text(encoding="utf-8")
+        self.assertIn("function collectOpenDoors(payload)", source)
+        self.assertIn("function reverseSelected(payload)", source)
+        self.assertIn("function reduceDoorOverlay(state, openDoors)", source)
+        self.assertIn("function reduceReverseOverlay(state, active)", source)
+        self.assertIn('overlay.id = "openMmiVehicleOverlay"', source)
+        self.assertIn('overlay.id = "openMmiReverseOverlay"', source)
+        self.assertNotIn("function collectOpenDoors(payload)", app)
+        self.assertNotIn("function reverseSelected(payload)", app)
 
     def test_api_reads_fetch_at_call_time_for_instrumentation(self):
         source = API.read_text(encoding="utf-8")

@@ -22,6 +22,8 @@ REQUIRED_PATHS = {
     "ui/web_dashboard/static/app.js",
     "ui/web_dashboard/static/preferences.js",
     "ui/web_dashboard/static/status.js",
+    "ui/web_dashboard/static/navigation.js",
+    "ui/web_dashboard/static/overlays.js",
     "ui/web_dashboard/static/index.html",
     "ui/web_dashboard/static/styles.css",
     "vehicles/seat_1p/config.json",

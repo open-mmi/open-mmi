@@ -169,3 +169,99 @@ test("status poller records failures and keeps the render error path separate", 
   assert.equal(store.getSnapshot().error, failure);
   assert.deepEqual(errors, [failure]);
 });
+
+const navigation = require("../../ui/web_dashboard/static/navigation.js");
+const overlays = require("../../ui/web_dashboard/static/overlays.js");
+
+function fakeClassList() {
+  const values = new Set();
+  return {
+    contains(name) { return values.has(name); },
+    toggle(name, force) {
+      if (force === undefined ? !values.has(name) : force) values.add(name);
+      else values.delete(name);
+      return values.has(name);
+    },
+  };
+}
+
+test("navigation normalises quick-page indices in both directions", () => {
+  assert.equal(navigation.normaliseIndex(0), 0);
+  assert.equal(navigation.normaliseIndex(3), 0);
+  assert.equal(navigation.normaliseIndex(-1), 2);
+  assert.equal(navigation.normaliseIndex("invalid"), navigation.HOME_INDEX);
+});
+
+test("navigation controller owns active page, pager and page-change state", () => {
+  const pages = ["pageElectrical", "pageHome", "pageDrive", "pageClimate"].map((id) => ({ id, classList: fakeClassList() }));
+  const buttons = [0, 1, 2].map(() => ({ classList: fakeClassList() }));
+  const title = { textContent: "" };
+  const events = [];
+  const document = {
+    querySelector(selector) {
+      if (selector === "#pageTitle") return title;
+      if (selector.startsWith("#")) return pages.find((page) => page.id === selector.slice(1)) || null;
+      return null;
+    },
+    querySelectorAll(selector) {
+      if (selector === ".page") return pages;
+      if (selector === ".pager button") return buttons;
+      return [];
+    },
+  };
+  const window = {
+    CustomEvent: class CustomEvent {
+      constructor(type, init) { this.type = type; this.detail = init.detail; }
+    },
+    dispatchEvent(event) { events.push(event); },
+  };
+  const controller = navigation.createController({ document, window });
+
+  controller.setPage(-1);
+  assert.equal(controller.getSnapshot().activePageId, "pageDrive");
+  assert.equal(title.textContent, "Drive");
+  assert.equal(pages[2].classList.contains("active"), true);
+  assert.equal(buttons[2].classList.contains("active"), true);
+
+  controller.showPageById("pageClimate", "Climate", navigation.HOME_INDEX);
+  assert.equal(controller.getSnapshot().activePageId, "pageClimate");
+  assert.equal(title.textContent, "Climate");
+  assert.deepEqual(events.at(-1).detail, { id: "pageClimate", title: "Climate", quickIndex: 1 });
+});
+
+test("door overlay visibility survives dismissal until the open set changes", () => {
+  const openDoors = overlays.collectOpenDoors({
+    state: {
+      doors: { front_left: true, rear_right: false, locked: true },
+      body: { boot_ajar: "open" },
+    },
+  });
+  assert.deepEqual(openDoors, ["Boot", "Front left door"]);
+
+  let state = overlays.reduceDoorOverlay(null, openDoors);
+  assert.equal(state.visible, true);
+  state = overlays.dismissDoorOverlay(state);
+  assert.equal(state.visible, false);
+  state = overlays.reduceDoorOverlay(state, openDoors);
+  assert.equal(state.visible, false);
+  state = overlays.reduceDoorOverlay(state, ["Front left door"]);
+  assert.equal(state.visible, true);
+  state = overlays.reduceDoorOverlay(state, []);
+  assert.deepEqual(state, { currentSignature: "", dismissedSignature: "", visible: false });
+});
+
+test("reverse overlay detection and dismissal reset at the end of reverse", () => {
+  assert.equal(overlays.reverseSelected({ state: { vehicle: { reverse_selected: true } } }), true);
+  assert.equal(overlays.reverseSelected({ state: { transmission: { gear: "R" } } }), true);
+  assert.equal(overlays.reverseSelected({ state: { vehicle: { reverse: false }, reverse_overlay_mode: "camera" } }), false);
+
+  let state = overlays.reduceReverseOverlay(null, true);
+  assert.deepEqual(state, { active: true, dismissedThisReverse: false, visible: true });
+  state = overlays.dismissReverseOverlay(state);
+  state = overlays.reduceReverseOverlay(state, true);
+  assert.deepEqual(state, { active: true, dismissedThisReverse: true, visible: false });
+  state = overlays.reduceReverseOverlay(state, false);
+  assert.deepEqual(state, { active: false, dismissedThisReverse: false, visible: false });
+  state = overlays.reduceReverseOverlay(state, true);
+  assert.equal(state.visible, true);
+});
