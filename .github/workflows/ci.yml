@@ -1,0 +1,157 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install project
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Compile Python
+        run: python -m compileall -q actions canbusd scripts tests tools ui vehicles bindings
+
+      - name: Run unit tests
+        run: python -m unittest discover -s tests
+
+      - name: Check JavaScript syntax
+        run: node --check ui/web_dashboard/static/app.js
+
+      - name: Validate JSON
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          ignored = {".git", "build", "dist", ".venv", "venv"}
+          files = [
+              path for path in Path(".").rglob("*.json")
+              if not ignored.intersection(path.parts)
+          ]
+          for path in files:
+              with path.open(encoding="utf-8") as stream:
+                  json.load(stream)
+          print(f"Validated {len(files)} JSON files")
+          PY
+
+      - name: Validate shell scripts
+        run: |
+          bash -n scripts/dev_run.sh
+          bash -n scripts/install.sh
+          bash -n scripts/manage.sh
+          bash -n scripts/open-mmi-desktop
+
+  package:
+    name: Build and inspect wheel
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Build distributions
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build
+
+      - name: Verify wheel contents
+        run: python tools/verify_wheel.py dist/*.whl
+
+      - name: Install built wheel
+        run: |
+          python -m pip install dist/*.whl
+          cd "$(mktemp -d)"
+          python - <<'PY'
+          from pathlib import Path
+          import bindings
+          import canbusd
+          import ui.web_dashboard
+          import vehicles
+
+          roots = {
+              "bindings": Path(bindings.__file__).parent / "default.json",
+              "vehicle": Path(vehicles.__file__).parent / "seat_1p" / "config.json",
+              "dashboard": Path(ui.web_dashboard.__file__).parent / "static" / "index.html",
+          }
+          missing = [f"{name}: {path}" for name, path in roots.items() if not path.is_file()]
+          if missing:
+              raise SystemExit("Missing installed assets:\n" + "\n".join(missing))
+          print("Installed package imports and runtime assets verified")
+          PY
+
+  dashboard-smoke:
+    name: Dashboard smoke and live probe
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install project
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Start demo dashboard and probe it
+        run: |
+          python -m ui.web_dashboard.server --demo --demo-scenario traffic --port 8765 >dashboard.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true; wait "$server_pid" 2>/dev/null || true' EXIT
+
+          python - <<'PY'
+          import json
+          import time
+          from urllib.request import urlopen
+
+          base = "http://127.0.0.1:8765"
+          last_error = None
+          for _ in range(50):
+              try:
+                  with urlopen(base + "/api/health", timeout=1) as response:
+                      json.load(response)
+                  break
+              except Exception as exc:
+                  last_error = exc
+                  time.sleep(0.1)
+          else:
+              raise SystemExit(f"Dashboard did not become ready: {last_error}")
+
+          for endpoint in ("/", "/api/status", "/api/health"):
+              with urlopen(base + endpoint, timeout=3) as response:
+                  if response.status != 200:
+                      raise SystemExit(f"{endpoint} returned {response.status}")
+          print("Dashboard routes are healthy")
+          PY
+
+          OPEN_MMI_PERF_BASE_URL=http://127.0.0.1:8765 \
+          OPEN_MMI_PERF_SAMPLES=100 \
+          python -m unittest tests.test_dashboard_performance_contracts.LiveDashboardPerformanceTests

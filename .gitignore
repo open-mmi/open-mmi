@@ -7,3 +7,15 @@ dev/
 
 # Local dashboard performance reports
 benchmarks/
+
+# Python build and test outputs
+build/
+dist/
+*.egg-info/
+.coverage
+coverage.xml
+htmlcov/
+
+# Local generated artifacts
+open-mmi-v1-foundation-hardening-phase1.patch
+open-mmi-v1-foundation-hardening-phase1.zip

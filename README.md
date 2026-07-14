@@ -293,8 +293,6 @@ This installs:
 ```text
 ~/.local/share/applications/open-mmi-status.desktop
 ~/.local/share/icons/hicolor
-~/.local/share/icons/open-mmi-dark
-~/.local/share/icons/open-mmi-light
 ```
 
 The desktop launcher is currently intended as a lightweight diagnostic convenience, not as the final Open MMI user interface.
@@ -933,9 +931,7 @@ Files live in:
 packaging/linux-desktop/
 ├── open-mmi-status.desktop
 └── icons/
-    ├── hicolor/
-    ├── open-mmi-dark/
-    └── open-mmi-light/
+    └── hicolor/
 ```
 
 The desktop launcher is intentionally opt-in. Open MMI includes the integration/backend layer and a local web dashboard. The diagnostic desktop launcher remains optional and development-focused.

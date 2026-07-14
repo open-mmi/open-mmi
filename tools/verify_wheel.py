@@ -1,0 +1,51 @@
+#!/usr/bin/env python3
+"""Fail when an Open MMI wheel omits application modules or runtime assets."""
+
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+from zipfile import ZipFile
+
+
+REQUIRED_PATHS = {
+    "actions/__init__.py",
+    "bindings/default.json",
+    "canbusd/core.py",
+    "ui/dashboard/status_cli.py",
+    "ui/web_dashboard/server.py",
+    "ui/web_dashboard/static/app.js",
+    "ui/web_dashboard/static/index.html",
+    "ui/web_dashboard/static/styles.css",
+    "vehicles/seat_1p/config.json",
+}
+
+
+def verify(wheel_path: Path) -> None:
+    if not wheel_path.is_file():
+        raise SystemExit(f"Wheel does not exist: {wheel_path}")
+
+    with ZipFile(wheel_path) as archive:
+        members = set(archive.namelist())
+
+    missing = sorted(REQUIRED_PATHS - members)
+    if missing:
+        formatted = "\n".join(f"  - {path}" for path in missing)
+        raise SystemExit(f"Wheel is missing required files:\n{formatted}")
+
+    metadata = [name for name in members if name.endswith(".dist-info/METADATA")]
+    if len(metadata) != 1:
+        raise SystemExit(f"Expected exactly one METADATA file, found {len(metadata)}")
+
+    print(f"Verified {wheel_path}: {len(members)} files, all required assets present")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("wheel", type=Path)
+    args = parser.parse_args()
+    verify(args.wheel)
+
+
+if __name__ == "__main__":
+    main()
