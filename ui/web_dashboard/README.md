@@ -285,7 +285,8 @@ The browser loads small platform modules before the main dashboard application:
 - `static/status.js` owns the shared status snapshot and fixed 200 ms `/api/status` polling lifecycle. It is DOM-independent and exposes subscriptions for later frontend modules.
 - `static/navigation.js` owns quick-page state, Home/menu construction, pager controls, keyboard navigation, and page-change events.
 - `static/overlays.js` owns door/reverse detection, dismissal lifecycle, and the two full-screen vehicle alerts.
-- `static/app.js` owns the remaining vehicle rendering, settings, diagnostics, and media controllers while those areas are migrated incrementally.
+- `static/vehicle.js` owns vehicle/climate field derivation, unit conversion, health, doors, tachometer state, coolant/voltage enhancements, and the first-stage tell-tale rendering path.
+- `static/app.js` owns the remaining settings, diagnostics, advanced tell-tales, and media controllers while those areas are migrated incrementally.
 
 The platform modules resolve `window.fetch` and `window.localStorage` at call time. This keeps performance instrumentation compatible and lets the dashboard fail safely when browser storage is unavailable or restricted.
 

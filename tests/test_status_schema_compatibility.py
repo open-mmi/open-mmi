@@ -9,7 +9,7 @@ from ui.web_dashboard import server
 
 ROOT = Path(__file__).resolve().parents[1]
 PROFILE_PATH = ROOT / "vehicles" / "seat_1p" / "config.json"
-APP_PATH = ROOT / "ui" / "web_dashboard" / "static" / "app.js"
+VEHICLE_PATH = ROOT / "ui" / "web_dashboard" / "static" / "vehicle.js"
 STATUS_CLI_PATH = ROOT / "ui" / "dashboard" / "status_cli.py"
 
 
@@ -59,12 +59,12 @@ class StatusSchemaCompatibilityTests(unittest.TestCase):
             )
 
     def test_consumers_prefer_canonical_name_and_fall_back_to_legacy(self):
-        app_source = APP_PATH.read_text()
+        vehicle_source = VEHICLE_PATH.read_text()
         cli_source = STATUS_CLI_PATH.read_text()
 
         self.assertIn(
             "climate.recirculation_active ?? climate.front_demist_air_request",
-            app_source,
+            vehicle_source,
         )
         self.assertIn(
             "climate.get('recirculation_active', climate.get('front_demist_air_request'))",

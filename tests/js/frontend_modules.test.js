@@ -172,6 +172,7 @@ test("status poller records failures and keeps the render error path separate", 
 
 const navigation = require("../../ui/web_dashboard/static/navigation.js");
 const overlays = require("../../ui/web_dashboard/static/overlays.js");
+const vehicle = require("../../ui/web_dashboard/static/vehicle.js");
 
 function fakeClassList() {
   const values = new Set();
@@ -264,4 +265,72 @@ test("reverse overlay detection and dismissal reset at the end of reverse", () =
   assert.deepEqual(state, { active: false, dismissedThisReverse: false, visible: false });
   state = overlays.reduceReverseOverlay(state, true);
   assert.equal(state.visible, true);
+});
+
+
+test("vehicle view model formats representative imperial status", () => {
+  const view = vehicle.buildViewModel({
+    health: { status: "ok", age_seconds: 1.24 },
+    state: {
+      vehicle: { speed_kmh: 100, odometer_km: 1000, handbrake: true, reverse: false },
+      engine: { speed_rpm: 2500, coolant_temp_c: 90 },
+      electrical: { supply_voltage_v: 13.8 },
+      climate: {
+        outside_temp_regulation_c: 10.5,
+        outside_temp_unfiltered_c: 11,
+        blower_load_percent: 37.5,
+        recirculation_active: true,
+        rear_window_heater_requested: false,
+        compressor_active: true,
+      },
+      lighting: {
+        dimmer_percent: 60,
+        mode: "auto",
+        lights_on: true,
+        left_indicator: true,
+        right_indicator: false,
+        hazards: false,
+        bulb_out: false,
+      },
+      doors: { front_left: true, any_open: true },
+    },
+  }, { speedUnit: "mph", tempUnit: "f" });
+
+  assert.equal(view.health.status, "ok");
+  assert.equal(view.health.ageText, "1.2s ago");
+  assert.equal(view.fields.speed_mph, "62");
+  assert.equal(view.fields.odo_mi, "621");
+  assert.equal(view.fields.coolant_c, "194");
+  assert.equal(view.fields.outside_reg_c, "50.9");
+  assert.equal(view.fields.voltage_v, "13.8");
+  assert.equal(view.fields.indicators, "Left");
+  assert.equal(view.booleans.recirculation, true);
+  assert.equal(view.doors.front_left, true);
+  assert.equal(view.anyDoorOpen, true);
+  assert.equal(view.units.speed_mph, "mph");
+  assert.equal(view.units.coolant_c, "°F");
+});
+
+test("vehicle view model preserves canonical recirculation fallback and missing data", () => {
+  const legacy = vehicle.buildViewModel({
+    state: { climate: { front_demist_air_request: false } },
+  }, { speedUnit: "kmh", tempUnit: "c" });
+
+  assert.equal(legacy.booleans.recirculation, false);
+  assert.equal(legacy.fields.speed_mph, "--");
+  assert.equal(legacy.fields.coolant_c, "--");
+  assert.equal(legacy.fields.range_mi, "--");
+  assert.equal(legacy.health.status, "waiting");
+  assert.equal(legacy.health.ageText, "--");
+  assert.equal(legacy.units.speed_mph, "km/h");
+  assert.equal(legacy.units.odo_mi, "km");
+});
+
+test("vehicle formatting utilities reject invalid values and respect units", () => {
+  assert.equal(vehicle.formatNumber(null), "--");
+  assert.equal(vehicle.formatNumber("unknown"), "unknown");
+  assert.equal(vehicle.formatSpeedFromKmh("bad", 0, { speedUnit: "mph" }), "--");
+  assert.equal(vehicle.formatSpeedFromKmh(80, 0, { speedUnit: "kmh" }), "80");
+  assert.equal(vehicle.formatTempFromC(0, 0, { tempUnit: "f" }), "32");
+  assert.equal(vehicle.indicatorLabel({ hazards: true }), "Hazards");
 });
