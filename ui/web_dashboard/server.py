@@ -274,47 +274,6 @@ except ModuleNotFoundError as exc:  # pragma: no cover - direct script fallback
         raise
     import jellyfin as jellyfin_backend  # type: ignore[no-redef]
 
-# Transitional private aliases preserve callers that imported Jellyfin helpers
-# from ``server.py`` while routes and new tests use the provider directly.
-JELLYFIN_TIMEOUT_SECONDS = jellyfin_backend.JELLYFIN_TIMEOUT_SECONDS
-JELLYFIN_ACTIVE_WITHIN_SECONDS = jellyfin_backend.JELLYFIN_ACTIVE_WITHIN_SECONDS
-JELLYFIN_AUDIO_CHUNK_BYTES = jellyfin_backend.JELLYFIN_AUDIO_CHUNK_BYTES
-JELLYFIN_JSON_MAX_BYTES = jellyfin_backend.JELLYFIN_JSON_MAX_BYTES
-JELLYFIN_IMAGE_MAX_BYTES = jellyfin_backend.JELLYFIN_IMAGE_MAX_BYTES
-JELLYFIN_LOGIN_CACHE_SECONDS = jellyfin_backend.JELLYFIN_LOGIN_CACHE_SECONDS
-JELLYFIN_IMAGE_CONTENT_TYPES = jellyfin_backend.JELLYFIN_IMAGE_CONTENT_TYPES
-JELLYFIN_CLIENT_NAME = jellyfin_backend.JELLYFIN_CLIENT_NAME
-JELLYFIN_DEVICE_ID = jellyfin_backend.JELLYFIN_DEVICE_ID
-JELLYFIN_CLIENT_VERSION = jellyfin_backend.JELLYFIN_CLIENT_VERSION
-_JELLYFIN_LOGIN_CACHE = jellyfin_backend._JELLYFIN_LOGIN_CACHE
-_jellyfin_config = jellyfin_backend._jellyfin_config
-_jellyfin_header_value = jellyfin_backend._jellyfin_header_value
-_jellyfin_login_auth_header = jellyfin_backend._jellyfin_login_auth_header
-_jellyfin_login_cache_key = jellyfin_backend._jellyfin_login_cache_key
-_jellyfin_invalidate_login = jellyfin_backend._jellyfin_invalidate_login
-_jellyfin_prune_login_cache = jellyfin_backend._jellyfin_prune_login_cache
-_read_bounded_response = jellyfin_backend._read_bounded_response
-_jellyfin_login = jellyfin_backend._jellyfin_login
-_jellyfin_access_token = jellyfin_backend._jellyfin_access_token
-_jellyfin_auth_headers = jellyfin_backend._jellyfin_auth_headers
-_jellyfin_urlopen = jellyfin_backend._jellyfin_urlopen
-_jellyfin_authenticated_urlopen = jellyfin_backend._jellyfin_authenticated_urlopen
-_jellyfin_request_json = jellyfin_backend._jellyfin_request_json
-_env_flag = jellyfin_backend._env_flag
-_safe_jellyfin_id = jellyfin_backend._safe_jellyfin_id
-_jellyfin_media_filter = jellyfin_backend._jellyfin_media_filter
-_jellyfin_scope_params = jellyfin_backend._jellyfin_scope_params
-_jellyfin_user_id = jellyfin_backend._jellyfin_user_id
-_jellyfin_validate_item_access = jellyfin_backend._jellyfin_validate_item_access
-_format_jellyfin_item = jellyfin_backend._format_jellyfin_item
-_jellyfin_demo_tracks = jellyfin_backend._jellyfin_demo_tracks
-_jellyfin_demo_status = jellyfin_backend._jellyfin_demo_status
-_pick_jellyfin_session = jellyfin_backend._pick_jellyfin_session
-_jellyfin_status_payload = jellyfin_backend._jellyfin_status_payload
-_jellyfin_search_payload = jellyfin_backend._jellyfin_search_payload
-_jellyfin_proxy_audio = jellyfin_backend._jellyfin_proxy_audio
-_jellyfin_proxy_image = jellyfin_backend._jellyfin_proxy_image
-
 
 
 # Radio is a separate provider module.  The absolute import supports package and
@@ -326,73 +285,12 @@ except ModuleNotFoundError as exc:  # pragma: no cover - direct script fallback
         raise
     import radio as radio_backend  # type: ignore[no-redef]
 
-# Transitional private aliases preserve callers that imported these helpers from
-# server.py while routes and new tests use the provider module directly.
-_safe_radio_station_id = radio_backend._safe_radio_station_id
-_radio_validate_stream_url = radio_backend._radio_validate_stream_url
-_radio_resolve_stream_target = radio_backend._radio_resolve_stream_target
-_radio_connection = radio_backend._radio_connection
-_radio_config = radio_backend._radio_config
-_radio_catalog_json = radio_backend._radio_catalog_json
-_radio_search_payload = radio_backend._radio_search_payload
-_radio_filter_options_payload = radio_backend._radio_filter_options_payload
-_radio_status_payload = radio_backend._radio_status_payload
-_radio_station_by_uuid = radio_backend._radio_station_by_uuid
-_radio_stream_url = radio_backend._radio_stream_url
-_radio_open_stream = radio_backend._radio_open_stream
-_radio_proxy_audio = radio_backend._radio_proxy_audio
-
 # USB media provider. Keep the fallback so ``python ui/web_dashboard/server.py``
 # continues to work when executed directly rather than as a package module.
 try:
     from ui.web_dashboard import usb as usb_backend
 except ModuleNotFoundError:  # pragma: no cover - direct-script compatibility
     import usb as usb_backend  # type: ignore[no-redef]
-
-# Temporary private aliases preserve compatibility for callers that imported
-# USB helpers from ``server.py`` before the provider extraction.
-USB_AUDIO_EXTENSIONS = usb_backend.USB_AUDIO_EXTENSIONS
-USB_ARTWORK_EXTENSIONS = usb_backend.USB_ARTWORK_EXTENSIONS
-USB_ARTWORK_NAMES = usb_backend.USB_ARTWORK_NAMES
-USB_STREAM_CHUNK_BYTES = usb_backend.USB_STREAM_CHUNK_BYTES
-USB_MAX_ROOTS = usb_backend.USB_MAX_ROOTS
-USB_MAX_RESULTS = usb_backend.USB_MAX_RESULTS
-USB_DEFAULT_SCAN_LIMIT = usb_backend.USB_DEFAULT_SCAN_LIMIT
-USB_ID_REGISTRY_MAX = usb_backend.USB_ID_REGISTRY_MAX
-_USB_ID_SECRET = usb_backend._USB_ID_SECRET
-_USB_ID_REGISTRY = usb_backend._USB_ID_REGISTRY
-_USB_ID_LOCK = usb_backend._USB_ID_LOCK
-_usb_bool_env = usb_backend._usb_bool_env
-_usb_int_env = usb_backend._usb_int_env
-_usb_split_paths = usb_backend._usb_split_paths
-_usb_discovery_bases = usb_backend._usb_discovery_bases
-_usb_root_id = usb_backend._usb_root_id
-_usb_safe_label = usb_backend._usb_safe_label
-_usb_candidate_root = usb_backend._usb_candidate_root
-_usb_roots = usb_backend._usb_roots
-_usb_normalize_relative = usb_backend._usb_normalize_relative
-_usb_encode_id = usb_backend._usb_encode_id
-_usb_decode_id = usb_backend._usb_decode_id
-_usb_root_map = usb_backend._usb_root_map
-_usb_reject_symlink_components = usb_backend._usb_reject_symlink_components
-_usb_resolve_id = usb_backend._usb_resolve_id
-_usb_include_entry = usb_backend._usb_include_entry
-_usb_artwork_path = usb_backend._usb_artwork_path
-_usb_track_metadata = usb_backend._usb_track_metadata
-_usb_format_audio = usb_backend._usb_format_audio
-_usb_format_directory = usb_backend._usb_format_directory
-_usb_format_root = usb_backend._usb_format_root
-_usb_sort_items = usb_backend._usb_sort_items
-_usb_search_terms = usb_backend._usb_search_terms
-_usb_search_matches = usb_backend._usb_search_matches
-_usb_scan_directory = usb_backend._usb_scan_directory
-_usb_breadcrumbs = usb_backend._usb_breadcrumbs
-_usb_browse_payload = usb_backend._usb_browse_payload
-_usb_status_payload = usb_backend._usb_status_payload
-_usb_parse_range = usb_backend._usb_parse_range
-_usb_content_type = usb_backend._usb_content_type
-_usb_open_file = usb_backend._usb_open_file
-_usb_send_file = usb_backend._usb_send_file
 
 # Bluetooth media provider. Keep the fallback so
 # ``python ui/web_dashboard/server.py`` continues to work when executed
@@ -407,40 +305,6 @@ except ImportError as exc:  # pragma: no cover - older installed package fallbac
     if exc.name != "ui.web_dashboard":
         raise
     import bluetooth as bluetooth_backend  # type: ignore[no-redef]
-
-# Transitional private aliases preserve callers that imported Bluetooth helpers
-# from ``server.py`` while routes and new tests use the provider directly.
-BLUETOOTH_BUSCTL_TIMEOUT_SECONDS = bluetooth_backend.BLUETOOTH_BUSCTL_TIMEOUT_SECONDS
-BLUETOOTH_STATUS_CACHE_SECONDS = bluetooth_backend.BLUETOOTH_STATUS_CACHE_SECONDS
-BLUETOOTH_MAX_BODY_BYTES = bluetooth_backend.BLUETOOTH_MAX_BODY_BYTES
-_BLUETOOTH_ID_SECRET = bluetooth_backend._BLUETOOTH_ID_SECRET
-_BLUETOOTH_ID_REGISTRY = bluetooth_backend._BLUETOOTH_ID_REGISTRY
-_BLUETOOTH_ID_LOCK = bluetooth_backend._BLUETOOTH_ID_LOCK
-_BLUETOOTH_CACHE_LOCK = bluetooth_backend._BLUETOOTH_CACHE_LOCK
-_BLUETOOTH_STATUS_CACHE = bluetooth_backend._BLUETOOTH_STATUS_CACHE
-_BLUETOOTH_ID_REGISTRY_MAX = bluetooth_backend._BLUETOOTH_ID_REGISTRY_MAX
-_BLUETOOTH_ACTION_METHODS = bluetooth_backend._BLUETOOTH_ACTION_METHODS
-_bluetooth_bool_env = bluetooth_backend._bluetooth_bool_env
-_bluetooth_timeout = bluetooth_backend._bluetooth_timeout
-_bluetooth_busctl_executable = bluetooth_backend._bluetooth_busctl_executable
-_bluetooth_busctl = bluetooth_backend._bluetooth_busctl
-_bluetooth_player_paths = bluetooth_backend._bluetooth_player_paths
-_bluetooth_parse_scalar = bluetooth_backend._bluetooth_parse_scalar
-_bluetooth_parse_variant_value = bluetooth_backend._bluetooth_parse_variant_value
-_bluetooth_parse_track = bluetooth_backend._bluetooth_parse_track
-_bluetooth_property = bluetooth_backend._bluetooth_property
-_bluetooth_optional_property = bluetooth_backend._bluetooth_optional_property
-_bluetooth_clean_text = bluetooth_backend._bluetooth_clean_text
-_bluetooth_player_id = bluetooth_backend._bluetooth_player_id
-_bluetooth_resolve_player_id = bluetooth_backend._bluetooth_resolve_player_id
-_bluetooth_player_record = bluetooth_backend._bluetooth_player_record
-_bluetooth_select_player = bluetooth_backend._bluetooth_select_player
-_bluetooth_invalidate_cache = bluetooth_backend._bluetooth_invalidate_cache
-_bluetooth_unavailable_payload = bluetooth_backend._bluetooth_unavailable_payload
-_bluetooth_status_payload = bluetooth_backend._bluetooth_status_payload
-_bluetooth_control = bluetooth_backend._bluetooth_control
-_bluetooth_same_origin = bluetooth_backend._bluetooth_same_origin
-_bluetooth_json_body = bluetooth_backend._bluetooth_json_body
 
 
 class DashboardHandler(SimpleHTTPRequestHandler):

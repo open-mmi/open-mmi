@@ -1,69 +1,27 @@
 # Release checklist
 
-A GitHub Release is a public artefact for users and contributors.
+## Automated gates
 
-A git tag is only a source checkpoint. Do not create a GitHub Release unless the project state is clear, tested, and honestly documented.
+- [ ] Python 3.9 and current Python CI are green.
+- [ ] Unit, Node, Playwright, CSS-cascade, package-content, and dashboard-smoke jobs are green.
+- [ ] The wheel installs in a clean environment and all console entry points start.
+- [ ] `npm ci` reproduces the browser-test environment from `package-lock.json`.
 
-## Required before a GitHub Release
+## Runtime checks
 
-- [ ] release is created from a source tag
-- [ ] version number matches the release notes
-- [ ] README status wording is accurate
-- [ ] known limitations are listed
-- [ ] install path has been tested from a fresh checkout
-- [ ] update path has been tested where relevant
-- [ ] uninstall path has been tested where relevant
-- [ ] daemon starts cleanly
-- [ ] logs are readable
-- [ ] status snapshot is generated
-- [ ] status dashboard or UI consumer works
-- [ ] security policy is current
-- [ ] licence is present and accurate
-- [ ] release notes include clear alpha/beta/stable status
+- [ ] Replay representative CAN captures and verify clean startup, reload, interface loss, and shutdown.
+- [ ] Exercise dashboard navigation, overlays, settings persistence, and each enabled media provider.
+- [ ] Confirm the dashboard remains read-only with respect to vehicle CAN transmission.
+- [ ] Confirm loopback binding is retained unless deployment security has been explicitly reviewed.
 
-## Reference vehicle notes
+## Installation checks
 
-For any release claiming vehicle support:
+- [ ] Test fresh install, desktop `install`, `reinstall`, and `remove`.
+- [ ] Test upgrade from the previous `main` checkpoint.
+- [ ] Record a rollback tag and procedure.
 
-- [ ] vehicle make/model/year/platform is listed
-- [ ] tested profile is listed
-- [ ] tested capture point is listed
-- [ ] tested CAN adapter is listed, if relevant
-- [ ] tested bitrate is listed, if known
-- [ ] decoded states are listed
-- [ ] unsupported or untested states are listed
-- [ ] safety limitations are stated
+## Documentation
 
-## Screenshots or example output
-
-Include at least one of:
-
-- [ ] CLI dashboard screenshot
-- [ ] graphical UI screenshot
-- [ ] daemon status/log output
-- [ ] example `status.json`
-- [ ] replay/demo output, once available
-
-Screenshots must be labelled honestly as alpha, beta, or stable.
-
-## Release notes should include
-
-- release name and version
-- source tag
-- project maturity status
-- tested environment
-- tested vehicle/profile, if applicable
-- highlights
-- known limitations
-- upgrade notes
-- safety/security notes
-- contribution notes
-
-## Do not release if
-
-- README claims are ahead of tested behaviour
-- current source does not match the release
-- generated artefacts cannot be traced back to source
-- known safety issues are undocumented
-- install or startup is broken
-- limitations are unclear
+- [ ] Update changelog and migration notes.
+- [ ] Record supported vehicles, tested hardware, known limitations, and security assumptions.
+- [ ] Freeze the reviewed commit and merge that exact SHA.

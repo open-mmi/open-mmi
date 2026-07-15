@@ -12,8 +12,8 @@ authors = [
 ]
 
 dependencies = [
-    "python-can",
-    "evdev"
+    "python-can>=4.3,<5",
+    "evdev>=1.6,<2"
 ]
 
 [project.urls]

@@ -42,12 +42,6 @@ class DashboardModuleBoundaryTests(unittest.TestCase):
         self.assertIn("radio_backend._radio_search_payload(", source)
         self.assertIn("radio_backend._radio_proxy_audio(self, station_id)", source)
 
-    def test_private_server_aliases_remain_compatible_during_extraction(self):
-        self.assertIs(server._safe_radio_station_id, radio._safe_radio_station_id)
-        self.assertIs(server._radio_open_stream, radio._radio_open_stream)
-        self.assertIs(server._radio_proxy_audio, radio._radio_proxy_audio)
-
-
     def test_jellyfin_provider_does_not_depend_on_dashboard_handler(self):
         self.assertFalse(hasattr(jellyfin, "DashboardHandler"))
         source = inspect.getsource(jellyfin)
@@ -75,14 +69,6 @@ class DashboardModuleBoundaryTests(unittest.TestCase):
         self.assertIn("jellyfin_backend._jellyfin_search_payload(", source)
         self.assertIn("jellyfin_backend._jellyfin_proxy_audio(self, item_id)", source)
         self.assertIn("jellyfin_backend._jellyfin_proxy_image(self, item_id)", source)
-
-    def test_private_jellyfin_server_aliases_remain_compatible_during_extraction(self):
-        self.assertIs(server._jellyfin_config, jellyfin._jellyfin_config)
-        self.assertIs(server._jellyfin_request_json, jellyfin._jellyfin_request_json)
-        self.assertIs(server._jellyfin_proxy_audio, jellyfin._jellyfin_proxy_audio)
-        self.assertIs(server._jellyfin_proxy_image, jellyfin._jellyfin_proxy_image)
-        self.assertIs(server._JELLYFIN_LOGIN_CACHE, jellyfin._JELLYFIN_LOGIN_CACHE)
-
 
     def test_usb_provider_does_not_depend_on_dashboard_handler(self):
         self.assertFalse(hasattr(usb, "DashboardHandler"))
@@ -114,13 +100,6 @@ class DashboardModuleBoundaryTests(unittest.TestCase):
             "usb_backend._usb_send_file(self, item_id, artwork=True)", source
         )
 
-    def test_private_usb_server_aliases_remain_compatible_during_extraction(self):
-        self.assertIs(server._usb_browse_payload, usb._usb_browse_payload)
-        self.assertIs(server._usb_open_file, usb._usb_open_file)
-        self.assertIs(server._usb_send_file, usb._usb_send_file)
-        self.assertIs(server._USB_ID_REGISTRY, usb._USB_ID_REGISTRY)
-
-
     def test_bluetooth_provider_does_not_depend_on_dashboard_handler(self):
         self.assertFalse(hasattr(bluetooth, "DashboardHandler"))
         source = inspect.getsource(bluetooth)
@@ -150,12 +129,20 @@ class DashboardModuleBoundaryTests(unittest.TestCase):
         self.assertIn("bluetooth_backend._bluetooth_json_body(self)", post_source)
         self.assertIn("bluetooth_backend._bluetooth_control(", post_source)
 
-    def test_private_bluetooth_server_aliases_remain_compatible_during_extraction(self):
-        self.assertIs(server._bluetooth_player_paths, bluetooth._bluetooth_player_paths)
-        self.assertIs(server._bluetooth_control, bluetooth._bluetooth_control)
-        self.assertIs(server._bluetooth_json_body, bluetooth._bluetooth_json_body)
-        self.assertIs(server._BLUETOOTH_ID_REGISTRY, bluetooth._BLUETOOTH_ID_REGISTRY)
-        self.assertIs(server._BLUETOOTH_STATUS_CACHE, bluetooth._BLUETOOTH_STATUS_CACHE)
+
+    def test_server_does_not_reexport_provider_private_helpers(self):
+        private_names = (
+            "_jellyfin_request_json",
+            "_radio_open_stream",
+            "_usb_open_file",
+            "_bluetooth_control",
+            "_JELLYFIN_LOGIN_CACHE",
+            "_USB_ID_REGISTRY",
+            "_BLUETOOTH_STATUS_CACHE",
+        )
+        for name in private_names:
+            with self.subTest(name=name):
+                self.assertFalse(hasattr(server, name))
 
     def test_dashboard_still_runs_as_a_direct_script(self):
         result = subprocess.run(
