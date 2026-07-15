@@ -574,7 +574,14 @@ openMmiNavigationController.init();
 
   const one = (selector) => document.querySelector(selector);
   const many = (selector) => Array.from(document.querySelectorAll(selector));
-  const state = { section: "units", payload: null };
+  const state = {
+    section: "units",
+    payload: null,
+    diagnosticsInteracting: false,
+    diagnosticsRenderPending: false,
+    diagnosticsInteractionTimer: null,
+    restoringDiagnosticsScroll: false,
+  };
 
   function fmt(value, digits = 0, fallback = "--") {
     const n = Number(value);
@@ -777,13 +784,59 @@ openMmiNavigationController.init();
 `;
   }
 
+  function diagnosticsScroller() {
+    return one("#pageSettings .openmmi-settings-panel-card");
+  }
+
   function renderSettingsPanel() {
     const panel = one("#openmmiSettingsPanel");
+    const scroller = diagnosticsScroller();
+    const previousScrollTop = Number(scroller?.scrollTop || 0);
+    const detailsOpen = panel
+      ? Array.from(panel.querySelectorAll("details")).map((details) => details.open)
+      : [];
+
     if (panel) panel.innerHTML = sectionTemplate(state.section, state.payload);
     openMmiApplyDriverDashboardCleanupV2();
 
+    if (panel && detailsOpen.length) {
+      Array.from(panel.querySelectorAll("details")).forEach((details, index) => {
+        if (index < detailsOpen.length) details.open = detailsOpen[index];
+      });
+    }
+    if (scroller && previousScrollTop > 0) {
+      state.restoringDiagnosticsScroll = true;
+      scroller.scrollTop = previousScrollTop;
+      requestAnimationFrame(() => { state.restoringDiagnosticsScroll = false; });
+    }
+
     many("[data-openmmi-settings-section]").forEach((button) => {
       button.classList.toggle("active", button.dataset.openmmiSettingsSection === state.section);
+    });
+  }
+
+  function finishDiagnosticsInteraction() {
+    state.diagnosticsInteracting = false;
+    state.diagnosticsInteractionTimer = null;
+    if (state.diagnosticsRenderPending && state.section === "diagnostics" && one("#pageSettings.active")) {
+      state.diagnosticsRenderPending = false;
+      renderSettingsPanel();
+    }
+  }
+
+  function markDiagnosticsInteraction() {
+    if (state.restoringDiagnosticsScroll || state.section !== "diagnostics") return;
+    state.diagnosticsInteracting = true;
+    if (state.diagnosticsInteractionTimer !== null) clearTimeout(state.diagnosticsInteractionTimer);
+    state.diagnosticsInteractionTimer = setTimeout(finishDiagnosticsInteraction, 400);
+  }
+
+  function bindDiagnosticsScrollGuard(page) {
+    const scroller = page?.querySelector?.(".openmmi-settings-panel-card");
+    if (!scroller || scroller.dataset.openMmiDiagnosticsScrollBound === "true") return;
+    scroller.dataset.openMmiDiagnosticsScrollBound = "true";
+    ["pointerdown", "touchstart", "wheel", "scroll"].forEach((eventName) => {
+      scroller.addEventListener(eventName, markDiagnosticsInteraction, { passive: true });
     });
   }
 
@@ -828,6 +881,7 @@ openMmiNavigationController.init();
       });
     });
 
+    bindDiagnosticsScrollGuard(page);
     renderSettingsPanel();
   }
 
@@ -850,7 +904,14 @@ openMmiNavigationController.init();
     });
   }
 
-  function updateSettings(payload) { state.payload = payload; if (one("#pageSettings.active") && state.section === "diagnostics") renderSettingsPanel(); window.dispatchEvent(new CustomEvent("openmmi:settingsrender")); }
+  function updateSettings(payload) {
+    state.payload = payload;
+    if (one("#pageSettings.active") && state.section === "diagnostics") {
+      if (state.diagnosticsInteracting) state.diagnosticsRenderPending = true;
+      else renderSettingsPanel();
+    }
+    window.dispatchEvent(new CustomEvent("openmmi:settingsrender"));
+  }
 
   function wrapRenderForSettings() {
     try {

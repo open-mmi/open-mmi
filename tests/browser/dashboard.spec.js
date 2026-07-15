@@ -100,9 +100,10 @@ async function expectNoRuntimeFailures(failures) {
 async function loadDashboard(page, options = {}) {
   const payload = options.payload || basePayload();
   const storage = options.storage || {};
+  const bluetoothPayload = options.bluetoothPayload || { available: false, players: [] };
 
   await page.setContent(ASSETS.documentHtml, { waitUntil: "domcontentloaded" });
-  await page.evaluate(({ initialPayload, initialStorage }) => {
+  await page.evaluate(({ initialPayload, initialStorage, initialBluetoothPayload }) => {
     const values = Object.assign({}, initialStorage);
     const localStorageMock = {
       get length() { return Object.keys(values).length; },
@@ -115,6 +116,7 @@ async function loadDashboard(page, options = {}) {
     Object.defineProperty(window, "localStorage", { configurable: true, value: localStorageMock });
     window.__openMmiBrowserStorage = values;
     window.__openMmiStatusFixture = initialPayload;
+    window.__openMmiBluetoothFixture = initialBluetoothPayload;
 
     const json = (body, status = 200) => new Response(JSON.stringify(body), {
       status,
@@ -126,7 +128,7 @@ async function loadDashboard(page, options = {}) {
       if (url.includes("/api/health")) return json({ ok: true });
       if (url.includes("/api/jellyfin/status")) return json({ configured: false, available: false, libraries: [] });
       if (url.includes("/api/jellyfin/")) return json({ configured: false, available: false, items: [] });
-      if (url.includes("/api/bluetooth/status")) return json({ available: false, players: [] });
+      if (url.includes("/api/bluetooth/status")) return json(window.__openMmiBluetoothFixture);
       if (url.includes("/api/bluetooth/control")) return json({ ok: false, error: "Unavailable" }, 409);
       if (url.includes("/api/usb/status")) return json({ available: false, roots: [] });
       if (url.includes("/api/usb/")) return json({ available: false, entries: [] });
@@ -143,7 +145,11 @@ async function loadDashboard(page, options = {}) {
         Object.defineProperty(this, "paused", { configurable: true, value: true });
       };
     }
-  }, { initialPayload: payload, initialStorage: storage });
+  }, {
+    initialPayload: payload,
+    initialStorage: storage,
+    initialBluetoothPayload: bluetoothPayload,
+  });
 
   for (const script of ASSETS.scripts) {
     const content = `${fs.readFileSync(path.join(STATIC, script), "utf8")}\n//# sourceURL=${script}`;
@@ -154,6 +160,9 @@ async function loadDashboard(page, options = {}) {
   return {
     async setPayload(nextPayload) {
       await page.evaluate((next) => { window.__openMmiStatusFixture = next; }, nextPayload);
+    },
+    async setBluetoothPayload(nextPayload) {
+      await page.evaluate((next) => { window.__openMmiBluetoothFixture = next; }, nextPayload);
     },
     async storage() {
       return page.evaluate(() => Object.assign({}, window.__openMmiBrowserStorage));
@@ -316,6 +325,85 @@ test("media source selection persists and hides disabled sources", async ({ page
   await expectNoRuntimeFailures(failures);
   await expectNoRuntimeFailures(rebuiltFailures);
   await rebuilt.close();
+});
+
+test("Bluetooth transport follows steering-wheel status changes", async ({ page }) => {
+  const failures = captureRuntimeFailures(page);
+  const initialSettings = {
+    mediaActiveSource: "bluetooth",
+    mediaDefaultSource: "bluetooth",
+    mediaSources: { jellyfin: true, radio: true, usb: true, bluetooth: true },
+  };
+  const playing = {
+    available: true,
+    configured: true,
+    status: "playing",
+    state_label: "playing",
+    player_id: "player-1",
+    playback_status: "playing",
+    position_seconds: 12,
+    duration_seconds: 120,
+    track: { id: "track-1", name: "Test track", title: "Test track", artist: "Artist" },
+    controls: { play_pause: true, play: true, pause: true, stop: true, previous: true, next: true },
+  };
+  const dashboard = await loadDashboard(page, {
+    storage: { [SETTINGS_KEY]: JSON.stringify(initialSettings) },
+    bluetoothPayload: playing,
+  });
+  await openMedia(page);
+
+  const playButton = page.locator("#ommiMediaPlay");
+  await expect(playButton).toHaveAttribute("aria-label", /Pause Bluetooth playback/);
+
+  // Simulate a prior dashboard-issued optimistic state, then a genuine BlueZ
+  // transition caused by the steering wheel or connected phone.
+  await page.evaluate(() => {
+    window.openMmiBluetoothMedia.state.playbackOverride = "playing";
+    window.openMmiBluetoothMedia.state.lastServerPlaybackStatus = "playing";
+  });
+  await dashboard.setBluetoothPayload({
+    ...playing,
+    status: "paused",
+    state_label: "paused",
+    playback_status: "paused",
+    position_seconds: 12.2,
+  });
+  await page.evaluate(() => window.openMmiBluetoothMedia.refresh());
+
+  await expect(playButton).toHaveAttribute("aria-label", /Play Bluetooth media/);
+  await expectNoRuntimeFailures(failures);
+});
+
+test("Diagnostics remains scrollable while live values refresh", async ({ page }) => {
+  const failures = captureRuntimeFailures(page);
+  const payload = basePayload();
+  payload.state.profile_debug = Object.fromEntries(
+    Array.from({ length: 80 }, (_, index) => [`signal_${String(index).padStart(2, "0")}`, index]),
+  );
+  const dashboard = await loadDashboard(page, { payload });
+  await openSettings(page);
+  await page.locator('[data-openmmi-settings-section="diagnostics"]').click();
+
+  const scroller = page.locator("#pageSettings .openmmi-settings-panel-card");
+  await expect(scroller.locator("summary")).toContainText("Decoded profile values");
+  await scroller.evaluate((element) => { element.scrollTop = Math.max(1, element.scrollHeight - element.clientHeight - 40); });
+  const before = await scroller.evaluate((element) => element.scrollTop);
+  expect(before).toBeGreaterThan(0);
+
+  await scroller.dispatchEvent("pointerdown");
+  for (let index = 0; index < 4; index += 1) {
+    const next = basePayload({ state: { engine: { speed_rpm: 2200 + index } } });
+    next.state.profile_debug = payload.state.profile_debug;
+    await dashboard.setPayload(next);
+    await page.waitForTimeout(120);
+  }
+  const during = await scroller.evaluate((element) => element.scrollTop);
+  expect(during).toBeGreaterThanOrEqual(before - 2);
+
+  await page.waitForTimeout(500);
+  const after = await scroller.evaluate((element) => element.scrollTop);
+  expect(after).toBeGreaterThanOrEqual(before - 2);
+  await expectNoRuntimeFailures(failures);
 });
 
 test("switching away from Bluetooth releases shared transport controls", async ({ page }) => {

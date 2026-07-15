@@ -16,6 +16,11 @@
     return override || normalisePlaybackStatus(payload);
   }
 
+  function serverPlaybackStatusChanged(previousStatus, payload = {}) {
+    if (previousStatus === null || previousStatus === undefined || previousStatus === "") return false;
+    return normalisePlaybackStatus({ playback_status: previousStatus }) !== normalisePlaybackStatus(payload);
+  }
+
   function releaseSharedTransportControls(document) {
     ["#ommiMediaPlay", "#ommiMediaPrev", "#ommiMediaNext", "#ommiMediaStop"]
       .forEach((selector) => {
@@ -65,6 +70,7 @@
         playbackOverrideStartedAt: 0,
         lastServerPosition: null,
         lastServerObservedAt: 0,
+        lastServerPlaybackStatus: null,
       };
 
       function adapterApi() {
@@ -155,9 +161,20 @@
         const serverPosition = rawBluetoothPosition(payload);
         const previousPosition = state.lastServerPosition;
         const previousObservedAt = state.lastServerObservedAt;
+        const previousServerStatus = state.lastServerPlaybackStatus;
+        const nextServerStatus = normalizePlaybackStatus(payload);
         state.lastServerPosition = serverPosition;
         state.lastServerObservedAt = now;
+        state.lastServerPlaybackStatus = nextServerStatus;
 
+        // A genuine BlueZ status transition may have come from steering-wheel
+        // controls or the connected device itself. Release any dashboard-only
+        // optimistic override so the shared play/pause button follows it.
+        if (state.playbackOverride && serverPlaybackStatusChanged(previousServerStatus, payload)) {
+          state.playbackOverride = null;
+          state.playbackOverridePosition = serverPosition;
+          state.playbackOverrideStartedAt = now;
+        }
         if (!state.playbackOverride) return;
         // Dashboard-issued Bluetooth transport state is authoritative. YouTube and
         // other Android browser players can report both stale Status and a falsely
@@ -522,6 +539,7 @@
           state.playbackOverride = null;
           state.playbackOverridePosition = 0;
           state.lastServerPosition = null;
+          state.lastServerPlaybackStatus = null;
           clearPoll();
           clearProgressTicker();
         }
@@ -567,6 +585,7 @@
     bluetoothAdapterDescriptor,
     effectivePlaybackStatus,
     installController,
+    serverPlaybackStatusChanged,
     normalisePlaybackStatus,
     releaseSharedTransportControls,
   };

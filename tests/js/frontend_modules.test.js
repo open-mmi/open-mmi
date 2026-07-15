@@ -429,6 +429,18 @@ test("Bluetooth controller normalises playback state and exposes its adapter", (
     bluetoothMedia.effectivePlaybackStatus({ playback_status: "playing" }, "paused"),
     "paused",
   );
+  assert.equal(
+    bluetoothMedia.serverPlaybackStatusChanged("playing", { playback_status: "paused" }),
+    true,
+  );
+  assert.equal(
+    bluetoothMedia.serverPlaybackStatusChanged("paused", { playback_status: "PAUSED" }),
+    false,
+  );
+  assert.equal(
+    bluetoothMedia.serverPlaybackStatusChanged(null, { playback_status: "playing" }),
+    false,
+  );
   assert.deepEqual(
     bluetoothMedia.bluetoothAdapterDescriptor(),
     {
