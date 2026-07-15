@@ -447,7 +447,8 @@ def main(max_iterations: Optional[int] = None) -> None:
                         last_codes[key] = code
                         continue
 
-                    if last_codes.get(key) == 0 and code == v:
+                    previous = last_codes.get(key)
+                    if code == v and previous != v:
                         dispatch(event, bindings.get(event))
 
                     last_codes[key] = code

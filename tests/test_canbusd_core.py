@@ -164,19 +164,52 @@ class CanbusdCoreTests(unittest.TestCase):
         dispatch.assert_not_called()
         self.assertEqual(bus.shutdown_calls, 1)
 
-    def test_fixed_value_event_dispatches_only_on_zero_to_value_edge(self):
+    def test_fixed_value_event_dispatches_on_first_observed_press_and_each_new_edge(self):
         event_rules = {0x200: [(0, 1, "button:pressed")]}
         messages = [
-            SimpleNamespace(arbitration_id=0x200, data=bytes([0]), dlc=1),
             SimpleNamespace(arbitration_id=0x200, data=bytes([1]), dlc=1),
+            SimpleNamespace(arbitration_id=0x200, data=bytes([1]), dlc=1),
+            SimpleNamespace(arbitration_id=0x200, data=bytes([0]), dlc=1),
             SimpleNamespace(arbitration_id=0x200, data=bytes([1]), dlc=1),
         ]
         bus = FakeBus(messages)
 
         with mock.patch.object(core, "dispatch") as dispatch:
-            self._run_main(bus, self._config(rules=event_rules), 3)
+            self._run_main(bus, self._config(rules=event_rules), 4)
 
-        dispatch.assert_called_once_with("button:pressed", None)
+        self.assertEqual(
+            dispatch.call_args_list,
+            [
+                mock.call("button:pressed", None),
+                mock.call("button:pressed", None),
+            ],
+        )
+
+    def test_fixed_value_events_dispatch_when_button_codes_change_directly(self):
+        event_rules = {
+            0x200: [
+                (0, 1, "button:previous"),
+                (0, 2, "button:next"),
+            ]
+        }
+        messages = [
+            SimpleNamespace(arbitration_id=0x200, data=bytes([1]), dlc=1),
+            SimpleNamespace(arbitration_id=0x200, data=bytes([2]), dlc=1),
+            SimpleNamespace(arbitration_id=0x200, data=bytes([2]), dlc=1),
+            SimpleNamespace(arbitration_id=0x200, data=bytes([7]), dlc=1),
+        ]
+        bus = FakeBus(messages)
+
+        with mock.patch.object(core, "dispatch") as dispatch:
+            self._run_main(bus, self._config(rules=event_rules), 4)
+
+        self.assertEqual(
+            dispatch.call_args_list,
+            [
+                mock.call("button:previous", None),
+                mock.call("button:next", None),
+            ],
+        )
 
     def test_publish_presence_updates_status_and_dispatches_configured_event(self):
         rule = {
