@@ -114,10 +114,11 @@ class BluetoothMediaTests(unittest.TestCase):
 
     def test_frontend_registration_and_public_control_contract(self):
         app = read_repo_text("ui/web_dashboard/static/app.js")
-        descriptor = js_object_with_id(app, "bluetooth")
+        media = read_repo_text("ui/web_dashboard/static/media.js")
+        descriptor = js_object_with_id(media, "bluetooth")
         self.assertEqual(js_string_property(descriptor, "label"), "Bluetooth")
         self.assertFalse(js_bool_property(descriptor, "planned"))
-        self.assertIn("bluetooth", implemented_source_ids(app))
+        self.assertIn("bluetooth", implemented_source_ids(media))
 
         block = marked_block(
             app,

@@ -138,22 +138,17 @@ class UsbMediaTests(unittest.TestCase):
             usb._usb_parse_range("bytes=1-2,4-5", 10)
 
     def test_frontend_registration_and_routes_are_semantic(self):
-        app = read_repo_text("ui/web_dashboard/static/app.js")
+        media = read_repo_text("ui/web_dashboard/static/media.js")
         source = read_repo_text("ui/web_dashboard/server.py")
-        descriptor = js_object_with_id(app, "usb")
+        descriptor = js_object_with_id(media, "usb")
         self.assertEqual(js_string_property(descriptor, "label"), "USB")
         self.assertFalse(js_bool_property(descriptor, "planned"))
-        self.assertIn("usb", implemented_source_ids(app))
+        self.assertIn("usb", implemented_source_ids(media))
         self.assertRegex(source, r"parsed\.path\s*==\s*['\"]/api/usb/status['\"]")
         self.assertRegex(source, r"parsed\.path\.startswith\(\s*['\"]/api/usb/stream/['\"]")
 
     def test_usb_navigation_scope_and_duration_row_contract(self):
-        app = read_repo_text("ui/web_dashboard/static/app.js")
-        block = marked_block(
-            app,
-            "// --- Open MMI USB media source start ---",
-            "// --- Open MMI USB media source end ---",
-        )
+        block = read_repo_text("ui/web_dashboard/static/media-usb.js")
         chrome = javascript_function_body(block, "syncUsbSourceChrome")
         self.assertIn("controls.hidden", chrome)
         self.assertRegex(chrome, r"['\"]usb['\"]")

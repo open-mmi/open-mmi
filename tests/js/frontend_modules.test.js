@@ -173,6 +173,9 @@ test("status poller records failures and keeps the render error path separate", 
 const navigation = require("../../ui/web_dashboard/static/navigation.js");
 const overlays = require("../../ui/web_dashboard/static/overlays.js");
 const vehicle = require("../../ui/web_dashboard/static/vehicle.js");
+const media = require("../../ui/web_dashboard/static/media.js");
+const radioMedia = require("../../ui/web_dashboard/static/media-radio.js");
+const usbMedia = require("../../ui/web_dashboard/static/media-usb.js");
 
 function fakeClassList() {
   const values = new Set();
@@ -333,4 +336,80 @@ test("vehicle formatting utilities reject invalid values and respect units", () 
   assert.equal(vehicle.formatSpeedFromKmh(80, 0, { speedUnit: "kmh" }), "80");
   assert.equal(vehicle.formatTempFromC(0, 0, { tempUnit: "f" }), "32");
   assert.equal(vehicle.indicatorLabel({ hazards: true }), "Hazards");
+});
+
+
+test("media source preferences choose active and fallback sources deterministically", () => {
+  const prefs = media.normalisePreferences({
+    mediaActiveSource: "radio",
+    mediaDefaultSource: "usb",
+    mediaSources: { jellyfin: false, radio: false, usb: true, bluetooth: false },
+  });
+  assert.equal(media.activeSourceFromPreferences(prefs), "usb");
+  const enabled = media.updateSourceEnabled(prefs, "radio", true);
+  const active = media.updateActiveSource(enabled, "radio");
+  assert.equal(media.activeSourceFromPreferences(active), "radio");
+  const disabled = media.updateSourceEnabled(active, "radio", false);
+  assert.equal(media.activeSourceFromPreferences(disabled), "usb");
+});
+
+test("media source preferences reject unknown defaults and disabled selections", () => {
+  const prefs = media.normalisePreferences({
+    mediaActiveSource: "future",
+    mediaDefaultSource: "missing",
+    mediaSources: { jellyfin: true },
+  });
+  assert.equal(prefs.mediaActiveSource, "jellyfin");
+  assert.equal(prefs.mediaDefaultSource, "jellyfin");
+  assert.equal(media.updateDefaultSource(prefs, "radio").mediaDefaultSource, "jellyfin");
+});
+
+test("radio controller normalises locale filters and safe favourites", () => {
+  assert.deepEqual(
+    radioMedia.normaliseRadioFilterPreferences({}, "en-GB"),
+    { country: "GB", language: "" },
+  );
+  assert.deepEqual(
+    radioMedia.normaliseRadioFilterPreferences({ country: "de", language: "German" }, "en-GB"),
+    { country: "DE", language: "German" },
+  );
+  const station = radioMedia.safeFavoriteStation({
+    id: 42,
+    source: "radio",
+    name: "Test FM",
+    country: "United Kingdom",
+    bitrate: "128",
+  });
+  assert.equal(station.id, "42");
+  assert.equal(station.is_live, true);
+  assert.equal(station.bitrate, 128);
+  assert.equal(radioMedia.safeFavoriteStation({ id: "x", source: "usb" }), null);
+});
+
+test("radio favourite filtering honours query, country and language", () => {
+  const favourites = {
+    one: { name: "London Jazz", artist: "UK", country_code: "GB", language: "English" },
+    two: { name: "Berlin Rock", artist: "DE", country_code: "DE", language: "German" },
+  };
+  assert.deepEqual(
+    radioMedia.filterRadioFavorites(favourites, "jazz", { country: "GB", language: "eng" }).map((item) => item.name),
+    ["London Jazz"],
+  );
+  assert.deepEqual(
+    radioMedia.filterRadioFavorites(favourites, "", { country: "DE", language: "" }).map((item) => item.name),
+    ["Berlin Rock"],
+  );
+});
+
+test("USB controller formats unresolved durations and builds scoped browse URLs", () => {
+  assert.equal(usbMedia.formatUsbDuration(null), "…");
+  assert.equal(usbMedia.formatUsbDuration(65), "1:05");
+  assert.equal(usbMedia.formatUsbDuration(65, (value) => `duration:${value}`), "duration:65");
+  const url = usbMedia.buildUsbBrowseUrl("folder-id", "live set", "recent");
+  const parsed = new URL(url, "http://localhost");
+  assert.equal(parsed.pathname, "/api/usb/browse");
+  assert.equal(parsed.searchParams.get("dir"), "folder-id");
+  assert.equal(parsed.searchParams.get("q"), "live set");
+  assert.equal(parsed.searchParams.get("filter"), "recent");
+  assert.equal(parsed.searchParams.get("limit"), "60");
 });

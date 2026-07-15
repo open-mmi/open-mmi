@@ -14,6 +14,9 @@ STATUS = STATIC / "status.js"
 NAVIGATION = STATIC / "navigation.js"
 OVERLAYS = STATIC / "overlays.js"
 VEHICLE = STATIC / "vehicle.js"
+MEDIA = STATIC / "media.js"
+MEDIA_RADIO = STATIC / "media-radio.js"
+MEDIA_USB = STATIC / "media-usb.js"
 
 
 class FrontendModuleBoundaryTests(unittest.TestCase):
@@ -25,13 +28,19 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
         navigation_index = html.index('<script src="/navigation.js"></script>')
         overlays_index = html.index('<script src="/overlays.js"></script>')
         vehicle_index = html.index('<script src="/vehicle.js"></script>')
+        media_index = html.index('<script src="/media.js"></script>')
+        radio_index = html.index('<script src="/media-radio.js"></script>')
+        usb_index = html.index('<script src="/media-usb.js"></script>')
         app_index = html.index('<script src="/app.js"></script>')
         self.assertLess(api_index, preferences_index)
         self.assertLess(preferences_index, status_index)
         self.assertLess(status_index, navigation_index)
         self.assertLess(navigation_index, overlays_index)
         self.assertLess(overlays_index, vehicle_index)
-        self.assertLess(vehicle_index, app_index)
+        self.assertLess(vehicle_index, media_index)
+        self.assertLess(media_index, radio_index)
+        self.assertLess(radio_index, usb_index)
+        self.assertLess(usb_index, app_index)
 
     def test_application_uses_frontend_modules(self):
         source = APP.read_text(encoding="utf-8")
@@ -41,10 +50,17 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
         self.assertIn("window.openMmiNavigation", source)
         self.assertIn("window.openMmiOverlays", source)
         self.assertIn("window.openMmiVehicle", source)
+        self.assertIn("window.openMmiMediaShell", source)
+        self.assertIn("window.openMmiRadioMedia", source)
+        self.assertIn("window.openMmiUsbMediaController", source)
         self.assertIn("openMmiStatusClient.createStore()", source)
         self.assertIn("openMmiNavigationClient.createController()", source)
         self.assertIn("openMmiOverlaysClient.createController()", source)
         self.assertIn("openMmiVehicleClient.createRenderer({ preferences: openMmiPrefs })", source)
+        self.assertIn("openMmiMediaClient.createController({ preferences: openMmiPrefs })", source)
+        self.assertIn("openMmiRadioMediaClient.installPrivacy({ preferences: openMmiPrefs })", source)
+        self.assertIn("openMmiRadioMediaClient.installController({ preferences: openMmiPrefs })", source)
+        self.assertIn("openMmiUsbMediaClient.installController()", source)
         self.assertIn("window.setPage = (index) => openMmiNavigationController.setPage(index);", source)
         self.assertIn("openMmiStatusClient.createPoller({", source)
         self.assertIn("openMmiApiClient.postJson(", source)
@@ -58,6 +74,9 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
         navigation = NAVIGATION.read_text(encoding="utf-8")
         overlays = OVERLAYS.read_text(encoding="utf-8")
         vehicle = VEHICLE.read_text(encoding="utf-8")
+        media = MEDIA.read_text(encoding="utf-8")
+        media_radio = MEDIA_RADIO.read_text(encoding="utf-8")
+        media_usb = MEDIA_USB.read_text(encoding="utf-8")
         for source, global_name in (
             (api, "openMmiApi"),
             (preferences, "openMmiPreferences"),
@@ -65,10 +84,14 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
             (navigation, "openMmiNavigation"),
             (overlays, "openMmiOverlays"),
             (vehicle, "openMmiVehicle"),
+            (media, "openMmiMediaShell"),
+            (media_radio, "openMmiRadioMedia"),
+            (media_usb, "openMmiUsbMediaController"),
         ):
             self.assertIn("typeof module === \"object\"", source)
             self.assertIn(f"root.{global_name}", source)
-            self.assertNotIn("document.", source)
+            if global_name not in {"openMmiMediaShell", "openMmiRadioMedia", "openMmiUsbMediaController"}:
+                self.assertNotIn("document.", source)
 
 
     def test_status_module_owns_polling_and_shared_state(self):
@@ -115,6 +138,22 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
         self.assertNotIn("function updateTach(rpm)", app)
         self.assertNotIn("function updateDoor(name, value)", app)
         self.assertNotIn("function openMmiFormatTempFromC", app)
+
+    def test_media_modules_own_source_shell_radio_and_usb_controllers(self):
+        app = APP.read_text(encoding="utf-8")
+        media = MEDIA.read_text(encoding="utf-8")
+        radio = MEDIA_RADIO.read_text(encoding="utf-8")
+        usb = MEDIA_USB.read_text(encoding="utf-8")
+        self.assertIn("function createController(options = {})", media)
+        self.assertIn("function activeSourceFromPreferences(prefs)", media)
+        self.assertIn("function installPrivacy(options = {})", radio)
+        self.assertIn("function installController(options = {})", radio)
+        self.assertIn("function installController(options = {})", usb)
+        self.assertIn('id: "radio"', radio)
+        self.assertIn('id: "usb"', usb)
+        self.assertNotIn("Open MMI media source shell v1 start", app)
+        self.assertNotIn("Open MMI media source adapters/radio start", app)
+        self.assertNotIn("Open MMI USB media source start", app)
 
     def test_api_reads_fetch_at_call_time_for_instrumentation(self):
         source = API.read_text(encoding="utf-8")

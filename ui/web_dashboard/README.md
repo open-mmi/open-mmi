@@ -286,7 +286,10 @@ The browser loads small platform modules before the main dashboard application:
 - `static/navigation.js` owns quick-page state, Home/menu construction, pager controls, keyboard navigation, and page-change events.
 - `static/overlays.js` owns door/reverse detection, dismissal lifecycle, and the two full-screen vehicle alerts.
 - `static/vehicle.js` owns vehicle/climate field derivation, unit conversion, health, doors, tachometer state, coolant/voltage enhancements, and the first-stage tell-tale rendering path.
-- `static/app.js` owns the remaining settings, diagnostics, advanced tell-tales, and media controllers while those areas are migrated incrementally.
+- `static/media.js` owns media-source preferences, source switching, the source bar, placeholders, and Media settings.
+- `static/media-radio.js` owns Internet Radio privacy consent, filter/favourite state, the Radio adapter, and source-aware player integration.
+- `static/media-usb.js` owns USB browsing, folder navigation, duration discovery, and the USB adapter.
+- `static/app.js` owns the remaining shared player shell, settings, diagnostics, advanced tell-tales, Jellyfin controller, and Bluetooth controller while those areas are migrated incrementally.
 
 The platform modules resolve `window.fetch` and `window.localStorage` at call time. This keeps performance instrumentation compatible and lets the dashboard fail safely when browser storage is unavailable or restricted.
 
