@@ -177,6 +177,15 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
         self.assertNotIn("Open MMI media source adapters/radio start", app)
         self.assertNotIn("Open MMI USB media source start", app)
 
+    def test_diagnostics_uses_canonical_profile_paths_and_lists_decoded_state(self):
+        source = APP.read_text(encoding="utf-8")
+        self.assertIn("climate.outside_temp_regulation_c", source)
+        self.assertIn("climate.outside_temp_unfiltered_c", source)
+        self.assertIn("electrical.supply_voltage_v", source)
+        self.assertIn("engine.speed_rpm", source)
+        self.assertIn("function flattenDiagnosticState", source)
+        self.assertIn("Decoded profile values", source)
+
     def test_api_reads_fetch_at_call_time_for_instrumentation(self):
         source = API.read_text(encoding="utf-8")
         self.assertIn("const fetchImpl = root && root.fetch", source)

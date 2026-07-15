@@ -205,6 +205,25 @@ test("loads, renders status and navigates with buttons and keyboard", async ({ p
   await expectNoRuntimeFailures(failures);
 });
 
+
+test("diagnostics renders canonical profile values and all decoded paths", async ({ page }) => {
+  const failures = captureRuntimeFailures(page);
+  await loadDashboard(page);
+  await openSettings(page);
+  await page.locator('[data-openmmi-settings-section="diagnostics"]').click();
+
+  const metricValue = (label) => page.locator(".openmmi-settings-metric").filter({ has: page.locator("span", { hasText: label }) }).first().locator("strong");
+  await expect(metricValue("Outside display")).toHaveText("12.5 °C");
+  await expect(metricValue("Coolant")).toHaveText("91.0 °C");
+  await expect(metricValue("Voltage")).toHaveText("13.9 V");
+  await expect(metricValue("RPM")).toHaveText("2150 rpm");
+  await expect(page.locator(".openmmi-settings-diagnostics-details")).toContainText("engine.speed_rpm");
+  await expect(page.locator(".openmmi-settings-diagnostics-details")).toContainText("electrical.supply_voltage_v");
+  await expect(page.locator(".openmmi-settings-diagnostics-details")).toContainText("climate.blower_load_percent");
+
+  await expectNoRuntimeFailures(failures);
+});
+
 test("door and reverse overlays dismiss and reactivate on lifecycle changes", async ({ page }) => {
   const failures = captureRuntimeFailures(page);
   const dashboard = await loadDashboard(page);

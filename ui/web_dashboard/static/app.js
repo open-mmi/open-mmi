@@ -643,12 +643,65 @@ openMmiNavigationController.init();
     return `<div class="openmmi-settings-metric"><span>${label}</span><strong>${value}</strong></div>`;
   }
 
+  function escapeDiagnosticText(value) {
+    return String(value ?? "--")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#39;");
+  }
+
+  function diagnosticLeafValue(value) {
+    if (value === true) return "on";
+    if (value === false) return "off";
+    if (value === null || value === undefined || value === "") return "--";
+    if (typeof value === "number" && Number.isFinite(value)) return String(value);
+    return String(value);
+  }
+
+  function flattenDiagnosticState(value, prefix = "", output = []) {
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => flattenDiagnosticState(item, `${prefix}[${index}]`, output));
+      return output;
+    }
+    if (value && typeof value === "object") {
+      Object.keys(value).sort().forEach((key) => {
+        const path = prefix ? `${prefix}.${key}` : key;
+        flattenDiagnosticState(value[key], path, output);
+      });
+      return output;
+    }
+    if (prefix) output.push([prefix, diagnosticLeafValue(value)]);
+    return output;
+  }
+
+  function decodedStateMetrics(payload) {
+    const leaves = flattenDiagnosticState(payload?.state || {});
+    if (!leaves.length) return metric("Decoded profile values", "--");
+    return `
+      <details class="openmmi-settings-diagnostics-details" open>
+        <summary>Decoded profile values (${leaves.length})</summary>
+        <div class="openmmi-settings-diagnostics-values">
+          ${leaves.map(([path, value]) => metric(escapeDiagnosticText(path), escapeDiagnosticText(value))).join("")}
+        </div>
+      </details>
+    `;
+  }
+
   function diagnosticsTemplate(payload) {
     const { vehicle, lighting, climate, engine, electrical, ageValue } = statusParts(payload);
     const lightingText = text(lighting.mode).replaceAll("_", " ");
     const ageText = Number.isFinite(Number(ageValue)) ? `${fmt(ageValue, 1)} s` : "live";
-    const outsideDisplay = firstValue(climate.outside_temp_c, climate.outside_c, vehicle.outside_temp_c, vehicle.outside_temperature_c);
+    const outsideDisplay = firstValue(
+      climate.outside_temp_regulation_c,
+      climate.outside_temp_c,
+      climate.outside_c,
+      vehicle.outside_temp_c,
+      vehicle.outside_temperature_c
+    );
     const outsideRaw = firstValue(
+      climate.outside_temp_unfiltered_c,
       climate.outside_unfiltered_c,
       climate.outside_raw_c,
       climate.raw_outside_temp_c,
@@ -657,8 +710,15 @@ openMmiNavigationController.init();
       vehicle.outside_raw_c
     );
     const coolant = firstValue(engine.coolant_temp_c, engine.coolant_c, vehicle.coolant_temp_c);
-    const voltage = firstValue(electrical.voltage_v, electrical.battery_v, vehicle.voltage_v, vehicle.battery_v);
-    const rpm = firstValue(engine.rpm, vehicle.rpm);
+    const voltage = firstValue(
+      electrical.supply_voltage_v,
+      electrical.terminal30_voltage_v,
+      electrical.voltage_v,
+      electrical.battery_v,
+      vehicle.voltage_v,
+      vehicle.battery_v
+    );
+    const rpm = firstValue(engine.speed_rpm, engine.rpm, vehicle.rpm);
 
     return `
       <div class="openmmi-settings-panel-head"><span>Diagnostics</span><small>live decoded state</small></div>
@@ -671,6 +731,7 @@ openMmiNavigationController.init();
       ${metric("RPM", rpmText(rpm))}
       ${metric("Reverse", boolText(vehicle.reverse ?? vehicle.reverse_selected))}
       ${metric("Handbrake", boolText(vehicle.handbrake ?? vehicle.parking_brake))}
+      ${decodedStateMetrics(payload)}
       <a class="openmmi-settings-link" href="/api/status" target="_blank" rel="noreferrer">Open raw /api/status</a>
     `;
   }
@@ -909,7 +970,7 @@ openMmiNavigationController.init();
   function hideRawMetrics(panel, showRaw) {
     panel?.querySelectorAll?.(".openmmi-settings-metric").forEach((metric) => {
       const label = norm(metric.querySelector("span")?.textContent || metric.textContent);
-      const rawish = label.includes("outside raw") || label.includes("raw") || label.includes("unfiltered");
+      const rawish = label.includes("outside raw") || label.includes("raw") || label.includes("unfiltered") || label.includes("debug") || label.includes("candidate");
       if (rawish) metric.hidden = !showRaw;
     });
   }
@@ -1080,7 +1141,7 @@ openMmiNavigationController.init();
 
     panel.querySelectorAll(".openmmi-settings-metric").forEach((metric) => {
       const label = norm(metric.querySelector("span")?.textContent || metric.textContent);
-      const rawish = label.includes("outside raw") || label.includes("raw") || label.includes("unfiltered");
+      const rawish = label.includes("outside raw") || label.includes("raw") || label.includes("unfiltered") || label.includes("debug") || label.includes("candidate");
       if (rawish) metric.hidden = !prefs.showRaw;
     });
   }
