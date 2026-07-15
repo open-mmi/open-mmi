@@ -65,8 +65,32 @@ class CanbusdCoreTests(unittest.TestCase):
             mock.patch.object(core, "CAN_BUS", "comfort"),
             mock.patch.object(core, "RELOAD_INTERVAL", reload_interval),
         ):
-            core.main(max_iterations=iterations)
+            core.main(max_iterations=iterations, dispatch_fn=core.dispatch)
         return open_bus
+
+    def test_main_uses_bounded_action_queue_by_default(self):
+        event_rules = {0x200: [(0, 1, "button:pressed")]}
+        binding = {"module": "audio", "func": "play_pause"}
+        message = SimpleNamespace(arbitration_id=0x200, data=bytes([1]), dlc=1)
+        bus = FakeBus([message])
+        action_queue = mock.Mock()
+
+        with (
+            mock.patch.object(core, "_load_config", return_value=self._config(rules=event_rules)),
+            mock.patch.object(core, "_load_bindings", return_value={"button:pressed": binding}),
+            mock.patch.object(core.Path, "exists", return_value=True),
+            mock.patch.object(core.time, "monotonic", return_value=1.0),
+            mock.patch.object(core.can.interface, "Bus", return_value=bus),
+            mock.patch.object(core, "ActionQueue", return_value=action_queue),
+            mock.patch.object(core, "IFACE", "can0"),
+            mock.patch.object(core, "CAN_BUS", "comfort"),
+            mock.patch.object(core, "RELOAD_INTERVAL", 60),
+        ):
+            core.main(max_iterations=1)
+
+        action_queue.dispatch.assert_called_once_with("button:pressed", binding)
+        action_queue.close.assert_called_once_with()
+        self.assertEqual(bus.shutdown_calls, 1)
 
     def test_status_reset_is_persisted_and_failure_is_isolated(self):
         with mock.patch.object(core, "reset_status") as reset:
@@ -332,7 +356,7 @@ class CanbusdCoreTests(unittest.TestCase):
             mock.patch.object(core, "CAN_BUS", "comfort"),
             mock.patch.object(core, "RELOAD_INTERVAL", 0.5),
         ):
-            core.main(max_iterations=2)
+            core.main(max_iterations=2, dispatch_fn=core.dispatch)
 
         self.assertEqual(
             publish.call_args_list,
@@ -364,7 +388,7 @@ class CanbusdCoreTests(unittest.TestCase):
             mock.patch.object(core, "CAN_BUS", "comfort"),
             mock.patch.object(core, "RELOAD_INTERVAL", 60),
         ):
-            core.main(max_iterations=2)
+            core.main(max_iterations=2, dispatch_fn=core.dispatch)
 
         self.assertEqual(bus.shutdown_calls, 1)
 
@@ -380,7 +404,7 @@ class CanbusdCoreTests(unittest.TestCase):
             mock.patch.object(core, "IFACE", "can0"),
             mock.patch.object(core, "RELOAD_INTERVAL", 60),
         ):
-            core.main(max_iterations=2)
+            core.main(max_iterations=2, dispatch_fn=core.dispatch)
 
         open_bus.assert_not_called()
         self.assertEqual(sleep.call_count, 2)

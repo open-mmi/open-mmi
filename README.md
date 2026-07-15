@@ -677,7 +677,7 @@ Example:
     "args": ["+5%"]
   },
   "play_pause": {
-    "module": "keys",
+    "module": "audio",
     "func": "play_pause"
   }
 }
@@ -690,6 +690,12 @@ Environment="OPEN_MMI_BINDINGS=default"
 ```
 
 Bindings are trusted local configuration. Do not install random bindings or vehicle profiles without reviewing them.
+
+Configured actions run through a single bounded worker queue. CAN event publication and
+frame decoding continue immediately while subprocess-backed actions execute in order.
+The queue defaults to 64 pending actions and can be adjusted with
+`OPEN_MMI_ACTION_QUEUE_SIZE` (1–1024). Queue overload is logged explicitly rather than
+allowing unbounded memory growth.
 
 ---
 
@@ -1071,7 +1077,7 @@ candump can0
 ```json
 {
   "play_pause": {
-    "module": "keys",
+    "module": "audio",
     "func": "play_pause"
   }
 }

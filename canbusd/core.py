@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import can
 
 from canbusd.can_runtime import CanRuntimeConfig, item_matches_bus, resolve_can_runtime
-from canbusd.dispatcher import dispatch
+from canbusd.dispatcher import ActionQueue, dispatch
 from canbusd.status_bus import publish as publish_status
 from canbusd.status_bus import reset as reset_status
 from canbusd.status_rules import StatusRuleState, evaluate_status_rules, parse_status_rules
@@ -296,7 +296,11 @@ def _publish_presence(
     presence_rule: Dict[str, Any],
     is_present: bool,
     bindings: Dict[str, Dict[str, Any]],
+    dispatch_fn=None,
 ) -> None:
+    if dispatch_fn is None:
+        dispatch_fn = dispatch
+
     cid = presence_rule["id"]
     event = presence_rule.get("on_present") if is_present else presence_rule.get("on_absent")
 
@@ -315,7 +319,7 @@ def _publish_presence(
             cid,
             "present" if is_present else "absent",
         )
-        dispatch(event, bindings.get(event))
+        dispatch_fn(event, bindings.get(event))
 
 
 def _check_presence(
@@ -324,6 +328,7 @@ def _check_presence(
     present_state: Dict[int, Optional[bool]],
     bindings: Dict[str, Dict[str, Any]],
     now: float,
+    dispatch_fn=None,
 ) -> None:
     for p in presence:
         cid = p["id"]
@@ -333,10 +338,16 @@ def _check_presence(
 
         if previous is None or previous != is_present:
             present_state[cid] = is_present
-            _publish_presence(p, is_present, bindings)
+            if dispatch_fn is None:
+                _publish_presence(p, is_present, bindings)
+            else:
+                _publish_presence(p, is_present, bindings, dispatch_fn=dispatch_fn)
 
 
-def main(max_iterations: Optional[int] = None) -> None:
+def main(
+    max_iterations: Optional[int] = None,
+    dispatch_fn=None,
+) -> None:
     """Run the CAN receive loop.
 
     ``max_iterations`` is intentionally a test hook. Production callers leave
@@ -345,6 +356,11 @@ def main(max_iterations: Optional[int] = None) -> None:
 
     rules, mtime, presence, status_rules, cfg_path, runtime = _load_config(None, None)
     bindings = _load_bindings()
+
+    action_queue = None
+    if dispatch_fn is None:
+        action_queue = ActionQueue()
+        dispatch_fn = action_queue.dispatch
 
     last_seen: Dict[int, float] = {}
     last_codes: Dict[Tuple[int, int, Optional[int]], int] = {}
@@ -405,7 +421,7 @@ def main(max_iterations: Optional[int] = None) -> None:
                     bus.shutdown()
                     bus = None
 
-                _check_presence(presence, last_seen, present_state, bindings, now)
+                _check_presence(presence, last_seen, present_state, bindings, now, dispatch_fn=dispatch_fn)
                 time.sleep(1)
                 continue
 
@@ -417,7 +433,7 @@ def main(max_iterations: Optional[int] = None) -> None:
             now = time.monotonic()
 
             if msg is None:
-                _check_presence(presence, last_seen, present_state, bindings, now)
+                _check_presence(presence, last_seen, present_state, bindings, now, dispatch_fn=dispatch_fn)
                 continue
 
             last_seen[msg.arbitration_id] = now
@@ -443,20 +459,22 @@ def main(max_iterations: Optional[int] = None) -> None:
 
                     if v is None:
                         if last_codes.get(key) != code:
-                            dispatch(event, bindings.get(event), [code])
+                            dispatch_fn(event, bindings.get(event), [code])
                         last_codes[key] = code
                         continue
 
                     previous = last_codes.get(key)
                     if code == v and previous != v:
-                        dispatch(event, bindings.get(event))
+                        dispatch_fn(event, bindings.get(event))
 
                     last_codes[key] = code
 
-            _check_presence(presence, last_seen, present_state, bindings, now)
+            _check_presence(presence, last_seen, present_state, bindings, now, dispatch_fn=dispatch_fn)
     finally:
         if bus:
             bus.shutdown()
+        if action_queue is not None:
+            action_queue.close()
 
 
 if __name__ == "__main__":
