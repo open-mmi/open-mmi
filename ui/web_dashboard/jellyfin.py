@@ -693,10 +693,17 @@ def _jellyfin_proxy_audio(handler: Any, item_id: str) -> None:
                 chunk = response.read(JELLYFIN_AUDIO_CHUNK_BYTES)
                 if not chunk:
                     break
-                handler.wfile.write(chunk)
+                try:
+                    handler.wfile.write(chunk)
+                except ConnectionError:
+                    # Browsers routinely close an in-flight media response when
+                    # the user changes track/source, reloads, or the audio element
+                    # issues a replacement range request.  The response has
+                    # already started, so this is a normal end-of-stream condition.
+                    return
     except HTTPError as exc:
         handler.send_error(exc.code, f"Jellyfin stream HTTP {exc.code}")
-    except (URLError, TimeoutError, BrokenPipeError) as exc:
+    except (URLError, TimeoutError) as exc:
         handler.send_error(502, str(exc))
 
 def _jellyfin_proxy_image(handler: Any, item_id: str) -> None:

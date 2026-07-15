@@ -1,6 +1,6 @@
 import os
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from urllib.parse import parse_qs, urlparse
 
 from ui.web_dashboard import jellyfin
@@ -175,6 +175,41 @@ class JellyfinHardeningTests(unittest.TestCase):
     def test_invalid_item_id_is_rejected(self):
         with self.assertRaises(ValueError):
             jellyfin._safe_jellyfin_id("../../etc/passwd")
+
+    def test_audio_proxy_treats_client_disconnect_as_normal_stream_end(self):
+        class FakeResponse:
+            status = 206
+            headers = {
+                "Content-Type": "audio/mpeg",
+                "Content-Length": "5",
+                "Content-Range": "bytes 0-4/5",
+            }
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, traceback):
+                return False
+
+            def read(self, _size):
+                return b"audio"
+
+        for disconnect_error in (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            with self.subTest(disconnect_error=disconnect_error.__name__):
+                handler = MagicMock()
+                handler.headers = {}
+                handler.wfile.write.side_effect = disconnect_error("client disconnected")
+
+                with patch.object(jellyfin, "_jellyfin_config", return_value=self.config()), patch.object(
+                    jellyfin, "_jellyfin_validate_item_access", return_value="user-1"
+                ), patch.object(
+                    jellyfin, "_jellyfin_authenticated_urlopen", return_value=FakeResponse()
+                ):
+                    jellyfin._jellyfin_proxy_audio(handler, "track-1")
+
+                handler.send_response.assert_called_once_with(206)
+                handler.send_error.assert_not_called()
+                handler.wfile.write.assert_called_once_with(b"audio")
 
 
 if __name__ == "__main__":
