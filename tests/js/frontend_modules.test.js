@@ -413,3 +413,37 @@ test("USB controller formats unresolved durations and builds scoped browse URLs"
   assert.equal(parsed.searchParams.get("filter"), "recent");
   assert.equal(parsed.searchParams.get("limit"), "60");
 });
+
+const jellyfinMedia = require("../../ui/web_dashboard/static/media-jellyfin.js");
+const bluetoothMedia = require("../../ui/web_dashboard/static/media-bluetooth.js");
+
+test("Jellyfin player helpers escape labels and format durations", () => {
+  assert.equal(jellyfinMedia.escapeHtml('<Track & "Artist">'), "&lt;Track &amp; &quot;Artist&quot;&gt;");
+  assert.equal(jellyfinMedia.formatTime(65), "1:05");
+  assert.equal(jellyfinMedia.formatTime(3661), "1:01:01");
+  assert.equal(jellyfinMedia.formatTime(-1), "--:--");
+});
+
+test("Bluetooth controller normalises playback state and exposes its adapter", () => {
+  assert.equal(bluetoothMedia.normalisePlaybackStatus({ playback_status: "PLAYING" }), "playing");
+  assert.equal(bluetoothMedia.normalisePlaybackStatus({ playback_status: "unknown" }), "stopped");
+  assert.equal(
+    bluetoothMedia.effectivePlaybackStatus({ playback_status: "playing" }, "paused"),
+    "paused",
+  );
+  assert.deepEqual(
+    bluetoothMedia.bluetoothAdapterDescriptor(),
+    {
+      id: "bluetooth",
+      label: "Bluetooth",
+      defaultFilter: "now",
+      filters: { now: "Now playing" },
+      searchPlaceholder: "Bluetooth uses the connected player",
+      searchLabel: "Bluetooth media does not support library search",
+      emptyText: "No Bluetooth track metadata is available.",
+      loadingText: "Checking connected Bluetooth media…",
+      readyText: "Controls are sent to the connected Bluetooth player.",
+      statusUrl: "/api/bluetooth/status",
+    },
+  );
+});

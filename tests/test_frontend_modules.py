@@ -15,8 +15,10 @@ NAVIGATION = STATIC / "navigation.js"
 OVERLAYS = STATIC / "overlays.js"
 VEHICLE = STATIC / "vehicle.js"
 MEDIA = STATIC / "media.js"
+MEDIA_JELLYFIN = STATIC / "media-jellyfin.js"
 MEDIA_RADIO = STATIC / "media-radio.js"
 MEDIA_USB = STATIC / "media-usb.js"
+MEDIA_BLUETOOTH = STATIC / "media-bluetooth.js"
 
 
 class FrontendModuleBoundaryTests(unittest.TestCase):
@@ -29,8 +31,10 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
         overlays_index = html.index('<script src="/overlays.js"></script>')
         vehicle_index = html.index('<script src="/vehicle.js"></script>')
         media_index = html.index('<script src="/media.js"></script>')
+        jellyfin_index = html.index('<script src="/media-jellyfin.js"></script>')
         radio_index = html.index('<script src="/media-radio.js"></script>')
         usb_index = html.index('<script src="/media-usb.js"></script>')
+        bluetooth_index = html.index('<script src="/media-bluetooth.js"></script>')
         app_index = html.index('<script src="/app.js"></script>')
         self.assertLess(api_index, preferences_index)
         self.assertLess(preferences_index, status_index)
@@ -38,9 +42,11 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
         self.assertLess(navigation_index, overlays_index)
         self.assertLess(overlays_index, vehicle_index)
         self.assertLess(vehicle_index, media_index)
-        self.assertLess(media_index, radio_index)
+        self.assertLess(media_index, jellyfin_index)
+        self.assertLess(jellyfin_index, radio_index)
         self.assertLess(radio_index, usb_index)
-        self.assertLess(usb_index, app_index)
+        self.assertLess(usb_index, bluetooth_index)
+        self.assertLess(bluetooth_index, app_index)
 
     def test_application_uses_frontend_modules(self):
         source = APP.read_text(encoding="utf-8")
@@ -51,19 +57,23 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
         self.assertIn("window.openMmiOverlays", source)
         self.assertIn("window.openMmiVehicle", source)
         self.assertIn("window.openMmiMediaShell", source)
+        self.assertIn("window.openMmiJellyfinMedia", source)
         self.assertIn("window.openMmiRadioMedia", source)
         self.assertIn("window.openMmiUsbMediaController", source)
+        self.assertIn("window.openMmiBluetoothMediaController", source)
         self.assertIn("openMmiStatusClient.createStore()", source)
         self.assertIn("openMmiNavigationClient.createController()", source)
         self.assertIn("openMmiOverlaysClient.createController()", source)
         self.assertIn("openMmiVehicleClient.createRenderer({ preferences: openMmiPrefs })", source)
         self.assertIn("openMmiMediaClient.createController({ preferences: openMmiPrefs })", source)
         self.assertIn("openMmiRadioMediaClient.installPrivacy({ preferences: openMmiPrefs })", source)
+        self.assertIn("openMmiJellyfinMediaClient.installController({", source)
         self.assertIn("openMmiRadioMediaClient.installController({ preferences: openMmiPrefs })", source)
+        self.assertIn("openMmiJellyfinPlayer.boot()", source)
         self.assertIn("openMmiUsbMediaClient.installController()", source)
+        self.assertIn("openMmiBluetoothMediaClient.installController({ api: openMmiApiClient })", source)
         self.assertIn("window.setPage = (index) => openMmiNavigationController.setPage(index);", source)
         self.assertIn("openMmiStatusClient.createPoller({", source)
-        self.assertIn("openMmiApiClient.postJson(", source)
         self.assertNotIn('openMmiApiClient.getJson("/api/status"', source)
         self.assertNotIn("localStorage.", source)
 
@@ -75,8 +85,10 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
         overlays = OVERLAYS.read_text(encoding="utf-8")
         vehicle = VEHICLE.read_text(encoding="utf-8")
         media = MEDIA.read_text(encoding="utf-8")
+        media_jellyfin = MEDIA_JELLYFIN.read_text(encoding="utf-8")
         media_radio = MEDIA_RADIO.read_text(encoding="utf-8")
         media_usb = MEDIA_USB.read_text(encoding="utf-8")
+        media_bluetooth = MEDIA_BLUETOOTH.read_text(encoding="utf-8")
         for source, global_name in (
             (api, "openMmiApi"),
             (preferences, "openMmiPreferences"),
@@ -85,12 +97,14 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
             (overlays, "openMmiOverlays"),
             (vehicle, "openMmiVehicle"),
             (media, "openMmiMediaShell"),
+            (media_jellyfin, "openMmiJellyfinMedia"),
             (media_radio, "openMmiRadioMedia"),
             (media_usb, "openMmiUsbMediaController"),
+            (media_bluetooth, "openMmiBluetoothMediaController"),
         ):
             self.assertIn("typeof module === \"object\"", source)
             self.assertIn(f"root.{global_name}", source)
-            if global_name not in {"openMmiMediaShell", "openMmiRadioMedia", "openMmiUsbMediaController"}:
+            if global_name not in {"openMmiMediaShell", "openMmiJellyfinMedia", "openMmiRadioMedia", "openMmiUsbMediaController", "openMmiBluetoothMediaController"}:
                 self.assertNotIn("document.", source)
 
 
@@ -139,18 +153,26 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
         self.assertNotIn("function updateDoor(name, value)", app)
         self.assertNotIn("function openMmiFormatTempFromC", app)
 
-    def test_media_modules_own_source_shell_radio_and_usb_controllers(self):
+    def test_media_modules_own_all_frontend_controllers(self):
         app = APP.read_text(encoding="utf-8")
         media = MEDIA.read_text(encoding="utf-8")
+        jellyfin = MEDIA_JELLYFIN.read_text(encoding="utf-8")
         radio = MEDIA_RADIO.read_text(encoding="utf-8")
         usb = MEDIA_USB.read_text(encoding="utf-8")
+        bluetooth = MEDIA_BLUETOOTH.read_text(encoding="utf-8")
         self.assertIn("function createController(options = {})", media)
         self.assertIn("function activeSourceFromPreferences(prefs)", media)
+        self.assertIn("function installController(options = {})", jellyfin)
         self.assertIn("function installPrivacy(options = {})", radio)
         self.assertIn("function installController(options = {})", radio)
         self.assertIn("function installController(options = {})", usb)
+        self.assertIn("function installController(options = {})", bluetooth)
+        self.assertIn('/api/jellyfin/status', jellyfin)
+        self.assertIn('/api/bluetooth/status', bluetooth)
         self.assertIn('id: "radio"', radio)
         self.assertIn('id: "usb"', usb)
+        self.assertNotIn("Open MMI Jellyfin real Bootstrap media v5 start", app)
+        self.assertNotIn("Open MMI Bluetooth media source start", app)
         self.assertNotIn("Open MMI media source shell v1 start", app)
         self.assertNotIn("Open MMI media source adapters/radio start", app)
         self.assertNotIn("Open MMI USB media source start", app)

@@ -9,7 +9,6 @@ from dashboard_contract_helpers import (
     js_bool_property,
     js_object_with_id,
     js_string_property,
-    marked_block,
     read_repo_text,
 )
 
@@ -113,24 +112,19 @@ class BluetoothMediaTests(unittest.TestCase):
         self.assertEqual(result.get("playback_status"), "paused")
 
     def test_frontend_registration_and_public_control_contract(self):
-        app = read_repo_text("ui/web_dashboard/static/app.js")
+        bluetooth_frontend = read_repo_text("ui/web_dashboard/static/media-bluetooth.js")
         media = read_repo_text("ui/web_dashboard/static/media.js")
         descriptor = js_object_with_id(media, "bluetooth")
         self.assertEqual(js_string_property(descriptor, "label"), "Bluetooth")
         self.assertFalse(js_bool_property(descriptor, "planned"))
         self.assertIn("bluetooth", implemented_source_ids(media))
 
-        block = marked_block(
-            app,
-            "// --- Open MMI Bluetooth media source start ---",
-            "// --- Open MMI Bluetooth media source end ---",
-        )
-        self.assertIn("/api/bluetooth/control", block)
-        self.assertRegex(block, r"['\"]pause['\"]")
-        self.assertRegex(block, r"['\"]play['\"]")
+        self.assertIn("/api/bluetooth/control", bluetooth_frontend)
+        self.assertRegex(bluetooth_frontend, r"['\"]pause['\"]")
+        self.assertRegex(bluetooth_frontend, r"['\"]play['\"]")
 
     def test_routes_origin_json_and_readonly_progress_contract(self):
-        app = read_repo_text("ui/web_dashboard/static/app.js")
+        bluetooth_frontend = read_repo_text("ui/web_dashboard/static/media-bluetooth.js")
         server_source = read_repo_text("ui/web_dashboard/server.py")
         provider_source = read_repo_text("ui/web_dashboard/bluetooth.py")
         styles = read_repo_text("ui/web_dashboard/static/styles.css")
@@ -139,8 +133,8 @@ class BluetoothMediaTests(unittest.TestCase):
         self.assertRegex(provider_source, r"content_type\s*!=\s*['\"]application/json['\"]")
         self.assertIn("bluetooth_backend._bluetooth_same_origin", server_source)
         self.assertIn("_BLUETOOTH_ACTION_METHODS", provider_source)
-        self.assertIn('openMmiApiClient.postJson(', app)
-        self.assertIn('\"/api/bluetooth/control\"', app)
+        self.assertIn("apiClient.postJson(", bluetooth_frontend)
+        self.assertIn('"/api/bluetooth/control"', bluetooth_frontend)
         props = css_properties(
             styles,
             "#openMmiMediaRoot #ommiMediaProgressTrack.is-bluetooth-readonly",
