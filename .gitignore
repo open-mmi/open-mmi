@@ -22,3 +22,8 @@ open-mmi-v1-foundation-hardening-phase1.zip
 
 # Local Python environments
 .venv/
+
+# Node and browser-test outputs
+node_modules/
+playwright-report/
+test-results/

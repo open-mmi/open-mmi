@@ -308,6 +308,8 @@ The platform modules resolve `window.fetch` and `window.localStorage` at call ti
 
 The extracted player exposes temporary compatibility accessors for the Radio, USB, and Bluetooth adapters while the remaining frontend cleanup is completed. The player state itself remains single-owned by `media-jellyfin.js`; adapters do not create duplicate queues or playback state.
 
+Browser-level coverage lives in `tests/browser/` and runs in Chromium through Playwright. The suite executes the real HTML, CSS and JavaScript assets in browser order with deterministic same-origin API fixtures. It covers navigation and keyboard controls, live status rendering, door/reverse overlay lifecycles, settings and media-source persistence, 800×480 vehicle-display containment, a narrow portrait layout, and uncaught page/console errors. Screenshots and traces are retained on CI failures.
+
 ## Development checks
 
 Run these before committing dashboard changes:
@@ -317,6 +319,9 @@ python3 -m py_compile ui/web_dashboard/server.py ui/web_dashboard/bluetooth.py u
 find ui/web_dashboard/static -maxdepth 1 -name '*.js' -print0 \
   | xargs -0 -n1 node --check
 node --test tests/js/*.test.js
+npm ci
+npx playwright install chromium
+npm run test:browser
 python3 -m unittest discover -s tests
 python3 ui/web_dashboard/server.py --demo --demo-scenario warnings
 ```

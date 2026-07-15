@@ -1,0 +1,14 @@
+{
+  "name": "open-mmi-dashboard-tests",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Browser test tooling for the Open MMI dashboard",
+  "scripts": {
+    "test:frontend": "node --test tests/js/*.test.js",
+    "test:browser": "playwright test",
+    "test:browser:headed": "playwright test --headed"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.61.1"
+  }
+}
