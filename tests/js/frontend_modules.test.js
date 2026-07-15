@@ -270,7 +270,6 @@ test("reverse overlay detection and dismissal reset at the end of reverse", () =
   assert.equal(state.visible, true);
 });
 
-
 test("vehicle view model formats representative imperial status", () => {
   const view = vehicle.buildViewModel({
     health: { status: "ok", age_seconds: 1.24 },
@@ -337,7 +336,6 @@ test("vehicle formatting utilities reject invalid values and respect units", () 
   assert.equal(vehicle.formatTempFromC(0, 0, { tempUnit: "f" }), "32");
   assert.equal(vehicle.indicatorLabel({ hazards: true }), "Hazards");
 });
-
 
 test("media source preferences choose active and fallback sources deterministically", () => {
   const prefs = media.normalisePreferences({
@@ -446,4 +444,23 @@ test("Bluetooth controller normalises playback state and exposes its adapter", (
       statusUrl: "/api/bluetooth/status",
     },
   );
+});
+
+test("Bluetooth cleanup releases shared transport controls for other sources", () => {
+  const buttons = new Map(
+    ["#ommiMediaPlay", "#ommiMediaPrev", "#ommiMediaNext", "#ommiMediaStop"]
+      .map((selector) => [selector, {
+        disabled: true,
+        attributes: new Map([["aria-disabled", "true"]]),
+        setAttribute(name, value) { this.attributes.set(name, value); },
+      }]),
+  );
+  const document = { querySelector(selector) { return buttons.get(selector) || null; } };
+
+  bluetoothMedia.releaseSharedTransportControls(document);
+
+  for (const button of buttons.values()) {
+    assert.equal(button.disabled, false);
+    assert.equal(button.attributes.get("aria-disabled"), "false");
+  }
 });

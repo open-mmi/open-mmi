@@ -16,6 +16,16 @@
     return override || normalisePlaybackStatus(payload);
   }
 
+  function releaseSharedTransportControls(document) {
+    ["#ommiMediaPlay", "#ommiMediaPrev", "#ommiMediaNext", "#ommiMediaStop"]
+      .forEach((selector) => {
+        const button = document?.querySelector?.(selector);
+        if (!button) return;
+        button.disabled = false;
+        button.setAttribute?.("aria-disabled", "false");
+      });
+  }
+
   function bluetoothAdapterDescriptor() {
     return {
       id: "bluetooth",
@@ -94,7 +104,11 @@
           progress.removeAttribute("aria-disabled");
           progress.removeAttribute("title");
         }
-        if (!active) return;
+        if (!active) {
+          state.controlBusy = false;
+          releaseSharedTransportControls(document);
+          return;
+        }
         const listTitle = document.querySelector("#ommiMediaListTitle");
         if (listTitle) listTitle.textContent = "Connected Bluetooth player";
       }
@@ -554,5 +568,6 @@
     effectivePlaybackStatus,
     installController,
     normalisePlaybackStatus,
+    releaseSharedTransportControls,
   };
 });

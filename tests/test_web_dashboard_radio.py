@@ -42,6 +42,25 @@ class RadioSourceTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             radio._radio_validate_stream_url("https://user:pass@example.com/live")
 
+    def test_catalog_response_is_decoded_as_json(self):
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, traceback):
+                return False
+
+            def read(self, _limit):
+                return b'[{"stationuuid": "b5f9f7e7-8b6a-4f9e-a471-521fb85c1784"}]'
+
+        with patch("urllib.request.urlopen", return_value=Response()):
+            payload = radio._radio_catalog_json("/json/stations/search")
+
+        self.assertEqual(
+            payload,
+            [{"stationuuid": "b5f9f7e7-8b6a-4f9e-a471-521fb85c1784"}],
+        )
+
     def test_search_uses_bounded_broken_station_filter(self):
         captured = {}
         station_id = "b5f9f7e7-8b6a-4f9e-a471-521fb85c1784"

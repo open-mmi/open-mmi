@@ -8,6 +8,7 @@ boundary.  It deliberately has no dependency on the dashboard HTTP handler;
 
 from __future__ import annotations
 
+import json
 import os
 from typing import Any, Dict
 

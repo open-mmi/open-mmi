@@ -299,6 +299,32 @@ test("media source selection persists and hides disabled sources", async ({ page
   await rebuilt.close();
 });
 
+test("switching away from Bluetooth releases shared transport controls", async ({ page }) => {
+  const failures = captureRuntimeFailures(page);
+  const initialSettings = {
+    mediaActiveSource: "bluetooth",
+    mediaDefaultSource: "bluetooth",
+    mediaSources: { jellyfin: true, radio: true, usb: true, bluetooth: true },
+  };
+  await loadDashboard(page, {
+    storage: { [SETTINGS_KEY]: JSON.stringify(initialSettings) },
+  });
+  await openMedia(page);
+
+  const transportButtons = [
+    page.locator("#ommiMediaPlay"),
+    page.locator("#ommiMediaPrev"),
+    page.locator("#ommiMediaNext"),
+    page.locator("#ommiMediaStop"),
+  ];
+  await expect(transportButtons[0]).toBeDisabled();
+
+  await page.locator('[data-openmmi-media-source="usb"]').click();
+  for (const button of transportButtons) await expect(button).toBeEnabled();
+
+  await expectNoRuntimeFailures(failures);
+});
+
 for (const viewport of [
   { name: "vehicle display", width: 800, height: 480 },
   { name: "narrow portrait", width: 390, height: 844 },
