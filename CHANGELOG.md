@@ -12,6 +12,9 @@
 - Split dashboard media backends into Radio, USB, Jellyfin, and Bluetooth providers.
 - Split frontend API, preferences, status, navigation, overlays, vehicle rendering, media controllers, and CSS into focused modules.
 - Moved stateful CAN rule data into explicitly owned runtime state.
+- Moved subprocess-backed actions onto a bounded single-worker queue so CAN reception remains responsive.
+- Routed steering-wheel media transport through BlueZ/MPRIS-aware actions with a synthetic-key fallback.
+- Expanded Diagnostics to use canonical profile paths and list every currently decoded state value.
 - Made `climate.recirculation_active` the canonical status field.
 
 ### Security

@@ -54,6 +54,7 @@ class AudioActionTests(unittest.TestCase):
 
     def test_transport_falls_back_on_any_playerctl_failure(self):
         with (
+            mock.patch.object(audio, "_run_bluez_transport", return_value=False),
             mock.patch.object(audio, "_run_pc", return_value=(False, "not found")),
             mock.patch.object(audio, "_fallback") as fallback,
         ):
@@ -74,12 +75,75 @@ class AudioActionTests(unittest.TestCase):
 
     def test_transport_does_not_fallback_on_success(self):
         with (
+            mock.patch.object(audio, "_run_bluez_transport", return_value=False) as bluez,
             mock.patch.object(audio, "_run_pc", return_value=(True, "")),
             mock.patch.object(audio, "_fallback") as fallback,
         ):
             audio.play_pause()
 
         fallback.assert_not_called()
+        bluez.assert_called_once_with("play-pause", active_only=True)
+
+    def test_active_bluez_player_is_controlled_before_playerctl(self):
+        with (
+            mock.patch.object(audio, "_run_bluez_transport", return_value=True) as bluez,
+            mock.patch.object(audio, "_run_pc") as playerctl,
+            mock.patch.object(audio, "_fallback") as fallback,
+        ):
+            audio.play_pause()
+
+        bluez.assert_called_once_with("play-pause", active_only=True)
+        playerctl.assert_not_called()
+        fallback.assert_not_called()
+
+    def test_paused_bluez_player_is_used_after_playerctl_failure(self):
+        with (
+            mock.patch.object(audio, "_run_bluez_transport", side_effect=[False, True]) as bluez,
+            mock.patch.object(audio, "_run_pc", return_value=(False, "no players")),
+            mock.patch.object(audio, "_fallback") as fallback,
+        ):
+            audio.play_pause()
+
+        self.assertEqual(
+            bluez.call_args_list,
+            [
+                mock.call("play-pause", active_only=True),
+                mock.call("play-pause", active_only=False),
+            ],
+        )
+        fallback.assert_not_called()
+
+    def test_bluez_play_pause_selects_pause_for_playing_player(self):
+        path = "/org/bluez/hci0/dev_AA/player0"
+        with (
+            mock.patch.object(audio, "_bluez_players", return_value=[(path, "playing")]),
+            mock.patch.object(audio, "_bluez_busctl", return_value="") as busctl,
+        ):
+            self.assertTrue(audio._run_bluez_transport("play-pause"))
+
+        busctl.assert_called_once_with(
+            "call",
+            "org.bluez",
+            path,
+            "org.bluez.MediaPlayer1",
+            "Pause",
+        )
+
+    def test_bluez_play_pause_selects_play_for_paused_player(self):
+        path = "/org/bluez/hci0/dev_AA/player0"
+        with (
+            mock.patch.object(audio, "_bluez_players", return_value=[(path, "paused")]),
+            mock.patch.object(audio, "_bluez_busctl", return_value="") as busctl,
+        ):
+            self.assertTrue(audio._run_bluez_transport("play-pause"))
+
+        busctl.assert_called_once_with(
+            "call",
+            "org.bluez",
+            path,
+            "org.bluez.MediaPlayer1",
+            "Play",
+        )
 
     def test_volume_failures_are_isolated(self):
         functions = (audio.volume_up, audio.volume_down, audio.mute_toggle)

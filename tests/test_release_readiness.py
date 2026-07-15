@@ -1,3 +1,4 @@
+import json
 import pathlib
 import unittest
 
@@ -18,6 +19,18 @@ class ReleaseReadinessTests(unittest.TestCase):
         source = (ROOT / "ui/web_dashboard/server.py").read_text(encoding="utf-8")
         self.assertNotIn("Transitional private aliases", source)
         self.assertNotIn("Temporary private aliases", source)
+
+    def test_default_media_bindings_use_transport_actions(self):
+        bindings = json.loads((ROOT / "bindings/default.json").read_text(encoding="utf-8"))
+        expected = {
+            "play_pause": "play_pause",
+            "next_track": "next_track",
+            "previous_track": "prev_track",
+            "stop_playback": "stop",
+        }
+        for event, function in expected.items():
+            self.assertEqual(bindings[event]["module"], "audio")
+            self.assertEqual(bindings[event]["func"], function)
 
     def test_generated_directories_are_ignored(self):
         source = (ROOT / ".gitignore").read_text(encoding="utf-8")

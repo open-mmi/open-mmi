@@ -232,7 +232,7 @@ The Media page registers browser media-session handlers and keyboard fallbacks f
 - previous track
 - next track
 
-This is intended to support keyboard media keys, desktop/system media controls, and steering-wheel integrations that emit normal media key events.
+Steering-wheel transport bindings use the shared `actions.audio` path. It first controls an actively playing BlueZ AVRCP player directly, then tries `playerctl`, then a connected paused BlueZ player, and finally falls back to a synthetic media key. This keeps Bluetooth pause/play independent of browser focus while preserving local browser and desktop-player controls.
 
 ## Keeping secrets out of git
 
