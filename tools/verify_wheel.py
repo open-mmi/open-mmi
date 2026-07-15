@@ -32,6 +32,12 @@ REQUIRED_PATHS = {
     "ui/web_dashboard/static/media-bluetooth.js",
     "ui/web_dashboard/static/index.html",
     "ui/web_dashboard/static/styles.css",
+    "ui/web_dashboard/static/styles-core.css",
+    "ui/web_dashboard/static/styles-media-layout.css",
+    "ui/web_dashboard/static/styles-shell.css",
+    "ui/web_dashboard/static/styles-media-sources.css",
+    "ui/web_dashboard/static/styles-diagnostics.css",
+    "ui/web_dashboard/static/styles-media-final.css",
     "vehicles/seat_1p/config.json",
 }
 

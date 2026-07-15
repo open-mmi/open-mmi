@@ -9,6 +9,7 @@ from dashboard_contract_helpers import (
     js_bool_property,
     js_object_with_id,
     js_string_property,
+    read_dashboard_styles,
     read_repo_text,
 )
 
@@ -127,7 +128,7 @@ class BluetoothMediaTests(unittest.TestCase):
         bluetooth_frontend = read_repo_text("ui/web_dashboard/static/media-bluetooth.js")
         server_source = read_repo_text("ui/web_dashboard/server.py")
         provider_source = read_repo_text("ui/web_dashboard/bluetooth.py")
-        styles = read_repo_text("ui/web_dashboard/static/styles.css")
+        styles = read_dashboard_styles()
         self.assertRegex(server_source, r"parsed\.path\s*==\s*['\"]/api/bluetooth/status['\"]")
         self.assertRegex(server_source, r"parsed\.path\s*!=\s*['\"]/api/bluetooth/control['\"]")
         self.assertRegex(provider_source, r"content_type\s*!=\s*['\"]application/json['\"]")

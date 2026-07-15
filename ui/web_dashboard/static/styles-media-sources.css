@@ -1,0 +1,660 @@
+
+/* open-mmi media source shell v1 start */
+.openmmi-media-source-shell {
+  display: flex;
+  flex-direction: column;
+  gap: .35rem;
+}
+
+.openmmi-media-source-shell .ommi-media-row {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.openmmi-media-source-bar {
+  display: flex;
+  gap: .35rem;
+  align-items: center;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding: .1rem .15rem .2rem;
+  flex: 0 0 auto;
+  scrollbar-width: none;
+}
+
+.openmmi-media-source-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.openmmi-media-source-btn {
+  border: 1px solid rgba(255,255,255,.18);
+  background: rgba(255,255,255,.07);
+  color: rgba(255,255,255,.82);
+  border-radius: 999px;
+  padding: .34rem .72rem;
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  white-space: nowrap;
+  font-size: .86rem;
+  line-height: 1;
+}
+
+.openmmi-media-source-btn.is-selected {
+  border-color: rgba(0,216,255,.75);
+  background: rgba(0,216,255,.16);
+  color: #fff;
+  box-shadow: 0 0 18px rgba(0,216,255,.16);
+}
+
+.openmmi-media-source-btn.is-disabled,
+.openmmi-media-source-btn:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+.openmmi-media-source-planned {
+  font-size: .66rem;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,.52);
+}
+
+.openmmi-media-source-placeholder-active .ommi-player-col,
+.openmmi-media-source-placeholder-active .ommi-browser-col {
+  display: none !important;
+}
+
+.openmmi-media-source-placeholder {
+  flex: 1 1 auto;
+  min-height: 0;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 1.1rem;
+  background: radial-gradient(circle at top left, rgba(0,216,255,.12), rgba(255,255,255,.035) 42%, rgba(0,0,0,.18));
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  padding: 1.5rem;
+  color: rgba(255,255,255,.82);
+}
+
+.openmmi-media-source-placeholder h2 {
+  margin: .25rem 0 .45rem;
+  font-size: clamp(1.4rem, 2.5vw, 2.4rem);
+}
+
+.openmmi-media-source-placeholder p {
+  max-width: 34rem;
+  margin: 0;
+  color: rgba(255,255,255,.62);
+}
+
+.openmmi-media-source-empty-kicker {
+  text-transform: uppercase;
+  letter-spacing: .18em;
+  font-size: .72rem;
+  color: rgba(0,216,255,.76);
+}
+/* open-mmi media source shell v1 end */
+
+/* open-mmi media source hide disabled v2 start */
+.openmmi-media-no-enabled-sources .openmmi-media-source-bar {
+  display: none;
+}
+/* open-mmi media source hide disabled v2 end */
+
+/* Open MMI Media filter dropdown — work item 5 follow-up */
+#openMmiMediaRoot .ommi-filter-select {
+  width: auto;
+  min-width: 10rem;
+  min-height: 44px;
+  padding-block: 0.45rem;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 0.65rem;
+  background-color: rgba(255, 255, 255, 0.08);
+  color: inherit;
+  color-scheme: dark;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+#openMmiMediaRoot .ommi-filter-select:hover {
+  border-color: rgba(255, 255, 255, 0.38);
+  background-color: rgba(255, 255, 255, 0.13);
+}
+
+#openMmiMediaRoot .ommi-filter-select:focus-visible,
+#openMmiMediaRoot #ommiMediaSearchBtn:focus-visible {
+  outline: 3px solid currentColor;
+  outline-offset: 2px;
+}
+
+#openMmiMediaRoot .ommi-filter-select:disabled,
+#openMmiMediaRoot #ommiMediaSearchBtn:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+@media (max-width: 720px) {
+  #openMmiMediaRoot .ommi-filter-select {
+    min-width: 8.5rem;
+    max-width: 42vw;
+    font-size: 0.85rem;
+  }
+}
+
+/* --- Open MMI Media control layout follow-up start --- */
+/* Give every player/search action the same clear white keyline. */
+#openMmiMediaRoot .ommi-icon-btn,
+#openMmiMediaRoot #ommiMediaPrev,
+#openMmiMediaRoot #ommiMediaPlay,
+#openMmiMediaRoot #ommiMediaNext,
+#openMmiMediaRoot #ommiMediaStop,
+#openMmiMediaRoot #ommiMediaSearchBtn,
+#openMmiMediaRoot .ommi-search-btn,
+#openMmiMediaRoot .input-group > .btn {
+  border: 1px solid rgba(255, 255, 255, 0.88) !important;
+  box-shadow: none !important;
+}
+
+#openMmiMediaRoot .ommi-icon-btn:hover,
+#openMmiMediaRoot #ommiMediaSearchBtn:hover,
+#openMmiMediaRoot .ommi-search-btn:hover,
+#openMmiMediaRoot .input-group > .btn:hover,
+#openMmiMediaRoot .ommi-icon-btn:focus-visible,
+#openMmiMediaRoot #ommiMediaSearchBtn:focus-visible {
+  border-color: #fff !important;
+}
+
+/* Keep the search field visually joined to its outlined action button. */
+#openMmiMediaRoot .input-group:has(#ommiMediaFilter) {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+  align-items: stretch;
+  gap: 0.38rem 0;
+  width: 100%;
+}
+
+#openMmiMediaRoot .input-group:has(#ommiMediaFilter) > #ommiMediaSearch {
+  grid-column: 1;
+  grid-row: 1;
+  width: 100% !important;
+  min-width: 0;
+  border-color: rgba(255, 255, 255, 0.55) !important;
+  border-radius: 0.65rem 0 0 0.65rem !important;
+}
+
+#openMmiMediaRoot .input-group:has(#ommiMediaFilter) > #ommiMediaSearchBtn {
+  grid-column: 2;
+  grid-row: 1;
+  margin-left: -1px !important;
+  border-radius: 0 0.65rem 0.65rem 0 !important;
+}
+
+/* The filter is intentionally quieter and sits on its own second line. */
+#openMmiMediaRoot .input-group:has(#ommiMediaFilter) > #ommiMediaFilter,
+#openMmiMediaRoot #ommiMediaFilter.ommi-filter-select {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  justify-self: start;
+  width: auto !important;
+  min-width: 8.25rem !important;
+  max-width: min(11rem, 68vw);
+  min-height: 32px !important;
+  height: 32px;
+  margin: 0 !important;
+  padding: 0.22rem 1.75rem 0.22rem 0.55rem !important;
+  border: 1px solid rgba(255, 255, 255, 0.72) !important;
+  border-radius: 0.5rem !important;
+  background-color: rgba(255, 255, 255, 0.055) !important;
+  font-size: 0.76rem !important;
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+#openMmiMediaRoot #ommiMediaFilter:hover,
+#openMmiMediaRoot #ommiMediaFilter:focus-visible {
+  border-color: #fff !important;
+  background-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+@media (max-height: 620px) and (min-width: 700px) {
+  #openMmiMediaRoot .input-group:has(#ommiMediaFilter) {
+    gap: 0.25rem 0;
+  }
+
+  #openMmiMediaRoot .input-group:has(#ommiMediaFilter) > #ommiMediaFilter,
+  #openMmiMediaRoot #ommiMediaFilter.ommi-filter-select {
+    min-height: 28px !important;
+    height: 28px;
+    font-size: 0.72rem !important;
+    padding-block: 0.12rem !important;
+  }
+}
+/* --- Open MMI Media control layout follow-up end --- */
+
+/* --- Open MMI Media icon/live search follow-up start --- */
+#openMmiMediaRoot .ommi-music-icon {
+  display: block;
+  overflow: visible;
+  shape-rendering: geometricPrecision;
+}
+
+#openMmiMediaRoot .ommi-art .ommi-music-icon {
+  width: 2.8rem;
+  height: 2.8rem;
+  opacity: 0.88;
+  filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.12));
+}
+
+#openMmiMediaRoot .ommi-track-art .ommi-music-icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  opacity: 0.82;
+}
+
+#openMmiMediaRoot #ommiMediaSearch {
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+#openMmiMediaRoot #ommiMediaSearch:focus {
+  border-color: rgba(255, 255, 255, 0.92) !important;
+  background-color: rgba(255, 255, 255, 0.11) !important;
+}
+/* --- Open MMI Media icon/live search follow-up end --- */
+
+/* --- Open MMI Media icon/keyboard cleanup start --- */
+#openMmiMediaRoot .ommi-music-icon {
+  display: block;
+  overflow: visible;
+  font-size: 0 !important;
+  line-height: 0 !important;
+  background: none !important;
+  text-indent: 0 !important;
+  shape-rendering: geometricPrecision;
+}
+
+#openMmiMediaRoot .ommi-music-icon::before,
+#openMmiMediaRoot .ommi-music-icon::after {
+  content: none !important;
+  display: none !important;
+}
+
+/* --- Open MMI Media icon/keyboard cleanup end --- */
+
+/* --- Open MMI Media speaker icon fix start --- */
+#openMmiMediaRoot .ommi-media-speaker-icon {
+  flex: 0 0 auto;
+  fill: none;
+}
+
+#openMmiMediaRoot .ommi-media-speaker-icon path {
+  vector-effect: non-scaling-stroke;
+}
+/* --- Open MMI Media speaker icon fix end --- */
+
+/* --- Open MMI Internet Radio source start --- */
+#openMmiMediaRoot.openmmi-media-source-radio #ommiMediaProgressTrack {
+  cursor: default;
+}
+
+#openMmiMediaRoot #ommiMediaProgressTrack.is-live {
+  opacity: 0.72;
+  pointer-events: none;
+}
+
+#openMmiMediaRoot #ommiMediaProgressTrack.is-live .ommi-progress-fill {
+  transition: width 180ms ease;
+}
+
+#openMmiMediaRoot .ommi-track-duration.ommi-live {
+  width: auto;
+  min-width: 2.85rem;
+  padding: 0.18rem 0.38rem;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 999px;
+  font-size: 0.64rem;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-align: center;
+}
+
+#openMmiMediaRoot.openmmi-media-source-radio #ommiMediaElapsed {
+  font-weight: 750;
+  letter-spacing: 0.08em;
+}
+/* --- Open MMI Internet Radio source end --- */
+
+/* --- Open MMI Radio favourites and locale filters start --- */
+#openMmiMediaRoot .input-group:has(#ommiMediaFilter) > .ommi-radio-facets {
+  grid-column: 1 / -1;
+  grid-row: 3;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  width: 100%;
+  min-width: 0;
+}
+
+#openMmiMediaRoot:not(.openmmi-media-source-radio) .ommi-radio-facets,
+#openMmiMediaRoot .ommi-radio-facets[hidden] {
+  display: none !important;
+}
+
+#openMmiMediaRoot .ommi-radio-facet-select {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 12.5rem;
+  min-height: 30px;
+  height: 30px;
+  padding: 0.16rem 1.65rem 0.16rem 0.48rem;
+  border: 1px solid rgba(255, 255, 255, 0.7) !important;
+  border-radius: 0.48rem !important;
+  background-color: rgba(255, 255, 255, 0.045) !important;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+#openMmiMediaRoot .ommi-radio-facet-select:hover,
+#openMmiMediaRoot .ommi-radio-facet-select:focus-visible {
+  border-color: #fff !important;
+  background-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+#openMmiMediaRoot #ommiMediaFavoriteBtn {
+  display: inline-grid;
+  place-items: center;
+  width: 42px;
+  min-width: 42px;
+  height: 42px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.88) !important;
+}
+
+#openMmiMediaRoot #ommiMediaFavoriteBtn[hidden] {
+  display: none !important;
+}
+
+#openMmiMediaRoot #ommiMediaFavoriteBtn svg {
+  width: 1.12rem;
+  height: 1.12rem;
+}
+
+#openMmiMediaRoot #ommiMediaFavoriteBtn[aria-pressed="true"] {
+  background: rgba(255, 255, 255, 0.16) !important;
+  color: #fff;
+}
+
+@media (max-height: 620px) and (min-width: 700px) {
+  #openMmiMediaRoot .ommi-radio-facet-select {
+    min-height: 27px;
+    height: 27px;
+    font-size: 0.68rem;
+  }
+}
+/* --- Open MMI Radio favourites and locale filters end --- */
+
+/* --- Open MMI Internet Radio privacy consent start --- */
+body.openmmi-radio-privacy-open {
+  overflow: hidden;
+}
+
+.openmmi-radio-privacy-overlay[hidden] {
+  display: none !important;
+}
+
+.openmmi-radio-privacy-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  display: grid;
+  place-items: center;
+  padding: clamp(0.75rem, 3vw, 2rem);
+  background: rgba(0, 0, 0, 0.82);
+  backdrop-filter: blur(8px);
+}
+
+.openmmi-radio-privacy-dialog {
+  width: min(44rem, 100%);
+  max-height: min(90vh, 52rem);
+  overflow: auto;
+  padding: clamp(1rem, 3vw, 1.5rem);
+  border: 1px solid rgba(255, 255, 255, 0.92);
+  border-radius: 1rem;
+  background: #11151a;
+  color: #fff;
+  box-shadow: 0 1.5rem 5rem rgba(0, 0, 0, 0.5);
+}
+
+.openmmi-radio-privacy-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.openmmi-radio-privacy-heading h2 {
+  margin: 0;
+  font-size: clamp(1.25rem, 3vw, 1.7rem);
+}
+
+.openmmi-radio-privacy-kicker {
+  margin: 0 0 0.25rem;
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.openmmi-radio-privacy-close {
+  min-width: 2.5rem;
+  min-height: 2.5rem;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.8) !important;
+  color: #fff;
+  font-size: 1.45rem;
+  line-height: 1;
+}
+
+.openmmi-radio-privacy-summary,
+.openmmi-radio-privacy-dialog li,
+.openmmi-radio-privacy-caveat {
+  color: rgba(255, 255, 255, 0.86);
+  line-height: 1.5;
+}
+
+.openmmi-radio-privacy-dialog h3 {
+  margin: 1rem 0 0.45rem;
+  font-size: 0.98rem;
+}
+
+.openmmi-radio-privacy-dialog ul {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.openmmi-radio-privacy-dialog li + li {
+  margin-top: 0.45rem;
+}
+
+.openmmi-radio-privacy-caveat {
+  margin: 1rem 0;
+  padding: 0.75rem 0.85rem;
+  border-left: 3px solid #fff;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.openmmi-radio-privacy-error {
+  margin: 0 0 1rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid rgba(255, 255, 255, 0.88);
+  border-radius: 0.55rem;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.openmmi-radio-privacy-error[hidden] {
+  display: none !important;
+}
+
+.openmmi-radio-privacy-ack {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  padding: 0.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 0.65rem;
+  background: rgba(255, 255, 255, 0.045);
+  cursor: pointer;
+}
+
+.openmmi-radio-privacy-ack[hidden] {
+  display: none !important;
+}
+
+.openmmi-radio-privacy-ack input {
+  width: 1.2rem;
+  height: 1.2rem;
+  margin-top: 0.12rem;
+  accent-color: #fff;
+}
+
+.openmmi-radio-privacy-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.55rem;
+  margin-top: 1rem;
+}
+
+.openmmi-radio-privacy-actions .btn {
+  min-height: 42px;
+  border-width: 1px;
+}
+
+.openmmi-radio-privacy-review {
+  min-height: 30px;
+  margin-left: 0.4rem;
+  padding: 0.25rem 0.55rem;
+  border: 1px solid rgba(255, 255, 255, 0.75) !important;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.68rem;
+  line-height: 1.1;
+}
+
+.openmmi-radio-privacy-review:hover,
+.openmmi-radio-privacy-review:focus-visible {
+  border-color: #fff !important;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+@media (max-width: 560px) {
+  .openmmi-radio-privacy-dialog {
+    max-height: 94vh;
+    border-radius: 0.75rem;
+  }
+
+  .openmmi-radio-privacy-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .openmmi-radio-privacy-actions .btn {
+    width: 100%;
+  }
+}
+/* --- Open MMI Internet Radio privacy consent end --- */
+
+/* --- Open MMI Radio privacy button contrast fix start --- */
+/* Keep privacy-dialog actions readable despite Bootstrap/global button rules. */
+.openmmi-radio-privacy-dialog .openmmi-radio-privacy-actions .btn {
+  -webkit-text-fill-color: currentColor !important;
+  text-shadow: none !important;
+}
+
+.openmmi-radio-privacy-dialog
+  .openmmi-radio-privacy-actions
+  [data-openmmi-radio-privacy-cancel],
+.openmmi-radio-privacy-dialog
+  .openmmi-radio-privacy-actions
+  [data-openmmi-radio-privacy-forget] {
+  border-color: rgba(255, 255, 255, 0.92) !important;
+  background: transparent !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+.openmmi-radio-privacy-dialog
+  .openmmi-radio-privacy-actions
+  [data-openmmi-radio-privacy-cancel]:hover,
+.openmmi-radio-privacy-dialog
+  .openmmi-radio-privacy-actions
+  [data-openmmi-radio-privacy-cancel]:focus-visible,
+.openmmi-radio-privacy-dialog
+  .openmmi-radio-privacy-actions
+  [data-openmmi-radio-privacy-cancel]:active,
+.openmmi-radio-privacy-dialog
+  .openmmi-radio-privacy-actions
+  [data-openmmi-radio-privacy-forget]:hover,
+.openmmi-radio-privacy-dialog
+  .openmmi-radio-privacy-actions
+  [data-openmmi-radio-privacy-forget]:focus-visible,
+.openmmi-radio-privacy-dialog
+  .openmmi-radio-privacy-actions
+  [data-openmmi-radio-privacy-forget]:active {
+  border-color: #ffffff !important;
+  background: #ffffff !important;
+  color: #11151a !important;
+  -webkit-text-fill-color: #11151a !important;
+}
+
+.openmmi-radio-privacy-dialog
+  .openmmi-radio-privacy-actions
+  [data-openmmi-radio-privacy-accept] {
+  border-color: #ffffff !important;
+  background: #ffffff !important;
+  color: #11151a !important;
+  -webkit-text-fill-color: #11151a !important;
+  font-weight: 700;
+}
+
+.openmmi-radio-privacy-dialog
+  .openmmi-radio-privacy-actions
+  [data-openmmi-radio-privacy-accept]:hover,
+.openmmi-radio-privacy-dialog
+  .openmmi-radio-privacy-actions
+  [data-openmmi-radio-privacy-accept]:focus-visible,
+.openmmi-radio-privacy-dialog
+  .openmmi-radio-privacy-actions
+  [data-openmmi-radio-privacy-accept]:active {
+  border-color: #d8dde2 !important;
+  background: #d8dde2 !important;
+  color: #090b0d !important;
+  -webkit-text-fill-color: #090b0d !important;
+}
+
+.openmmi-radio-privacy-dialog
+  .openmmi-radio-privacy-actions
+  [data-openmmi-radio-privacy-accept]:disabled {
+  border-color: rgba(255, 255, 255, 0.42) !important;
+  background: rgba(255, 255, 255, 0.28) !important;
+  color: rgba(255, 255, 255, 0.7) !important;
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.7) !important;
+  opacity: 1 !important;
+  cursor: not-allowed;
+}
+
+.openmmi-radio-privacy-dialog .openmmi-radio-privacy-actions .btn:focus-visible {
+  outline: 3px solid rgba(255, 255, 255, 0.55) !important;
+  outline-offset: 2px;
+  box-shadow: none !important;
+}
+/* --- Open MMI Radio privacy button contrast fix end --- */

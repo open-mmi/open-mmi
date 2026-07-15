@@ -293,6 +293,17 @@ The browser loads small platform modules before the main dashboard application:
 - `static/media-bluetooth.js` owns Bluetooth status polling, optimistic transport state, progress presentation, and BlueZ control requests.
 - `static/app.js` now owns settings, diagnostics, advanced tell-tales, and the remaining cross-cutting dashboard enhancements.
 
+The dashboard CSS is split into six cascade-preserving modules loaded directly by `index.html`:
+
+- `static/styles-core.css` contains the original shell, vehicle cards, RPM and early tell-tale rules.
+- `static/styles-media-layout.css` contains the base Jellyfin/player layout and Media containment fixes.
+- `static/styles-shell.css` contains tell-tales, Home, Settings, overlays and display-mode rules.
+- `static/styles-media-sources.css` contains the source shell, Radio controls and privacy dialog.
+- `static/styles-diagnostics.css` contains browser performance diagnostics.
+- `static/styles-media-final.css` contains USB, Bluetooth, final media-control and vehicle-correction rules.
+
+`static/styles.css` remains as an import-only compatibility manifest. `tools/verify_css_split.py` locks the module order and verifies that their concatenated bytes remain identical to the pre-split stylesheet, preventing accidental cascade changes during this structural phase.
+
 The platform modules resolve `window.fetch` and `window.localStorage` at call time. This keeps performance instrumentation compatible and lets the dashboard fail safely when browser storage is unavailable or restricted.
 
 The extracted player exposes temporary compatibility accessors for the Radio, USB, and Bluetooth adapters while the remaining frontend cleanup is completed. The player state itself remains single-owned by `media-jellyfin.js`; adapters do not create duplicate queues or playback state.

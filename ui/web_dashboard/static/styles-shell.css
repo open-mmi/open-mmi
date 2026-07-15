@@ -1,0 +1,1058 @@
+
+/* --- Open MMI proper light tell-tales start --- */
+.openmmi-footer-black,
+.status-strip.openmmi-footer-black,
+footer.openmmi-footer-black,
+.screen > footer.openmmi-footer-black,
+.footer.openmmi-footer-black,
+.bottom-bar.openmmi-footer-black {
+  position: relative !important;
+  background: #000 !important;
+  background-color: #000 !important;
+  background-image: none !important;
+  backdrop-filter: none !important;
+}
+
+.openmmi-footer-with-telltales {
+  overflow: hidden !important;
+}
+
+#openMmiFooterTelltales.openmmi-stable-footer-telltales-strip,
+.openmmi-stable-footer-telltales-strip {
+  --ommi-footer-icon-size: clamp(1.02rem, 1.72vw, 1.58rem);
+  --ommi-footer-icon-gap: clamp(.22rem, .68vw, .46rem);
+  position: absolute !important;
+  left: 50% !important;
+  top: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: var(--ommi-footer-icon-gap) !important;
+  width: auto !important;
+  height: calc(var(--ommi-footer-icon-size) + .2rem) !important;
+  margin: 0 !important;
+  padding: 0 clamp(.18rem, .5vw, .36rem) !important;
+  z-index: 6 !important;
+  pointer-events: none !important;
+  background: transparent !important;
+}
+
+#openMmiFooterTelltales .openmmi-footer-telltale,
+.openmmi-stable-footer-telltales-strip .openmmi-footer-telltale {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: var(--ommi-footer-icon-size) !important;
+  height: var(--ommi-footer-icon-size) !important;
+  flex: 0 0 var(--ommi-footer-icon-size) !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  filter: none !important;
+  text-shadow: none !important;
+  line-height: 1 !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  transform: none !important;
+}
+
+#openMmiFooterTelltales .openmmi-footer-telltale-wide {
+  width: calc(var(--ommi-footer-icon-size) * 1.44) !important;
+  flex-basis: calc(var(--ommi-footer-icon-size) * 1.44) !important;
+}
+
+#openMmiFooterTelltales .openmmi-footer-telltale-position-lights {
+  width: calc(var(--ommi-footer-icon-size) * 1.72) !important;
+  flex-basis: calc(var(--ommi-footer-icon-size) * 1.72) !important;
+}
+
+#openMmiFooterTelltales .openmmi-footer-telltale-rear-fog {
+  width: calc(var(--ommi-footer-icon-size) * 1.1) !important;
+  flex-basis: calc(var(--ommi-footer-icon-size) * 1.1) !important;
+}
+
+#openMmiFooterTelltales .openmmi-footer-telltale img,
+#openMmiFooterTelltales .openmmi-footer-telltale svg {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain !important;
+  flex: 0 0 auto !important;
+  filter: none !important;
+}
+
+#openMmiFooterTelltales .openmmi-footer-telltale.is-active {
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+#openMmiFooterTelltales .openmmi-footer-telltale.is-inactive,
+#openMmiFooterTelltales .openmmi-footer-telltale.is-unknown {
+  opacity: 0 !important;
+  visibility: hidden !important;
+}
+
+/* Only forced/demo indicators blink using CSS. Real indicator state follows the
+   status payload so it can mirror the vehicle bulb phase if the snapshot has it. */
+#openMmiFooterTelltales .openmmi-footer-telltale-left-turn.is-forced-blink,
+#openMmiFooterTelltales .openmmi-footer-telltale-right-turn.is-forced-blink,
+#openMmiFooterTelltales .openmmi-footer-telltale-hazard.is-forced-blink {
+  animation: openmmiForcedIndicatorBlink .92s steps(1, end) infinite !important;
+}
+
+@keyframes openmmiForcedIndicatorBlink {
+  0%, 49% { opacity: 1; visibility: visible; }
+  50%, 100% { opacity: 0; visibility: hidden; }
+}
+
+.openmmi-footer-telltale-sr {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+.openmmi-telltale-moved-to-footer,
+.openmmi-telltale-moved-to-footer *,
+.openmmi-light-state-moved-to-footer,
+.openmmi-light-state-moved-to-footer *,
+.openmmi-footer-duplicate-hidden,
+.openmmi-footer-duplicate-hidden *,
+.openmmi-footer-reverse-hidden,
+.openmmi-footer-reverse-hidden *,
+.openmmi-footer-park-duplicate-hidden,
+.openmmi-footer-park-duplicate-hidden * {
+  display: none !important;
+}
+
+.openmmi-telltale-test-badge {
+  position: absolute !important;
+  right: clamp(.45rem, 1.2vw, .9rem) !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  color: #ffd15c !important;
+  background: rgba(255, 170, 0, .13) !important;
+  border: 1px solid rgba(255, 209, 92, .35) !important;
+  border-radius: 999px !important;
+  padding: .12rem .45rem !important;
+  font-size: clamp(.58rem, 1vw, .72rem) !important;
+  letter-spacing: .08em !important;
+  text-transform: uppercase !important;
+  white-space: nowrap !important;
+  pointer-events: none !important;
+  z-index: 8 !important;
+}
+
+@media (max-width: 720px), (max-height: 520px) {
+  #openMmiFooterTelltales.openmmi-stable-footer-telltales-strip,
+  .openmmi-stable-footer-telltales-strip {
+    --ommi-footer-icon-size: clamp(.82rem, 2.8vw, 1.22rem);
+    --ommi-footer-icon-gap: clamp(.12rem, .46vw, .28rem);
+  }
+  .openmmi-telltale-test-badge { display: none !important; }
+}
+/* --- Open MMI proper light tell-tales end --- */
+
+/* Open MMI V1 roadmap: home/menu navigation start */
+.page-home.active {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+}
+
+.openmmi-home-shell {
+  min-height: 0;
+  height: 100%;
+  display: grid;
+  grid-template-columns: minmax(18rem, .92fr) minmax(24rem, 1.08fr);
+  gap: clamp(12px, 2vw, 28px);
+  align-items: stretch;
+}
+
+.openmmi-home-card {
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 18px;
+  background: radial-gradient(circle at 50% 0%, rgba(85,186,255,.10), transparent 42%), rgba(10,12,16,.62);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.025), 0 22px 60px rgba(0,0,0,.26);
+  overflow: hidden;
+}
+
+.openmmi-home-hero {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: clamp(1.1rem, 2.6vw, 2.4rem);
+}
+
+.openmmi-home-kicker,
+.openmmi-home-menu-head span {
+  color: var(--blue);
+  font-size: clamp(.78rem, 1.15vw, 1rem);
+  font-weight: 700;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+}
+
+.openmmi-home-hero h2 {
+  margin: .25rem 0 .3rem;
+  font-size: clamp(3.4rem, 8vw, 8rem);
+  font-weight: 300;
+  letter-spacing: -.07em;
+  line-height: .9;
+}
+
+.openmmi-home-copy {
+  max-width: 34rem;
+  margin: 0 0 clamp(1.2rem, 3vh, 2.4rem);
+  color: var(--muted);
+  font-size: clamp(1rem, 1.45vw, 1.45rem);
+}
+
+.openmmi-home-status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(.7rem, 1.4vw, 1.1rem);
+}
+
+.openmmi-home-stat {
+  min-width: 0;
+  padding: clamp(.8rem, 1.4vw, 1.05rem);
+  border: 1px solid rgba(255,255,255,.10);
+  border-radius: 14px;
+  background: rgba(255,255,255,.04);
+}
+
+.openmmi-home-stat span {
+  display: block;
+  color: var(--muted);
+  font-size: clamp(.82rem, 1.15vw, 1rem);
+}
+
+.openmmi-home-stat strong {
+  display: block;
+  margin-top: .35rem;
+  color: var(--text);
+  font-size: clamp(1.8rem, 3.8vw, 3.8rem);
+  font-weight: 300;
+  letter-spacing: -.055em;
+  line-height: .95;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.openmmi-home-stat strong small {
+  margin-left: .35rem;
+  color: var(--muted);
+  font-size: .35em;
+  letter-spacing: 0;
+  text-transform: lowercase;
+}
+
+.openmmi-home-stat strong b {
+  font-weight: inherit;
+}
+
+.openmmi-home-menu {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(.9rem, 1.8vh, 1.4rem);
+  padding: clamp(1rem, 2vw, 1.7rem);
+}
+
+.openmmi-home-menu-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: baseline;
+  color: var(--muted);
+}
+
+.openmmi-home-menu-head small {
+  color: var(--muted);
+  font-size: clamp(.85rem, 1.2vw, 1.05rem);
+}
+
+.openmmi-home-actions {
+  min-height: 0;
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: minmax(5rem, 1fr);
+  gap: clamp(.7rem, 1.4vw, 1.1rem);
+}
+
+.openmmi-home-action {
+  min-width: 0;
+  appearance: none;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 16px;
+  background: linear-gradient(145deg, rgba(255,255,255,.07), rgba(255,255,255,.025));
+  color: var(--text);
+  text-align: left;
+  padding: clamp(.9rem, 1.7vw, 1.25rem);
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.025);
+}
+
+.openmmi-home-action:hover,
+.openmmi-home-action:focus-visible {
+  border-color: rgba(85,186,255,.50);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(85,186,255,.12), inset 0 0 0 1px rgba(255,255,255,.035);
+}
+
+.openmmi-home-action span {
+  display: block;
+  font-size: clamp(1.45rem, 2.7vw, 2.6rem);
+  font-weight: 300;
+  letter-spacing: -.045em;
+  line-height: 1;
+}
+
+.openmmi-home-action small {
+  display: block;
+  margin-top: .45rem;
+  color: var(--muted);
+  font-size: clamp(.82rem, 1.15vw, 1rem);
+  line-height: 1.2;
+}
+
+.openmmi-home-action.openmmi-primary {
+  border-color: rgba(85,186,255,.28);
+  background: radial-gradient(circle at 80% 0%, rgba(85,186,255,.20), transparent 45%), rgba(255,255,255,.045);
+}
+
+.openmmi-home-action.openmmi-disabled {
+  cursor: default;
+  opacity: .45;
+}
+
+.openmmi-home-action.openmmi-disabled:hover,
+.openmmi-home-action.openmmi-disabled:focus-visible {
+  border-color: rgba(255,255,255,.12);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.025);
+}
+
+@media (max-width: 1180px) {
+  .openmmi-home-shell {
+    grid-template-columns: 1fr;
+  }
+  .openmmi-home-actions {
+    grid-auto-rows: minmax(4.6rem, auto);
+  }
+}
+
+@media (max-width: 720px) {
+  .openmmi-home-status-grid,
+  .openmmi-home-actions {
+    grid-template-columns: 1fr;
+  }
+}
+/* Open MMI V1 roadmap: home/menu navigation end */
+
+/* Open MMI V1 roadmap: settings shell start */
+.page-settings.active {
+  display: block;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.openmmi-settings-shell {
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(16rem, .78fr) minmax(0, 1.22fr);
+  gap: clamp(.75rem, 1.4vw, 1.2rem);
+  overflow: hidden;
+}
+
+.openmmi-settings-sidebar-card,
+.openmmi-settings-panel-card {
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 18px;
+  background: radial-gradient(circle at 50% 0%, rgba(85,186,255,.09), transparent 44%), rgba(10,12,16,.62);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.025), 0 18px 50px rgba(0,0,0,.22);
+  overflow: hidden;
+}
+
+.openmmi-settings-sidebar-card {
+  display: flex;
+  flex-direction: column;
+  padding: clamp(.9rem, 1.5vw, 1.25rem);
+  gap: clamp(.55rem, 1.2vh, .9rem);
+}
+
+.openmmi-settings-panel-card {
+  padding: clamp(.95rem, 1.6vw, 1.35rem);
+  overflow: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.openmmi-settings-panel-card::-webkit-scrollbar {
+  width: .4rem;
+}
+
+.openmmi-settings-panel-card::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,.16);
+  border-radius: 999px;
+}
+
+.openmmi-settings-kicker,
+.openmmi-settings-panel-head span {
+  color: var(--blue);
+  font-size: clamp(.72rem, 1vw, .95rem);
+  font-weight: 700;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+}
+
+.openmmi-settings-sidebar-card h2 {
+  margin: 0;
+  font-size: clamp(2.9rem, 5.6vw, 5.6rem);
+  font-weight: 300;
+  letter-spacing: -.07em;
+  line-height: .9;
+}
+
+.openmmi-settings-sidebar-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: clamp(.92rem, 1.25vw, 1.08rem);
+  line-height: 1.35;
+}
+
+.openmmi-settings-tree {
+  display: grid;
+  gap: .55rem;
+  margin-top: auto;
+}
+
+.openmmi-settings-tree button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .8rem;
+  border: 1px solid rgba(255,255,255,.09);
+  border-radius: 14px;
+  background: rgba(255,255,255,.035);
+  color: var(--text);
+  padding: .72rem .82rem;
+  text-align: left;
+  font: inherit;
+  font-weight: 600;
+}
+
+.openmmi-settings-tree button small {
+  color: var(--muted);
+  font-size: .76rem;
+  font-weight: 500;
+  text-align: right;
+}
+
+.openmmi-settings-tree button.active,
+.openmmi-settings-tree button:focus-visible {
+  outline: none;
+  border-color: rgba(85,186,255,.48);
+  background: linear-gradient(135deg, rgba(85,186,255,.17), rgba(255,255,255,.045));
+  box-shadow: 0 0 0 1px rgba(85,186,255,.10), 0 14px 32px rgba(0,0,0,.18);
+}
+
+.openmmi-settings-panel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: .75rem;
+  margin-bottom: .75rem;
+}
+
+.openmmi-settings-panel-head small {
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  font-size: .75rem;
+}
+
+.openmmi-setting-row,
+.openmmi-settings-metric {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .85rem;
+  padding: .72rem .82rem;
+  margin-top: .58rem;
+  border: 1px solid rgba(255,255,255,.09);
+  border-radius: 13px;
+  background: rgba(255,255,255,.035);
+}
+
+.openmmi-setting-row > div {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.openmmi-setting-row strong {
+  display: block;
+  color: var(--text);
+  font-size: clamp(.98rem, 1.25vw, 1.12rem);
+  font-weight: 600;
+}
+
+.openmmi-setting-row small,
+.openmmi-settings-metric span {
+  display: block;
+  margin-top: .16rem;
+  color: var(--muted);
+  font-size: .82rem;
+  line-height: 1.2;
+}
+
+.openmmi-setting-controls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: .42rem;
+}
+
+.openmmi-setting-pill {
+  flex: 0 0 auto;
+  min-width: 3.25rem;
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 999px;
+  background: rgba(255,255,255,.04);
+  color: var(--muted);
+  padding: .38rem .68rem;
+  font: inherit;
+  font-size: .86rem;
+}
+
+.openmmi-setting-pill.is-selected {
+  border-color: rgba(85,186,255,.44);
+  background: rgba(85,186,255,.14);
+  color: var(--text);
+}
+
+.openmmi-settings-metric strong {
+  color: var(--text);
+  font-size: clamp(1rem, 1.45vw, 1.25rem);
+  font-weight: 500;
+  text-transform: uppercase;
+  text-align: right;
+}
+
+.openmmi-settings-link {
+  display: block;
+  margin-top: .7rem;
+  padding: .72rem .82rem;
+  border: 1px solid rgba(85,186,255,.28);
+  border-radius: 13px;
+  color: var(--blue);
+  text-decoration: none;
+  background: rgba(85,186,255,.07);
+}
+
+.openmmi-settings-link:hover,
+.openmmi-settings-link:focus-visible {
+  color: var(--text);
+  border-color: rgba(85,186,255,.55);
+  outline: none;
+}
+
+@media (max-height: 760px) {
+  .openmmi-settings-sidebar-card,
+  .openmmi-settings-panel-card {
+    padding: clamp(.72rem, 1.15vw, 1rem);
+  }
+
+  .openmmi-settings-sidebar-card h2 {
+    font-size: clamp(2.45rem, 4.8vw, 4.5rem);
+  }
+
+  .openmmi-settings-tree {
+    gap: .42rem;
+  }
+
+  .openmmi-settings-tree button,
+  .openmmi-setting-row,
+  .openmmi-settings-metric,
+  .openmmi-settings-link {
+    padding: .56rem .68rem;
+  }
+}
+
+@media (max-width: 760px) {
+  .openmmi-settings-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .openmmi-settings-sidebar-card {
+    min-height: 0;
+  }
+
+  .openmmi-settings-tree {
+    margin-top: .2rem;
+  }
+}
+/* Open MMI V1 roadmap: settings shell end */
+
+/* Open MMI V1 roadmap: door overlay start */
+.openmmi-vehicle-overlay {
+  position: absolute;
+  inset: var(--content-top, 4.5rem) clamp(.75rem, 2vw, 1.5rem) var(--footer-height, 4.25rem) clamp(.75rem, 2vw, 1.5rem);
+  z-index: 35;
+  pointer-events: none;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: clamp(.5rem, 2vh, 1.2rem);
+}
+
+.openmmi-vehicle-overlay[hidden] {
+  display: none !important;
+}
+
+.openmmi-vehicle-overlay-card {
+  pointer-events: auto;
+  width: min(28rem, 92%);
+  border: 1px solid rgba(255,255,255,.16);
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(23,28,40,.96), rgba(8,10,15,.96));
+  box-shadow: 0 24px 70px rgba(0,0,0,.48), inset 0 0 0 1px rgba(255,255,255,.04);
+  padding: clamp(.95rem, 1.8vw, 1.25rem);
+  color: rgba(255,255,255,.94);
+  backdrop-filter: blur(16px);
+}
+
+.openmmi-vehicle-overlay-kicker {
+  font-size: .72rem;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: rgba(149,210,255,.78);
+  margin-bottom: .25rem;
+}
+
+.openmmi-vehicle-overlay-card h2 {
+  margin: 0 0 .75rem;
+  font-size: clamp(1.35rem, 2.6vw, 2rem);
+  line-height: 1;
+}
+
+.openmmi-vehicle-overlay-list {
+  display: grid;
+  gap: .45rem;
+  margin-bottom: .9rem;
+}
+
+.openmmi-vehicle-overlay-item {
+  border: 1px solid rgba(255,255,255,.11);
+  border-radius: 14px;
+  background: rgba(255,255,255,.055);
+  padding: .65rem .8rem;
+  font-weight: 700;
+}
+
+.openmmi-vehicle-overlay-dismiss {
+  width: 100%;
+  border: 1px solid rgba(255,255,255,.18);
+  border-radius: 14px;
+  background: rgba(69,163,255,.18);
+  color: rgba(255,255,255,.95);
+  font-weight: 800;
+  padding: .72rem .9rem;
+}
+
+.openmmi-vehicle-overlay-dismiss:active {
+  transform: translateY(1px);
+}
+/* Open MMI V1 roadmap: door overlay end */
+
+/* Open MMI V1 roadmap: reverse overlay start */
+.openmmi-reverse-overlay {
+  position: absolute;
+  inset: var(--content-top, 4.5rem) clamp(.75rem, 2vw, 1.5rem) var(--footer-height, 4.25rem) clamp(.75rem, 2vw, 1.5rem);
+  z-index: 34;
+  pointer-events: none;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: clamp(.5rem, 2vh, 1.15rem);
+}
+
+.openmmi-reverse-overlay[hidden] {
+  display: none !important;
+}
+
+.openmmi-reverse-overlay-card {
+  pointer-events: auto;
+  width: min(30rem, 92%);
+  border: 1px solid rgba(132,198,255,.22);
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(10,23,39,.96), rgba(4,8,14,.97));
+  box-shadow: 0 22px 70px rgba(0,0,0,.5), inset 0 0 0 1px rgba(255,255,255,.045);
+  color: rgba(255,255,255,.95);
+  padding: clamp(.95rem, 1.8vw, 1.25rem);
+  backdrop-filter: blur(16px);
+}
+
+.openmmi-reverse-overlay-kicker {
+  font-size: .72rem;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: rgba(149,210,255,.82);
+  margin-bottom: .25rem;
+}
+
+.openmmi-reverse-overlay-card h2 {
+  margin: 0 0 .35rem;
+  font-size: clamp(1.35rem, 2.6vw, 2rem);
+  line-height: 1;
+}
+
+.openmmi-reverse-overlay-card p {
+  margin: 0 0 .8rem;
+  color: rgba(219,236,255,.78);
+  font-size: clamp(.86rem, 1.4vw, .95rem);
+}
+
+.openmmi-reverse-overlay-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: .45rem;
+  margin-bottom: .9rem;
+}
+
+.openmmi-reverse-overlay-grid span {
+  display: block;
+  height: clamp(2.25rem, 7vh, 4rem);
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,.12);
+  background: linear-gradient(180deg, rgba(65,151,255,.24), rgba(65,151,255,.06));
+}
+
+.openmmi-reverse-overlay-grid span:nth-child(1),
+.openmmi-reverse-overlay-grid span:nth-child(4) {
+  opacity: .55;
+}
+
+.openmmi-reverse-overlay-grid span:nth-child(2),
+.openmmi-reverse-overlay-grid span:nth-child(3) {
+  opacity: .9;
+}
+
+.openmmi-reverse-overlay-dismiss {
+  width: 100%;
+  border: 1px solid rgba(255,255,255,.18);
+  border-radius: 14px;
+  background: rgba(69,163,255,.18);
+  color: rgba(255,255,255,.95);
+  font-weight: 800;
+  padding: .72rem .9rem;
+}
+
+.openmmi-reverse-overlay-dismiss:active {
+  transform: translateY(1px);
+}
+/* Open MMI V1 roadmap: reverse overlay end */
+/* Open MMI V1 roadmap: settings stable wiring v3 start */
+.openmmi-dim-mode body,
+.openmmi-dim-mode .app,
+.openmmi-dim-mode main {
+  filter: brightness(.78) saturate(.9);
+}
+.openmmi-reduced-motion *,
+.openmmi-reduced-motion *::before,
+.openmmi-reduced-motion *::after {
+  animation-duration: .001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: .001ms !important;
+  scroll-behavior: auto !important;
+}
+.openmmi-reverse-assist-off #openMmiReverseOverlay {
+  display: none !important;
+}
+#openmmiSettingsPanel .openmmi-setting-pill {
+  cursor: pointer;
+  user-select: none;
+}
+#openmmiSettingsPanel .openmmi-setting-pill:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(85,186,255,.18);
+}
+/* Open MMI V1 roadmap: settings stable wiring v3 end */
+/* Open MMI V1 roadmap: settings wiring v4 stability start */
+.openmmi-settings-static-controls[hidden] {
+  display: none !important;
+}
+.openmmi-settings-static-controls {
+  margin-bottom: .75rem;
+}
+#openmmiSettingsStaticControls .openmmi-setting-pill,
+#openmmiSettingsPanel .openmmi-setting-pill {
+  cursor: pointer;
+  user-select: none;
+}
+#openmmiSettingsStaticControls .openmmi-setting-pill:disabled,
+#openmmiSettingsPanel .openmmi-setting-pill:disabled {
+  opacity: 1;
+  pointer-events: auto;
+}
+/* Open MMI V1 roadmap: settings wiring v4 stability end */
+
+
+/* Open MMI display boost: high-contrast daylight mode from Settings > Display. */
+:root.openmmi-boost-mode body {
+  filter: brightness(1.12) contrast(1.12) saturate(1.06);
+}
+
+:root.openmmi-boost-mode .card,
+:root.openmmi-boost-mode .tile,
+:root.openmmi-boost-mode .openmmi-settings-panel-card,
+:root.openmmi-boost-mode .openmmi-settings-sidebar-card,
+:root.openmmi-boost-mode .openmmi-home-card,
+:root.openmmi-boost-mode .ommi-media-card {
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.16), 0 14px 42px rgba(0,0,0,0.42);
+}
+
+:root.openmmi-boost-mode .value,
+:root.openmmi-boost-mode .speed,
+:root.openmmi-boost-mode .openmmi-now-title,
+:root.openmmi-boost-mode .openmmi-settings-panel-head span,
+:root.openmmi-boost-mode .openmmi-home-title {
+  text-shadow: 0 0 14px rgba(255,255,255,0.16);
+}
+
+:root.openmmi-boost-mode .openmmi-setting-pill.is-selected {
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.38), 0 0 20px rgba(13,202,240,0.28);
+}
+
+/* Open MMI frontend-only tell-tale visual test */
+.openmmi-telltale-test-strip {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.42rem;
+  padding: 0.2rem 0.35rem 0.35rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.openmmi-telltale-test-badge {
+  font-size: 0.62rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  padding: 0.08rem 0.34rem;
+}
+
+.openmmi-telltale-test-item {
+  min-width: 2.75rem;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.05rem;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 0.58rem;
+  line-height: 1;
+}
+
+.openmmi-telltale-test-item img {
+  width: 1.35rem;
+  height: 1.35rem;
+  object-fit: contain;
+  opacity: 1;
+  filter: drop-shadow(0 0 0.42rem currentColor);
+}
+
+.openmmi-telltale-test-item small {
+  font-size: 0.54rem;
+  opacity: 0.72;
+}
+
+.openmmi-telltale-test-item.is-green { color: #73ff8a; }
+.openmmi-telltale-test-item.is-blue { color: #74a8ff; }
+.openmmi-telltale-test-item.is-amber { color: #ffcd5c; }
+.openmmi-telltale-test-item.is-red { color: #ff6b6b; }
+
+.openmmi-display-boost .openmmi-telltale-test-strip,
+.openmmi-telltale-test-enabled.openmmi-display-boost .openmmi-telltale-test-strip {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+@media (max-width: 760px) {
+  .openmmi-telltale-test-strip {
+    gap: 0.28rem;
+    overflow-x: auto;
+    justify-content: flex-start;
+  }
+  .openmmi-telltale-test-item { min-width: 2.25rem; }
+}
+/* end Open MMI frontend-only tell-tale visual test */
+
+/* Open MMI: tell-tale test v2 uses the existing footer icon slots. */
+.openmmi-telltale-visual-test-strip,
+.openmmi-display-telltale-test-strip,
+.openmmi-telltale-test-strip,
+#openMmiTelltaleVisualTestStrip,
+#openMmiDisplayTelltaleTestStrip,
+#openMmiTelltaleTestStrip {
+  display: none !important;
+}
+
+html.openmmi-telltale-test-active #openMmiFooterTelltales [data-openmmi-telltale-slot] {
+  opacity: 1;
+}
+
+/* openmmi door overlay reuse vehicle visual v3 */
+.openmmi-door-overlay-visual-card {
+  align-items: center;
+  text-align: center;
+}
+
+.openmmi-door-overlay-car-host {
+  display: grid;
+  place-items: center;
+  width: min(42vw, 22rem);
+  max-width: 100%;
+  min-height: 12rem;
+  margin: 0 auto 0.75rem;
+}
+
+.openmmi-door-overlay-car-host .car-shell {
+  margin: 0 auto;
+  transform: scale(1.08);
+  transform-origin: center;
+}
+
+.openmmi-door-overlay-car-host .door-mark {
+  pointer-events: none;
+}
+
+.openmmi-door-overlay-visual-card .openmmi-vehicle-overlay-list,
+#openMmiDoorOverlayList[hidden] {
+  display: none !important;
+}
+
+/* open-mmi door overlay fit v9: fixed visual and dismiss rows */
+/* CSS-only. Keep the reused Vehicle-page car inside the card, then put
+   Dismiss in its own non-overlapping row below it. */
+#openMmiVehicleOverlay {
+  overflow: visible !important;
+}
+
+#openMmiVehicleOverlay .openmmi-vehicle-overlay-card.openmmi-door-overlay-visual-card,
+#openMmiVehicleOverlay .openmmi-door-overlay-visual-card {
+  display: grid !important;
+  grid-template-rows: minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  justify-items: center !important;
+  box-sizing: border-box !important;
+  width: min(22rem, calc(100vw - 2rem)) !important;
+  max-width: calc(100vw - 2rem) !important;
+  min-height: min(24rem, calc(100dvh - 5rem)) !important;
+  max-height: calc(100dvh - 4rem) !important;
+  padding: clamp(0.55rem, 1.2vh, 0.8rem) clamp(1rem, 2vw, 1.35rem) clamp(0.85rem, 1.8vh, 1.2rem) !important;
+  row-gap: clamp(0.65rem, 1.8vh, 1.1rem) !important;
+  overflow: hidden !important;
+}
+
+#openMmiVehicleOverlay #openMmiDoorOverlayList,
+#openMmiVehicleOverlay .openmmi-vehicle-overlay-list {
+  display: none !important;
+}
+
+#openMmiVehicleOverlay .openmmi-door-overlay-car-host {
+  grid-row: 1 !important;
+  align-self: stretch !important;
+  justify-self: stretch !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  box-sizing: border-box !important;
+  width: 100% !important;
+  min-height: 0 !important;
+  height: 100% !important;
+  margin: 0 !important;
+  /* Space for the bonnet/boot and side door markers so the card can hide overflow safely. */
+  padding: 1.15rem 1.7rem 1.45rem !important;
+  overflow: visible !important;
+}
+
+#openMmiVehicleOverlay .openmmi-door-overlay-car-host .car-shell,
+#openMmiVehicleOverlay .car-shell.openmmi-door-overlay-car-shell {
+  /* Use real dimensions rather than transform-scaling. Transform kept the old
+     layout box and made the graphic/card fight each other. */
+  width: clamp(5.8rem, 15vw, 7.2rem) !important;
+  height: clamp(9.2rem, 33vh, 12.1rem) !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  transform: none !important;
+  transform-origin: center center !important;
+  margin: 0 auto !important;
+  overflow: visible !important;
+}
+
+#openMmiVehicleOverlay .openmmi-door-overlay-car-host .door-mark.boot {
+  bottom: -8px !important;
+}
+
+#openMmiVehicleOverlay .openmmi-door-overlay-car-host .door-mark.bonnet {
+  top: -8px !important;
+}
+
+#openMmiVehicleOverlay #openMmiDoorOverlayDismiss,
+#openMmiVehicleOverlay .openmmi-vehicle-overlay-dismiss {
+  grid-row: 2 !important;
+  position: static !important;
+  inset: auto !important;
+  transform: none !important;
+  align-self: end !important;
+  justify-self: center !important;
+  display: block !important;
+  width: min(12rem, 72%) !important;
+  margin: 0 auto !important;
+  z-index: 3 !important;
+}
+
+@media (max-height: 640px) {
+  #openMmiVehicleOverlay .openmmi-vehicle-overlay-card.openmmi-door-overlay-visual-card,
+  #openMmiVehicleOverlay .openmmi-door-overlay-visual-card {
+    width: min(20rem, calc(100vw - 1.5rem)) !important;
+    min-height: calc(100dvh - 4rem) !important;
+    max-height: calc(100dvh - 3rem) !important;
+    padding-top: 0.4rem !important;
+    padding-bottom: 0.75rem !important;
+    row-gap: 0.55rem !important;
+  }
+
+  #openMmiVehicleOverlay .openmmi-door-overlay-car-host {
+    padding: 0.85rem 1.5rem 1.2rem !important;
+  }
+
+  #openMmiVehicleOverlay .openmmi-door-overlay-car-host .car-shell,
+  #openMmiVehicleOverlay .car-shell.openmmi-door-overlay-car-shell {
+    width: clamp(5.2rem, 14vw, 6.5rem) !important;
+    height: clamp(8.2rem, 29vh, 10.7rem) !important;
+  }
+}
+/* end open-mmi door overlay fit v9 */

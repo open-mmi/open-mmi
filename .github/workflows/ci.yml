@@ -40,6 +40,9 @@ jobs:
           find ui/web_dashboard/static -maxdepth 1 -name '*.js' -print0 \
             | xargs -0 -n1 node --check
 
+      - name: Verify CSS module cascade
+        run: python tools/verify_css_split.py
+
       - name: Run frontend module tests
         run: node --test tests/js/*.test.js
 
@@ -112,6 +115,12 @@ jobs:
               "frontend_radio": Path(ui.web_dashboard.__file__).parent / "static" / "media-radio.js",
               "frontend_usb": Path(ui.web_dashboard.__file__).parent / "static" / "media-usb.js",
               "frontend_bluetooth": Path(ui.web_dashboard.__file__).parent / "static" / "media-bluetooth.js",
+              "styles_core": Path(ui.web_dashboard.__file__).parent / "static" / "styles-core.css",
+              "styles_media_layout": Path(ui.web_dashboard.__file__).parent / "static" / "styles-media-layout.css",
+              "styles_shell": Path(ui.web_dashboard.__file__).parent / "static" / "styles-shell.css",
+              "styles_media_sources": Path(ui.web_dashboard.__file__).parent / "static" / "styles-media-sources.css",
+              "styles_diagnostics": Path(ui.web_dashboard.__file__).parent / "static" / "styles-diagnostics.css",
+              "styles_media_final": Path(ui.web_dashboard.__file__).parent / "static" / "styles-media-final.css",
               "jellyfin": Path(jellyfin.__file__),
               "radio": Path(radio.__file__),
               "usb": Path(usb.__file__),
@@ -163,7 +172,7 @@ jobs:
           else:
               raise SystemExit(f"Dashboard did not become ready: {last_error}")
 
-          for endpoint in ("/", "/api.js", "/preferences.js", "/status.js", "/vehicle.js", "/media.js", "/media-jellyfin.js", "/media-radio.js", "/media-usb.js", "/media-bluetooth.js", "/app.js", "/api/status", "/api/health"):
+          for endpoint in ("/", "/styles.css", "/styles-core.css", "/styles-media-layout.css", "/styles-shell.css", "/styles-media-sources.css", "/styles-diagnostics.css", "/styles-media-final.css", "/api.js", "/preferences.js", "/status.js", "/vehicle.js", "/media.js", "/media-jellyfin.js", "/media-radio.js", "/media-usb.js", "/media-bluetooth.js", "/app.js", "/api/status", "/api/health"):
               with urlopen(base + endpoint, timeout=3) as response:
                   if response.status != 200:
                       raise SystemExit(f"{endpoint} returned {response.status}")

@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import unittest
 
-from dashboard_contract_helpers import at_rule_block, css_properties, marked_block, read_repo_text
+from dashboard_contract_helpers import at_rule_block, css_properties, marked_block, read_dashboard_styles
 
 
 class DashboardMediaControlVisualConsistencyTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.styles = read_repo_text("ui/web_dashboard/static/styles.css")
+        cls.styles = read_dashboard_styles()
         cls.block = marked_block(
             cls.styles,
             "/* --- Open MMI media control visual consistency start --- */",

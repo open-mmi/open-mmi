@@ -1,0 +1,920 @@
+:root {
+  --bg: #020407;
+  --panel: rgba(21, 24, 30, 0.88);
+  --line: rgba(255, 255, 255, 0.16);
+  --text: #f2f4f7;
+  --muted: #a8adb6;
+  --dim: #666d78;
+  --red: #ff3c38;
+  --amber: #ffb13b;
+  --green: #52d878;
+  --blue: #55baff;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+body { overflow: hidden; }
+
+.screen {
+  min-height: 100svh;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: clamp(10px, 1.8vh, 22px);
+  padding: clamp(12px, 2.4vh, 26px) clamp(14px, 2.8vw, 46px);
+  background:
+    radial-gradient(circle at 52% 38%, rgba(85, 95, 110, .18), transparent 44%),
+    linear-gradient(180deg, #07090d, #010203 72%);
+}
+
+.screen::before {
+  content: "";
+  position: fixed;
+  inset: 10px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  pointer-events: none;
+}
+
+.topbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid var(--line);
+  padding: 0 0 clamp(10px, 1.4vh, 18px);
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(2rem, 4.2vw, 4.25rem);
+  font-weight: 300;
+  letter-spacing: -0.055em;
+  line-height: 1;
+}
+
+.subline {
+  margin-top: .35rem;
+  color: var(--muted);
+  font-size: clamp(.75rem, 1.1vw, 1rem);
+  opacity: .75;
+}
+
+.health-pill {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  padding: .55rem .85rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255,255,255,.035);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.health-dot {
+  width: .72rem;
+  height: .72rem;
+  border-radius: 50%;
+  background: var(--amber);
+  box-shadow: 0 0 14px currentColor;
+}
+.health-dot.live { background: var(--green); color: var(--green); }
+.health-dot.stale, .health-dot.error { background: var(--red); color: var(--red); }
+.health-dot.waiting { background: var(--amber); color: var(--amber); }
+
+.page {
+  display: none;
+  min-height: 0;
+  gap: clamp(12px, 2vw, 28px);
+  align-items: stretch;
+}
+
+.page.active {
+  display: grid;
+  grid-template-columns: minmax(15rem, 1fr) minmax(22rem, 1.6fr) minmax(15rem, 1fr);
+}
+
+.panel-stack {
+  min-width: 0;
+  display: grid;
+  gap: clamp(10px, 1.8vh, 20px);
+  align-content: center;
+}
+
+.tile {
+  min-width: 0;
+  min-height: clamp(6.2rem, 14vh, 10rem);
+  display: flex;
+  align-items: center;
+  gap: clamp(.75rem, 1.4vw, 1.5rem);
+  padding: clamp(.9rem, 1.8vh, 1.35rem) clamp(.9rem, 1.6vw, 1.65rem);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background:
+    linear-gradient(145deg, rgba(255,255,255,.055), transparent 50%),
+    var(--panel);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.025), 0 20px 45px rgba(0,0,0,.25);
+  overflow: hidden;
+}
+
+.tile.compact {
+  min-height: clamp(4.7rem, 9vh, 6.8rem);
+  display: block;
+}
+
+.icon {
+  flex: 0 0 clamp(2.4rem, 4.2vw, 4.4rem);
+  text-align: center;
+  color: #d9dde5;
+  font-size: clamp(2rem, 3.7vw, 4rem);
+  line-height: 1;
+}
+
+.icon.danger, .danger { color: var(--red); }
+
+.label {
+  color: var(--muted);
+  font-size: clamp(.95rem, 1.45vw, 1.65rem);
+  line-height: 1.05;
+}
+
+.value, .state {
+  margin-top: .3rem;
+  font-size: clamp(2rem, 4.6vw, 4.75rem);
+  font-weight: 300;
+  letter-spacing: -.055em;
+  line-height: .98;
+  text-transform: none;
+  word-break: keep-all;
+}
+
+.state { text-transform: uppercase; }
+.value small { margin-left: .45rem; font-size: .43em; letter-spacing: 0; }
+
+.full { width: 100%; min-width: 0; }
+
+.temp-bar {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 2fr 1fr;
+  height: .7rem;
+  margin-top: .9rem;
+  border: 1px solid rgba(255,255,255,.38);
+  background: #222;
+}
+.temp-bar .blue { background: linear-gradient(90deg, #198ee9, #b2dcff); }
+.temp-bar .white { background: linear-gradient(90deg, #b9bdc4, #fff, #b9bdc4); }
+.temp-bar .red { background: linear-gradient(90deg, #ff8585, #d70c0c); }
+.temp-bar b {
+  position: absolute;
+  left: 52%;
+  top: -.45rem;
+  bottom: -.45rem;
+  width: 3px;
+  background: #fff;
+  box-shadow: 0 0 10px rgba(255,255,255,.7);
+}
+.temp-scale {
+  display: flex;
+  justify-content: space-between;
+  margin-top: .28rem;
+  color: #e3e5e9;
+  font-size: clamp(.8rem, 1.2vw, 1.15rem);
+}
+
+.hero-card, .blower-card, .vehicle-card {
+  min-width: 0;
+  min-height: clamp(24rem, 62vh, 43rem);
+  border: 1px solid rgba(255,255,255,.10);
+  border-radius: 16px;
+  background: radial-gradient(circle at 50% 45%, rgba(255,255,255,.075), transparent 55%), rgba(10,12,16,.55);
+  display: grid;
+  place-items: center;
+  padding: clamp(1rem, 2vw, 2rem);
+  overflow: hidden;
+}
+
+.speed {
+  align-self: end;
+  font-size: clamp(4rem, 8.5vw, 8rem);
+  font-weight: 300;
+  letter-spacing: -.07em;
+  line-height: 1;
+}
+.speed small {
+  margin-left: .65rem;
+  font-size: .32em;
+  letter-spacing: 0;
+}
+
+.tach {
+  position: relative;
+  width: min(100%, 46rem);
+  aspect-ratio: 1.9 / 1;
+  border: clamp(6px, .7vw, 10px) solid rgba(220,225,234,.21);
+  border-bottom: 0;
+  border-radius: 100vw 100vw 0 0;
+  background: radial-gradient(ellipse at 50% 100%, rgba(255,255,255,.08), transparent 45%);
+}
+
+.tach.compact { width: min(100%, 40rem); }
+
+.tach-labels {
+  position: absolute;
+  inset: 8% 7% 0;
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  color: #eaedf2;
+  font-size: clamp(1.8rem, 3.6vw, 4rem);
+}
+.hot { color: var(--red); }
+
+.needle {
+  position: absolute;
+  z-index: 3;
+  left: 14%;
+  bottom: 22%;
+  width: 23%;
+  height: clamp(.45rem, 1.2vh, .8rem);
+  transform-origin: right center;
+  transform: rotate(var(--rpm-rotation, 0deg));
+  border-radius: 99px;
+  background: linear-gradient(90deg, var(--red), #fff);
+  box-shadow: 0 0 16px rgba(255,50,50,.62);
+}
+
+.tach-centre {
+  position: absolute;
+  inset: 43% 0 auto;
+  text-align: center;
+  font-size: clamp(4rem, 7vw, 8rem);
+  font-weight: 300;
+  letter-spacing: -.07em;
+}
+.tach-centre small {
+  display: block;
+  margin-top: .15rem;
+  color: #d4d8df;
+  font-size: .27em;
+  letter-spacing: 0;
+}
+
+.blower-card {
+  border-radius: 50%;
+  width: min(100%, 40rem);
+  aspect-ratio: 1 / 1;
+  min-height: auto;
+  justify-self: center;
+}
+.fan { font-size: clamp(3rem, 6vw, 6.5rem); }
+.blower-value {
+  margin-top: -16%;
+  font-size: clamp(5rem, 10vw, 10rem);
+  font-weight: 300;
+  letter-spacing: -.08em;
+}
+.blower-value small { font-size: .44em; }
+.dial-label {
+  margin-top: -18%;
+  color: #d0d4da;
+  font-size: clamp(1.2rem, 2vw, 2rem);
+}
+
+.vehicle-card {
+  grid-template-columns: minmax(12rem, 16rem) minmax(12rem, 18rem);
+  gap: clamp(1rem, 2vw, 2rem);
+  align-content: center;
+}
+
+.car-shell {
+  position: relative;
+  width: clamp(9rem, 17vw, 14rem);
+  height: clamp(20rem, 47vh, 31rem);
+  border: 1px solid rgba(255,255,255,.22);
+  border-radius: 45% 45% 18% 18% / 17% 17% 20% 20%;
+  background:
+    linear-gradient(90deg, rgba(255,255,255,.18), transparent 15%, transparent 85%, rgba(255,255,255,.16)),
+    linear-gradient(180deg, #30353c, #090b0f 43%, #252a31);
+  box-shadow: 0 18px 75px rgba(0,0,0,.55), inset 0 0 32px rgba(255,255,255,.07);
+}
+.car-shell::before {
+  content: "";
+  position: absolute;
+  inset: 20% 17% 47%;
+  border-radius: 38% 38% 12% 12%;
+  background: #020304;
+}
+.car-shell::after {
+  content: "";
+  position: absolute;
+  left: 18%;
+  right: 18%;
+  bottom: 7%;
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--red), transparent 30%, transparent 70%, var(--red));
+  box-shadow: 0 0 13px rgba(255,0,0,.55);
+}
+
+.door-mark {
+  position: absolute;
+  opacity: .18;
+  background: #848c98;
+  transition: .18s ease;
+}
+.door-mark.open {
+  opacity: 1;
+  background: var(--amber);
+  box-shadow: 0 0 20px var(--amber);
+}
+.door-mark.fl, .door-mark.rl { left: -14px; }
+.door-mark.fr, .door-mark.rr { right: -14px; }
+.door-mark.fl, .door-mark.fr { top: 27%; }
+.door-mark.rl, .door-mark.rr { top: 55%; }
+.door-mark.fl, .door-mark.fr, .door-mark.rl, .door-mark.rr { width: 8px; height: 28%; }
+.door-mark.boot { left: 25%; right: 25%; bottom: -12px; height: 8px; }
+.door-mark.bonnet { left: 25%; right: 25%; top: -12px; height: 8px; }
+
+.door-list {
+  display: grid;
+  gap: .65rem;
+  width: 100%;
+}
+.door-row {
+  display: flex;
+  justify-content: space-between;
+  gap: .8rem;
+  padding: .65rem .8rem;
+  border: 1px solid rgba(255,255,255,.10);
+  border-radius: 10px;
+  background: rgba(255,255,255,.035);
+  color: var(--muted);
+}
+.door-row strong { color: var(--text); }
+.door-row.open {
+  border-color: rgba(255,177,59,.55);
+  color: var(--amber);
+}
+.door-row.open strong { color: var(--amber); }
+
+.actual-note {
+  color: var(--muted);
+  align-self: end;
+  font-size: clamp(.9rem, 1.3vw, 1.3rem);
+}
+
+.status-strip {
+  min-height: clamp(4.5rem, 11vh, 7.5rem);
+  border-top: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  gap: clamp(1rem, 4vw, 5rem);
+  padding: clamp(.7rem, 1.4vh, 1rem) clamp(1rem, 4vw, 4rem) 0;
+  background: linear-gradient(180deg, rgba(24,28,34,.90), rgba(10,12,15,.96));
+}
+
+.footer-item {
+  display: flex;
+  align-items: center;
+  gap: .9rem;
+  min-width: min(18rem, 32vw);
+}
+.footer-item span {
+  display: block;
+  color: var(--muted);
+}
+.footer-item strong {
+  display: block;
+  font-size: clamp(1.6rem, 2.8vw, 3rem);
+  font-weight: 300;
+  text-transform: uppercase;
+}
+.footer-item.alert strong { color: var(--red); }
+
+.round-alert {
+  display: grid !important;
+  place-items: center;
+  width: clamp(2.4rem, 3.8vw, 4rem);
+  aspect-ratio: 1 / 1;
+  border: 4px solid var(--red);
+  border-radius: 50%;
+  color: var(--red) !important;
+  font-weight: 800;
+}
+
+.pager {
+  margin-left: auto;
+  display: flex;
+  gap: clamp(.8rem, 1.5vw, 1.5rem);
+}
+.pager button {
+  width: clamp(.75rem, 1.2vw, 1rem);
+  aspect-ratio: 1 / 1;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255,255,255,.18);
+  cursor: pointer;
+}
+.pager button.active {
+  background: #fff;
+  box-shadow: 0 0 18px rgba(255,255,255,.45);
+}
+
+@media (max-width: 1180px) {
+  body { overflow: auto; }
+  .screen { min-height: 100vh; }
+  .page.active {
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+  }
+  .hero-card, .blower-card, .vehicle-card, .technical {
+    grid-column: 1 / -1;
+    order: -1;
+    min-height: 24rem;
+  }
+  .blower-card { width: min(25rem, 80vw); }
+}
+
+@media (max-width: 720px) {
+  .topbar { flex-direction: column; align-items: stretch; }
+  .health-pill { justify-content: space-between; }
+  .page.active { grid-template-columns: 1fr; }
+  .vehicle-card { grid-template-columns: 1fr; justify-items: center; }
+  .status-strip { flex-wrap: wrap; height: auto; }
+  .pager { margin-left: 0; width: 100%; justify-content: center; }
+  .tile { min-height: 5.8rem; }
+}
+
+/* open-mmi dashboard ui pass 2: digital rpm gauge */
+:root {
+  --rpm-scale: 0;
+  --rpm-colour: var(--blue);
+}
+
+:root.rpm-unknown { --rpm-colour: var(--dim); }
+:root.rpm-idle { --rpm-colour: var(--blue); }
+:root.rpm-normal { --rpm-colour: var(--green); }
+:root.rpm-high { --rpm-colour: var(--amber); }
+:root.rpm-redline { --rpm-colour: var(--red); }
+
+.speed,
+.value,
+.state,
+.tach-centre,
+.footer-item strong {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+.tach {
+  --rpm-bar-pad: clamp(1rem, 3vw, 2rem);
+  --rpm-bar-bottom: clamp(1.15rem, 2.5vh, 1.85rem);
+  position: relative;
+  width: min(100%, 42rem);
+  min-height: clamp(13rem, 32vh, 22rem);
+  aspect-ratio: auto;
+  display: grid;
+  place-items: center;
+  padding: clamp(1rem, 2.4vw, 2rem);
+  border: 1px solid rgba(255, 255, 255, .16);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 50% 42%, color-mix(in srgb, var(--rpm-colour) 22%, transparent), transparent 44%),
+    linear-gradient(180deg, rgba(255, 255, 255, .075), rgba(255, 255, 255, .025)),
+    rgba(8, 10, 14, .78);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, .035),
+    0 24px 70px rgba(0, 0, 0, .32);
+  overflow: hidden;
+}
+
+.tach.compact {
+  width: min(100%, 34rem);
+  min-height: clamp(11.5rem, 26vh, 17rem);
+}
+
+.tach::before,
+.tach::after {
+  content: "";
+  position: absolute;
+  left: var(--rpm-bar-pad);
+  right: var(--rpm-bar-pad);
+  bottom: var(--rpm-bar-bottom);
+  height: clamp(.75rem, 1.7vh, 1.1rem);
+  border-radius: 999px;
+  pointer-events: none;
+}
+
+.tach::before {
+  border: 1px solid rgba(255, 255, 255, .20);
+  background:
+    linear-gradient(90deg,
+      rgba(82, 216, 120, .35) 0 64%,
+      rgba(255, 177, 59, .42) 64% 86%,
+      rgba(255, 60, 56, .55) 86% 100%),
+    rgba(255, 255, 255, .055);
+  box-shadow: inset 0 0 12px rgba(0, 0, 0, .45);
+}
+
+.tach::after {
+  right: var(--rpm-bar-pad);
+  background: linear-gradient(90deg, rgba(255, 255, 255, .92), var(--rpm-colour));
+  box-shadow: 0 0 18px color-mix(in srgb, var(--rpm-colour) 70%, transparent);
+  transform: scaleX(var(--rpm-scale));
+  transform-origin: left center;
+  transition:
+    transform 220ms cubic-bezier(.22, .61, .36, 1),
+    background-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.needle {
+  display: none !important;
+}
+
+.tach-labels {
+  position: absolute;
+  left: var(--rpm-bar-pad);
+  right: var(--rpm-bar-pad);
+  bottom: calc(var(--rpm-bar-bottom) + clamp(1.05rem, 2.4vh, 1.65rem));
+  inset-block-start: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: rgba(234, 237, 242, .66);
+  font-size: clamp(.85rem, 1.45vw, 1.35rem);
+  letter-spacing: .04em;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.tach-labels .hot,
+.hot {
+  color: var(--red);
+}
+
+.tach-centre {
+  position: relative;
+  inset: auto;
+  z-index: 2;
+  width: 100%;
+  margin: 0 0 clamp(2.1rem, 6vh, 4.3rem);
+  text-align: center;
+  color: var(--rpm-colour);
+  font-size: clamp(4.7rem, 10vw, 9.4rem);
+  font-weight: 300;
+  letter-spacing: -.075em;
+  line-height: .86;
+  text-shadow:
+    0 0 22px color-mix(in srgb, var(--rpm-colour) 52%, transparent),
+    0 0 64px color-mix(in srgb, var(--rpm-colour) 24%, transparent);
+  transition: color 160ms ease, text-shadow 160ms ease;
+}
+
+.tach.compact .tach-centre {
+  font-size: clamp(3.5rem, 7.5vw, 6.3rem);
+}
+
+.tach-centre::before {
+  content: "ENGINE SPEED";
+  display: block;
+  margin-bottom: .55rem;
+  color: var(--muted);
+  font-size: clamp(.78rem, 1.3vw, 1.1rem);
+  font-weight: 600;
+  letter-spacing: .18em;
+  line-height: 1;
+}
+
+.tach-centre small {
+  display: block;
+  margin-top: .45rem;
+  color: rgba(242, 244, 247, .78);
+  font-size: .18em;
+  font-weight: 600;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+}
+
+:root.rpm-redline .tach {
+  animation: rpmRedlinePulse 700ms ease-in-out infinite alternate;
+}
+
+@keyframes rpmRedlinePulse {
+  from {
+    border-color: rgba(255, 60, 56, .38);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .035), 0 24px 70px rgba(0, 0, 0, .32);
+  }
+  to {
+    border-color: rgba(255, 60, 56, .78);
+    box-shadow: inset 0 0 0 1px rgba(255, 60, 56, .20), 0 0 42px rgba(255, 60, 56, .18);
+  }
+}
+
+@media (max-width: 720px) {
+  .tach {
+    min-height: clamp(11rem, 35vh, 17rem);
+    border-radius: 14px;
+  }
+
+  .tach-centre {
+    font-size: clamp(4rem, 20vw, 6.4rem);
+  }
+
+  .tach-labels {
+    font-size: clamp(.72rem, 3.4vw, 1rem);
+  }
+}
+
+@media (max-height: 620px) and (orientation: landscape) {
+  .tach {
+    min-height: 11rem;
+  }
+
+  .tach-centre {
+    margin-bottom: 2.4rem;
+    font-size: clamp(3.6rem, 9vw, 5.8rem);
+  }
+}
+/* end open-mmi dashboard ui pass 2 */
+
+/* open-mmi dashboard ui pass 2b: toned rpm glow */
+.tach {
+  background:
+    radial-gradient(circle at 50% 42%, color-mix(in srgb, var(--rpm-colour) 9%, transparent), transparent 42%),
+    linear-gradient(180deg, rgba(255, 255, 255, .065), rgba(255, 255, 255, .022)),
+    rgba(8, 10, 14, .78);
+}
+
+.tach::after {
+  box-shadow: 0 0 8px color-mix(in srgb, var(--rpm-colour) 34%, transparent);
+}
+
+.tach-centre {
+  text-shadow:
+    0 0 9px color-mix(in srgb, var(--rpm-colour) 28%, transparent),
+    0 0 26px color-mix(in srgb, var(--rpm-colour) 10%, transparent);
+}
+
+:root.rpm-redline .tach {
+  animation-duration: 1100ms;
+}
+
+@keyframes rpmRedlinePulse {
+  from {
+    border-color: rgba(255, 60, 56, .30);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .03), 0 20px 58px rgba(0, 0, 0, .28);
+  }
+  to {
+    border-color: rgba(255, 60, 56, .54);
+    box-shadow: inset 0 0 0 1px rgba(255, 60, 56, .12), 0 0 22px rgba(255, 60, 56, .10);
+  }
+}
+/* end open-mmi dashboard ui pass 2b */
+
+/* open-mmi dashboard ui pass 11: inline data tell-tales */
+.openmmi-telltale-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.openmmi-telltale-value {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(.55rem, 1.4vw, 1.1rem);
+  min-height: clamp(2.4rem, 5vw, 4.8rem);
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.openmmi-indicator-pair {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(.65rem, 1.8vw, 1.45rem);
+}
+
+.openmmi-telltale {
+  --telltale-size: clamp(2.75rem, 5.25vw, 5.5rem);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--telltale-size);
+  height: var(--telltale-size);
+  flex: 0 0 var(--telltale-size);
+  opacity: .13;
+  background: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  filter: none !important;
+  transform: translateZ(0);
+}
+
+.footer-item .openmmi-telltale {
+  --telltale-size: clamp(1.75rem, 3.2vw, 3rem);
+}
+
+.openmmi-telltale img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  filter: none !important;
+}
+
+.openmmi-telltale.is-active { opacity: 1; }
+.openmmi-telltale.is-inactive { opacity: .13; }
+.openmmi-telltale.is-unknown { opacity: .22; }
+
+.openmmi-telltale-left-turn.is-active,
+.openmmi-telltale-right-turn.is-active,
+.openmmi-telltale-hazard.is-active {
+  animation: openMmiTelltaleFlash 850ms steps(1, end) infinite;
+}
+
+@keyframes openMmiTelltaleFlash {
+  0%, 48% { opacity: 1; }
+  49%, 100% { opacity: .14; }
+}
+
+.openmmi-telltale.icon-load-failed::after {
+  content: "⚠";
+  color: #ffb84d;
+  font-size: calc(var(--telltale-size) * .62);
+}
+
+.openmmi-telltale.icon-load-failed img {
+  display: none;
+}
+
+.openmmi-telltale-host.tile {
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+}
+
+.openmmi-telltale-host.tile > .icon,
+.openmmi-telltale-host.tile > .tile-icon,
+.openmmi-telltale-host.tile .label,
+.openmmi-telltale-host.footer-item > span:not(.openmmi-telltale):not(.openmmi-telltale-sr),
+.openmmi-telltale-host.footer-item div > span,
+.openmmi-telltale-host.footer-item .label {
+  display: none !important;
+}
+
+/* Keep the digital RPM glow subdued after tell-tale CSS is appended. */
+.tach::after {
+  box-shadow: 0 0 3px rgba(255, 255, 255, .08) !important;
+}
+
+.tach-centre,
+.digital-rpm-value,
+.rpm-readout,
+.rpm-number {
+  text-shadow: 0 0 4px rgba(255, 255, 255, .06) !important;
+  filter: none !important;
+}
+
+.digital-rpm-panel,
+.rpm-panel,
+.tach.digital,
+.tach {
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.025), 0 10px 24px rgba(0,0,0,.24) !important;
+}
+
+@media (max-width: 720px) {
+  .openmmi-telltale {
+    --telltale-size: clamp(2.35rem, 11vw, 4.5rem);
+  }
+
+  .footer-item .openmmi-telltale {
+    --telltale-size: clamp(1.55rem, 7vw, 2.65rem);
+  }
+}
+/* end open-mmi dashboard ui pass 11 */
+
+/* open-mmi dashboard ui pass 12: coolant and voltage fixes */
+.openmmi-voltage-field {
+  display: inline-block;
+}
+
+.openmmi-voltage-readout {
+  display: inline-flex;
+  align-items: center;
+  gap: .18em;
+  color: rgba(233, 238, 245, .86);
+  line-height: .95;
+}
+
+.openmmi-voltage-readout .openmmi-voltage-icon {
+  width: .72em;
+  height: .72em;
+  flex: 0 0 .72em;
+  opacity: .92;
+  transform: translateY(.035em);
+  filter: none !important;
+}
+
+.openmmi-voltage-readout.is-normal {
+  color: rgba(233, 238, 245, .86);
+}
+
+.openmmi-voltage-readout.is-warn {
+  color: var(--amber);
+}
+
+.openmmi-voltage-readout.is-danger {
+  color: var(--red);
+}
+
+.openmmi-voltage-readout.is-unknown {
+  color: var(--dim);
+}
+
+.tile.openmmi-voltage-warn,
+.tile.openmmi-voltage-danger {
+  border-color: color-mix(in srgb, currentColor 28%, rgba(255,255,255,.14));
+}
+
+.openmmi-coolant-gauge b {
+  left: var(--coolant-pos, 52%) !important;
+  transform: translateX(-50%);
+  transition: left 180ms linear, background-color 180ms linear, box-shadow 180ms linear;
+}
+
+.openmmi-coolant-gauge.is-cold b {
+  background: #9bd7ff !important;
+  box-shadow: 0 0 10px rgba(155, 215, 255, .65) !important;
+}
+
+.openmmi-coolant-gauge.is-normal b {
+  background: #fff !important;
+  box-shadow: 0 0 10px rgba(255,255,255,.6) !important;
+}
+
+.openmmi-coolant-gauge.is-hot b {
+  background: var(--red) !important;
+  box-shadow: 0 0 14px rgba(255, 60, 56, .72) !important;
+}
+
+.openmmi-coolant-gauge.is-unknown b {
+  opacity: .32;
+}
+/* end open-mmi dashboard ui pass 12 */
+
+/* open-mmi dashboard ui pass 13: voltage tile icon fix */
+.openmmi-voltage-tile-icon {
+  color: rgba(233, 238, 245, .88);
+  display: grid;
+  place-items: center;
+}
+
+.openmmi-voltage-tile-icon svg {
+  width: 1.38em;
+  height: 1.38em;
+  display: block;
+  filter: none !important;
+}
+
+.tile.openmmi-voltage-warn .openmmi-voltage-tile-icon,
+.tile:has(.openmmi-voltage-readout.is-warn) .openmmi-voltage-tile-icon {
+  color: var(--amber);
+}
+
+.tile.openmmi-voltage-danger .openmmi-voltage-tile-icon,
+.tile:has(.openmmi-voltage-readout.is-danger) .openmmi-voltage-tile-icon {
+  color: var(--red);
+}
+
+/* Pass 12 put a small battery next to the number. The tell-tale now lives in the
+   tile icon position, so hide that duplicate while keeping the readout wrapper. */
+.openmmi-voltage-readout .openmmi-voltage-icon {
+  display: none !important;
+}
+
+.openmmi-voltage-readout {
+  gap: 0 !important;
+}
+/* end open-mmi dashboard ui pass 13 */

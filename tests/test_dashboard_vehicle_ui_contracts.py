@@ -5,12 +5,13 @@ import unittest
 from html.parser import HTMLParser
 from pathlib import Path
 
+from dashboard_contract_helpers import read_dashboard_styles
+
 
 ROOT = Path(__file__).resolve().parents[1]
 INDEX = ROOT / "ui" / "web_dashboard" / "static" / "index.html"
 APP = ROOT / "ui" / "web_dashboard" / "static" / "app.js"
 VEHICLE = ROOT / "ui" / "web_dashboard" / "static" / "vehicle.js"
-STYLES = ROOT / "ui" / "web_dashboard" / "static" / "styles.css"
 
 
 class _ArticleParser(HTMLParser):
@@ -52,7 +53,7 @@ class DashboardVehicleUiContracts(unittest.TestCase):
     def setUpClass(cls):
         cls.index = INDEX.read_text(encoding="utf-8")
         cls.app = APP.read_text(encoding="utf-8")
-        cls.styles = STYLES.read_text(encoding="utf-8")
+        cls.styles = read_dashboard_styles()
         cls.vehicle = VEHICLE.read_text(encoding="utf-8")
         parser = _ArticleParser()
         parser.feed(cls.index)
