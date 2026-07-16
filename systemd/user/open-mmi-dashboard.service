@@ -1,0 +1,21 @@
+[Unit]
+Description=Open MMI Web Dashboard
+Documentation=https://github.com/open-mmi/open-mmi
+After=graphical-session.target canbusd.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/open-mmi
+Environment="PYTHONUNBUFFERED=1"
+Environment="OPEN_MMI_WEB_HOST=127.0.0.1"
+Environment="OPEN_MMI_WEB_PORT=8765"
+ExecStart=/opt/open-mmi/venv/bin/python -m ui.web_dashboard.server
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=open-mmi-dashboard
+
+[Install]
+WantedBy=default.target

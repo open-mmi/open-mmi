@@ -270,6 +270,7 @@ cmd_install() {
     log_info "Installing systemd user service..."
     mkdir -p "$REAL_HOME/.config/systemd/user"
     cp "$REPO_ROOT/systemd/user/canbusd.service" "$REAL_HOME/.config/systemd/user/canbusd.service"
+    cp "$REPO_ROOT/systemd/user/open-mmi-dashboard.service" "$REAL_HOME/.config/systemd/user/open-mmi-dashboard.service"
     chown "$REAL_USER:$REAL_USER" "$REAL_HOME/.config/systemd/user/canbusd.service"
     
     export XDG_RUNTIME_DIR="/run/user/$USER_ID"
@@ -277,8 +278,8 @@ cmd_install() {
     chown -R "$REAL_USER:$REAL_USER" "$REAL_HOME/.config/systemd/user"
 
     sudo -u "$REAL_USER" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user daemon-reload
-    sudo -u "$REAL_USER" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user enable canbusd.service
-    
+    sudo -u "$REAL_USER" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
+        systemctl --user enable canbusd.service open-mmi-dashboard.service
     # Apply default profile-driven CAN provisioning.
     # This creates user config if missing, writes the daemon runtime drop-in,
     # and generates udev rules from the selected vehicle profile metadata.
@@ -295,9 +296,9 @@ cmd_install() {
         sudo chmod 664 /sys/class/backlight/intel_backlight/brightness || true
     fi
     
-    # Start daemon
-    log_info "Starting daemon..."
-    sudo -u "$REAL_USER" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user restart canbusd
+    # Start services
+    log_info "Starting Open MMI services..."
+    sudo -u "$REAL_USER" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user restart canbusd open-mmi-dashboard
     
     # Verify
     sleep 1
@@ -395,14 +396,40 @@ cmd_update() {
     sudo cp -r "$REPO_ROOT/scripts" "$INSTALL_DIR/"
     sudo cp "$REPO_ROOT/pyproject.toml" "$INSTALL_DIR/"
 
+    sudo cp "$REPO_ROOT/systemd/user/canbusd.service" \
+
+        "$REAL_HOME/.config/systemd/user/canbusd.service"
+
+    sudo cp "$REPO_ROOT/systemd/user/open-mmi-dashboard.service" \
+
+        "$REAL_HOME/.config/systemd/user/open-mmi-dashboard.service"
+
+    sudo chown "$REAL_USER:$REAL_USER" \
+
+        "$REAL_HOME/.config/systemd/user/canbusd.service" \
+
+        "$REAL_HOME/.config/systemd/user/open-mmi-dashboard.service"
+
+
+    export XDG_RUNTIME_DIR="/run/user/$USER_ID"
+
+    sudo -u "$REAL_USER" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
+
+        systemctl --user daemon-reload
+
+    sudo -u "$REAL_USER" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
+
+        systemctl --user enable open-mmi-dashboard.service
+
+
     # Version write (needs sudo because /opt is root-owned)
     sudo bash -c "echo '$new_version' > '$VERSION_FILE'"
 
-    # Restart daemon
+    # Restart services
     export XDG_RUNTIME_DIR="/run/user/$USER_ID"
     sudo -u "$REAL_USER" \
         XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
-        systemctl --user restart canbusd
+        systemctl --user restart canbusd open-mmi-dashboard
 
     log_success "Update complete → $new_version"
 
@@ -441,20 +468,22 @@ cmd_uninstall() {
         fi
     fi
     
-    # Stop daemon
-    log_info "Stopping systemd service..."
+    # Stop services
+    log_info "Stopping systemd services..."
     export XDG_RUNTIME_DIR="/run/user/$USER_ID"
     sudo -u "$REAL_USER" \
         XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
-        systemctl --user stop canbusd || true
+        systemctl --user stop canbusd open-mmi-dashboard || true
     
     sudo -u "$REAL_USER" \
         XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
-        systemctl --user disable canbusd || true
+        systemctl --user disable canbusd open-mmi-dashboard || true
     
     # Remove service file
     log_info "Removing systemd service..."
-    rm -f "$REAL_HOME/.config/systemd/user/canbusd.service"
+    rm -f \
+        "$REAL_HOME/.config/systemd/user/canbusd.service" \
+        "$REAL_HOME/.config/systemd/user/open-mmi-dashboard.service"
     sudo -u "$REAL_USER" \
         XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
         systemctl --user daemon-reload
