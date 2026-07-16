@@ -131,6 +131,50 @@ jobs:
           print("Installed package imports and runtime assets verified")
           PY
 
+      - name: Verify installed console entry points
+        run: |
+          cd "$(mktemp -d)"
+          python - <<'PY'
+          from importlib import import_module
+          from importlib.metadata import distribution
+          from shutil import which
+
+          expected = {
+              "open-mmi-canbusd": "canbusd.core:main",
+              "open-mmi-dashboard": "ui.web_dashboard.server:main",
+              "open-mmi-launcher": "ui.launcher:main",
+              "open-mmi-status": "ui.dashboard.status_cli:main",
+          }
+          installed = {
+              entry.name: entry.value
+              for entry in distribution("open-mmi").entry_points
+              if entry.group == "console_scripts"
+          }
+
+          errors = []
+          for command, target in expected.items():
+              actual = installed.get(command)
+              if actual != target:
+                  errors.append(
+                      f"{command}: expected metadata target {target!r}, got {actual!r}"
+                  )
+              if which(command) is None:
+                  errors.append(f"{command}: installed command wrapper was not found on PATH")
+
+              module_name, attribute_name = target.split(":", 1)
+              module = import_module(module_name)
+              target_object = getattr(module, attribute_name, None)
+              if not callable(target_object):
+                  errors.append(f"{target}: target is missing or is not callable")
+
+          if errors:
+              raise SystemExit(
+                  "Installed console entry-point verification failed:\n"
+                  + "\n".join(errors)
+              )
+          print(f"Verified {len(expected)} installed console entry points")
+          PY
+
   browser:
     name: Playwright browser coverage
     runs-on: ubuntu-latest
