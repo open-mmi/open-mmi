@@ -30,6 +30,8 @@ REQUIRED_PATHS = {
     "ui/web_dashboard/static/media-radio.js",
     "ui/web_dashboard/static/media-usb.js",
     "ui/web_dashboard/static/media-bluetooth.js",
+    "ui/web_dashboard/static/system-settings.js",
+    "ui/web_dashboard/static/styles-system-settings.css",
     "ui/web_dashboard/static/index.html",
     "ui/web_dashboard/static/styles.css",
     "ui/web_dashboard/static/styles-core.css",

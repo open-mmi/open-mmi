@@ -16,6 +16,7 @@ const CSS_FILES = [
   "styles-diagnostics.css",
   "styles-media-final.css",
   "styles-clock.css",
+  "styles-system-settings.css",
 ];
 
 function indexAssets() {
@@ -102,9 +103,33 @@ async function loadDashboard(page, options = {}) {
   const payload = options.payload || basePayload();
   const storage = options.storage || {};
   const bluetoothPayload = options.bluetoothPayload || { available: false, players: [] };
+  const systemPayload = options.systemPayload || {
+    local_only: true,
+    launcher: {
+      default_ui: "web",
+      start_at_login: true,
+      service_active: true,
+      service_enabled: true,
+      dashboard_reachable: true,
+    },
+    jellyfin: {
+      configured: false,
+      url: "",
+      auth_mode: "",
+      username: "",
+      user_id: "",
+      library_id: "",
+      password_configured: false,
+      token_configured: false,
+      insecure_tls: false,
+      allow_global: false,
+      restart_required: false,
+      path: "/home/test/.config/open-mmi/dashboard.env",
+    },
+  };
 
   await page.setContent(ASSETS.documentHtml, { waitUntil: "domcontentloaded" });
-  await page.evaluate(({ initialPayload, initialStorage, initialBluetoothPayload }) => {
+  await page.evaluate(({ initialPayload, initialStorage, initialBluetoothPayload, initialSystemPayload }) => {
     const values = Object.assign({}, initialStorage);
     const localStorageMock = {
       get length() { return Object.keys(values).length; },
@@ -118,6 +143,7 @@ async function loadDashboard(page, options = {}) {
     window.__openMmiBrowserStorage = values;
     window.__openMmiStatusFixture = initialPayload;
     window.__openMmiBluetoothFixture = initialBluetoothPayload;
+    window.__openMmiSystemFixture = initialSystemPayload;
 
     const json = (body, status = 200) => new Response(JSON.stringify(body), {
       status,
@@ -127,6 +153,34 @@ async function loadDashboard(page, options = {}) {
       const url = String(input instanceof Request ? input.url : input);
       if (url.includes("/api/status")) return json(window.__openMmiStatusFixture);
       if (url.includes("/api/health")) return json({ ok: true });
+      if (url.includes("/api/system/settings")) return json(window.__openMmiSystemFixture);
+      if (url.includes("/api/system/launcher")) {
+        const body = JSON.parse(init.body || "{}");
+        Object.assign(window.__openMmiSystemFixture.launcher, body);
+        return json({ ok: true, launcher: window.__openMmiSystemFixture.launcher });
+      }
+      if (url.includes("/api/system/jellyfin/test")) return json({ ok: true, test: { connected: true, server_name: "Test Jellyfin" } });
+      if (url.endsWith("/api/system/jellyfin") && init.method === "POST") {
+        const body = JSON.parse(init.body || "{}");
+        Object.assign(window.__openMmiSystemFixture.jellyfin, {
+          configured: true,
+          url: body.url,
+          auth_mode: body.auth_mode,
+          username: body.username,
+          password_configured: body.auth_mode === "username",
+          token_configured: body.auth_mode === "token",
+          restart_required: true,
+        });
+        return json({ ok: true, jellyfin: window.__openMmiSystemFixture.jellyfin, test: { connected: true } });
+      }
+      if (url.includes("/api/system/jellyfin/clear")) {
+        Object.assign(window.__openMmiSystemFixture.jellyfin, { configured: false, restart_required: true });
+        return json({ ok: true, jellyfin: window.__openMmiSystemFixture.jellyfin });
+      }
+      if (url.includes("/api/system/dashboard/restart")) {
+        window.__openMmiSystemFixture.jellyfin.restart_required = false;
+        return json({ ok: true, restarting: true });
+      }
       if (url.includes("/api/jellyfin/status")) return json({ configured: false, available: false, libraries: [] });
       if (url.includes("/api/jellyfin/")) return json({ configured: false, available: false, items: [] });
       if (url.includes("/api/bluetooth/status")) return json(window.__openMmiBluetoothFixture);
@@ -150,6 +204,7 @@ async function loadDashboard(page, options = {}) {
     initialPayload: payload,
     initialStorage: storage,
     initialBluetoothPayload: bluetoothPayload,
+    initialSystemPayload: systemPayload,
   });
 
   for (const script of ASSETS.scripts) {
@@ -616,4 +671,38 @@ test("shared clock persists display preferences and survives page navigation", a
   await expectNoRuntimeFailures(failures);
   await expectNoRuntimeFailures(rebuiltFailures);
   await rebuilt.close();
+});
+
+
+test("system settings and Jellyfin setup use the shared local configuration API", async ({ page }) => {
+  const failures = captureRuntimeFailures(page);
+  await loadDashboard(page);
+  await openSettings(page);
+
+  await page.locator('[data-openmmi-settings-section="system"]').click();
+  await expect(page.locator('[data-openmmi-system-settings-panel="true"]')).toBeVisible();
+  await expect(page.getByTestId("launcher-default-web")).toHaveClass(/is-selected/);
+  await expect(page.getByTestId("launcher-startup-on")).toHaveClass(/is-selected/);
+
+  await page.getByTestId("launcher-default-tui").click();
+  await expect(page.getByTestId("launcher-default-tui")).toHaveClass(/is-selected/);
+  await page.getByTestId("launcher-startup-off").click();
+  await expect(page.getByTestId("launcher-startup-off")).toHaveClass(/is-selected/);
+
+  await page.locator('[data-openmmi-settings-section="media"]').click();
+  await expect(page.locator('[data-openmmi-jellyfin-settings="true"]')).toBeVisible();
+  await page.getByTestId("jellyfin-url").fill("https://jellyfin.test:8096");
+  await page.getByTestId("jellyfin-username").fill("driver");
+  await page.getByTestId("jellyfin-password").fill("not-exposed-after-submit");
+  await page.getByTestId("jellyfin-test").click();
+  await expect(page.getByRole("status")).toContainText("connection succeeded");
+  await expect(page.getByTestId("jellyfin-url")).toHaveValue("https://jellyfin.test:8096");
+  await expect(page.getByTestId("jellyfin-username")).toHaveValue("driver");
+  await expect(page.getByTestId("jellyfin-password")).toHaveValue("not-exposed-after-submit");
+  await page.getByTestId("jellyfin-save").click();
+  await expect(page.getByRole("status")).toContainText("restart the dashboard");
+  await expect(page.getByTestId("jellyfin-password")).toHaveValue("");
+  await expect(page.locator('[data-openmmi-jellyfin-settings="true"]')).not.toContainText("not-exposed-after-submit");
+
+  await expectNoRuntimeFailures(failures);
 });

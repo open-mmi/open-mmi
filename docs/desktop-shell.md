@@ -13,6 +13,8 @@ open-mmi-launcher --enable-startup
 open-mmi-launcher --disable-startup
 open-mmi-launcher --status
 open-mmi-launcher --stop
+open-mmi-config launcher status
+open-mmi-config jellyfin status
 ```
 
 `--choose` opens a Zenity or Yad selector when a graphical session is available. It falls back to the terminal chooser when run interactively without a graphical chooser. `--remember` persists the selected default interface.
@@ -23,6 +25,7 @@ Install and update build Open MMI from the deployed source tree into `/opt/open-
 
 ```text
 open-mmi-canbusd
+open-mmi-config
 open-mmi-dashboard
 open-mmi-launcher
 open-mmi-status
@@ -53,6 +56,61 @@ Example:
 `browser_command` may also be a command string or an argument array. The placeholders `{url}`, `{profile_dir}`, and `{window_class}` are replaced without invoking a shell.
 
 `--enable-startup` and `--disable-startup` update `start_at_login` and the enabled state of `open-mmi-dashboard.service`. Install and update operations preserve that preference. The CAN daemon remains enabled independently.
+
+
+## Dashboard and CLI settings
+
+The installed dashboard exposes the same launcher configuration under **Settings → System**:
+
+- choose the default Web or TUI interface;
+- enable or disable dashboard startup at login;
+- inspect dashboard service and health state;
+- restart the dashboard through a fixed, allowlisted service action.
+
+Equivalent CLI commands are:
+
+```bash
+open-mmi-config launcher status
+open-mmi-config launcher default web
+open-mmi-config launcher default tui
+open-mmi-config launcher startup enable
+open-mmi-config launcher startup disable
+open-mmi-config dashboard restart
+```
+
+Both interfaces update `~/.config/open-mmi/launcher.json` and the actual
+`open-mmi-dashboard.service` enablement state. The configuration API is accepted
+only from a loopback, same-origin browser request.
+
+## Jellyfin configuration
+
+Jellyfin can be configured from **Settings → Media → Jellyfin setup** or with:
+
+```bash
+open-mmi-config jellyfin setup
+open-mmi-config jellyfin test
+open-mmi-config jellyfin status
+open-mmi-config jellyfin clear
+```
+
+The interactive setup hides passwords and tokens. Existing environment-based
+development setups can be imported without putting a secret in a command argument:
+
+```bash
+OPEN_MMI_JELLYFIN_URL='https://jellyfin.example:8096' OPEN_MMI_JELLYFIN_TOKEN='...' OPEN_MMI_JELLYFIN_USER_ID='...' open-mmi-config jellyfin import-env
+```
+
+Persistent values are written to:
+
+```text
+~/.config/open-mmi/dashboard.env
+```
+
+The directory is mode `0700`, the file is mode `0600`, and the dashboard service
+loads it with `EnvironmentFile=-%h/.config/open-mmi/dashboard.env`. The browser
+receives only redacted state such as `token_configured` or
+`password_configured`; it never receives the stored secret. Restart the dashboard
+after saving or clearing credentials so the service process loads the new values.
 
 ## Desktop launcher installation
 

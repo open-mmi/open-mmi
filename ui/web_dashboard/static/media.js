@@ -269,8 +269,9 @@
           <div class="openmmi-settings-metric"><span>Default source</span><strong>${defaultLabel}</strong></div>
           ${settingsRow("Default source", "Used when the Media page opens or the active source is disabled.", defaultControls(prefs))}
           ${SOURCES.map((source) => sourceToggleRow(source, prefs)).join("")}
-          ${settingsRow("Token privacy", "Jellyfin URL/token stay server-side. Source enablement is a browser-local dashboard preference.", '<button type="button" class="openmmi-setting-pill is-selected" disabled>locked</button>')}
+          ${settingsRow("Token privacy", "Jellyfin credentials stay server-side in a private user configuration file.", '<button type="button" class="openmmi-setting-pill is-selected" disabled>locked</button>')}
           ${settingsRow("Media keys", "Browser/system media controls follow the currently selected source where supported.", '<button type="button" class="openmmi-setting-pill is-selected" disabled>active</button>')}
+          <div id="openMmiJellyfinSettingsHost"></div>
         </div>`;
     }
 

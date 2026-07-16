@@ -23,6 +23,7 @@ Issues = "https://github.com/open-mmi/open-mmi/issues"
 
 [project.scripts]
 open-mmi-canbusd = "canbusd.core:main"
+open-mmi-config = "ui.config_cli:main"
 open-mmi-dashboard = "ui.web_dashboard.server:main"
 open-mmi-launcher = "ui.launcher:main"
 open-mmi-status = "ui.dashboard.status_cli:main"

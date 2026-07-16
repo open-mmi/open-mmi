@@ -164,6 +164,7 @@ sudo() {{ printf '%s\\0' "$@"; }}
     def test_expected_console_commands_are_declared(self) -> None:
         for command in (
             "open-mmi-canbusd",
+            "open-mmi-config",
             "open-mmi-dashboard",
             "open-mmi-launcher",
             "open-mmi-status",

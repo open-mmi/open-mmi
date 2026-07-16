@@ -72,6 +72,28 @@ python3 ui/web_dashboard/server.py --demo --demo-scenario traffic
 ```
 
 More details, including Jellyfin configuration, tell-tale test mode, media keys, demo scenarios, and icon attribution notes, are in [`ui/web_dashboard/README.md`](ui/web_dashboard/README.md).
+
+### Installed desktop and media configuration
+
+The installed desktop icon uses the remembered Web/TUI selection. Configure it in **Settings → System** or from the CLI:
+
+```bash
+open-mmi-config launcher status
+open-mmi-config launcher default web
+open-mmi-config launcher startup enable
+```
+
+Configure Jellyfin in **Settings → Media → Jellyfin setup** or interactively:
+
+```bash
+open-mmi-config jellyfin setup
+open-mmi-config jellyfin test
+open-mmi-config dashboard restart
+```
+
+Credentials are stored server-side in `~/.config/open-mmi/dashboard.env` with mode `0600`. The dashboard browser receives only redacted configuration state and never receives the stored password or token. Environment variables remain supported for development launches and can be imported with `open-mmi-config jellyfin import-env`.
+
+See [`docs/desktop-shell.md`](docs/desktop-shell.md) for launcher/startup details and [`ui/web_dashboard/README.md`](ui/web_dashboard/README.md) for Jellyfin scope and security guidance.
 <!-- OPEN_MMI_WEB_DASHBOARD_END -->
 
 ---

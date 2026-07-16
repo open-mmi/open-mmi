@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MANAGE_SCRIPT = ROOT / "scripts" / "manage.sh"
 COMMANDS = (
     "open-mmi-canbusd",
+    "open-mmi-config",
     "open-mmi-dashboard",
     "open-mmi-launcher",
     "open-mmi-status",
@@ -125,7 +126,7 @@ class CommandInstallationTests(unittest.TestCase):
 
                 test -f \"$COMMAND_LINK_DIR/open-mmi-launcher\"
                 test ! -L \"$COMMAND_LINK_DIR/open-mmi-launcher\"
-                for command in open-mmi-canbusd open-mmi-dashboard open-mmi-status; do
+                for command in open-mmi-canbusd open-mmi-config open-mmi-dashboard open-mmi-status; do
                     test ! -e \"$COMMAND_LINK_DIR/$command\"
                     test ! -L \"$COMMAND_LINK_DIR/$command\"
                 done

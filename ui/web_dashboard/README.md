@@ -116,7 +116,20 @@ catalogue access, authentication, bounded responses, and media proxying to that
 provider. The Jellyfin module does not import the dashboard handler, keeping the
 provider boundary acyclic and independently testable.
 
-The Media page can connect to Jellyfin using environment variables. Keep the API key server-side; do not put it in `app.js`, `index.html`, or any committed file.
+For an installed tablet, configure Jellyfin from **Settings → Media → Jellyfin setup**. The form can test the connection, save server-side credentials, clear them, and restart the dashboard. Stored passwords and tokens are never returned to the browser.
+
+The equivalent CLI workflow is:
+
+```bash
+open-mmi-config jellyfin setup
+open-mmi-config jellyfin test
+open-mmi-config jellyfin status
+open-mmi-config dashboard restart
+```
+
+Persistent configuration is stored in `~/.config/open-mmi/dashboard.env` with mode `0600`; its parent directory is mode `0700`. The systemd user service loads this file automatically. `open-mmi-config jellyfin clear` removes the persisted credentials.
+
+Environment variables remain supported for checkout/development launches. Keep the API key server-side; do not put it in `app.js`, `index.html`, browser local storage, or any committed file.
 
 ```bash
 export OPEN_MMI_JELLYFIN_URL='https://jellyfin.example.local:8096'
@@ -236,7 +249,9 @@ Steering-wheel transport bindings use the shared `actions.audio` path. It first 
 
 ## Keeping secrets out of git
 
-Never commit Jellyfin API keys. A local env file is fine if it is ignored:
+For installed systems, prefer `open-mmi-config jellyfin setup` or the dashboard UI. They write the ignored, user-private `~/.config/open-mmi/dashboard.env`; do not copy that file into the repository.
+
+For checkout-only development, never commit Jellyfin API keys. A local shell env file is fine if it is ignored:
 
 ```bash
 cat > .env.local <<'EOF'

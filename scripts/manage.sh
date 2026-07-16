@@ -35,6 +35,7 @@ DESKTOP_ENTRY_NAME="Open MMI.desktop"
 COMMAND_LINK_DIR="${OPEN_MMI_COMMAND_LINK_DIR:-/usr/local/bin}"
 OPEN_MMI_COMMANDS=(
     open-mmi-canbusd
+    open-mmi-config
     open-mmi-dashboard
     open-mmi-launcher
     open-mmi-status

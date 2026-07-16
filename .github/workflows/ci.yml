@@ -109,6 +109,7 @@ jobs:
               "frontend_api": Path(ui.web_dashboard.__file__).parent / "static" / "api.js",
               "frontend_preferences": Path(ui.web_dashboard.__file__).parent / "static" / "preferences.js",
               "frontend_clock": Path(ui.web_dashboard.__file__).parent / "static" / "clock.js",
+              "frontend_system_settings": Path(ui.web_dashboard.__file__).parent / "static" / "system-settings.js",
               "frontend_status": Path(ui.web_dashboard.__file__).parent / "static" / "status.js",
               "frontend_vehicle": Path(ui.web_dashboard.__file__).parent / "static" / "vehicle.js",
               "frontend_media": Path(ui.web_dashboard.__file__).parent / "static" / "media.js",
@@ -123,6 +124,7 @@ jobs:
               "styles_diagnostics": Path(ui.web_dashboard.__file__).parent / "static" / "styles-diagnostics.css",
               "styles_media_final": Path(ui.web_dashboard.__file__).parent / "static" / "styles-media-final.css",
               "styles_clock": Path(ui.web_dashboard.__file__).parent / "static" / "styles-clock.css",
+              "styles_system_settings": Path(ui.web_dashboard.__file__).parent / "static" / "styles-system-settings.css",
               "jellyfin": Path(jellyfin.__file__),
               "radio": Path(radio.__file__),
               "usb": Path(usb.__file__),
@@ -143,6 +145,7 @@ jobs:
 
           expected = {
               "open-mmi-canbusd": "canbusd.core:main",
+              "open-mmi-config": "ui.config_cli:main",
               "open-mmi-dashboard": "ui.web_dashboard.server:main",
               "open-mmi-launcher": "ui.launcher:main",
               "open-mmi-status": "ui.dashboard.status_cli:main",
@@ -250,7 +253,7 @@ jobs:
           else:
               raise SystemExit(f"Dashboard did not become ready: {last_error}")
 
-          for endpoint in ("/", "/styles.css", "/styles-core.css", "/styles-media-layout.css", "/styles-shell.css", "/styles-media-sources.css", "/styles-diagnostics.css", "/styles-media-final.css", "/api.js", "/preferences.js", "/status.js", "/vehicle.js", "/media.js", "/media-jellyfin.js", "/media-radio.js", "/media-usb.js", "/media-bluetooth.js", "/app.js", "/api/status", "/api/health"):
+          for endpoint in ("/", "/styles.css", "/styles-core.css", "/styles-media-layout.css", "/styles-shell.css", "/styles-media-sources.css", "/styles-diagnostics.css", "/styles-media-final.css", "/styles-clock.css", "/styles-system-settings.css", "/api.js", "/preferences.js", "/system-settings.js", "/status.js", "/vehicle.js", "/media.js", "/media-jellyfin.js", "/media-radio.js", "/media-usb.js", "/media-bluetooth.js", "/app.js", "/api/status", "/api/health"):
               with urlopen(base + endpoint, timeout=3) as response:
                   if response.status != 200:
                       raise SystemExit(f"{endpoint} returned {response.status}")

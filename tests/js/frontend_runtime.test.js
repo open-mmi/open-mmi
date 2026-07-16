@@ -193,7 +193,7 @@ test("dashboard scripts initialise extracted Jellyfin and Bluetooth controllers"
 
   const staticDir = path.resolve("ui/web_dashboard/static");
   const scripts = [
-    "api.js", "preferences.js", "clock.js", "status.js", "navigation.js", "overlays.js", "vehicle.js",
+    "api.js", "preferences.js", "system-settings.js", "clock.js", "status.js", "navigation.js", "overlays.js", "vehicle.js",
     "media.js", "media-jellyfin.js", "media-radio.js", "media-usb.js", "media-bluetooth.js", "app.js",
   ];
   for (const name of scripts) {
