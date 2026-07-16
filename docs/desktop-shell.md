@@ -1,7 +1,6 @@
 # Desktop shell
 
-The desktop shell provides one entry point for the Open MMI web dashboard and
-terminal status UI.
+The desktop shell provides one entry point for the Open MMI web dashboard and terminal status UI.
 
 ## Commands
 
@@ -33,8 +32,7 @@ Example:
 }
 ```
 
-`browser_command` may also be a command string or an argument array. A `{url}`
-placeholder is replaced without invoking a shell.
+`browser_command` may also be a command string or an argument array. The placeholders `{url}`, `{profile_dir}`, and `{window_class}` are replaced without invoking a shell.
 
 ## Dashboard service
 
@@ -44,7 +42,66 @@ systemctl --user restart open-mmi-dashboard.service
 journalctl --user -u open-mmi-dashboard.service
 ```
 
-The launcher checks the configured URL's `/api/health` endpoint. If the endpoint
-is unavailable, it starts the service, or restarts it when systemd reports that
-the service is already active. Browser launch happens only after a bounded
-health-check succeeds.
+The launcher checks the configured URL's `/api/health` endpoint. If the endpoint is unavailable, it starts the service, or restarts it when systemd reports that the service is already active. Browser launch happens only after a bounded health check succeeds.
+
+## Single browser instance
+
+For Chromium, Chrome, and Firefox, Open MMI creates a dedicated browser profile under:
+
+```text
+$XDG_STATE_HOME/open-mmi/browser-profile/
+```
+
+When `XDG_STATE_HOME` is unset, the fallback is:
+
+```text
+~/.local/state/open-mmi/browser-profile/
+```
+
+The launcher records the owned process in:
+
+```text
+$XDG_RUNTIME_DIR/open-mmi/browser.json
+```
+
+When `XDG_RUNTIME_DIR` is unset, the fallback is:
+
+```text
+~/.local/state/open-mmi/runtime/browser.json
+```
+
+A lock in the same runtime directory serialises simultaneous desktop clicks.
+
+On each web launch the launcher:
+
+1. Checks whether the recorded Open MMI browser process still owns the dedicated profile and dashboard URL.
+2. Reuses that process instead of starting another window.
+3. Attempts to focus the existing window with `wmctrl` or `xdotool` when either utility is available.
+4. Removes stale state and starts a replacement after a browser crash.
+5. Scans `/proc` for the dedicated profile before launching, allowing recovery when the state file was lost or the browser changed its supervising PID.
+6. Refuses to launch over an active Open MMI profile using a different URL or display mode.
+
+Normal browser profiles and unrelated browser sessions are not reused, stopped, or modified.
+
+A custom browser wrapper is supported, but the wrapper should `exec` the browser directly and retain the dashboard URL in its command line. The strongest lost-state recovery applies to the built-in Chromium/Chrome and Firefox integrations because they use a dedicated profile marker.
+
+`open-mmi-launcher --stop` continues to stop the dashboard service only. It does not kill browser processes.
+
+## Status output
+
+`open-mmi-launcher --status` reports dashboard service health and the recorded browser instance, including whether its PID still matches the owned profile and URL.
+
+## Tests and CI
+
+Launcher behaviour is covered by `tests/test_launcher.py`, including:
+
+- first launch and state recording;
+- repeated-click reuse;
+- best-effort focusing without a shell;
+- stale-state replacement after a crash;
+- `/proc` recovery after state loss;
+- changed-setting conflict handling;
+- isolation from unrelated browser processes;
+- managed Chromium and Firefox command construction.
+
+The repository's GitHub Actions Python matrix runs these tests through the existing `unittest discover` step. No desktop session or real browser is required in CI because process, browser, and focus boundaries are injected in the unit tests.

@@ -2,12 +2,13 @@
 """Universal launcher for Open MMI user interfaces.
 
 The launcher keeps dashboard process management in systemd, waits for the
-local health endpoint, and only then starts the configured browser.
+local health endpoint, and only then starts or reuses the configured browser.
 """
 
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
 import math
 import os
@@ -16,13 +17,17 @@ import shutil
 import subprocess
 import sys
 import time
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Callable, List, Mapping, MutableMapping, Optional, Sequence
+from typing import Any, Callable, Iterator, List, Mapping, MutableMapping, Optional, Sequence
 from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin, urlparse
 from urllib.request import Request, urlopen
 
 SERVICE_NAME = "open-mmi-dashboard.service"
+BROWSER_WINDOW_CLASS = "open-mmi"
+BROWSER_STATE_FILE = "browser.json"
+BROWSER_LOCK_FILE = "browser.lock"
 DEFAULT_CONFIG: dict[str, Any] = {
     "default_ui": "web",
     "web_url": "http://127.0.0.1:8765",
@@ -56,6 +61,20 @@ def default_config_path() -> Path:
     if config_home:
         return Path(config_home) / "open-mmi" / "launcher.json"
     return Path.home() / ".config" / "open-mmi" / "launcher.json"
+
+
+def default_state_dir() -> Path:
+    state_home = os.getenv("XDG_STATE_HOME")
+    if state_home:
+        return Path(state_home) / "open-mmi"
+    return Path.home() / ".local" / "state" / "open-mmi"
+
+
+def default_browser_runtime_dir() -> Path:
+    runtime_home = os.getenv("XDG_RUNTIME_DIR")
+    if runtime_home:
+        return Path(runtime_home) / "open-mmi"
+    return default_state_dir() / "runtime"
 
 
 def _validate_config(config: MutableMapping[str, Any]) -> None:
@@ -242,44 +261,405 @@ def resolve_browser(configured: Any) -> list[str]:
     )
 
 
-def build_browser_command(base_command: Sequence[str], web_url: str, mode: str) -> list[str]:
-    """Build a browser invocation without invoking a shell."""
-
-    command = [part.replace("{url}", web_url) for part in base_command]
-    if any("{url}" in part for part in base_command):
-        return command
-
+def browser_family(command: Sequence[str]) -> str:
     name = Path(command[0]).name.lower()
     if "chrom" in name or "chrome" in name:
-        common = ["--no-first-run", "--disable-session-crashed-bubble"]
-        if mode == "kiosk":
-            return command + ["--kiosk", f"--app={web_url}"] + common
-        if mode == "fullscreen":
-            return command + ["--start-fullscreen", f"--app={web_url}"] + common
-        return command + [web_url] + common
-
+        return "chromium"
     if "firefox" in name:
+        return "firefox"
+    return "custom"
+
+
+def browser_profile_dir(family: str, state_dir: Optional[Path] = None) -> Optional[Path]:
+    if family not in {"chromium", "firefox"}:
+        return None
+    root = state_dir or default_state_dir()
+    return root / "browser-profile" / family
+
+
+def _has_option(command: Sequence[str], option: str) -> bool:
+    return any(part == option or part.startswith(option + "=") for part in command)
+
+
+def _add_chromium_profile(command: list[str], profile_dir: Path) -> None:
+    expected_profile = f"--user-data-dir={profile_dir}"
+    profile_options = [part for part in command if part.startswith("--user-data-dir=")]
+    if profile_options and profile_options != [expected_profile]:
+        raise LauncherError("browser_command may not override the managed Chromium profile")
+    if not profile_options:
+        command.append(expected_profile)
+
+    expected_class = f"--class={BROWSER_WINDOW_CLASS}"
+    class_options = [part for part in command if part.startswith("--class=")]
+    if class_options and class_options != [expected_class]:
+        raise LauncherError("browser_command may not override the Open MMI window class")
+    if not class_options:
+        command.append(expected_class)
+
+
+def _add_firefox_profile(command: list[str], profile_dir: Path) -> None:
+    if _has_option(command, "--profile"):
+        raise LauncherError("browser_command may not override the managed Firefox profile")
+    command.extend(["--profile", str(profile_dir)])
+
+    if "--no-remote" not in command:
+        command.append("--no-remote")
+    if _has_option(command, "--class"):
+        raise LauncherError("browser_command may not override the Open MMI window class")
+    command.extend(["--class", BROWSER_WINDOW_CLASS])
+
+
+def build_browser_command(
+    base_command: Sequence[str],
+    web_url: str,
+    mode: str,
+    *,
+    profile_dir: Optional[Path] = None,
+) -> list[str]:
+    """Build a browser invocation without invoking a shell."""
+
+    has_url_placeholder = any("{url}" in part for part in base_command)
+    replacements = {
+        "{url}": web_url,
+        "{profile_dir}": str(profile_dir or ""),
+        "{window_class}": BROWSER_WINDOW_CLASS,
+    }
+    command = []
+    for part in base_command:
+        replaced = part
+        for placeholder, value in replacements.items():
+            replaced = replaced.replace(placeholder, value)
+        command.append(replaced)
+
+    family = browser_family(command)
+    if family == "chromium":
+        if profile_dir is not None:
+            _add_chromium_profile(command, profile_dir)
+        for option in ("--no-first-run", "--disable-session-crashed-bubble"):
+            if option not in command:
+                command.append(option)
+        if has_url_placeholder:
+            return command
+        if mode == "kiosk":
+            return command + ["--kiosk", f"--app={web_url}"]
+        if mode == "fullscreen":
+            return command + ["--start-fullscreen", f"--app={web_url}"]
+        return command + [web_url]
+
+    if family == "firefox":
+        if profile_dir is not None:
+            _add_firefox_profile(command, profile_dir)
+        if has_url_placeholder:
+            return command
         if mode in {"kiosk", "fullscreen"}:
             return command + ["--kiosk", web_url]
         return command + [web_url]
 
+    if has_url_placeholder:
+        return command
     return command + [web_url]
 
 
-def launch_browser(config: Mapping[str, Any]) -> list[str]:
-    base = resolve_browser(config["browser_command"])
-    command = build_browser_command(base, str(config["web_url"]), str(config["browser_mode"]))
+def _ensure_private_directory(path: Path) -> None:
     try:
-        subprocess.Popen(
-            command,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True,
-        )
+        path.mkdir(parents=True, exist_ok=True)
+        path.chmod(0o700)
     except OSError as exc:
-        raise LauncherError(f"could not start browser: {exc}") from exc
-    return command
+        raise LauncherError(f"cannot prepare browser state directory {path}: {exc}") from exc
+
+
+@contextmanager
+def _browser_instance_lock(path: Path) -> Iterator[None]:
+    _ensure_private_directory(path.parent)
+    try:
+        with path.open("a+b") as handle:
+            path.chmod(0o600)
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    except OSError as exc:
+        raise LauncherError(f"cannot lock browser instance state {path}: {exc}") from exc
+
+
+def _read_browser_state(path: Path) -> Optional[dict[str, Any]]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    except (OSError, json.JSONDecodeError) as exc:
+        raise LauncherError(f"cannot read browser instance state {path}: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise LauncherError(f"browser instance state must be an object: {path}")
+    return payload
+
+
+def _write_browser_state(path: Path, payload: Mapping[str, Any]) -> None:
+    _ensure_private_directory(path.parent)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    try:
+        temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        temporary.chmod(0o600)
+        temporary.replace(path)
+    except OSError as exc:
+        try:
+            temporary.unlink()
+        except OSError:
+            pass
+        raise LauncherError(f"cannot write browser instance state {path}: {exc}") from exc
+
+
+def _remove_browser_state(path: Path) -> None:
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        raise LauncherError(f"cannot remove stale browser instance state {path}: {exc}") from exc
+
+
+def read_process_command(pid: int, proc_root: Path = Path("/proc")) -> list[str]:
+    data = (proc_root / str(pid) / "cmdline").read_bytes()
+    return [part.decode("utf-8", errors="replace") for part in data.split(b"\0") if part]
+
+
+def _command_contains(command: Sequence[str], value: str) -> bool:
+    return bool(value) and any(value in part for part in command)
+
+
+def browser_state_is_running(
+    state: Mapping[str, Any],
+    *,
+    process_reader: Callable[[int], Sequence[str]] = read_process_command,
+) -> bool:
+    try:
+        pid = int(state["pid"])
+        marker = str(state["marker"])
+        web_url = str(state["web_url"])
+    except (KeyError, TypeError, ValueError):
+        return False
+    if pid <= 0 or not marker or not web_url:
+        return False
+    try:
+        command = list(process_reader(pid))
+    except (FileNotFoundError, PermissionError, ProcessLookupError, OSError):
+        return False
+    return _command_contains(command, marker) and _command_contains(command, web_url)
+
+
+def find_browser_process(
+    marker: str,
+    required_text: Optional[str] = None,
+    *,
+    proc_root: Path = Path("/proc"),
+    process_reader: Optional[Callable[[int], Sequence[str]]] = None,
+) -> Optional[int]:
+    reader = process_reader or (lambda pid: read_process_command(pid, proc_root))
+    try:
+        entries = sorted(
+            (entry for entry in proc_root.iterdir() if entry.name.isdigit()),
+            key=lambda entry: int(entry.name),
+        )
+    except OSError:
+        return None
+
+    for entry in entries:
+        pid = int(entry.name)
+        try:
+            command = list(reader(pid))
+        except (FileNotFoundError, PermissionError, ProcessLookupError, OSError):
+            continue
+        if not _command_contains(command, marker):
+            continue
+        if required_text is not None and not _command_contains(command, required_text):
+            continue
+        return pid
+    return None
+
+
+def focus_browser_window(
+    command_runner: Callable[..., subprocess.CompletedProcess[str]] = run_command,
+) -> bool:
+    """Best-effort focus of an existing Open MMI window."""
+
+    wmctrl = shutil.which("wmctrl")
+    if wmctrl:
+        result = command_runner(
+            [wmctrl, "-x", "-a", BROWSER_WINDOW_CLASS],
+            capture_output=True,
+        )
+        if result.returncode == 0:
+            return True
+
+    xdotool = shutil.which("xdotool")
+    if xdotool:
+        result = command_runner(
+            [
+                xdotool,
+                "search",
+                "--onlyvisible",
+                "--classname",
+                BROWSER_WINDOW_CLASS,
+                "windowactivate",
+                "--sync",
+            ],
+            capture_output=True,
+        )
+        if result.returncode == 0:
+            return True
+    return False
+
+
+def _browser_state_payload(
+    *,
+    pid: int,
+    command: Sequence[str],
+    marker: str,
+    family: str,
+    profile_dir: Optional[Path],
+    web_url: str,
+) -> dict[str, Any]:
+    return {
+        "version": 1,
+        "pid": pid,
+        "command": list(command),
+        "marker": marker,
+        "browser_family": family,
+        "profile_dir": str(profile_dir) if profile_dir is not None else None,
+        "web_url": web_url,
+        "started_at_epoch": time.time(),
+    }
+
+
+def launch_browser(
+    config: Mapping[str, Any],
+    *,
+    runtime_dir: Optional[Path] = None,
+    state_dir: Optional[Path] = None,
+    popen_factory: Callable[..., Any] = subprocess.Popen,
+    process_reader: Callable[[int], Sequence[str]] = read_process_command,
+    process_finder: Optional[Callable[[str, Optional[str]], Optional[int]]] = None,
+    focus_window: Callable[[], bool] = focus_browser_window,
+) -> list[str]:
+    """Start one owned browser instance or reuse the existing instance."""
+
+    base = resolve_browser(config["browser_command"])
+    family = browser_family(base)
+    profile_dir = browser_profile_dir(family, state_dir)
+    if profile_dir is not None:
+        _ensure_private_directory(profile_dir)
+
+    web_url = str(config["web_url"])
+    command = build_browser_command(
+        base,
+        web_url,
+        str(config["browser_mode"]),
+        profile_dir=profile_dir,
+    )
+    marker = str(profile_dir) if profile_dir is not None else web_url
+
+    runtime_root = runtime_dir or default_browser_runtime_dir()
+    state_path = runtime_root / BROWSER_STATE_FILE
+    lock_path = runtime_root / BROWSER_LOCK_FILE
+
+    if process_finder is None:
+        process_finder = lambda value, required: find_browser_process(
+            value,
+            required,
+            process_reader=process_reader,
+        )
+
+    with _browser_instance_lock(lock_path):
+        state = _read_browser_state(state_path)
+        if state is not None and browser_state_is_running(state, process_reader=process_reader):
+            if state.get("command") != command:
+                raise LauncherError(
+                    "an Open MMI browser is already running with different launcher settings; "
+                    "close that window before changing browser, URL, or display mode"
+                )
+            focus_window()
+            return command
+        if state is not None:
+            _remove_browser_state(state_path)
+
+        if profile_dir is not None:
+            recovered_pid = process_finder(marker, web_url)
+            if recovered_pid is not None:
+                _write_browser_state(
+                    state_path,
+                    _browser_state_payload(
+                        pid=recovered_pid,
+                        command=command,
+                        marker=marker,
+                        family=family,
+                        profile_dir=profile_dir,
+                        web_url=web_url,
+                    ),
+                )
+                focus_window()
+                return command
+
+            conflicting_pid = process_finder(marker, None)
+            if conflicting_pid is not None:
+                raise LauncherError(
+                    "the managed Open MMI browser profile is already in use with a different URL; "
+                    "close that Open MMI window before relaunching"
+                )
+
+        try:
+            process = popen_factory(
+                command,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        except OSError as exc:
+            raise LauncherError(f"could not start browser: {exc}") from exc
+
+        try:
+            pid = int(process.pid)
+        except (AttributeError, TypeError, ValueError) as exc:
+            raise LauncherError("browser process did not provide a valid process ID") from exc
+        if pid <= 0:
+            raise LauncherError("browser process did not provide a valid process ID")
+
+        _write_browser_state(
+            state_path,
+            _browser_state_payload(
+                pid=pid,
+                command=command,
+                marker=marker,
+                family=family,
+                profile_dir=profile_dir,
+                web_url=web_url,
+            ),
+        )
+        return command
+
+
+def browser_status(
+    *,
+    runtime_dir: Optional[Path] = None,
+    process_reader: Callable[[int], Sequence[str]] = read_process_command,
+) -> dict[str, Any]:
+    runtime_root = runtime_dir or default_browser_runtime_dir()
+    state_path = runtime_root / BROWSER_STATE_FILE
+    try:
+        state = _read_browser_state(state_path)
+    except LauncherError as exc:
+        return {"running": False, "state_path": str(state_path), "error": str(exc)}
+    if state is None:
+        return {"running": False, "state_path": str(state_path)}
+    return {
+        "running": browser_state_is_running(state, process_reader=process_reader),
+        "state_path": str(state_path),
+        "pid": state.get("pid"),
+        "browser_family": state.get("browser_family"),
+        "profile_dir": state.get("profile_dir"),
+        "web_url": state.get("web_url"),
+    }
 
 
 def _status_command() -> list[str]:
@@ -346,6 +726,7 @@ def status_payload(config: Mapping[str, Any], config_path: Path) -> dict[str, An
         "service": SERVICE_NAME,
         "service_active": service_is_active(),
         "dashboard_reachable": check_health(endpoint),
+        "browser": browser_status(),
     }
 
 
