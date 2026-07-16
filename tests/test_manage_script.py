@@ -47,6 +47,69 @@ class ManageScriptLifecycleTests(unittest.TestCase):
             self.text,
         )
 
+    def test_update_systemctl_commands_are_complete_single_lines(self) -> None:
+        start = self.text.index("cmd_update() {")
+        end = self.text.index(
+            "# =============================================================================\n"
+            "# UNINSTALL",
+            start,
+        )
+        update_block = self.text[start:end]
+        commands = [
+            line.strip()
+            for line in update_block.splitlines()
+            if line.strip().startswith('sudo -u "$REAL_USER"')
+            and "systemctl --user" in line
+        ]
+
+        self.assertEqual(len(commands), 3)
+        for command in commands:
+            with self.subTest(command=command):
+                self.assertFalse(command.endswith("\\"))
+
+                result = subprocess.run(
+                    [
+                        "bash",
+                        "-c",
+                        f'''\
+REAL_USER=pitto
+REAL_HOME=/home/pitto
+XDG_RUNTIME_DIR=/run/user/1000
+sudo() {{ printf '%s\\0' "$@"; }}
+{command}
+''',
+                    ],
+                    cwd=ROOT,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    check=False,
+                )
+                self.assertEqual(
+                    result.returncode,
+                    0,
+                    result.stderr.decode("utf-8", errors="replace"),
+                )
+                arguments = [
+                    value.decode("utf-8")
+                    for value in result.stdout.split(b"\0")
+                    if value
+                ]
+                self.assertIn("systemctl", arguments)
+                systemctl_index = arguments.index("systemctl")
+                self.assertEqual(arguments[systemctl_index + 1], "--user")
+
+    def test_update_manages_both_service_units(self) -> None:
+        self.assertIn(
+            "systemctl --user enable "
+            "canbusd.service open-mmi-dashboard.service",
+            self.text,
+        )
+        self.assertIn(
+            "systemctl --user restart "
+            "canbusd.service open-mmi-dashboard.service",
+            self.text,
+        )
+
     def test_uninstall_handles_absent_units_quietly(self) -> None:
         self.assertIn(
             "for service in canbusd.service open-mmi-dashboard.service; do",

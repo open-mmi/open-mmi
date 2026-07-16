@@ -402,23 +402,14 @@ cmd_update() {
 
     export XDG_RUNTIME_DIR="/run/user/$USER_ID"
 
-    sudo -u "$REAL_USER" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
-
-        systemctl --user daemon-reload
-
-    sudo -u "$REAL_USER" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
-
-        systemctl --user enable open-mmi-dashboard.service
-
+    sudo -u "$REAL_USER" env HOME="$REAL_HOME" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user daemon-reload
+    sudo -u "$REAL_USER" env HOME="$REAL_HOME" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user enable canbusd.service open-mmi-dashboard.service
 
     # Version write (needs sudo because /opt is root-owned)
     sudo bash -c "echo '$new_version' > '$VERSION_FILE'"
 
     # Restart services
-    export XDG_RUNTIME_DIR="/run/user/$USER_ID"
-    sudo -u "$REAL_USER" \
-        XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
-        systemctl --user restart canbusd open-mmi-dashboard
+    sudo -u "$REAL_USER" env HOME="$REAL_HOME" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user restart canbusd.service open-mmi-dashboard.service
 
     log_success "Update complete → $new_version"
 
