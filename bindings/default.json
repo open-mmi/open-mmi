@@ -17,22 +17,22 @@
   },
 
   "next_track": {
-    "module": "keys",
+    "module": "audio",
     "func": "next_track"
   },
 
   "previous_track": {
-    "module": "keys",
+    "module": "audio",
     "func": "prev_track"
   },
 
   "play_pause": {
-    "module": "keys",
+    "module": "audio",
     "func": "play_pause"
   },
 
   "stop_playback": {
-    "module": "keys",
+    "module": "audio",
     "func": "stop"
   },
 

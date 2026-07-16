@@ -5,11 +5,13 @@ import unittest
 from html.parser import HTMLParser
 from pathlib import Path
 
+from dashboard_contract_helpers import read_dashboard_styles
+
 
 ROOT = Path(__file__).resolve().parents[1]
 INDEX = ROOT / "ui" / "web_dashboard" / "static" / "index.html"
 APP = ROOT / "ui" / "web_dashboard" / "static" / "app.js"
-STYLES = ROOT / "ui" / "web_dashboard" / "static" / "styles.css"
+VEHICLE = ROOT / "ui" / "web_dashboard" / "static" / "vehicle.js"
 
 
 class _ArticleParser(HTMLParser):
@@ -51,7 +53,8 @@ class DashboardVehicleUiContracts(unittest.TestCase):
     def setUpClass(cls):
         cls.index = INDEX.read_text(encoding="utf-8")
         cls.app = APP.read_text(encoding="utf-8")
-        cls.styles = STYLES.read_text(encoding="utf-8")
+        cls.styles = read_dashboard_styles()
+        cls.vehicle = VEHICLE.read_text(encoding="utf-8")
         parser = _ArticleParser()
         parser.feed(cls.index)
         cls.articles = parser.articles
@@ -69,12 +72,12 @@ class DashboardVehicleUiContracts(unittest.TestCase):
     def test_range_field_is_kept_unknown_until_the_frame_is_verified(self):
         self.assertTrue(any("range_mi" in item["data_fields"] for item in self.articles))
         self.assertRegex(
-            self.app,
-            r"setField\(\s*['\"]range_mi['\"]\s*,\s*['\"]--['\"]\s*\)",
+            self.vehicle,
+            r"range_mi:\s*['\"]--['\"]",
         )
 
     def test_rpm_fill_clips_a_fixed_track_gradient(self):
-        self.assertIn('setProperty("--rpm-fill"', self.app)
+        self.assertIn('setProperty("--rpm-fill"', self.vehicle)
         start = self.styles.index("/* --- Open MMI vehicle UI corrections start --- */")
         end = self.styles.index("/* --- Open MMI vehicle UI corrections end --- */", start)
         block = self.styles[start:end]

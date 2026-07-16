@@ -20,6 +20,32 @@ def _set_path(dst: Dict[str, Any], path: str, value: Any) -> None:
     cur[parts[-1]] = value
 
 
+def _paths(value: Any) -> List[str]:
+    if value in (None, ""):
+        return []
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, (list, tuple)):
+        return [str(path) for path in value if path not in (None, "")]
+    return [str(value)]
+
+
+def _set_rule_value(
+    update: Dict[str, Any],
+    rule: Dict[str, Any],
+    value: Any,
+    path_key: str = "path",
+    aliases_key: str = "aliases",
+) -> None:
+    paths = _paths(rule.get(path_key)) + _paths(rule.get(aliases_key))
+    seen = set()
+    for path in paths:
+        if path in seen:
+            continue
+        seen.add(path)
+        _set_path(update, path, value)
+
+
 def _bool_default(value: Any, default: bool = False) -> bool:
     if isinstance(value, bool):
         return value
@@ -30,28 +56,61 @@ def _bool_default(value: Any, default: bool = False) -> bool:
     return bool(value)
 
 
-_TOGGLE_LATCH_STATE: Dict[str, Dict[str, Any]] = {}
+class StatusRuleState:
+    """Mutable decoder state owned by one daemon/profile runtime.
 
+    Stateless rule types do not use this object. Stateful rules, such as
+    ``toggle_latch``, keep their edge and latch history here so state cannot
+    leak between daemon instances, vehicle profiles, or unit tests.
+    """
 
-def _toggle_latch_value(rule: Dict[str, Any], active: bool) -> bool:
-    # A false/inactive frame preserves the current latched value. A rising
-    # active edge toggles the latched value. This is intended for decoded
-    # status bits that are button/event requests rather than held states.
-    key = str(rule.get("state_key") or rule.get("path") or id(rule))
-    state = _TOGGLE_LATCH_STATE.setdefault(
-        key,
-        {
-            "latched": _bool_default(rule.get("initial"), False),
-            "previous_active": False,
-        },
-    )
+    def __init__(self) -> None:
+        self._toggle_latches: Dict[str, Dict[str, bool]] = {}
 
-    was_active = bool(state.get("previous_active", False))
-    if active and not was_active:
-        state["latched"] = not bool(state.get("latched", False))
+    def reset(self) -> None:
+        """Discard all state after a profile/runtime lifecycle boundary."""
 
-    state["previous_active"] = bool(active)
-    return bool(state.get("latched", False))
+        self._toggle_latches.clear()
+
+    @staticmethod
+    def _toggle_key(rule: Dict[str, Any]) -> str:
+        explicit = rule.get("state_key")
+        if explicit not in (None, ""):
+            return str(explicit)
+
+        # Use signal identity rather than only the output path. Two independent
+        # CAN signals may intentionally publish to similarly named paths, and
+        # they must not share edge history by accident. Parsed rules include the
+        # numeric CAN id; direct callers still get a deterministic fallback.
+        identity = (
+            rule.get("id", "unknown"),
+            rule.get("byte", 0),
+            rule.get("path", ""),
+            rule.get("mask", ""),
+            rule.get("true", ""),
+            rule.get("false", ""),
+        )
+        return "|".join(str(part) for part in identity)
+
+    def toggle_latch_value(self, rule: Dict[str, Any], active: bool) -> bool:
+        # A false/inactive frame preserves the current latched value. A rising
+        # active edge toggles the latched value. This is intended for decoded
+        # status bits that are button/event requests rather than held states.
+        key = self._toggle_key(rule)
+        state = self._toggle_latches.setdefault(
+            key,
+            {
+                "latched": _bool_default(rule.get("initial"), False),
+                "previous_active": False,
+            },
+        )
+
+        was_active = bool(state.get("previous_active", False))
+        if active and not was_active:
+            state["latched"] = not bool(state.get("latched", False))
+
+        state["previous_active"] = bool(active)
+        return bool(state.get("latched", False))
 
 
 def _join_path(prefix: Optional[str], key: str) -> str:
@@ -130,10 +189,10 @@ def _evaluate_signed_magnitude(rule: Dict[str, Any], data: bytes, dlc: int) -> D
     if "round" in rule:
         value = round(value, int(rule["round"]))
 
-    _set_path(update, rule["path"], value)
+    _set_rule_value(update, rule, value)
 
     if rule.get("raw_path"):
-        _set_path(update, rule["raw_path"], raw_full)
+        _set_rule_value(update, rule, raw_full, "raw_path", "raw_aliases")
 
     if rule.get("magnitude_raw_path"):
         _set_path(update, rule["magnitude_raw_path"], magnitude)
@@ -174,9 +233,9 @@ def _evaluate_u16le(rule: Dict[str, Any], data: bytes, dlc: int) -> Dict[str, An
     value_raw = _masked_value(raw, rule)
 
     if rule.get("raw_path"):
-        _set_path(update, rule["raw_path"], raw)
+        _set_rule_value(update, rule, raw, "raw_path", "raw_aliases")
 
-    _set_path(update, rule["path"], _scale_value(value_raw, rule))
+    _set_rule_value(update, rule, _scale_value(value_raw, rule))
     return update
 
 
@@ -207,13 +266,18 @@ def _evaluate_uint_le(rule: Dict[str, Any], data: bytes, dlc: int) -> Dict[str, 
     value_raw = _masked_value(raw, rule)
 
     if rule.get("raw_path"):
-        _set_path(update, rule["raw_path"], raw)
+        _set_rule_value(update, rule, raw, "raw_path", "raw_aliases")
 
-    _set_path(update, rule["path"], _scale_value(value_raw, rule))
+    _set_rule_value(update, rule, _scale_value(value_raw, rule))
     return update
 
 
-def evaluate_rule(rule: Dict[str, Any], data: bytes, dlc: int) -> Dict[str, Any]:
+def evaluate_rule(
+    rule: Dict[str, Any],
+    data: bytes,
+    dlc: int,
+    state: Optional[StatusRuleState] = None,
+) -> Dict[str, Any]:
     kind = rule.get("type", "raw")
     update: Dict[str, Any] = {}
 
@@ -231,19 +295,19 @@ def evaluate_rule(rule: Dict[str, Any], data: bytes, dlc: int) -> Dict[str, Any]
 
     raw_path = rule.get("raw_path")
     if raw_path:
-        _set_path(update, raw_path, raw)
+        _set_rule_value(update, rule, raw, "raw_path", "raw_aliases")
 
     value_raw = _masked_value(raw, rule)
 
     if kind == "raw":
-        _set_path(update, rule["path"], value_raw)
+        _set_rule_value(update, rule, value_raw)
 
     elif kind == "percent":
         value = max(0, min(100, value_raw))
-        _set_path(update, rule["path"], value)
+        _set_rule_value(update, rule, value)
 
     elif kind == "scaled":
-        _set_path(update, rule["path"], _scale_value(value_raw, rule))
+        _set_rule_value(update, rule, _scale_value(value_raw, rule))
 
     elif kind == "bool":
         true_value = parse_int(rule["true"])
@@ -252,20 +316,22 @@ def evaluate_rule(rule: Dict[str, Any], data: bytes, dlc: int) -> Dict[str, Any]
 
         if state_mode == "toggle_latch":
             if value_raw == true_value:
-                _set_path(update, rule["path"], _toggle_latch_value(rule, True))
+                runtime_state = state or StatusRuleState()
+                _set_rule_value(update, rule, runtime_state.toggle_latch_value(rule, True))
             elif false_value is not None and value_raw == false_value:
-                _set_path(update, rule["path"], _toggle_latch_value(rule, False))
+                runtime_state = state or StatusRuleState()
+                _set_rule_value(update, rule, runtime_state.toggle_latch_value(rule, False))
         elif value_raw == true_value:
-            _set_path(update, rule["path"], True)
+            _set_rule_value(update, rule, True)
         elif false_value is not None and value_raw == false_value:
-            _set_path(update, rule["path"], False)
+            _set_rule_value(update, rule, False)
 
     elif kind == "enum":
         values = {parse_int(k): v for k, v in rule.get("values", {}).items()}
         if value_raw in values:
-            _set_path(update, rule["path"], values[value_raw])
+            _set_rule_value(update, rule, values[value_raw])
         elif "default" in rule:
-            _set_path(update, rule["path"], rule["default"])
+            _set_rule_value(update, rule, rule["default"])
 
     elif kind == "bitfield":
         prefix = rule.get("path")
@@ -291,11 +357,17 @@ def evaluate_rule(rule: Dict[str, Any], data: bytes, dlc: int) -> Dict[str, Any]
     return update
 
 
-def evaluate_status_rules(rules: Iterable[Dict[str, Any]], data: bytes, dlc: int) -> Dict[str, Any]:
+def evaluate_status_rules(
+    rules: Iterable[Dict[str, Any]],
+    data: bytes,
+    dlc: int,
+    state: Optional[StatusRuleState] = None,
+) -> Dict[str, Any]:
     update: Dict[str, Any] = {}
+    runtime_state = state or StatusRuleState()
 
     for rule in rules:
-        partial = evaluate_rule(rule, data, dlc)
+        partial = evaluate_rule(rule, data, dlc, runtime_state)
         _deep_merge(update, partial)
 
     return update

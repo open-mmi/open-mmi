@@ -12,6 +12,12 @@ def read_repo_text(relative: str) -> str:
     return (ROOT / relative).read_text(encoding="utf-8")
 
 
+def read_dashboard_styles() -> str:
+    from tools.verify_css_split import CSS_MODULES, STATIC
+
+    return "".join((STATIC / name).read_text(encoding="utf-8") for name in CSS_MODULES)
+
+
 def marked_block(source: str, start: str, end: str) -> str:
     left = source.find(start)
     right = source.find(end, left + len(start))

@@ -12,9 +12,10 @@ from typing import Any, Dict, List, Optional, Tuple
 import can
 
 from canbusd.can_runtime import CanRuntimeConfig, item_matches_bus, resolve_can_runtime
-from canbusd.dispatcher import dispatch
+from canbusd.dispatcher import ActionQueue, dispatch
 from canbusd.status_bus import publish as publish_status
-from canbusd.status_rules import evaluate_status_rules, parse_status_rules
+from canbusd.status_bus import reset as reset_status
+from canbusd.status_rules import StatusRuleState, evaluate_status_rules, parse_status_rules
 
 
 log_level = os.getenv("OPEN_MMI_LOG_LEVEL", "INFO").upper()
@@ -273,11 +274,33 @@ def _load_config(
         )
 
 
+def _safe_publish_status(update: Dict[str, Any]) -> None:
+    """Publish decoded status without allowing UI persistence to stop CAN input."""
+
+    try:
+        publish_status(update)
+    except Exception:
+        logger.exception("Status publication failed update=%s", update)
+
+
+def _safe_reset_status() -> None:
+    """Clear stale decoded fields at a daemon/profile lifecycle boundary."""
+
+    try:
+        reset_status(persist=True, notify=True)
+    except Exception:
+        logger.exception("Status reset failed")
+
+
 def _publish_presence(
     presence_rule: Dict[str, Any],
     is_present: bool,
     bindings: Dict[str, Dict[str, Any]],
+    dispatch_fn=None,
 ) -> None:
+    if dispatch_fn is None:
+        dispatch_fn = dispatch
+
     cid = presence_rule["id"]
     event = presence_rule.get("on_present") if is_present else presence_rule.get("on_absent")
 
@@ -288,7 +311,7 @@ def _publish_presence(
     }
 
     _set_path(update, presence_rule.get("status_path", "vehicle.present"), is_present)
-    publish_status(update)
+    _safe_publish_status(update)
 
     if event:
         logger.info(
@@ -296,7 +319,7 @@ def _publish_presence(
             cid,
             "present" if is_present else "absent",
         )
-        dispatch(event, bindings.get(event))
+        dispatch_fn(event, bindings.get(event))
 
 
 def _check_presence(
@@ -305,6 +328,7 @@ def _check_presence(
     present_state: Dict[int, Optional[bool]],
     bindings: Dict[str, Dict[str, Any]],
     now: float,
+    dispatch_fn=None,
 ) -> None:
     for p in presence:
         cid = p["id"]
@@ -314,99 +338,143 @@ def _check_presence(
 
         if previous is None or previous != is_present:
             present_state[cid] = is_present
-            _publish_presence(p, is_present, bindings)
+            if dispatch_fn is None:
+                _publish_presence(p, is_present, bindings)
+            else:
+                _publish_presence(p, is_present, bindings, dispatch_fn=dispatch_fn)
 
 
-def main():
+def main(
+    max_iterations: Optional[int] = None,
+    dispatch_fn=None,
+) -> None:
+    """Run the CAN receive loop.
+
+    ``max_iterations`` is intentionally a test hook. Production callers leave
+    it as ``None`` for the normal unbounded daemon loop.
+    """
+
     rules, mtime, presence, status_rules, cfg_path, runtime = _load_config(None, None)
     bindings = _load_bindings()
 
-    last_seen = {}
-    last_codes = {}
-    present_state = {}
+    action_queue = None
+    if dispatch_fn is None:
+        action_queue = ActionQueue()
+        dispatch_fn = action_queue.dispatch
+
+    last_seen: Dict[int, float] = {}
+    last_codes: Dict[Tuple[int, int, Optional[int]], int] = {}
+    present_state: Dict[int, Optional[bool]] = {}
+    status_state = StatusRuleState()
+    _safe_reset_status()
     bus = None
     opened_interface: Optional[str] = None
-    last_check = 0
+    last_check = 0.0
+    iterations = 0
 
     logger.info("canbusd starting")
     logger.info("vehicle=%s bindings=%s config_dir=%s", VEHICLE, BINDINGS, USER_CONFIG_DIR)
 
-    while True:
-        now = time.monotonic()
+    try:
+        while max_iterations is None or iterations < max_iterations:
+            iterations += 1
+            now = time.monotonic()
 
-        if now - last_check > RELOAD_INTERVAL:
-            rules, mtime, presence, status_rules, cfg_path, runtime = _load_config(
-                rules,
-                mtime,
-                presence,
-                status_rules,
-                cfg_path,
-                runtime,
-            )
-            bindings = _load_bindings()
-            last_check = now
+            if now - last_check > RELOAD_INTERVAL:
+                previous_status_rules = status_rules
+                (
+                    rules,
+                    mtime,
+                    presence,
+                    status_rules,
+                    cfg_path,
+                    runtime,
+                ) = _load_config(
+                    rules,
+                    mtime,
+                    presence,
+                    status_rules,
+                    cfg_path,
+                    runtime,
+                )
+                if status_rules is not previous_status_rules:
+                    status_state.reset()
+                    _safe_reset_status()
+                bindings = _load_bindings()
+                last_check = now
 
-        if opened_interface != IFACE:
-            if bus:
-                bus.shutdown()
-                bus = None
+            if opened_interface != IFACE:
+                if bus:
+                    bus.shutdown()
+                    bus = None
 
-            opened_interface = IFACE
-            last_seen.clear()
-            present_state.clear()
+                if opened_interface is not None:
+                    _safe_reset_status()
 
-        if not Path(f"/sys/class/net/{IFACE}").exists():
-            if bus:
-                bus.shutdown()
-                bus = None
+                opened_interface = IFACE
+                last_seen.clear()
+                present_state.clear()
+                status_state.reset()
 
-            _check_presence(presence, last_seen, present_state, bindings, now)
-            time.sleep(1)
-            continue
+            if not Path(f"/sys/class/net/{IFACE}").exists():
+                if bus:
+                    bus.shutdown()
+                    bus = None
 
-        if bus is None:
-            logger.info("Opening CAN bus '%s' on interface '%s'", CAN_BUS, IFACE)
-            bus = can.interface.Bus(channel=IFACE, interface="socketcan")
+                _check_presence(presence, last_seen, present_state, bindings, now, dispatch_fn=dispatch_fn)
+                time.sleep(1)
+                continue
 
-        msg = bus.recv(timeout=0.2)
-        now = time.monotonic()
+            if bus is None:
+                logger.info("Opening CAN bus '%s' on interface '%s'", CAN_BUS, IFACE)
+                bus = can.interface.Bus(channel=IFACE, interface="socketcan")
 
-        if msg is None:
-            _check_presence(presence, last_seen, present_state, bindings, now)
-            continue
+            msg = bus.recv(timeout=0.2)
+            now = time.monotonic()
 
-        last_seen[msg.arbitration_id] = now
-        cid = msg.arbitration_id
+            if msg is None:
+                _check_presence(presence, last_seen, present_state, bindings, now, dispatch_fn=dispatch_fn)
+                continue
 
-        if cid in status_rules:
-            status_update = evaluate_status_rules(
-                status_rules[cid],
-                msg.data,
-                msg.dlc,
-            )
-            if status_update:
-                publish_status(status_update)
+            last_seen[msg.arbitration_id] = now
+            cid = msg.arbitration_id
 
-        if cid in rules:
-            for b, v, event in rules[cid]:
-                if msg.dlc <= b:
-                    continue
+            if cid in status_rules:
+                status_update = evaluate_status_rules(
+                    status_rules[cid],
+                    msg.data,
+                    msg.dlc,
+                    state=status_state,
+                )
+                if status_update:
+                    _safe_publish_status(status_update)
 
-                code = msg.data[b]
-                key = (cid, b, v)
+            if cid in rules:
+                for b, v, event in rules[cid]:
+                    if msg.dlc <= b:
+                        continue
 
-                if v is None:
-                    if last_codes.get(key) != code:
-                        dispatch(event, bindings.get(event), [code])
+                    code = msg.data[b]
+                    key = (cid, b, v)
+
+                    if v is None:
+                        if last_codes.get(key) != code:
+                            dispatch_fn(event, bindings.get(event), [code])
+                        last_codes[key] = code
+                        continue
+
+                    previous = last_codes.get(key)
+                    if code == v and previous != v:
+                        dispatch_fn(event, bindings.get(event))
+
                     last_codes[key] = code
-                    continue
 
-                if last_codes.get(key) == 0 and code == v:
-                    dispatch(event, bindings.get(event))
-
-                last_codes[key] = code
-
-        _check_presence(presence, last_seen, present_state, bindings, now)
+            _check_presence(presence, last_seen, present_state, bindings, now, dispatch_fn=dispatch_fn)
+    finally:
+        if bus:
+            bus.shutdown()
+        if action_queue is not None:
+            action_queue.close()
 
 
 if __name__ == "__main__":

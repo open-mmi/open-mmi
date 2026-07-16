@@ -4,23 +4,50 @@ version = "0.1.0a1"
 description = "Open vehicle MMI integration framework for Linux"
 readme = "README.md"
 requires-python = ">=3.9"
-license = { text = "GPL-3.0-only" }
+license = "GPL-3.0-only"
+license-files = ["LICENSE"]
 
 authors = [
-    { name = "sheepdog-97" }
+    { name = "Open MMI Contributors" }
 ]
 
 dependencies = [
-    "python-can",
-    "evdev"
+    "python-can>=4.3,<5",
+    "evdev>=1.6,<2"
 ]
 
 [project.urls]
-Homepage = "https://github.com/sheepdog-97/open-mmi"
+Homepage = "https://github.com/open-mmi/open-mmi"
+Repository = "https://github.com/open-mmi/open-mmi"
+Issues = "https://github.com/open-mmi/open-mmi/issues"
 
-[tool.setuptools]
-packages = []
+[project.scripts]
+open-mmi-canbusd = "canbusd.core:main"
+open-mmi-dashboard = "ui.web_dashboard.server:main"
+open-mmi-status = "ui.dashboard.status_cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = [
+    "actions*",
+    "bindings*",
+    "canbusd*",
+    "ui*",
+    "vehicles*"
+]
+
+[tool.setuptools.package-data]
+bindings = ["*.json"]
+"vehicles.seat_1p" = ["*.json", "notes/*.md"]
+"ui.web_dashboard" = [
+    "static/*.css",
+    "static/*.html",
+    "static/*.js",
+    "static/icons/telltales/*.md",
+    "static/icons/telltales/*.png",
+    "static/icons/telltales/*.svg"
+]
 
 [build-system]
-requires = ["setuptools>=61"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"

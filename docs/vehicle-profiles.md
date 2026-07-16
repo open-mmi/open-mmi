@@ -174,6 +174,37 @@ handbrake active when mask 0x20 is set
 
 This allows one byte to contain several independent status flags.
 
+### Toggle-latched boolean rules
+
+Some CAN bits represent a momentary button/request edge rather than a held state. A boolean
+rule may declare `"state": "toggle_latch"` so each rising edge toggles the published value:
+
+```json
+{
+  "id": "0x3E1",
+  "byte": 0,
+  "type": "bool",
+  "path": "climate.rear_window_heater_requested",
+  "mask": "0x04",
+  "true": "0x04",
+  "false": "0x00",
+  "state": "toggle_latch",
+  "initial": false
+}
+```
+
+The daemon owns latch state per active profile runtime. State is reset when the daemon starts,
+when status rules are reloaded, or when the active CAN interface changes. Inactive frames and
+ordinary periods without traffic preserve the current latch value.
+
+Configuration reloads are fail-safe: an unreadable or invalid replacement profile leaves the
+last known-good rules and CAN runtime active. The test suite also replays frames over
+python-can's virtual interface so profile parsing, daemon reception, status publication,
+and event dispatch are exercised together without vehicle hardware.
+
+By default, state identity includes the CAN id, byte, output path, mask, and true/false values.
+An explicit `state_key` may be used only when multiple rules intentionally share one latch.
+
 ### Signed or scaled values
 
 Some values are not simple on/off states. Steering angle is an example where the profile
@@ -225,3 +256,30 @@ retrofit state. `open-mmi` should not be treated as safety-critical software.
 
 
 See also: [`docs/profile-ownership.md`](profile-ownership.md).
+
+## Status-path compatibility aliases
+
+Scalar status rules may define temporary aliases while a decoded field is being renamed:
+
+```json
+{
+  "id": "0x3E3",
+  "byte": 4,
+  "type": "bool",
+  "path": "climate.recirculation_active",
+  "aliases": ["climate.front_demist_air_request"],
+  "raw_path": "climate.recirculation_raw",
+  "raw_aliases": ["climate.front_demist_air_request_raw"],
+  "mask": "0x80",
+  "true": "0x80",
+  "false": "0x00"
+}
+```
+
+`aliases` and `raw_aliases` may be a string or a list of strings. The decoder publishes the
+same value to the canonical and alias paths. Use aliases only for planned schema migrations;
+new profile rules should otherwise have one canonical path.
+
+The Seat 1P `0x3E3` bit previously named `front_demist_air_request` is now identified as the
+HVAC recirculation state. `climate.recirculation_active` is the canonical field. The former
+field remains as a temporary alpha compatibility alias for existing UI/status consumers.

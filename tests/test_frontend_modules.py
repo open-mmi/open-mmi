@@ -1,0 +1,196 @@
+from __future__ import annotations
+
+import unittest
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+STATIC = ROOT / "ui" / "web_dashboard" / "static"
+INDEX = STATIC / "index.html"
+APP = STATIC / "app.js"
+API = STATIC / "api.js"
+PREFERENCES = STATIC / "preferences.js"
+STATUS = STATIC / "status.js"
+NAVIGATION = STATIC / "navigation.js"
+OVERLAYS = STATIC / "overlays.js"
+VEHICLE = STATIC / "vehicle.js"
+MEDIA = STATIC / "media.js"
+MEDIA_JELLYFIN = STATIC / "media-jellyfin.js"
+MEDIA_RADIO = STATIC / "media-radio.js"
+MEDIA_USB = STATIC / "media-usb.js"
+MEDIA_BLUETOOTH = STATIC / "media-bluetooth.js"
+
+
+class FrontendModuleBoundaryTests(unittest.TestCase):
+    def test_modules_load_before_application(self):
+        html = INDEX.read_text(encoding="utf-8")
+        api_index = html.index('<script src="/api.js"></script>')
+        preferences_index = html.index('<script src="/preferences.js"></script>')
+        status_index = html.index('<script src="/status.js"></script>')
+        navigation_index = html.index('<script src="/navigation.js"></script>')
+        overlays_index = html.index('<script src="/overlays.js"></script>')
+        vehicle_index = html.index('<script src="/vehicle.js"></script>')
+        media_index = html.index('<script src="/media.js"></script>')
+        jellyfin_index = html.index('<script src="/media-jellyfin.js"></script>')
+        radio_index = html.index('<script src="/media-radio.js"></script>')
+        usb_index = html.index('<script src="/media-usb.js"></script>')
+        bluetooth_index = html.index('<script src="/media-bluetooth.js"></script>')
+        app_index = html.index('<script src="/app.js"></script>')
+        self.assertLess(api_index, preferences_index)
+        self.assertLess(preferences_index, status_index)
+        self.assertLess(status_index, navigation_index)
+        self.assertLess(navigation_index, overlays_index)
+        self.assertLess(overlays_index, vehicle_index)
+        self.assertLess(vehicle_index, media_index)
+        self.assertLess(media_index, jellyfin_index)
+        self.assertLess(jellyfin_index, radio_index)
+        self.assertLess(radio_index, usb_index)
+        self.assertLess(usb_index, bluetooth_index)
+        self.assertLess(bluetooth_index, app_index)
+
+    def test_application_uses_frontend_modules(self):
+        source = APP.read_text(encoding="utf-8")
+        self.assertIn("window.openMmiApi", source)
+        self.assertIn("window.openMmiPreferences", source)
+        self.assertIn("window.openMmiStatus", source)
+        self.assertIn("window.openMmiNavigation", source)
+        self.assertIn("window.openMmiOverlays", source)
+        self.assertIn("window.openMmiVehicle", source)
+        self.assertIn("window.openMmiMediaShell", source)
+        self.assertIn("window.openMmiJellyfinMedia", source)
+        self.assertIn("window.openMmiRadioMedia", source)
+        self.assertIn("window.openMmiUsbMediaController", source)
+        self.assertIn("window.openMmiBluetoothMediaController", source)
+        self.assertIn("openMmiStatusClient.createStore()", source)
+        self.assertIn("openMmiNavigationClient.createController()", source)
+        self.assertIn("openMmiOverlaysClient.createController()", source)
+        self.assertIn("openMmiVehicleClient.createRenderer({ preferences: openMmiPrefs })", source)
+        self.assertIn("openMmiMediaClient.createController({ preferences: openMmiPrefs })", source)
+        self.assertIn("openMmiRadioMediaClient.installPrivacy({ preferences: openMmiPrefs })", source)
+        self.assertIn("openMmiJellyfinMediaClient.installController({", source)
+        self.assertIn("openMmiRadioMediaClient.installController({ preferences: openMmiPrefs })", source)
+        self.assertIn("openMmiJellyfinPlayer.boot()", source)
+        self.assertIn("openMmiUsbMediaClient.installController()", source)
+        self.assertIn("openMmiBluetoothMediaClient.installController({ api: openMmiApiClient })", source)
+        self.assertIn("window.setPage = (index) => openMmiNavigationController.setPage(index);", source)
+        self.assertIn("openMmiStatusClient.createPoller({", source)
+        self.assertNotIn('openMmiApiClient.getJson("/api/status"', source)
+        self.assertNotIn("localStorage.", source)
+
+    def test_modules_are_browser_and_commonjs_compatible(self):
+        api = API.read_text(encoding="utf-8")
+        preferences = PREFERENCES.read_text(encoding="utf-8")
+        status = STATUS.read_text(encoding="utf-8")
+        navigation = NAVIGATION.read_text(encoding="utf-8")
+        overlays = OVERLAYS.read_text(encoding="utf-8")
+        vehicle = VEHICLE.read_text(encoding="utf-8")
+        media = MEDIA.read_text(encoding="utf-8")
+        media_jellyfin = MEDIA_JELLYFIN.read_text(encoding="utf-8")
+        media_radio = MEDIA_RADIO.read_text(encoding="utf-8")
+        media_usb = MEDIA_USB.read_text(encoding="utf-8")
+        media_bluetooth = MEDIA_BLUETOOTH.read_text(encoding="utf-8")
+        for source, global_name in (
+            (api, "openMmiApi"),
+            (preferences, "openMmiPreferences"),
+            (status, "openMmiStatus"),
+            (navigation, "openMmiNavigation"),
+            (overlays, "openMmiOverlays"),
+            (vehicle, "openMmiVehicle"),
+            (media, "openMmiMediaShell"),
+            (media_jellyfin, "openMmiJellyfinMedia"),
+            (media_radio, "openMmiRadioMedia"),
+            (media_usb, "openMmiUsbMediaController"),
+            (media_bluetooth, "openMmiBluetoothMediaController"),
+        ):
+            self.assertIn("typeof module === \"object\"", source)
+            self.assertIn(f"root.{global_name}", source)
+            if global_name not in {"openMmiMediaShell", "openMmiJellyfinMedia", "openMmiRadioMedia", "openMmiUsbMediaController", "openMmiBluetoothMediaController"}:
+                self.assertNotIn("document.", source)
+
+
+    def test_status_module_owns_polling_and_shared_state(self):
+        source = STATUS.read_text(encoding="utf-8")
+        self.assertIn('const DEFAULT_STATUS_PATH = "/api/status";', source)
+        self.assertIn("const DEFAULT_STATUS_INTERVAL_MS = 200;", source)
+        self.assertIn("function createStore(initialPayload = null)", source)
+        self.assertIn("function createPoller(options = {})", source)
+        self.assertIn("scheduler.setInterval(fetchStatus, intervalMs)", source)
+        self.assertNotIn("document.", source)
+
+
+    def test_navigation_module_owns_page_state_and_home_menu(self):
+        source = NAVIGATION.read_text(encoding="utf-8")
+        app = APP.read_text(encoding="utf-8")
+        self.assertIn("function createController(options = {})", source)
+        self.assertIn("function showPageById(id, title, quickIndex = HOME_INDEX)", source)
+        self.assertIn("function ensureHomePage()", source)
+        self.assertIn('windowRef.addEventListener("keydown", keyHandler)', source)
+        self.assertNotIn("function ensureHomePage()", app)
+        self.assertNotIn("const QUICK_PAGES =", app)
+
+    def test_overlay_module_owns_detection_and_visibility_lifecycle(self):
+        source = OVERLAYS.read_text(encoding="utf-8")
+        app = APP.read_text(encoding="utf-8")
+        self.assertIn("function collectOpenDoors(payload)", source)
+        self.assertIn("function reverseSelected(payload)", source)
+        self.assertIn("function reduceDoorOverlay(state, openDoors)", source)
+        self.assertIn("function reduceReverseOverlay(state, active)", source)
+        self.assertIn('overlay.id = "openMmiVehicleOverlay"', source)
+        self.assertIn('overlay.id = "openMmiReverseOverlay"', source)
+        self.assertNotIn("function collectOpenDoors(payload)", app)
+        self.assertNotIn("function reverseSelected(payload)", app)
+
+
+    def test_vehicle_module_owns_vehicle_and_climate_rendering(self):
+        source = VEHICLE.read_text(encoding="utf-8")
+        app = APP.read_text(encoding="utf-8")
+        self.assertIn("function buildViewModel(payload = {}, settings = DEFAULT_SETTINGS)", source)
+        self.assertIn("function createRenderer(options = {})", source)
+        self.assertIn("climate.recirculation_active ?? climate.front_demist_air_request", source)
+        self.assertIn("function updateTach(rpm)", source)
+        self.assertIn("function updateCoolantGauge(payload)", source)
+        self.assertNotIn("function updateTach(rpm)", app)
+        self.assertNotIn("function updateDoor(name, value)", app)
+        self.assertNotIn("function openMmiFormatTempFromC", app)
+
+    def test_media_modules_own_all_frontend_controllers(self):
+        app = APP.read_text(encoding="utf-8")
+        media = MEDIA.read_text(encoding="utf-8")
+        jellyfin = MEDIA_JELLYFIN.read_text(encoding="utf-8")
+        radio = MEDIA_RADIO.read_text(encoding="utf-8")
+        usb = MEDIA_USB.read_text(encoding="utf-8")
+        bluetooth = MEDIA_BLUETOOTH.read_text(encoding="utf-8")
+        self.assertIn("function createController(options = {})", media)
+        self.assertIn("function activeSourceFromPreferences(prefs)", media)
+        self.assertIn("function installController(options = {})", jellyfin)
+        self.assertIn("function installPrivacy(options = {})", radio)
+        self.assertIn("function installController(options = {})", radio)
+        self.assertIn("function installController(options = {})", usb)
+        self.assertIn("function installController(options = {})", bluetooth)
+        self.assertIn('/api/jellyfin/status', jellyfin)
+        self.assertIn('/api/bluetooth/status', bluetooth)
+        self.assertIn('id: "radio"', radio)
+        self.assertIn('id: "usb"', usb)
+        self.assertNotIn("Open MMI Jellyfin real Bootstrap media v5 start", app)
+        self.assertNotIn("Open MMI Bluetooth media source start", app)
+        self.assertNotIn("Open MMI media source shell v1 start", app)
+        self.assertNotIn("Open MMI media source adapters/radio start", app)
+        self.assertNotIn("Open MMI USB media source start", app)
+
+    def test_diagnostics_uses_canonical_profile_paths_and_lists_decoded_state(self):
+        source = APP.read_text(encoding="utf-8")
+        self.assertIn("climate.outside_temp_regulation_c", source)
+        self.assertIn("climate.outside_temp_unfiltered_c", source)
+        self.assertIn("electrical.supply_voltage_v", source)
+        self.assertIn("engine.speed_rpm", source)
+        self.assertIn("function flattenDiagnosticState", source)
+        self.assertIn("Decoded profile values", source)
+
+    def test_api_reads_fetch_at_call_time_for_instrumentation(self):
+        source = API.read_text(encoding="utf-8")
+        self.assertIn("const fetchImpl = root && root.fetch", source)
+        self.assertNotIn("const fetchImpl = root.fetch.bind", source)
+
+
+if __name__ == "__main__":
+    unittest.main()

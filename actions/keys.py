@@ -5,6 +5,8 @@ Provides synthetic media key injection with thread-safe access.
 
 import threading
 import logging
+from typing import Optional
+
 from evdev import UInput, ecodes as e
 
 logger = logging.getLogger("canbusd.actions.keys")
@@ -20,7 +22,7 @@ _caps = {
     ]
 }
 
-_ui: UInput | None = None
+_ui: Optional[UInput] = None
 _lock = threading.Lock()
 
 

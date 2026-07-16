@@ -1,0 +1,216 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install project
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Compile Python
+        run: python -m compileall -q actions canbusd scripts tests tools ui vehicles bindings
+
+      - name: Run unit tests
+        run: python -m unittest discover -s tests
+
+      - name: Check JavaScript syntax
+        run: |
+          find ui/web_dashboard/static -maxdepth 1 -name '*.js' -print0 \
+            | xargs -0 -n1 node --check
+
+      - name: Verify CSS module cascade
+        run: python tools/verify_css_split.py
+
+      - name: Run frontend module tests
+        run: node --test tests/js/*.test.js
+
+      - name: Validate JSON
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          ignored = {".git", "build", "dist", ".venv", "venv"}
+          files = [
+              path for path in Path(".").rglob("*.json")
+              if not ignored.intersection(path.parts)
+          ]
+          for path in files:
+              with path.open(encoding="utf-8") as stream:
+                  json.load(stream)
+          print(f"Validated {len(files)} JSON files")
+          PY
+
+      - name: Validate shell scripts
+        run: |
+          bash -n scripts/dev_run.sh
+          bash -n scripts/manage.sh
+          bash -n scripts/open-mmi-desktop
+
+  package:
+    name: Build and inspect wheel
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Build distributions
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build
+
+      - name: Verify wheel contents
+        run: python tools/verify_wheel.py dist/*.whl
+
+      - name: Install built wheel
+        run: |
+          python -m pip install dist/*.whl
+          cd "$(mktemp -d)"
+          python - <<'PY'
+          from pathlib import Path
+          import bindings
+          import canbusd
+          import ui.web_dashboard
+          from ui.web_dashboard import bluetooth, jellyfin, radio, usb
+          import vehicles
+
+          roots = {
+              "bindings": Path(bindings.__file__).parent / "default.json",
+              "bluetooth": Path(bluetooth.__file__),
+              "vehicle": Path(vehicles.__file__).parent / "seat_1p" / "config.json",
+              "dashboard": Path(ui.web_dashboard.__file__).parent / "static" / "index.html",
+              "frontend_api": Path(ui.web_dashboard.__file__).parent / "static" / "api.js",
+              "frontend_preferences": Path(ui.web_dashboard.__file__).parent / "static" / "preferences.js",
+              "frontend_status": Path(ui.web_dashboard.__file__).parent / "static" / "status.js",
+              "frontend_vehicle": Path(ui.web_dashboard.__file__).parent / "static" / "vehicle.js",
+              "frontend_media": Path(ui.web_dashboard.__file__).parent / "static" / "media.js",
+              "frontend_jellyfin": Path(ui.web_dashboard.__file__).parent / "static" / "media-jellyfin.js",
+              "frontend_radio": Path(ui.web_dashboard.__file__).parent / "static" / "media-radio.js",
+              "frontend_usb": Path(ui.web_dashboard.__file__).parent / "static" / "media-usb.js",
+              "frontend_bluetooth": Path(ui.web_dashboard.__file__).parent / "static" / "media-bluetooth.js",
+              "styles_core": Path(ui.web_dashboard.__file__).parent / "static" / "styles-core.css",
+              "styles_media_layout": Path(ui.web_dashboard.__file__).parent / "static" / "styles-media-layout.css",
+              "styles_shell": Path(ui.web_dashboard.__file__).parent / "static" / "styles-shell.css",
+              "styles_media_sources": Path(ui.web_dashboard.__file__).parent / "static" / "styles-media-sources.css",
+              "styles_diagnostics": Path(ui.web_dashboard.__file__).parent / "static" / "styles-diagnostics.css",
+              "styles_media_final": Path(ui.web_dashboard.__file__).parent / "static" / "styles-media-final.css",
+              "jellyfin": Path(jellyfin.__file__),
+              "radio": Path(radio.__file__),
+              "usb": Path(usb.__file__),
+          }
+          missing = [f"{name}: {path}" for name, path in roots.items() if not path.is_file()]
+          if missing:
+              raise SystemExit("Missing installed assets:\n" + "\n".join(missing))
+          print("Installed package imports and runtime assets verified")
+          PY
+
+  browser:
+    name: Playwright browser coverage
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install browser test dependencies
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run browser tests
+        run: npm run test:browser
+
+      - name: Upload browser failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-failure-${{ github.run_id }}
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  dashboard-smoke:
+    name: Dashboard smoke and live probe
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install project
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Start demo dashboard and probe it
+        run: |
+          python -m ui.web_dashboard.server --demo --demo-scenario traffic --port 8765 >dashboard.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true; wait "$server_pid" 2>/dev/null || true' EXIT
+
+          python - <<'PY'
+          import json
+          import time
+          from urllib.request import urlopen
+
+          base = "http://127.0.0.1:8765"
+          last_error = None
+          for _ in range(50):
+              try:
+                  with urlopen(base + "/api/health", timeout=1) as response:
+                      json.load(response)
+                  break
+              except Exception as exc:
+                  last_error = exc
+                  time.sleep(0.1)
+          else:
+              raise SystemExit(f"Dashboard did not become ready: {last_error}")
+
+          for endpoint in ("/", "/styles.css", "/styles-core.css", "/styles-media-layout.css", "/styles-shell.css", "/styles-media-sources.css", "/styles-diagnostics.css", "/styles-media-final.css", "/api.js", "/preferences.js", "/status.js", "/vehicle.js", "/media.js", "/media-jellyfin.js", "/media-radio.js", "/media-usb.js", "/media-bluetooth.js", "/app.js", "/api/status", "/api/health"):
+              with urlopen(base + endpoint, timeout=3) as response:
+                  if response.status != 200:
+                      raise SystemExit(f"{endpoint} returned {response.status}")
+          print("Dashboard routes are healthy")
+          PY
+
+          OPEN_MMI_PERF_BASE_URL=http://127.0.0.1:8765 \
+          OPEN_MMI_PERF_SAMPLES=100 \
+          python -m unittest tests.test_dashboard_performance_contracts.LiveDashboardPerformanceTests

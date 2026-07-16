@@ -110,6 +110,12 @@ Keyboard shortcuts while the dashboard is focused:
 
 ## Jellyfin media player
 
+The Jellyfin backend lives in `ui/web_dashboard/jellyfin.py`. The main
+`server.py` module owns HTTP routing only and delegates configuration, scoped
+catalogue access, authentication, bounded responses, and media proxying to that
+provider. The Jellyfin module does not import the dashboard handler, keeping the
+provider boundary acyclic and independently testable.
+
 The Media page can connect to Jellyfin using environment variables. Keep the API key server-side; do not put it in `app.js`, `index.html`, or any committed file.
 
 ```bash
@@ -181,8 +187,12 @@ export OPEN_MMI_JELLYFIN_LIBRARY_ID='music-library-id'
 ```
 
 Search results, audio streams, and artwork are checked against the configured
-user/library scope. Legacy server API keys that genuinely need global access must
-opt in explicitly:
+user/library scope. JSON responses are capped at 4 MiB, proxied artwork is capped
+at 8 MiB, and only JPEG, PNG, WebP, GIF, and AVIF image media types are accepted.
+Assigned-user login tokens are cached for at most 15 minutes, keyed to the server,
+username, password, and device identity, and are invalidated and retried once after
+an upstream 401 or 403 response. Legacy server API keys that genuinely need global
+access must opt in explicitly:
 
 ```bash
 export OPEN_MMI_JELLYFIN_ALLOW_GLOBAL=1
@@ -222,7 +232,7 @@ The Media page registers browser media-session handlers and keyboard fallbacks f
 - previous track
 - next track
 
-This is intended to support keyboard media keys, desktop/system media controls, and steering-wheel integrations that emit normal media key events.
+Steering-wheel transport bindings use the shared `actions.audio` path. It first controls an actively playing BlueZ AVRCP player directly, then tries `playerctl`, then a connected paused BlueZ player, and finally falls back to a synthetic media key. This keeps Bluetooth pause/play independent of browser focus while preserving local browser and desktop-player controls.
 
 ## Keeping secrets out of git
 
@@ -266,13 +276,52 @@ The dashboard currently uses instrument-cluster style tell-tales for indicators,
 
 Before adding or replacing icons, confirm the source licence and update `NOTICE.md` with the file name, source URL, author, and licence.
 
+## Frontend module boundaries
+
+The browser loads small platform modules before the main dashboard application:
+
+- `static/api.js` owns same-origin JSON request behaviour.
+- `static/preferences.js` owns safe JSON persistence and the dashboard settings key.
+- `static/status.js` owns the shared status snapshot and fixed 200 ms `/api/status` polling lifecycle. It is DOM-independent and exposes subscriptions for later frontend modules.
+- `static/navigation.js` owns quick-page state, Home/menu construction, pager controls, keyboard navigation, and page-change events.
+- `static/overlays.js` owns door/reverse detection, dismissal lifecycle, and the two full-screen vehicle alerts.
+- `static/vehicle.js` owns vehicle/climate field derivation, unit conversion, health, doors, tachometer state, coolant/voltage enhancements, and the first-stage tell-tale rendering path.
+- `static/media.js` owns media-source preferences, source switching, the source bar, placeholders, and Media settings.
+- `static/media-jellyfin.js` owns the shared local player shell, Jellyfin browsing/search, playback, viewport fitting, and media-session key integration.
+- `static/media-radio.js` owns Internet Radio privacy consent, filter/favourite state, the Radio adapter, and source-aware player integration.
+- `static/media-usb.js` owns USB browsing, folder navigation, duration discovery, and the USB adapter.
+- `static/media-bluetooth.js` owns Bluetooth status polling, optimistic transport state, progress presentation, and BlueZ control requests.
+- `static/app.js` now owns settings, diagnostics, advanced tell-tales, and the remaining cross-cutting dashboard enhancements.
+
+The dashboard CSS is split into six cascade-preserving modules loaded directly by `index.html`:
+
+- `static/styles-core.css` contains the original shell, vehicle cards, RPM and early tell-tale rules.
+- `static/styles-media-layout.css` contains the base Jellyfin/player layout and Media containment fixes.
+- `static/styles-shell.css` contains tell-tales, Home, Settings, overlays and display-mode rules.
+- `static/styles-media-sources.css` contains the source shell, Radio controls and privacy dialog.
+- `static/styles-diagnostics.css` contains browser performance diagnostics.
+- `static/styles-media-final.css` contains USB, Bluetooth, final media-control and vehicle-correction rules.
+
+`static/styles.css` remains as an import-only compatibility manifest. `tools/verify_css_split.py` locks the module order and verifies that their concatenated bytes remain identical to the pre-split stylesheet, preventing accidental cascade changes during this structural phase.
+
+The platform modules resolve `window.fetch` and `window.localStorage` at call time. This keeps performance instrumentation compatible and lets the dashboard fail safely when browser storage is unavailable or restricted.
+
+The extracted player exposes temporary compatibility accessors for the Radio, USB, and Bluetooth adapters while the remaining frontend cleanup is completed. The player state itself remains single-owned by `media-jellyfin.js`; adapters do not create duplicate queues or playback state.
+
+Browser-level coverage lives in `tests/browser/` and runs in Chromium through Playwright. The suite executes the real HTML, CSS and JavaScript assets in browser order with deterministic same-origin API fixtures. It covers navigation and keyboard controls, live status rendering, door/reverse overlay lifecycles, settings and media-source persistence, 800×480 vehicle-display containment, a narrow portrait layout, and uncaught page/console errors. Screenshots and traces are retained on CI failures.
+
 ## Development checks
 
 Run these before committing dashboard changes:
 
 ```bash
-python3 -m py_compile ui/web_dashboard/server.py
-node --check ui/web_dashboard/static/app.js
+python3 -m py_compile ui/web_dashboard/server.py ui/web_dashboard/bluetooth.py ui/web_dashboard/jellyfin.py ui/web_dashboard/radio.py ui/web_dashboard/usb.py
+find ui/web_dashboard/static -maxdepth 1 -name '*.js' -print0 \
+  | xargs -0 -n1 node --check
+node --test tests/js/*.test.js
+npm ci
+npx playwright install chromium
+npm run test:browser
 python3 -m unittest discover -s tests
 python3 ui/web_dashboard/server.py --demo --demo-scenario warnings
 ```
@@ -341,6 +390,12 @@ For live vehicle testing, use listen-only CAN wiring and removable harness/adapt
 <!-- open-mmi-internet-radio-start -->
 ## Internet Radio source
 
+The Internet Radio backend lives in `ui/web_dashboard/radio.py`. The main
+`server.py` module owns HTTP routing only and delegates catalogue access, stream
+validation, pinned connections, redirects, and audio proxying to that provider.
+The Radio module does not import the dashboard handler, keeping the provider
+boundary acyclic and independently testable.
+
 The existing Media source selector now supports **Internet Radio** through the
 community Radio Browser directory. Enable it in **Settings → Media**, then select
 **Internet Radio** on the Media page. Search is live and the browse menu offers
@@ -356,8 +411,11 @@ do not sync between devices.
 The dashboard sends only station UUIDs to its own server. The browser never receives
 or opens arbitrary catalogue stream URLs directly. Before proxying a station, the
 server resolves the stream host and rejects loopback, private, link-local, multicast,
-reserved, and unspecified addresses. Redirect targets are checked again before they
-are followed.
+reserved, and unspecified addresses. The outbound socket connects directly to the
+validated numeric address while retaining the original hostname for the HTTP Host
+header, TLS SNI, and certificate verification. Every redirect is resolved, validated,
+and pinned independently before it is followed, closing the validation/connect DNS
+rebinding gap.
 
 Optional configuration:
 
@@ -426,6 +484,12 @@ hosts, CDNs, redirects, or analytics providers.
 <!-- open-mmi-usb-media-start -->
 ## USB media
 
+The USB backend lives in `ui/web_dashboard/usb.py`. The main `server.py` module
+owns HTTP routing only and delegates root discovery, browsing, opaque identifiers,
+descriptor-safe opening, range handling, and streaming to that provider. The USB
+module does not import the dashboard handler, keeping the filesystem boundary
+acyclic and independently testable.
+
 USB Media is a read-only local source. The dashboard never mounts, unmounts,
 formats, renames, deletes, or writes to a device. It only exposes supported audio
 files from readable roots through same-origin browser playback.
@@ -477,6 +541,8 @@ Security boundary:
 - browser-visible item IDs are opaque and resolved afresh on every request;
 - absolute paths and `..` traversal are rejected;
 - symlink components are never followed;
+- stream and artwork files are opened relative to directory descriptors with
+  `O_NOFOLLOW`, so replacing a checked path with a symlink cannot escape the root;
 - every browse, artwork, and stream request must remain within a currently allowed root;
 - hidden entries are omitted unless explicitly enabled;
 - only allowlisted audio and image extensions are served;
@@ -492,6 +558,11 @@ curl 'http://127.0.0.1:8765/api/usb/browse?filter=browse&limit=10'
 
 <!-- open-mmi-bluetooth-media-start -->
 ## Bluetooth media source
+
+The Bluetooth backend lives in `ui/web_dashboard/bluetooth.py`. The main
+`server.py` module owns only the HTTP status/control routes and delegates BlueZ
+access, opaque player IDs, cached status, request validation, and allowlisted
+controls to the provider.
 
 Bluetooth Media controls an already-connected phone or remote player through
 BlueZ's `org.bluez.MediaPlayer1` interface on the system D-Bus. The dashboard

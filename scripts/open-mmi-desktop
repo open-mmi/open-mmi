@@ -1,12 +1,92 @@
-[Desktop Entry]
-Version=1.0
-Type=Application
-Name=Open MMI Status
-Comment=View Open MMI diagnostic status
-Exec=gnome-terminal --maximize --class=open-mmi-status --title=Open-MMI-Status --working-directory=/opt/open-mmi -- /opt/open-mmi/venv/bin/python /opt/open-mmi/ui/dashboard/status_cli.py
-TryExec=gnome-terminal
-Icon=open-mmi
-Terminal=false
-Categories=System;Monitor;
-StartupNotify=true
-StartupWMClass=open-mmi-status
+#!/usr/bin/env bash
+set -euo pipefail
+
+APP_ID="open-mmi-status"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ASSET_ROOT="$REPO_ROOT/packaging/linux-desktop"
+DESKTOP_SOURCE="$ASSET_ROOT/${APP_ID}.desktop"
+ICON_SOURCE="$ASSET_ROOT/icons"
+DATA_HOME="${XDG_DATA_HOME:-${HOME:?HOME is not set}/.local/share}"
+APPLICATION_DIR="$DATA_HOME/applications"
+ICON_DESTINATION="$DATA_HOME/icons"
+DESKTOP_DESTINATION="$APPLICATION_DIR/${APP_ID}.desktop"
+
+usage() {
+    cat <<USAGE
+Usage: $0 {install|remove|reinstall}
+
+Installs or removes the optional Open MMI diagnostic desktop launcher for the
+current user. XDG_DATA_HOME is honoured when set.
+USAGE
+}
+
+require_assets() {
+    if [[ ! -f "$DESKTOP_SOURCE" ]]; then
+        echo "[desktop] ERROR: missing desktop entry: $DESKTOP_SOURCE" >&2
+        return 1
+    fi
+    if [[ ! -d "$ICON_SOURCE" ]]; then
+        echo "[desktop] ERROR: missing icon directory: $ICON_SOURCE" >&2
+        return 1
+    fi
+}
+
+refresh_caches() {
+    if command -v update-desktop-database >/dev/null 2>&1; then
+        update-desktop-database "$APPLICATION_DIR" >/dev/null 2>&1 || true
+    fi
+
+    if command -v gtk-update-icon-cache >/dev/null 2>&1 \
+        && [[ -d "$ICON_DESTINATION/hicolor" ]]; then
+        gtk-update-icon-cache -f -t "$ICON_DESTINATION/hicolor" >/dev/null 2>&1 || true
+    fi
+}
+
+install_launcher() {
+    require_assets
+
+    mkdir -p "$APPLICATION_DIR" "$ICON_DESTINATION"
+    install -m 0644 "$DESKTOP_SOURCE" "$DESKTOP_DESTINATION"
+    cp -a "$ICON_SOURCE/." "$ICON_DESTINATION/"
+
+    if command -v desktop-file-validate >/dev/null 2>&1; then
+        desktop-file-validate "$DESKTOP_DESTINATION"
+    fi
+
+    refresh_caches
+    echo "[desktop] Installed $DESKTOP_DESTINATION"
+}
+
+remove_launcher() {
+    rm -f "$DESKTOP_DESTINATION"
+
+    if [[ -d "$ICON_SOURCE" ]]; then
+        while IFS= read -r -d '' source_icon; do
+            relative_path="${source_icon#"$ICON_SOURCE"/}"
+            rm -f "$ICON_DESTINATION/$relative_path"
+        done < <(find "$ICON_SOURCE" -type f -print0)
+    fi
+
+    refresh_caches
+    echo "[desktop] Removed the Open MMI desktop launcher"
+}
+
+case "${1:-}" in
+    install)
+        install_launcher
+        ;;
+    remove)
+        remove_launcher
+        ;;
+    reinstall)
+        remove_launcher
+        install_launcher
+        ;;
+    -h|--help|help)
+        usage
+        ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
+esac

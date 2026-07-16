@@ -59,7 +59,7 @@ The status snapshot is currently written as a wrapper object:
 
 ```json
 {
-  "updated_at": "2026-06-14T12:34:56.000000+00:00",
+  "updated_at": 1781440496.0,
   "state": {}
 }
 ```
@@ -108,7 +108,7 @@ A snapshot may contain state like:
 
 ```json
 {
-  "updated_at": "2026-06-14T12:34:56.000000+00:00",
+  "updated_at": 1781440496.0,
   "state": {
     "vehicle": {
       "present": true,
@@ -267,3 +267,57 @@ Consumers should treat these fields as optional because they may not exist for e
 Before a stable release, the status snapshot schema may change.
 
 After a stable schema is declared, breaking changes should be documented and versioned.
+
+---
+
+## Publication guarantees
+
+Status updates are deep-merged in publication order and the resulting snapshot is written
+using a temporary file in the destination directory followed by an atomic replacement.
+The file and parent directory are synchronised on platforms that support it.
+
+A persistence failure is logged but does not stop the CAN receive loop. In-process
+subscribers still receive the decoded update, and one failing subscriber is isolated from
+other subscribers.
+
+Snapshots returned to publishers and subscribers are deep copies. A consumer cannot mutate
+the daemon's in-memory status by modifying a received dictionary.
+
+At daemon start, successful vehicle-profile/status-rule reload, or active CAN-interface
+change, the in-memory state is cleared and an empty snapshot is persisted. This prevents
+fields belonging to an earlier profile or runtime from remaining visible as current state.
+
+A damaged or partially written older snapshot is not read back into live state. The next
+successful publication atomically replaces it with valid JSON. Consumers should continue to
+handle missing or invalid snapshots defensively.
+
+## Timestamp format
+
+`updated_at` is a Unix timestamp expressed as seconds since the epoch, for example:
+
+```json
+{
+  "updated_at": 1784042096.25,
+  "state": {}
+}
+```
+
+Consumers may convert this value to a local or ISO-8601 display format as needed.
+
+## Compatibility aliases
+
+During an alpha-schema migration, a scalar status rule may publish a canonical path and one or more
+temporary compatibility aliases. Profile rules use:
+
+```json
+{
+  "path": "climate.recirculation_active",
+  "aliases": ["climate.front_demist_air_request"],
+  "raw_path": "climate.recirculation_raw",
+  "raw_aliases": ["climate.front_demist_air_request_raw"]
+}
+```
+
+All paths receive the same decoded value. New consumers should prefer the canonical path and
+fall back to the alias only for older snapshots. Aliases must be removed only at a documented
+schema compatibility boundary.

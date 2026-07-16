@@ -1,0 +1,886 @@
+
+
+/* --- Open MMI Jellyfin real Bootstrap media v5 start --- */
+/* Keep Bootstrap as the layout engine; these rules only skin it for the dashboard and enforce containment. */
+#pageElectrical.page-media:not(.active),
+.page-media:not(.active) {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+#pageElectrical.page-media.active {
+  display: block !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  width: 100% !important;
+  overflow: hidden !important;
+}
+
+#openMmiMediaRoot.open-mmi-media-v5 {
+  min-width: 0 !important;
+  min-height: 0 !important;
+  width: 100% !important;
+  overflow: hidden !important;
+  color: var(--text, #f3f6fb);
+}
+
+#openMmiMediaRoot,
+#openMmiMediaRoot * {
+  box-sizing: border-box;
+}
+
+#openMmiMediaRoot .min-h-0 { min-height: 0 !important; }
+#openMmiMediaRoot .min-w-0 { min-width: 0 !important; }
+
+#openMmiMediaRoot .ommi-media-card {
+  border: 1px solid rgba(255,255,255,.11) !important;
+  border-radius: 16px !important;
+  background: linear-gradient(145deg, rgba(16, 24, 38, .96), rgba(6, 9, 15, .96)) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.055), 0 12px 28px rgba(0,0,0,.26) !important;
+}
+
+#openMmiMediaRoot .card-body {
+  padding: clamp(8px, 1.45vh, 14px) !important;
+}
+
+#openMmiMediaRoot .bi,
+#openMmiMediaRoot .ommi-icon-btn svg,
+#openMmiMediaRoot .ommi-search-btn svg,
+#openMmiMediaRoot .ommi-recent-btn svg {
+  width: 1.35em;
+  height: 1.35em;
+  vertical-align: -.18em;
+}
+
+#openMmiMediaRoot .ommi-art {
+  width: 100%;
+  height: clamp(72px, 21vh, 165px);
+  min-height: 0;
+  border-radius: 14px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 32% 20%, rgba(80, 210, 255, .15), rgba(255,255,255,.045) 56%, rgba(0,0,0,.28));
+  border: 1px solid rgba(255,255,255,.10);
+  color: rgba(255,255,255,.55);
+}
+
+#openMmiMediaRoot .ommi-art.has-art { background: rgba(255,255,255,.055); }
+#openMmiMediaRoot .ommi-art img,
+#openMmiMediaRoot .ommi-track-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+#openMmiMediaRoot .ommi-art-icon { width: 2.4rem; height: 2.4rem; opacity: .75; }
+
+#openMmiMediaRoot .ommi-kicker {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  letter-spacing: .12em;
+  color: var(--muted, rgba(255,255,255,.58)) !important;
+}
+
+#openMmiMediaRoot .ommi-now-title {
+  font-size: clamp(1.28rem, 3.55vh, 2.45rem);
+  line-height: 1;
+  letter-spacing: -.04em;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+#openMmiMediaRoot .ommi-now-subtitle {
+  font-size: clamp(.82rem, 1.72vh, 1.05rem);
+  line-height: 1.12;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+#openMmiMediaRoot .ommi-message {
+  min-height: 1.1em;
+  font-size: clamp(.68rem, 1.35vh, .84rem);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#openMmiMediaRoot .ommi-progress {
+  height: clamp(.45rem, 1.15vh, .68rem);
+  background: rgba(255,255,255,.12) !important;
+  cursor: pointer;
+}
+#openMmiMediaRoot .ommi-progress-fill {
+  background: linear-gradient(90deg, rgba(52,211,255,.95), rgba(80,235,165,.92)) !important;
+}
+
+#openMmiMediaRoot .ommi-icon-btn {
+  min-height: clamp(40px, 6.2vh, 54px);
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  font-size: clamp(1rem, 2.6vh, 1.35rem);
+  box-shadow: none !important;
+}
+#openMmiMediaRoot .ommi-play-btn { color: #031018 !important; }
+
+#openMmiMediaRoot .form-control {
+  min-height: clamp(40px, 6vh, 52px);
+  color: var(--text, #f3f6fb) !important;
+  background: rgba(255,255,255,.08) !important;
+  border-color: rgba(255,255,255,.15) !important;
+  box-shadow: none !important;
+}
+#openMmiMediaRoot .form-control::placeholder { color: rgba(255,255,255,.52) !important; }
+#openMmiMediaRoot .input-group .btn { min-width: clamp(44px, 7vh, 58px); box-shadow: none !important; }
+
+#openMmiMediaRoot .ommi-list-heading {
+  color: var(--muted, rgba(255,255,255,.58));
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  font-size: .72rem;
+}
+#openMmiMediaRoot .ommi-remote-state {
+  max-width: min(38vw, 240px);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+#openMmiMediaRoot .ommi-results {
+  min-height: 0 !important;
+  overscroll-behavior: contain;
+  padding-right: 2px;
+}
+
+#openMmiMediaRoot .ommi-track {
+  grid-template-columns: clamp(38px, 6.2vh, 52px) minmax(0, 1fr) auto;
+  gap: .65rem;
+  align-items: center;
+  min-height: clamp(48px, 7.8vh, 66px);
+  margin-bottom: .45rem;
+  border: 1px solid rgba(255,255,255,.08) !important;
+  border-radius: 13px !important;
+  color: var(--text, #f3f6fb) !important;
+  background: rgba(255,255,255,.055) !important;
+  text-align: left;
+}
+#openMmiMediaRoot .ommi-track:hover,
+#openMmiMediaRoot .ommi-track:focus-visible,
+#openMmiMediaRoot .ommi-track.active,
+#openMmiMediaRoot .ommi-track.is-playing {
+  border-color: rgba(84,217,255,.42) !important;
+  background: rgba(70,198,255,.16) !important;
+}
+
+#openMmiMediaRoot .ommi-track-art {
+  width: clamp(38px, 6.2vh, 52px);
+  height: clamp(38px, 6.2vh, 52px);
+  border-radius: 10px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: rgba(255,255,255,.08);
+  color: rgba(255,255,255,.58);
+}
+#openMmiMediaRoot .ommi-track-art svg { width: 1.35rem; height: 1.35rem; }
+#openMmiMediaRoot .ommi-track-copy { min-width: 0; }
+#openMmiMediaRoot .ommi-track-copy strong,
+#openMmiMediaRoot .ommi-track-copy small {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+#openMmiMediaRoot .ommi-track-copy strong { font-size: clamp(.82rem, 1.75vh, 1rem); }
+#openMmiMediaRoot .ommi-track-copy small,
+#openMmiMediaRoot .ommi-track-duration { color: var(--muted, rgba(255,255,255,.58)); }
+#openMmiMediaRoot .ommi-track-duration { font-variant-numeric: tabular-nums; font-size: clamp(.68rem, 1.45vh, .82rem); }
+
+#openMmiMediaRoot .ommi-empty {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  color: var(--muted, rgba(255,255,255,.62));
+  padding: 1rem;
+}
+
+@media (min-width: 768px) {
+  #openMmiMediaRoot .ommi-media-row { flex-wrap: nowrap !important; }
+}
+
+@media (max-width: 767.98px) {
+  #openMmiMediaRoot.open-mmi-media-v5 {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+  #pageElectrical.page-media.active {
+    overflow: auto !important;
+  }
+  #openMmiMediaRoot .ommi-media-row,
+  #openMmiMediaRoot .ommi-player-col,
+  #openMmiMediaRoot .ommi-browser-col {
+    height: auto !important;
+    overflow: visible !important;
+  }
+  #openMmiMediaRoot .ommi-results { max-height: 45vh; }
+}
+
+@media (max-height: 580px) and (min-width: 768px) {
+  #openMmiMediaRoot .card-body { padding: 8px !important; gap: .4rem !important; }
+  #openMmiMediaRoot .ommi-art { display: none !important; }
+  #openMmiMediaRoot .ommi-kicker { display: none !important; }
+  #openMmiMediaRoot .ommi-message { display: none !important; }
+  #openMmiMediaRoot .ommi-now-title { font-size: clamp(1.05rem, 3.1vh, 1.7rem); -webkit-line-clamp: 1; }
+  #openMmiMediaRoot .ommi-now-subtitle { -webkit-line-clamp: 1; }
+  #openMmiMediaRoot .ommi-icon-btn { min-height: 36px; }
+  #openMmiMediaRoot .form-control,
+  #openMmiMediaRoot .input-group .btn { min-height: 36px; }
+  #openMmiMediaRoot .ommi-track { min-height: 42px; grid-template-columns: 34px minmax(0, 1fr) auto; }
+  #openMmiMediaRoot .ommi-track-art { width: 34px; height: 34px; }
+}
+/* --- Open MMI Jellyfin real Bootstrap media v5 end --- */
+
+
+/* --- Open MMI Jellyfin viewport v6 start --- */
+/*
+  Stop the Media page being clipped at the bottom.
+  Keep the rounded cards inside the measured viewport and make only the track
+  list scroll. This deliberately does not pretend CDN Bootstrap is doing the
+  work; these rules are the containment layer the dashboard itself needs.
+*/
+#pageElectrical.page-media.active {
+  display: flex !important;
+  flex-direction: column !important;
+  width: 100% !important;
+  height: var(--ommi-media-viewport-height, auto) !important;
+  max-height: var(--ommi-media-viewport-height, none) !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  padding-bottom: 0 !important;
+}
+
+#openMmiMediaRoot.open-mmi-media-v5,
+#openMmiMediaRoot.open-mmi-media-v4,
+#openMmiMediaRoot {
+  flex: 1 1 auto !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-height: 100% !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  padding: 0 !important;
+}
+
+#openMmiMediaRoot .ommi-media-row {
+  height: 100% !important;
+  max-height: 100% !important;
+  min-height: 0 !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  overflow: hidden !important;
+  align-items: stretch !important;
+}
+
+#openMmiMediaRoot .ommi-player-col,
+#openMmiMediaRoot .ommi-browser-col {
+  height: 100% !important;
+  max-height: 100% !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+}
+
+#openMmiMediaRoot .ommi-media-card {
+  height: 100% !important;
+  max-height: 100% !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  border-radius: 16px !important;
+}
+
+#openMmiMediaRoot .ommi-player-body,
+#openMmiMediaRoot .ommi-browser-body,
+#openMmiMediaRoot .card-body {
+  min-height: 0 !important;
+  max-height: 100% !important;
+  overflow: hidden !important;
+}
+
+#openMmiMediaRoot .ommi-results {
+  flex: 1 1 0 !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 2px !important;
+}
+
+/* Compact landscape panels before they clip. Many car/tablet browsers have
+   enough width for two columns but limited vertical height. */
+@media (min-width: 700px) and (max-height: 740px) {
+  #openMmiMediaRoot .card-body {
+    padding: 7px !important;
+    gap: .35rem !important;
+  }
+  #openMmiMediaRoot .ommi-art {
+    height: clamp(46px, 12vh, 88px) !important;
+    border-radius: 12px !important;
+  }
+  #openMmiMediaRoot .ommi-kicker,
+  #openMmiMediaRoot .ommi-message {
+    display: none !important;
+  }
+  #openMmiMediaRoot .ommi-now-title {
+    font-size: clamp(1rem, 3vh, 1.55rem) !important;
+    line-height: 1 !important;
+    -webkit-line-clamp: 1 !important;
+    margin-bottom: 0 !important;
+  }
+  #openMmiMediaRoot .ommi-now-subtitle {
+    font-size: clamp(.72rem, 1.7vh, .9rem) !important;
+    line-height: 1.05 !important;
+    -webkit-line-clamp: 1 !important;
+  }
+  #openMmiMediaRoot .ommi-progress {
+    height: .42rem !important;
+  }
+  #openMmiMediaRoot .ommi-time,
+  #openMmiMediaRoot .ommi-list-heading {
+    font-size: .68rem !important;
+  }
+  #openMmiMediaRoot .ommi-icon-btn,
+  #openMmiMediaRoot .form-control,
+  #openMmiMediaRoot .input-group .btn {
+    min-height: 34px !important;
+  }
+  #openMmiMediaRoot .ommi-icon-btn svg,
+  #openMmiMediaRoot .ommi-search-btn svg,
+  #openMmiMediaRoot .ommi-recent-btn svg {
+    width: 1.12em !important;
+    height: 1.12em !important;
+  }
+  #openMmiMediaRoot .ommi-track {
+    min-height: 38px !important;
+    margin-bottom: .32rem !important;
+    grid-template-columns: 32px minmax(0, 1fr) auto !important;
+    gap: .5rem !important;
+    border-radius: 10px !important;
+  }
+  #openMmiMediaRoot .ommi-track-art {
+    width: 32px !important;
+    height: 32px !important;
+    border-radius: 8px !important;
+  }
+  #openMmiMediaRoot .ommi-track-copy strong {
+    font-size: .82rem !important;
+  }
+  #openMmiMediaRoot .ommi-track-copy small,
+  #openMmiMediaRoot .ommi-track-duration {
+    font-size: .68rem !important;
+  }
+}
+
+@media (min-width: 700px) and (max-height: 610px) {
+  #openMmiMediaRoot .ommi-art {
+    display: none !important;
+  }
+}
+/* --- Open MMI Jellyfin viewport v6 end --- */
+
+
+/* --- Open MMI Jellyfin render stability v8b start --- */
+/* Stabilise the Media page without relying on exact JS function names. */
+#pageElectrical.page-media.active.page-media-v8b,
+#pageElectrical.page-media-v8b.active {
+  overflow: hidden !important;
+  min-height: 0 !important;
+  box-sizing: border-box !important;
+  contain: layout paint !important;
+}
+
+#pageElectrical.page-media:not(.active),
+.page-media:not(.active) {
+  display: none !important;
+}
+
+#openMmiMediaRoot.open-mmi-media-v8b,
+#openMmiMediaRoot {
+  min-height: 0 !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+
+/* Cover both the early custom-card layout and the later Bootstrap-card layout. */
+#openMmiMediaRoot.open-mmi-media-v8b .ommi-media-row,
+#openMmiMediaRoot.open-mmi-media-v8b .row,
+#openMmiMediaRoot.open-mmi-media-v8b .container-fluid {
+  min-height: 0 !important;
+  max-height: 100% !important;
+  overflow: hidden !important;
+}
+
+#openMmiMediaRoot.open-mmi-media-v8b .ommi-player-col,
+#openMmiMediaRoot.open-mmi-media-v8b .ommi-browser-col,
+#openMmiMediaRoot.open-mmi-media-v8b [class*="col-"] {
+  min-height: 0 !important;
+  max-height: 100% !important;
+  overflow: hidden !important;
+}
+
+#openMmiMediaRoot.open-mmi-media-v8b .ommi-player-card,
+#openMmiMediaRoot.open-mmi-media-v8b .ommi-browser-card,
+#openMmiMediaRoot.open-mmi-media-v8b .ommi-media-card,
+#openMmiMediaRoot.open-mmi-media-v8b .card {
+  min-height: 0 !important;
+  max-height: 100% !important;
+  overflow: hidden !important;
+}
+
+#openMmiMediaRoot.open-mmi-media-v8b .ommi-browser-card,
+#openMmiMediaRoot.open-mmi-media-v8b .ommi-browser-body,
+#openMmiMediaRoot.open-mmi-media-v8b .card-body {
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+#openMmiMediaRoot.open-mmi-media-v8b .ommi-browser-card,
+#openMmiMediaRoot.open-mmi-media-v8b .ommi-browser-body {
+  display: grid !important;
+  grid-template-rows: auto auto auto minmax(0, 1fr) !important;
+}
+
+#openMmiMediaRoot.open-mmi-media-v8b #ommiMediaResults,
+#openMmiMediaRoot.open-mmi-media-v8b .ommi-results {
+  min-height: 0 !important;
+  height: auto !important;
+  max-height: 100% !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  overscroll-behavior: contain !important;
+  scrollbar-gutter: stable !important;
+  contain: content !important;
+  padding-bottom: max(.25rem, env(safe-area-inset-bottom)) !important;
+}
+
+#openMmiMediaRoot.open-mmi-media-v8b .ommi-track,
+#openMmiMediaRoot.open-mmi-media-v8b .list-group-item {
+  flex: 0 0 auto !important;
+  box-sizing: border-box !important;
+}
+
+#openMmiMediaRoot.open-mmi-media-v8b .ommi-track-art,
+#openMmiMediaRoot.open-mmi-media-v8b .ommi-track-art img {
+  flex: 0 0 auto !important;
+}
+
+#openMmiMediaRoot.open-mmi-media-v8b .ommi-track-skeleton-v8b {
+  pointer-events: none !important;
+  cursor: default !important;
+  opacity: .72;
+}
+
+#openMmiMediaRoot.open-mmi-media-v8b .ommi-skeleton-box-v8b,
+#openMmiMediaRoot.open-mmi-media-v8b .ommi-skeleton-line-v8b {
+  display: block;
+  position: relative;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255,255,255,.11);
+}
+
+#openMmiMediaRoot.open-mmi-media-v8b .ommi-skeleton-line-v8b {
+  height: .82em;
+  width: min(100%, 18rem);
+  margin: .12rem 0;
+}
+
+#openMmiMediaRoot.open-mmi-media-v8b .ommi-skeleton-line-v8b.is-short { width: min(72%, 13rem); }
+#openMmiMediaRoot.open-mmi-media-v8b .ommi-skeleton-line-v8b.is-tiny { width: min(54%, 10rem); }
+#openMmiMediaRoot.open-mmi-media-v8b .ommi-skeleton-line-v8b.is-time { width: 2.7rem; height: .7em; justify-self: end; }
+
+#openMmiMediaRoot.open-mmi-media-v8b .ommi-skeleton-box-v8b::after,
+#openMmiMediaRoot.open-mmi-media-v8b .ommi-skeleton-line-v8b::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.14), transparent);
+  animation: ommiMediaV8bSkeleton 1.25s ease-in-out infinite;
+}
+
+@keyframes ommiMediaV8bSkeleton {
+  100% { transform: translateX(100%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #openMmiMediaRoot.open-mmi-media-v8b .ommi-skeleton-box-v8b::after,
+  #openMmiMediaRoot.open-mmi-media-v8b .ommi-skeleton-line-v8b::after {
+    animation: none;
+  }
+}
+/* --- Open MMI Jellyfin render stability v8b end --- */
+
+
+/* --- Open MMI dashboard shell footer containment start --- */
+/*
+  The old dashboard used .screen::before as a fixed viewport border. On the
+  tablet that makes the page pager/status strip look visually outside the
+  rounded dashboard square. Make the real .screen element the shell instead,
+  then keep the footer as its bottom grid row.
+*/
+html,
+body {
+  width: 100%;
+  height: 100%;
+}
+
+body {
+  overflow: hidden !important;
+  padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left)) !important;
+}
+
+.screen {
+  position: relative !important;
+  height: calc(100svh - max(20px, env(safe-area-inset-top) + env(safe-area-inset-bottom))) !important;
+  min-height: 0 !important;
+  max-height: calc(100svh - max(20px, env(safe-area-inset-top) + env(safe-area-inset-bottom))) !important;
+  grid-template-rows: auto minmax(0, 1fr) auto !important;
+  overflow: hidden !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 16px !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, .025),
+    0 28px 70px rgba(0, 0, 0, .34) !important;
+}
+
+.screen::before {
+  display: none !important;
+}
+
+.screen > .page,
+.screen > .page.active,
+.screen > .page-media,
+.screen > .page-media.active {
+  min-height: 0 !important;
+  overflow: hidden;
+}
+
+.status-strip {
+  min-height: clamp(4.1rem, 9.5vh, 6.8rem) !important;
+  align-self: end !important;
+  margin: 0 calc(-1 * clamp(14px, 2.8vw, 46px)) calc(-1 * clamp(12px, 2.4vh, 26px)) !important;
+  padding:
+    clamp(.65rem, 1.2vh, .95rem)
+    clamp(1rem, 4vw, 4rem)
+    max(clamp(.65rem, 1.2vh, .95rem), env(safe-area-inset-bottom)) !important;
+  border-top: 1px solid var(--line) !important;
+  border-bottom-left-radius: 15px !important;
+  border-bottom-right-radius: 15px !important;
+  overflow: hidden !important;
+}
+
+.status-strip .pager,
+.pager {
+  flex: 0 0 auto !important;
+  align-items: center !important;
+  padding: .2rem .35rem !important;
+  border-radius: 999px !important;
+  background: rgba(0, 0, 0, .16) !important;
+  border: 1px solid rgba(255, 255, 255, .08) !important;
+}
+
+.status-strip .pager button,
+.pager button {
+  flex: 0 0 auto !important;
+}
+
+@media (max-width: 720px) {
+  body {
+    padding: 8px !important;
+  }
+
+  .screen {
+    height: calc(100svh - 16px) !important;
+    max-height: calc(100svh - 16px) !important;
+  }
+
+  .status-strip {
+    margin: 0 calc(-1 * clamp(14px, 2.8vw, 46px)) calc(-1 * clamp(12px, 2.4vh, 26px)) !important;
+    min-height: clamp(4.8rem, 13vh, 7.2rem) !important;
+    padding-bottom: max(.8rem, env(safe-area-inset-bottom)) !important;
+  }
+}
+/* --- Open MMI dashboard shell footer containment end --- */
+
+
+/* --- Open MMI shell regression fix start --- */
+/*
+  Regression fixes after moving the footer inside the real shell:
+  - prevent Bootstrap/browser defaults from exposing white backgrounds,
+  - restore bright telemetry/readout text,
+  - keep Media contained from first paint while Jellyfin content loads.
+*/
+:root {
+  color-scheme: dark !important;
+  --ommi-bg-0: #05070b;
+  --ommi-bg-1: #090f18;
+  --ommi-bg-2: #0d1622;
+  --ommi-text-strong: #f7fbff;
+  --ommi-text: #eaf2ff;
+  --ommi-text-soft: #b8c7d8;
+}
+
+html,
+body {
+  background: radial-gradient(circle at 50% -25%, #152238 0%, var(--ommi-bg-1) 34%, var(--ommi-bg-0) 100%) !important;
+  color: var(--ommi-text) !important;
+}
+
+body,
+.screen,
+.page,
+.page.active,
+.page-media,
+.page-media.active {
+  background-color: transparent !important;
+}
+
+.screen {
+  background:
+    radial-gradient(circle at 18% 0%, rgba(75, 149, 255, .075), transparent 34%),
+    linear-gradient(180deg, rgba(17, 28, 43, .96), rgba(7, 11, 17, .98)) !important;
+  color: var(--ommi-text) !important;
+}
+
+/* Bootstrap cards/lists/inputs can otherwise leak a white theme into Media. */
+.card,
+.card-body,
+.list-group,
+.list-group-item,
+.form-control,
+.input-group-text,
+.btn,
+.ommi-media-card,
+.ommi-player-card,
+.ommi-browser-card,
+.tile,
+.stat,
+.panel,
+.status-strip {
+  color: var(--ommi-text) !important;
+}
+
+.card,
+.ommi-media-card,
+.ommi-player-card,
+.ommi-browser-card {
+  background: rgba(8, 14, 22, .78) !important;
+  border-color: rgba(255, 255, 255, .10) !important;
+}
+
+.list-group-item,
+.ommi-track {
+  background: rgba(255, 255, 255, .035) !important;
+  color: var(--ommi-text) !important;
+  border-color: rgba(255, 255, 255, .075) !important;
+}
+
+.form-control,
+.input-group-text {
+  background: rgba(0, 0, 0, .24) !important;
+  color: var(--ommi-text-strong) !important;
+  border-color: rgba(255, 255, 255, .14) !important;
+}
+
+.form-control::placeholder {
+  color: rgba(234, 242, 255, .55) !important;
+}
+
+/* Restore high-contrast vehicle telemetry after Bootstrap/text-muted overrides. */
+.value,
+.readout,
+.speed-value,
+.speed .value,
+.stat .value,
+.tile .value,
+.tile strong,
+.big-number,
+.rpm-digital-value,
+.drive-speed,
+#speedValue,
+#rpmValue,
+[data-field="speed_mph"],
+[data-field="speed_kmh"],
+[data-field="odometer_mi"],
+[data-field="odometer_km"],
+[data-field="outside_temp_c"],
+[data-field="coolant_temp_c"],
+[data-field="voltage_v"],
+[data-field="range_mi"],
+[data-field="range_km"] {
+  color: var(--ommi-text-strong) !important;
+  opacity: 1 !important;
+  text-shadow: 0 0 12px rgba(140, 190, 255, .12) !important;
+}
+
+.label,
+.unit,
+.subvalue,
+.meta,
+.text-muted,
+.small,
+.tile .label,
+.stat .label,
+.footer-item span,
+.ommi-track small,
+.ommi-media-subtitle,
+.ommi-session,
+.ommi-nowplaying-meta {
+  color: var(--ommi-text-soft) !important;
+  opacity: 1 !important;
+}
+
+/* Keep Media out of the footer from first paint. The JS guard below refines
+   the exact height, but these rules prevent the one-second overlap race. */
+#pageElectrical.page-media,
+#pageElectrical.page-media.active,
+.page-media.active {
+  min-height: 0 !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+
+#openMmiMediaRoot,
+#openMmiMediaRoot.open-mmi-media-v8b {
+  height: 100% !important;
+  max-height: 100% !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+
+#openMmiMediaRoot .container-fluid,
+#openMmiMediaRoot .row,
+#openMmiMediaRoot [class*="col-"],
+#openMmiMediaRoot .card,
+#openMmiMediaRoot .card-body,
+#openMmiMediaRoot .ommi-media-row,
+#openMmiMediaRoot .ommi-player-col,
+#openMmiMediaRoot .ommi-browser-col,
+#openMmiMediaRoot .ommi-player-card,
+#openMmiMediaRoot .ommi-browser-card {
+  min-height: 0 !important;
+  max-height: 100% !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+
+#ommiMediaResults,
+#openMmiMediaRoot .ommi-results,
+#openMmiMediaRoot .list-group {
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  overscroll-behavior: contain !important;
+  padding-bottom: .45rem !important;
+}
+
+/* On short tablet landscape screens, trim the Media chrome before it clips. */
+@media (max-height: 620px) {
+  #openMmiMediaRoot .card-body,
+  #openMmiMediaRoot .ommi-player-card,
+  #openMmiMediaRoot .ommi-browser-card {
+    padding-top: .55rem !important;
+    padding-bottom: .55rem !important;
+  }
+
+  #openMmiMediaRoot .ommi-art,
+  #openMmiMediaRoot .ommi-cover,
+  #openMmiMediaRoot .ommi-album-art {
+    max-height: 34vh !important;
+  }
+
+  #openMmiMediaRoot h1,
+  #openMmiMediaRoot h2,
+  #openMmiMediaRoot h3,
+  #openMmiMediaRoot .card-title {
+    margin-bottom: .35rem !important;
+    line-height: 1.05 !important;
+  }
+}
+/* --- Open MMI shell regression fix end --- */
+
+
+/* --- Open MMI media footer scoped repair start --- */
+/*
+  Repair for the current working tree after the broad first-paint grid patch.
+  These rules are intentionally Media-scoped. They do not change .screen,
+  .page, Drive, Climate, or Vehicle layout globally.
+*/
+#pageElectrical.page-media:not(.active) {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+#pageElectrical.page-media.active.ommi-media-footer-scoped {
+  height: var(--ommi-media-page-height) !important;
+  max-height: var(--ommi-media-page-height) !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+  contain: layout paint !important;
+}
+
+#pageElectrical.page-media.active.ommi-media-footer-scoped #openMmiMediaRoot,
+#pageElectrical.page-media.active #openMmiMediaRoot {
+  height: var(--ommi-media-root-height, 100%) !important;
+  max-height: var(--ommi-media-root-height, 100%) !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+
+#pageElectrical.page-media.active #openMmiMediaRoot .container-fluid,
+#pageElectrical.page-media.active #openMmiMediaRoot .row,
+#pageElectrical.page-media.active #openMmiMediaRoot .ommi-media-row,
+#pageElectrical.page-media.active #openMmiMediaRoot [class*="col-"],
+#pageElectrical.page-media.active #openMmiMediaRoot .card,
+#pageElectrical.page-media.active #openMmiMediaRoot .card-body,
+#pageElectrical.page-media.active #openMmiMediaRoot .ommi-player-card,
+#pageElectrical.page-media.active #openMmiMediaRoot .ommi-browser-card,
+#pageElectrical.page-media.active #openMmiMediaRoot .ommi-browser-body {
+  min-height: 0 !important;
+  max-height: 100% !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+
+#pageElectrical.page-media.active #openMmiMediaRoot .ommi-browser-card,
+#pageElectrical.page-media.active #openMmiMediaRoot .ommi-browser-body {
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+#pageElectrical.page-media.active #ommiMediaResults,
+#pageElectrical.page-media.active #openMmiMediaRoot .ommi-results,
+#pageElectrical.page-media.active #openMmiMediaRoot .list-group {
+  min-height: 0 !important;
+  flex: 1 1 auto !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  overscroll-behavior: contain !important;
+  scrollbar-gutter: stable !important;
+}
+/* --- Open MMI media footer scoped repair end --- */

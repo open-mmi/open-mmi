@@ -94,23 +94,23 @@ def _plain_bool(value: Any, true: str='ON', false: str='OFF', unknown: str='-') 
 
 def _state_label(value: Any, theme: Theme, true_text: str='ON', false_text: str='OFF', unknown_text: str='-', true_colour: str='amber', false_colour: str='green', true_symbol: str='dot', false_symbol: str='ok') -> str:
     if value is True:
-        return getattr(theme, true_colour)(f'{theme.sym(true_symbol, '*')} {true_text}')
+        return getattr(theme, true_colour)(f"{theme.sym(true_symbol, '*')} {true_text}")
     if value is False:
-        return getattr(theme, false_colour)(f'{theme.sym(false_symbol, '-')} {false_text}')
+        return getattr(theme, false_colour)(f"{theme.sym(false_symbol, '-')} {false_text}")
     return theme.dim(unknown_text)
 
 def _open_label(value: Any, theme: Theme) -> str:
     if value is True:
-        return theme.amber(f'{theme.sym('warn', '!')} OPEN')
+        return theme.amber(f"{theme.sym('warn', '!')} OPEN")
     if value is False:
-        return theme.green(f'{theme.sym('ok', 'ok')} closed')
+        return theme.green(f"{theme.sym('ok', 'ok')} closed")
     return theme.dim('-')
 
 def _yes_no(value: Any, theme: Theme, yes_colour: str='green', no_colour: str='red') -> str:
     if value is True:
-        return getattr(theme, yes_colour)(f'{theme.sym('ok', 'yes')} yes')
+        return getattr(theme, yes_colour)(f"{theme.sym('ok', 'yes')} yes")
     if value is False:
-        return getattr(theme, no_colour)(f'{theme.sym('bad', 'no')} no')
+        return getattr(theme, no_colour)(f"{theme.sym('bad', 'no')} no")
     return theme.dim('-')
 
 def _age(payload: Dict[str, Any]) -> Optional[float]:
@@ -124,13 +124,13 @@ def _age(payload: Dict[str, Any]) -> Optional[float]:
 
 def _state_health(payload: Dict[str, Any], theme: Theme) -> str:
     if payload.get('error'):
-        return theme.red(f'{theme.sym('bad', 'ERR')} ERROR')
+        return theme.red(f"{theme.sym('bad', 'ERR')} ERROR")
     age = _age(payload)
     if age is None:
-        return theme.amber(f'{theme.sym('empty', '?')} WAITING')
+        return theme.amber(f"{theme.sym('empty', '?')} WAITING")
     if age > STALE_AFTER_SECONDS:
-        return theme.amber(f'{theme.sym('warn', '!')} STALE')
-    return theme.green(f'{theme.sym('dot', '*')} LIVE')
+        return theme.amber(f"{theme.sym('warn', '!')} STALE")
+    return theme.green(f"{theme.sym('dot', '*')} LIVE")
 
 def _clear() -> None:
     print('\x1b[2J\x1b[H', end='')
@@ -152,28 +152,28 @@ def _degrees_label(value: Any, theme: Theme) -> str:
     if not isinstance(value, (int, float)):
         return theme.dim('-')
     if value > 0:
-        return theme.cyan(f'{theme.sym('steer_right', '>')} {value:.2f}° right')
+        return theme.cyan(f"{theme.sym('steer_right', '>')} {value:.2f}° right")
     if value < 0:
-        return theme.cyan(f'{theme.sym('steer_left', '<')} {abs(value):.2f}° left')
-    return theme.green(f'{theme.sym('steer_center', '=')} 0.00° center')
+        return theme.cyan(f"{theme.sym('steer_left', '<')} {abs(value):.2f}° left")
+    return theme.green(f"{theme.sym('steer_center', '=')} 0.00° center")
 
 def _lighting_mode_label(mode: Any, theme: Theme) -> str:
     if not isinstance(mode, str):
         return theme.dim('-')
     if mode == 'off':
-        return theme.dim(f'{theme.sym('light_off', 'off')} off')
+        return theme.dim(f"{theme.sym('light_off', 'off')} off")
     if 'main_beam' in mode:
-        return theme.blue(f'{theme.sym('main', 'main')} {mode}')
+        return theme.blue(f"{theme.sym('main', 'main')} {mode}")
     if 'rear_fog' in mode:
-        return theme.magenta(f'{theme.sym('warn', 'fog')} {mode}')
+        return theme.magenta(f"{theme.sym('warn', 'fog')} {mode}")
     if 'dip' in mode:
-        return theme.cyan(f'{theme.sym('dip', 'dip')} {mode}')
+        return theme.cyan(f"{theme.sym('dip', 'dip')} {mode}")
     if 'sides' in mode:
-        return theme.amber(f'{theme.sym('sides', 'side')} {mode}')
+        return theme.amber(f"{theme.sym('sides', 'side')} {mode}")
     if 'reverse' in mode:
-        return theme.amber(f'{theme.sym('reverse', 'R')} {mode}')
+        return theme.amber(f"{theme.sym('reverse', 'R')} {mode}")
     if mode == 'unknown':
-        return theme.amber(f'{theme.sym('warn', '?')} unknown')
+        return theme.amber(f"{theme.sym('warn', '?')} unknown")
     return str(mode)
 
 def _indicator_label(lighting: Dict[str, Any], theme: Theme) -> str:
@@ -181,15 +181,15 @@ def _indicator_label(lighting: Dict[str, Any], theme: Theme) -> str:
     right = lighting.get('right_indicator')
     hazards = lighting.get('hazards')
     if hazards:
-        return theme.amber(f'{theme.sym('warn', '!')} {theme.sym('both', '<>')} hazards')
+        return theme.amber(f"{theme.sym('warn', '!')} {theme.sym('both', '<>')} hazards")
     if left and right:
-        return theme.amber(f'{theme.sym('both', '<>')} both')
+        return theme.amber(f"{theme.sym('both', '<>')} both")
     if left:
-        return theme.amber(f'{theme.sym('left', '<')} left')
+        return theme.amber(f"{theme.sym('left', '<')} left")
     if right:
-        return theme.amber(f'{theme.sym('right', '>')} right')
+        return theme.amber(f"{theme.sym('right', '>')} right")
     if left is False or right is False:
-        return theme.green(f'{theme.sym('ok', 'ok')} off')
+        return theme.green(f"{theme.sym('ok', 'ok')} off")
     return theme.dim('-')
 
 def _render_dashboard(payload: Dict[str, Any], path: Path=STATUS_PATH, theme: Optional[Theme]=None) -> None:
@@ -224,13 +224,13 @@ def _render_dashboard(payload: Dict[str, Any], path: Path=STATUS_PATH, theme: Op
         return
     print()
     print(_line('Doors'))
-    print(_pair(f'{theme.sym('door', 'D')} Front left', _open_label(doors.get('front_left'), theme), f'{theme.sym('door', 'D')} Front right', _open_label(doors.get('front_right'), theme)))
-    print(_pair(f'{theme.sym('door', 'D')} Rear left', _open_label(doors.get('rear_left'), theme), f'{theme.sym('door', 'D')} Rear right', _open_label(doors.get('rear_right'), theme)))
+    print(_pair(f"{theme.sym('door', 'D')} Front left", _open_label(doors.get('front_left'), theme), f"{theme.sym('door', 'D')} Front right", _open_label(doors.get('front_right'), theme)))
+    print(_pair(f"{theme.sym('door', 'D')} Rear left", _open_label(doors.get('rear_left'), theme), f"{theme.sym('door', 'D')} Rear right", _open_label(doors.get('rear_right'), theme)))
     print(_pair('Boot', _open_label(doors.get('boot'), theme), 'Bonnet', _open_label(doors.get('bonnet'), theme)))
     print(_pair('Any open', _yes_no(doors.get('any_open'), theme, yes_colour='amber', no_colour='green'), 'Raw', doors.get('raw', '-')))
     print()
     print(_line('Vehicle'))
-    print(_pair(f'{theme.sym('reverse', 'R')} Reverse', _state_label(vehicle.get('reverse'), theme, true_text='ON', false_text='OFF', true_colour='amber'), f'{theme.sym('park', 'P')} Handbrake', _state_label(vehicle.get('handbrake'), theme, true_text='ON', false_text='OFF', true_colour='amber')))
+    print(_pair(f"{theme.sym('reverse', 'R')} Reverse", _state_label(vehicle.get('reverse'), theme, true_text='ON', false_text='OFF', true_colour='amber'), f"{theme.sym('park', 'P')} Handbrake", _state_label(vehicle.get('handbrake'), theme, true_text='ON', false_text='OFF', true_colour='amber')))
     print(_pair('Speed', _speed_label(vehicle.get('speed_kmh')), 'Speed raw', vehicle.get('speed_raw', '-')))
     print(_pair('Odometer', _distance_label(vehicle.get('odometer_km'), decimals=0), 'Odo raw', vehicle.get('odometer_raw', '-')))
     print(_pair('Reverse raw', vehicle.get('reverse_raw', '-'), 'Handbrake raw', vehicle.get('handbrake_raw', '-')))
@@ -255,7 +255,9 @@ def _render_dashboard(payload: Dict[str, Any], path: Path=STATUS_PATH, theme: Op
     print(_pair("Outside reg", _temperature_label(climate.get("outside_temp_regulation_c")), "Outside raw", climate.get("outside_temp_regulation_raw", "-")))
     print(_pair("Outside unfiltered", _temperature_label(climate.get("outside_temp_unfiltered_c")), "Unfiltered raw", climate.get("outside_temp_unfiltered_raw", "-")))
     print(_pair("Rear heater", _bool_label(climate.get("rear_window_heater_requested")), "Klima raw", climate.get("klima_status_raw", "-")))
-    print(_pair('Front demist air', _bool_label(climate.get('front_demist_air_request')), 'Demist raw', climate.get('front_demist_air_request_raw', '-')))
+    recirculation = climate.get('recirculation_active', climate.get('front_demist_air_request'))
+    recirculation_raw = climate.get('recirculation_raw', climate.get('front_demist_air_request_raw', '-'))
+    print(_pair('Re-circulation', _bool_label(recirculation), 'Recirc raw', recirculation_raw))
     print(_pair("Compressor", _bool_label(climate.get("compressor_active")), "Front screen", _bool_label(climate.get("front_windscreen_heater_requested"))))
     print()
     print(_line('Steering'))
@@ -267,8 +269,8 @@ def _render_dashboard(payload: Dict[str, Any], path: Path=STATUS_PATH, theme: Op
     if dimmer != '-':
         dimmer = f'{dimmer}%'
     print(_pair('Mode', _lighting_mode_label(lighting.get('mode'), theme), 'Dimmer', dimmer))
-    print(_pair('Lights on', _state_label(lighting.get('lights_on'), theme, true_text='ON', false_text='OFF', true_colour='cyan'), f'{theme.sym('bulb', '!')} Bulb out', _state_label(lighting.get('bulb_out'), theme, true_text='FAULT', false_text='ok', true_colour='red', false_colour='green', true_symbol='bad')))
-    print(_pair(f'{theme.sym('brake', '*')} Brake', _state_label(lighting.get('brake'), theme, true_text='ON', false_text='OFF', true_colour='red'), 'Indicators', _indicator_label(lighting, theme)))
+    print(_pair('Lights on', _state_label(lighting.get('lights_on'), theme, true_text='ON', false_text='OFF', true_colour='cyan'), f"{theme.sym('bulb', '!')} Bulb out", _state_label(lighting.get('bulb_out'), theme, true_text='FAULT', false_text='ok', true_colour='red', false_colour='green', true_symbol='bad')))
+    print(_pair(f"{theme.sym('brake', '*')} Brake", _state_label(lighting.get('brake'), theme, true_text='ON', false_text='OFF', true_colour='red'), 'Indicators', _indicator_label(lighting, theme)))
     print(_pair('Hazards', _state_label(lighting.get('hazards'), theme, true_text='ON', false_text='OFF', true_colour='amber', true_symbol='warn'), 'Bulb raw', lighting.get('bulb_out_raw', '-')))
     print(_pair('Mode raw', lighting.get('mode_raw', '-'), 'Secondary raw', lighting.get('secondary_raw', '-')))
     print()
@@ -386,10 +388,11 @@ def _render_raw(payload: Dict[str, Any], path: Path=STATUS_PATH, theme: Optional
     print()
     age = _age(payload)
     print(f'Health: {_state_health(payload, theme)}')
-    print(f'Last update: {('never' if age is None else f'{age:.1f}s ago')}')
+    last_update = 'never' if age is None else f'{age:.1f}s ago'
+    print(f'Last update: {last_update}')
     print(f'Status file: {path}')
     if payload.get('error'):
-        print(f'Error: {payload['error']}')
+        print(f"Error: {payload['error']}")
 
 def _iter_once_or_forever(once: bool) -> Iterable[None]:
     yield None

@@ -1,18 +1,11 @@
 """Display brightness control via brightnessctl."""
 
 import subprocess
-import shutil
 import logging
-from typing import Optional
 
 logger = logging.getLogger("canbusd.actions.brightness")
 
 SUBPROCESS_TIMEOUT = 5  # seconds
-
-if not shutil.which("brightnessctl"):
-    logger.error(
-        "brightnessctl not found. Install with: sudo apt install brightnessctl"
-    )
 
 
 def _set_brightness(percent: int) -> None:

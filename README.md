@@ -293,8 +293,6 @@ This installs:
 ```text
 ~/.local/share/applications/open-mmi-status.desktop
 ~/.local/share/icons/hicolor
-~/.local/share/icons/open-mmi-dark
-~/.local/share/icons/open-mmi-light
 ```
 
 The desktop launcher is currently intended as a lightweight diagnostic convenience, not as the final Open MMI user interface.
@@ -349,7 +347,6 @@ open-mmi/
 │   ├── event_bus.py         ← in-process pub/sub for events
 │   ├── status_bus.py        ← persistent vehicle state snapshots
 │   ├── status_rules.py      ← generic profile-driven status evaluator
-│   ├── state.py             ← simple in-process state helper
 │   └── __init__.py
 │
 ├── vehicles/
@@ -680,7 +677,7 @@ Example:
     "args": ["+5%"]
   },
   "play_pause": {
-    "module": "keys",
+    "module": "audio",
     "func": "play_pause"
   }
 }
@@ -693,6 +690,12 @@ Environment="OPEN_MMI_BINDINGS=default"
 ```
 
 Bindings are trusted local configuration. Do not install random bindings or vehicle profiles without reviewing them.
+
+Configured actions run through a single bounded worker queue. CAN event publication and
+frame decoding continue immediately while subprocess-backed actions execute in order.
+The queue defaults to 64 pending actions and can be adjusted with
+`OPEN_MMI_ACTION_QUEUE_SIZE` (1–1024). Queue overload is logged explicitly rather than
+allowing unbounded memory growth.
 
 ---
 
@@ -933,9 +936,7 @@ Files live in:
 packaging/linux-desktop/
 ├── open-mmi-status.desktop
 └── icons/
-    ├── hicolor/
-    ├── open-mmi-dark/
-    └── open-mmi-light/
+    └── hicolor/
 ```
 
 The desktop launcher is intentionally opt-in. Open MMI includes the integration/backend layer and a local web dashboard. The diagnostic desktop launcher remains optional and development-focused.
@@ -1076,7 +1077,7 @@ candump can0
 ```json
 {
   "play_pause": {
-    "module": "keys",
+    "module": "audio",
     "func": "play_pause"
   }
 }
