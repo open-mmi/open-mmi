@@ -107,7 +107,7 @@ async function loadDashboard(page, options = {}) {
     local_only: true,
     launcher: {
       default_ui: "web",
-      start_at_login: true,
+      open_at_login: true,
       service_active: true,
       service_enabled: true,
       dashboard_reachable: true,
@@ -682,12 +682,12 @@ test("system settings and Jellyfin setup use the shared local configuration API"
   await page.locator('[data-openmmi-settings-section="system"]').click();
   await expect(page.locator('[data-openmmi-system-settings-panel="true"]')).toBeVisible();
   await expect(page.getByTestId("launcher-default-web")).toHaveClass(/is-selected/);
-  await expect(page.getByTestId("launcher-startup-on")).toHaveClass(/is-selected/);
+  await expect(page.getByTestId("launcher-autostart-on")).toHaveClass(/is-selected/);
 
   await page.getByTestId("launcher-default-tui").click();
   await expect(page.getByTestId("launcher-default-tui")).toHaveClass(/is-selected/);
-  await page.getByTestId("launcher-startup-off").click();
-  await expect(page.getByTestId("launcher-startup-off")).toHaveClass(/is-selected/);
+  await page.getByTestId("launcher-autostart-off").click();
+  await expect(page.getByTestId("launcher-autostart-off")).toHaveClass(/is-selected/);
 
   await page.locator('[data-openmmi-settings-section="media"]').click();
   await expect(page.locator('[data-openmmi-jellyfin-settings="true"]')).toBeVisible();

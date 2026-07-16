@@ -60,23 +60,19 @@
     function systemTemplate() {
       const launcher = snapshot?.launcher || {};
       const defaultUi = launcher.default_ui || "web";
-      const startup = launcher.start_at_login !== false;
-      const service = launcher.service_active ? "running" : "stopped";
+      const autostart = launcher.open_at_login === true;
       const reachable = launcher.dashboard_reachable ? "reachable" : "unreachable";
       return `
         <div data-openmmi-system-settings-panel="true">
           <div class="openmmi-settings-panel-head"><span>System</span><small>desktop shell</small></div>
           ${statusBanner()}
-          <div class="openmmi-settings-metric"><span>Dashboard service</span><strong>${escapeHtml(service)}</strong></div>
           <div class="openmmi-settings-metric"><span>Health endpoint</span><strong>${escapeHtml(reachable)}</strong></div>
           ${row("Default interface", "Used by the desktop icon and open-mmi-launcher without arguments.",
             pill("Web", defaultUi === "web", 'data-openmmi-launcher-ui="web" data-testid="launcher-default-web"')
             + pill("TUI", defaultUi === "tui", 'data-openmmi-launcher-ui="tui" data-testid="launcher-default-tui"'))}
-          ${row("Start at login", "Enable or disable the dashboard systemd user service at login.",
-            pill("off", !startup, 'data-openmmi-launcher-startup="false" data-testid="launcher-startup-off"')
-            + pill("on", startup, 'data-openmmi-launcher-startup="true" data-testid="launcher-startup-on"'))}
-          ${row("Dashboard service", "Restart after changing Jellyfin credentials or to recover the web process.",
-            `<button type="button" class="openmmi-setting-pill" data-openmmi-dashboard-restart="true" data-testid="dashboard-restart" ${busy ? "disabled" : ""}>restart</button>`)}
+          ${row("Open Open MMI at login", "Launch the remembered interface after graphical login. The launcher starts the dashboard service when needed.",
+            pill("off", !autostart, 'data-openmmi-launcher-autostart="false" data-testid="launcher-autostart-off"')
+            + pill("on", autostart, 'data-openmmi-launcher-autostart="true" data-testid="launcher-autostart-on"'))}
           <button type="button" class="openmmi-settings-link openmmi-config-refresh" data-openmmi-system-refresh="true" ${busy ? "disabled" : ""}>Refresh status</button>
         </div>`;
     }
@@ -225,8 +221,8 @@
       if (!target) return;
       if (target.dataset.openmmiLauncherUi) {
         await post("/api/system/launcher", { default_ui: target.dataset.openmmiLauncherUi }, "Default interface saved");
-      } else if (target.dataset.openmmiLauncherStartup) {
-        await post("/api/system/launcher", { start_at_login: target.dataset.openmmiLauncherStartup === "true" }, "Startup preference saved");
+      } else if (target.dataset.openmmiLauncherAutostart) {
+        await post("/api/system/launcher", { open_at_login: target.dataset.openmmiLauncherAutostart === "true" }, "Login launch preference saved");
       } else if (target.dataset.openmmiSystemRefresh) {
         await refresh();
       } else if (target.dataset.openmmiJellyfinTest) {

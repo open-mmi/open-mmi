@@ -108,6 +108,30 @@ Keyboard shortcuts while the dashboard is focused:
 | `Alt+0` | Coolant hot / voltage warning test state |
 | `Alt+C` | Clear keyboard-forced states |
 
+
+## Desktop and startup settings
+
+**Settings → System** selects the remembered Web/TUI interface and whether Open MMI itself opens after graphical login. Enabling it creates `~/.config/autostart/open-mmi.desktop`; the launcher starts the dashboard service on demand before opening the selected interface.
+
+Equivalent commands:
+
+```bash
+open-mmi-config launcher default web
+open-mmi-config launcher autostart enable
+open-mmi-config launcher autostart disable
+```
+
+Dashboard service enablement is an advanced CLI-only control:
+
+```bash
+open-mmi-config dashboard status
+open-mmi-config dashboard start
+open-mmi-config dashboard stop
+open-mmi-config dashboard restart
+open-mmi-config dashboard enable
+open-mmi-config dashboard disable
+```
+
 ## Jellyfin media player
 
 The Jellyfin backend lives in `ui/web_dashboard/jellyfin.py`. The main

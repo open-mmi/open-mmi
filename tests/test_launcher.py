@@ -17,7 +17,7 @@ class LauncherConfigTests(unittest.TestCase):
             config = launcher.load_config(Path(directory) / "missing.json")
         self.assertEqual(config["default_ui"], "web")
         self.assertEqual(config["web_url"], "http://127.0.0.1:8765")
-        self.assertTrue(config["start_at_login"])
+        self.assertNotIn("start_at_login", config)
 
     def test_user_config_merges_over_defaults(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -42,20 +42,18 @@ class LauncherConfigTests(unittest.TestCase):
             payload = json.loads(path.read_text(encoding="utf-8"))
         self.assertEqual(payload, {"browser_mode": "window", "default_ui": "tui"})
 
-    def test_save_start_at_login_preserves_other_settings(self) -> None:
+    def test_legacy_service_startup_preference_is_ignored_and_removed_on_save(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "launcher.json"
-            path.write_text(json.dumps({"browser_mode": "window"}), encoding="utf-8")
-            launcher.save_start_at_login(False, path)
+            path.write_text(
+                json.dumps({"browser_mode": "window", "start_at_login": True}),
+                encoding="utf-8",
+            )
+            config = launcher.load_config(path)
+            launcher.save_default_ui("tui", path)
             payload = json.loads(path.read_text(encoding="utf-8"))
-        self.assertEqual(payload, {"browser_mode": "window", "start_at_login": False})
-
-    def test_start_at_login_must_be_boolean(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "launcher.json"
-            path.write_text(json.dumps({"start_at_login": "yes"}), encoding="utf-8")
-            with self.assertRaises(launcher.LauncherError):
-                launcher.load_config(path)
+        self.assertNotIn("start_at_login", config)
+        self.assertEqual(payload, {"browser_mode": "window", "default_ui": "tui"})
 
 
 class LauncherServiceTests(unittest.TestCase):
@@ -422,47 +420,61 @@ class LauncherChooserTests(unittest.TestCase):
         self.assertEqual(launcher.choose_ui(), "web")
 
 
-class LauncherStartupPreferenceTests(unittest.TestCase):
+class LauncherAutostartPreferenceTests(unittest.TestCase):
     @staticmethod
     def result(returncode: int = 0, stdout: str = "", stderr: str = "") -> SimpleNamespace:
         return SimpleNamespace(returncode=returncode, stdout=stdout, stderr=stderr)
 
-    def test_configure_start_at_login_enables_service(self) -> None:
+    def test_configure_open_at_login_creates_managed_desktop_entry(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "autostart" / "open-mmi.desktop"
+            launcher.configure_open_at_login(True, path)
+            body = path.read_text(encoding="utf-8")
+            self.assertTrue(launcher.open_at_login_enabled(path))
+            self.assertIn("Exec=/usr/local/bin/open-mmi-launcher", body)
+            self.assertEqual(path.stat().st_mode & 0o777, 0o644)
+
+    def test_configure_open_at_login_removes_managed_entry(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "autostart" / "open-mmi.desktop"
+            launcher.configure_open_at_login(True, path)
+            launcher.configure_open_at_login(False, path)
+            self.assertFalse(path.exists())
+            self.assertFalse(launcher.open_at_login_enabled(path))
+
+    def test_configure_open_at_login_refuses_symlink(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = root / "target.desktop"
+            target.write_text("unrelated", encoding="utf-8")
+            link = root / "open-mmi.desktop"
+            link.symlink_to(target)
+            with self.assertRaisesRegex(launcher.LauncherError, "symlinked"):
+                launcher.configure_open_at_login(True, link)
+
+    def test_dashboard_service_actions_remain_available_for_cli(self) -> None:
         commands = []
 
         def runner(args, *, capture_output=False):
             commands.append((list(args), capture_output))
             return self.result()
 
-        launcher.configure_start_at_login(True, runner)
-        self.assertEqual(
-            commands,
-            [(["systemctl", "--user", "enable", launcher.SERVICE_NAME], True)],
-        )
-
-    def test_configure_start_at_login_disables_service(self) -> None:
-        commands = []
-
-        def runner(args, *, capture_output=False):
-            commands.append((list(args), capture_output))
-            return self.result()
-
-        launcher.configure_start_at_login(False, runner)
+        launcher.configure_dashboard_service("disable", runner)
         self.assertEqual(
             commands,
             [(["systemctl", "--user", "disable", launcher.SERVICE_NAME], True)],
         )
 
-    def test_status_reports_configured_and_actual_startup_state(self) -> None:
+    def test_status_reports_application_autostart_and_service_state(self) -> None:
         config = dict(launcher.DEFAULT_CONFIG)
         with patch("ui.launcher.service_is_active", return_value=True), patch(
             "ui.launcher.service_is_enabled", return_value=False
-        ), patch("ui.launcher.check_health", return_value=True), patch(
-            "ui.launcher.browser_status", return_value={"running": False}
-        ):
+        ), patch("ui.launcher.open_at_login_enabled", return_value=True), patch(
+            "ui.launcher.check_health", return_value=True
+        ), patch("ui.launcher.browser_status", return_value={"running": False}):
             payload = launcher.status_payload(config, Path("/tmp/launcher.json"))
 
-        self.assertTrue(payload["start_at_login"])
+        self.assertTrue(payload["open_at_login"])
         self.assertFalse(payload["service_enabled"])
 
 

@@ -28,6 +28,9 @@ SERVICE_NAME = "open-mmi-dashboard.service"
 BROWSER_WINDOW_CLASS = "open-mmi"
 BROWSER_STATE_FILE = "browser.json"
 BROWSER_LOCK_FILE = "browser.lock"
+AUTOSTART_ENTRY_NAME = "open-mmi.desktop"
+AUTOSTART_LAUNCHER_COMMAND = "/usr/local/bin/open-mmi-launcher"
+LEGACY_CONFIG_KEYS = {"start_at_login"}
 DEFAULT_CONFIG: dict[str, Any] = {
     "default_ui": "web",
     "web_url": "http://127.0.0.1:8765",
@@ -35,7 +38,6 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "browser_command": "auto",
     "startup_timeout_seconds": 12.0,
     "health_poll_interval_seconds": 0.25,
-    "start_at_login": True,
 }
 BROWSER_CANDIDATES = (
     "chromium",
@@ -99,8 +101,6 @@ def _validate_config(config: MutableMapping[str, Any]) -> None:
             raise LauncherError(f"{key} must be greater than zero")
         config[key] = value
 
-    if not isinstance(config["start_at_login"], bool):
-        raise LauncherError("start_at_login must be true or false")
 
     command = config["browser_command"]
     if not isinstance(command, (str, list, tuple)):
@@ -127,11 +127,11 @@ def load_config(path: Optional[Path] = None) -> dict[str, Any]:
     if not isinstance(raw, Mapping):
         raise LauncherError(f"launcher configuration root must be an object: {target}")
 
-    unknown = sorted(set(raw) - set(DEFAULT_CONFIG))
+    unknown = sorted(set(raw) - set(DEFAULT_CONFIG) - LEGACY_CONFIG_KEYS)
     if unknown:
         raise LauncherError(f"unknown launcher configuration keys: {', '.join(unknown)}")
 
-    config.update(raw)
+    config.update({key: value for key, value in raw.items() if key not in LEGACY_CONFIG_KEYS})
     _validate_config(config)
     return config
 
@@ -154,6 +154,8 @@ def save_preferences(
     except (OSError, json.JSONDecodeError) as exc:
         raise LauncherError(f"cannot update launcher configuration {target}: {exc}") from exc
 
+    for legacy_key in LEGACY_CONFIG_KEYS:
+        current.pop(legacy_key, None)
     current.update(updates)
     merged = dict(DEFAULT_CONFIG)
     merged.update(current)
@@ -176,10 +178,6 @@ def save_preferences(
 
 def save_default_ui(ui_name: str, path: Optional[Path] = None) -> None:
     save_preferences({"default_ui": ui_name}, path)
-
-
-def save_start_at_login(enabled: bool, path: Optional[Path] = None) -> None:
-    save_preferences({"start_at_login": enabled}, path)
 
 
 def health_url(web_url: str) -> str:
@@ -230,11 +228,70 @@ def service_is_enabled(
     return result.returncode == 0
 
 
-def configure_start_at_login(
-    enabled: bool,
+def default_autostart_path() -> Path:
+    config_home = os.getenv("XDG_CONFIG_HOME")
+    base = Path(config_home) if config_home else Path.home() / ".config"
+    return base / "autostart" / AUTOSTART_ENTRY_NAME
+
+
+def open_at_login_enabled(path: Optional[Path] = None) -> bool:
+    target = path or default_autostart_path()
+    try:
+        body = target.read_text(encoding="utf-8")
+    except (FileNotFoundError, OSError):
+        return False
+    return (
+        "Type=Application" in body
+        and f"Exec={AUTOSTART_LAUNCHER_COMMAND}" in body
+        and "X-GNOME-Autostart-enabled=false" not in body
+    )
+
+
+def configure_open_at_login(enabled: bool, path: Optional[Path] = None) -> None:
+    target = path or default_autostart_path()
+    if target.is_symlink():
+        raise LauncherError(f"refusing to modify symlinked autostart entry: {target}")
+    if not enabled:
+        try:
+            target.unlink()
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            raise LauncherError(f"cannot remove autostart entry {target}: {exc}") from exc
+        return
+
+    body = "\n".join((
+        "[Desktop Entry]",
+        "Type=Application",
+        "Name=Open MMI",
+        "Comment=Open Open MMI at graphical login",
+        f"Exec={AUTOSTART_LAUNCHER_COMMAND}",
+        "Icon=open-mmi",
+        "Terminal=false",
+        "X-GNOME-Autostart-enabled=true",
+        "",
+    ))
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True, mode=0o755)
+        temporary = target.with_suffix(target.suffix + ".tmp")
+        temporary.write_text(body, encoding="utf-8")
+        temporary.chmod(0o644)
+        temporary.replace(target)
+        target.chmod(0o644)
+    except OSError as exc:
+        try:
+            temporary.unlink()
+        except (NameError, OSError):
+            pass
+        raise LauncherError(f"cannot write autostart entry {target}: {exc}") from exc
+
+
+def configure_dashboard_service(
+    action: str,
     command_runner: Callable[..., subprocess.CompletedProcess[str]] = run_command,
 ) -> None:
-    action = "enable" if enabled else "disable"
+    if action not in {"start", "stop", "restart", "enable", "disable"}:
+        raise LauncherError(f"unsupported dashboard service action: {action}")
     result = command_runner(
         ["systemctl", "--user", action, SERVICE_NAME],
         capture_output=True,
@@ -826,7 +883,7 @@ def status_payload(config: Mapping[str, Any], config_path: Path) -> dict[str, An
     return {
         "config_path": str(config_path),
         "default_ui": config["default_ui"],
-        "start_at_login": config["start_at_login"],
+        "open_at_login": open_at_login_enabled(),
         "web_url": config["web_url"],
         "health_url": endpoint,
         "service": SERVICE_NAME,
@@ -845,14 +902,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--status", action="store_true", help="show launcher and dashboard status")
     parser.add_argument("--stop", action="store_true", help="stop the dashboard service")
     parser.add_argument(
-        "--enable-startup",
+        "--enable-autostart", "--enable-startup",
+        dest="enable_autostart",
         action="store_true",
-        help="enable dashboard startup at user login",
+        help="open Open MMI automatically at graphical login",
     )
     parser.add_argument(
-        "--disable-startup",
+        "--disable-autostart", "--disable-startup",
+        dest="disable_autostart",
         action="store_true",
-        help="disable dashboard startup at user login",
+        help="do not open Open MMI automatically at graphical login",
     )
     parser.add_argument("--config", type=Path, help="use an alternate launcher configuration file")
     return parser
@@ -869,14 +928,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             args.choose,
             args.status,
             args.stop,
-            args.enable_startup,
-            args.disable_startup,
+            args.enable_autostart,
+            args.disable_autostart,
         )
         operation_count = sum(bool(value) for value in exclusive_operations)
         if operation_count > 1:
             raise LauncherError(
-                "--choose, --status, --stop, --enable-startup, and "
-                "--disable-startup are mutually exclusive"
+                "--choose, --status, --stop, --enable-autostart, and "
+                "--disable-autostart are mutually exclusive"
             )
         if args.ui and operation_count:
             raise LauncherError("an explicit interface cannot be combined with an operation flag")
@@ -897,10 +956,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 raise LauncherError(f"could not stop {SERVICE_NAME}: {detail}")
             return 0
 
-        if args.enable_startup or args.disable_startup:
-            enabled = bool(args.enable_startup)
-            configure_start_at_login(enabled)
-            save_start_at_login(enabled, config_path)
+        if args.enable_autostart or args.disable_autostart:
+            configure_open_at_login(bool(args.enable_autostart))
             return 0
 
         selected = choose_ui() if args.choose else (args.ui or str(config["default_ui"]))

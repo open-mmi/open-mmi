@@ -95,28 +95,31 @@ def _settings_status() -> Dict[str, Any]:
 
 
 def _update_launcher(payload: Mapping[str, Any]) -> Dict[str, Any]:
-    allowed = {"default_ui", "start_at_login"}
+    allowed = {"default_ui", "open_at_login"}
     unknown = sorted(set(payload) - allowed)
     if unknown:
         raise ConfigurationError(f"unsupported launcher settings: {', '.join(unknown)}")
 
     updates: Dict[str, Any] = {}
+    changed = False
     if "default_ui" in payload:
         selected = str(payload["default_ui"] or "").strip().lower()
         if selected not in {"web", "tui"}:
             raise ConfigurationError("default_ui must be web or tui")
         updates["default_ui"] = selected
+        changed = True
 
-    if "start_at_login" in payload:
-        enabled = payload["start_at_login"]
+    if "open_at_login" in payload:
+        enabled = payload["open_at_login"]
         if not isinstance(enabled, bool):
-            raise ConfigurationError("start_at_login must be true or false")
-        launcher.configure_start_at_login(enabled)
-        updates["start_at_login"] = enabled
+            raise ConfigurationError("open_at_login must be true or false")
+        launcher.configure_open_at_login(enabled)
+        changed = True
 
-    if not updates:
+    if not changed:
         raise ConfigurationError("no launcher settings were supplied")
-    launcher.save_preferences(updates)
+    if updates:
+        launcher.save_preferences(updates)
     return {"ok": True, "launcher": _launcher_status()}
 
 

@@ -33,7 +33,7 @@ test("system and Jellyfin templates never contain stored secrets", () => {
   const api = {
     async getJson() {
       return {
-        launcher: { default_ui: "web", start_at_login: true, service_active: true, dashboard_reachable: true },
+        launcher: { default_ui: "web", open_at_login: true, service_active: true, dashboard_reachable: true },
         jellyfin: {
           configured: true,
           url: "https://media.test",
@@ -50,6 +50,8 @@ test("system and Jellyfin templates never contain stored secrets", () => {
   return controller.refresh().then(() => {
     const systemHtml = controller.systemTemplate();
     assert.match(systemHtml, /Default interface/);
+    assert.match(systemHtml, /Open Open MMI at login/);
+    assert.doesNotMatch(systemHtml, /Enable or disable the dashboard systemd user service/);
     active.dataset.openmmiSettingsSection = "media";
     const jellyfinHtml = controller.jellyfinTemplate();
     assert.match(jellyfinHtml, /server-side credentials/);

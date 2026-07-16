@@ -3,7 +3,7 @@
 ## Unreleased — V1 foundation hardening
 
 ### Added
-- Dashboard System settings for the remembered launcher UI and dashboard start-at-login state.
+- Dashboard System settings for the remembered launcher UI and graphical-login application autostart.
 - Secure Jellyfin setup through the dashboard and the new `open-mmi-config` CLI.
 - Private `~/.config/open-mmi/dashboard.env` service configuration with connection testing and fixed-action dashboard restart.
 - GitHub Actions for Python, packaging, browser, JavaScript, CSS, and live dashboard checks.
@@ -12,7 +12,7 @@
 - Playwright coverage for navigation, overlays, persistence, media selection, responsive layouts, and browser errors.
 
 ### Changed
-- The dashboard service now loads its user-owned environment file and the installer exposes `open-mmi-config` with the other packaged commands.
+- The dashboard service now loads its user-owned environment file; fresh installs start it on demand, graphical-login application launch is user-configurable, and advanced service enablement remains in `open-mmi-config`.
 - Split dashboard media backends into Radio, USB, Jellyfin, and Bluetooth providers.
 - Split frontend API, preferences, status, navigation, overlays, vehicle rendering, media controllers, and CSS into focused modules.
 - Moved stateful CAN rule data into explicitly owned runtime state.

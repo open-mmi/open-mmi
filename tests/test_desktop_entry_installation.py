@@ -125,6 +125,90 @@ class DesktopEntryInstallationTests(unittest.TestCase):
 
             self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_legacy_service_startup_preference_is_migrated_once(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            temporary = Path(temporary_directory)
+            home = temporary / "home"
+            config_dir = home / ".config" / "open-mmi"
+            config_file = config_dir / "launcher.json"
+            systemctl_log = temporary / "systemctl.log"
+            config_dir.mkdir(parents=True)
+            config_file.write_text(
+                '{"default_ui": "web", "start_at_login": true}\n',
+                encoding="utf-8",
+            )
+            shell = textwrap.dedent(
+                f"""\
+                set -euo pipefail
+                source {str(MANAGE_SCRIPT)!r}
+                REAL_USER="$(id -un)"
+                REAL_HOME={str(home)!r}
+                USER_ID="$(id -u)"
+                USER_CONFIG_DIR={str(config_dir)!r}
+
+                sudo() {{
+                    if [[ "${{1:-}}" == "-u" ]]; then shift 2; fi
+                    if [[ "${{1:-}}" == "env" ]]; then
+                        shift
+                        while [[ "${{1:-}}" == *=* ]]; do export "$1"; shift; done
+                    fi
+                    if [[ "${{1:-}}" == "systemctl" ]]; then
+                        printf '%s\n' "$*" >> {str(systemctl_log)!r}
+                        return 0
+                    fi
+                    "$@"
+                }}
+
+                migrate_legacy_dashboard_startup
+                python3 - <<'PY_CHECK'
+import json
+from pathlib import Path
+payload = json.loads(Path({str(config_file)!r}).read_text(encoding="utf-8"))
+assert payload == {{"default_ui": "web"}}, payload
+PY_CHECK
+                grep -Fq 'systemctl --user disable open-mmi-dashboard.service' {str(systemctl_log)!r}
+                """
+            )
+            result = subprocess.run(
+                ["bash", "-c", shell],
+                cwd=ROOT,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_uninstall_removes_only_managed_login_autostart(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            temporary = Path(temporary_directory)
+            entry = temporary / "autostart" / "open-mmi.desktop"
+            entry.parent.mkdir(parents=True)
+            shell = textwrap.dedent(
+                f"""\
+                set -euo pipefail
+                source {str(MANAGE_SCRIPT)!r}
+                LOGIN_AUTOSTART_ENTRY={str(entry)!r}
+
+                printf '%s\n' '[Desktop Entry]' 'Exec=/usr/local/bin/open-mmi-launcher' > "$LOGIN_AUTOSTART_ENTRY"
+                remove_login_autostart
+                test ! -e "$LOGIN_AUTOSTART_ENTRY"
+
+                printf '%s\n' '[Desktop Entry]' 'Exec=/usr/bin/unrelated' > "$LOGIN_AUTOSTART_ENTRY"
+                remove_login_autostart
+                test -f "$LOGIN_AUTOSTART_ENTRY"
+                """
+            )
+            result = subprocess.run(
+                ["bash", "-c", shell],
+                cwd=ROOT,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

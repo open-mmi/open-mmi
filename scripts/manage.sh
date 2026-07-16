@@ -24,6 +24,7 @@ REAL_USER="${SUDO_USER:-$USER}"
 REAL_HOME=$(getent passwd "$REAL_USER" | cut -d: -f6)
 USER_ID=$(id -u "$REAL_USER")
 USER_CONFIG_DIR="$REAL_HOME/.config/open-mmi"
+LOGIN_AUTOSTART_ENTRY="$REAL_HOME/.config/autostart/open-mmi.desktop"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DESKTOP_ENTRY_SOURCE="$REPO_ROOT/packaging/linux-desktop/open-mmi-status.desktop"
@@ -314,35 +315,57 @@ remove_command_links() {
     done
 }
 
-dashboard_start_at_login() {
+migrate_legacy_dashboard_startup() {
     local config_file="$USER_CONFIG_DIR/launcher.json"
 
     if [ ! -f "$config_file" ]; then
         return 0
     fi
 
-    python3 - "$config_file" <<'PY_CONFIG'
+    if sudo -u "$REAL_USER" env HOME="$REAL_HOME" python3 - "$config_file" <<'PY_CONFIG'
 import json
+import os
 import sys
 from pathlib import Path
 
+path = Path(sys.argv[1])
 try:
-    payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+    payload = json.loads(path.read_text(encoding="utf-8"))
 except (OSError, json.JSONDecodeError):
-    raise SystemExit(0)
+    raise SystemExit(1)
 
-raise SystemExit(0 if payload.get("start_at_login", True) is not False else 1)
+if not isinstance(payload, dict) or "start_at_login" not in payload:
+    raise SystemExit(1)
+
+payload.pop("start_at_login", None)
+temporary = path.with_suffix(path.suffix + ".tmp")
+temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+os.chmod(temporary, 0o600)
+temporary.replace(path)
 PY_CONFIG
+    then
+        log_info "Migrating legacy dashboard-service startup preference..."
+        export XDG_RUNTIME_DIR="/run/user/$USER_ID"
+        sudo -u "$REAL_USER" env HOME="$REAL_HOME" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user disable open-mmi-dashboard.service >/dev/null 2>&1 || true
+    fi
 }
 
-configure_dashboard_autostart() {
+configure_install_service_defaults() {
     export XDG_RUNTIME_DIR="/run/user/$USER_ID"
     sudo -u "$REAL_USER" env HOME="$REAL_HOME" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user enable canbusd.service
+    sudo -u "$REAL_USER" env HOME="$REAL_HOME" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user disable open-mmi-dashboard.service >/dev/null 2>&1 || true
+    migrate_legacy_dashboard_startup
+}
 
-    if dashboard_start_at_login; then
-        sudo -u "$REAL_USER" env HOME="$REAL_HOME" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user enable open-mmi-dashboard.service
-    else
-        sudo -u "$REAL_USER" env HOME="$REAL_HOME" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user disable open-mmi-dashboard.service
+configure_update_service_defaults() {
+    export XDG_RUNTIME_DIR="/run/user/$USER_ID"
+    sudo -u "$REAL_USER" env HOME="$REAL_HOME" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user enable canbusd.service
+    migrate_legacy_dashboard_startup
+}
+
+remove_login_autostart() {
+    if [ -f "$LOGIN_AUTOSTART_ENTRY" ] && grep -Fqx "Exec=/usr/local/bin/open-mmi-launcher" "$LOGIN_AUTOSTART_ENTRY"; then
+        rm -f "$LOGIN_AUTOSTART_ENTRY"
     fi
 }
 
@@ -485,7 +508,7 @@ cmd_install() {
     chown -R "$REAL_USER:$REAL_USER" "$REAL_HOME/.config/systemd/user"
 
     sudo -u "$REAL_USER" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user daemon-reload
-    configure_dashboard_autostart
+    configure_install_service_defaults
     # Apply default profile-driven CAN provisioning.
     # This creates user config if missing, writes the daemon runtime drop-in,
     # and generates udev rules from the selected vehicle profile metadata.
@@ -621,7 +644,7 @@ cmd_update() {
     export XDG_RUNTIME_DIR="/run/user/$USER_ID"
 
     sudo -u "$REAL_USER" env HOME="$REAL_HOME" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user daemon-reload
-    configure_dashboard_autostart
+    configure_update_service_defaults
 
     # Version write (needs sudo because /opt is root-owned)
     sudo bash -c "echo '$new_version' > '$VERSION_FILE'"
@@ -683,6 +706,7 @@ cmd_uninstall() {
         systemctl --user daemon-reload
 
     remove_desktop_entry
+    remove_login_autostart
     remove_command_links
     
     # Remove application directory

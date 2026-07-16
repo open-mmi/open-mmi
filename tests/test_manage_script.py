@@ -108,7 +108,7 @@ sudo() {{ printf '%s\\0' "$@"; }}
             "systemctl --user enable canbusd.service",
             self.text,
         )
-        self.assertIn(
+        self.assertNotIn(
             "systemctl --user enable open-mmi-dashboard.service",
             self.text,
         )
@@ -117,10 +117,13 @@ sudo() {{ printf '%s\\0' "$@"; }}
             self.text,
         )
 
-    def test_dashboard_autostart_reads_launcher_preference(self) -> None:
-        self.assertIn("dashboard_start_at_login()", self.text)
-        self.assertIn('payload.get("start_at_login", True) is not False', self.text)
-        self.assertGreaterEqual(self.text.count("configure_dashboard_autostart"), 3)
+    def test_dashboard_service_is_not_the_user_facing_autostart_setting(self) -> None:
+        self.assertIn("configure_install_service_defaults()", self.text)
+        self.assertIn("configure_update_service_defaults()", self.text)
+        self.assertIn("migrate_legacy_dashboard_startup()", self.text)
+        self.assertIn('payload.pop("start_at_login", None)', self.text)
+        self.assertIn("remove_login_autostart", self.text)
+        self.assertNotIn("configure_dashboard_autostart", self.text)
 
     def test_desktop_entry_is_managed_by_install_update_and_uninstall(self) -> None:
         install_start = self.text.index("cmd_install() {")

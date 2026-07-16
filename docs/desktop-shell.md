@@ -9,10 +9,9 @@ open-mmi-launcher
 open-mmi-launcher web
 open-mmi-launcher tui
 open-mmi-launcher --choose --remember
-open-mmi-launcher --enable-startup
-open-mmi-launcher --disable-startup
+open-mmi-launcher --enable-autostart
+open-mmi-launcher --disable-autostart
 open-mmi-launcher --status
-open-mmi-launcher --stop
 open-mmi-config launcher status
 open-mmi-config jellyfin status
 ```
@@ -48,14 +47,13 @@ Example:
   "browser_mode": "kiosk",
   "browser_command": "auto",
   "startup_timeout_seconds": 12,
-  "health_poll_interval_seconds": 0.25,
-  "start_at_login": true
+  "health_poll_interval_seconds": 0.25
 }
 ```
 
 `browser_command` may also be a command string or an argument array. The placeholders `{url}`, `{profile_dir}`, and `{window_class}` are replaced without invoking a shell.
 
-`--enable-startup` and `--disable-startup` update `start_at_login` and the enabled state of `open-mmi-dashboard.service`. Install and update operations preserve that preference. The CAN daemon remains enabled independently.
+`--enable-autostart` and `--disable-autostart` create or remove the graphical-session entry at `~/.config/autostart/open-mmi.desktop`. At login it runs the remembered interface through `/usr/local/bin/open-mmi-launcher`; the launcher starts the dashboard service on demand and waits for health before opening the browser. The older `--enable-startup` and `--disable-startup` spellings remain compatibility aliases for application autostart, not service enablement.
 
 
 ## Dashboard and CLI settings
@@ -63,9 +61,8 @@ Example:
 The installed dashboard exposes the same launcher configuration under **Settings → System**:
 
 - choose the default Web or TUI interface;
-- enable or disable dashboard startup at login;
-- inspect dashboard service and health state;
-- restart the dashboard through a fixed, allowlisted service action.
+- open Open MMI automatically after graphical login;
+- inspect dashboard health state.
 
 Equivalent CLI commands are:
 
@@ -73,14 +70,17 @@ Equivalent CLI commands are:
 open-mmi-config launcher status
 open-mmi-config launcher default web
 open-mmi-config launcher default tui
-open-mmi-config launcher startup enable
-open-mmi-config launcher startup disable
+open-mmi-config launcher autostart enable
+open-mmi-config launcher autostart disable
+open-mmi-config dashboard status
+open-mmi-config dashboard start
+open-mmi-config dashboard stop
 open-mmi-config dashboard restart
+open-mmi-config dashboard enable
+open-mmi-config dashboard disable
 ```
 
-Both interfaces update `~/.config/open-mmi/launcher.json` and the actual
-`open-mmi-dashboard.service` enablement state. The configuration API is accepted
-only from a loopback, same-origin browser request.
+The default-interface choice is stored in `~/.config/open-mmi/launcher.json`; application autostart is represented by `~/.config/autostart/open-mmi.desktop`. Dashboard service enablement is intentionally CLI-only. The configuration API is accepted only from a loopback, same-origin browser request.
 
 ## Jellyfin configuration
 
@@ -139,11 +139,19 @@ The full desktop-entry and icon lifecycle is covered in CI without requiring a g
 
 ## Dashboard service
 
+The dashboard service is an advanced implementation control and is not exposed as a normal web preference. Fresh installs leave it disabled at login; the launcher starts it whenever the dashboard is opened. Use the CLI when a permanently running local API is required:
+
 ```bash
-systemctl --user status open-mmi-dashboard.service
-systemctl --user restart open-mmi-dashboard.service
+open-mmi-config dashboard status
+open-mmi-config dashboard start
+open-mmi-config dashboard stop
+open-mmi-config dashboard restart
+open-mmi-config dashboard enable
+open-mmi-config dashboard disable
 journalctl --user -u open-mmi-dashboard.service
 ```
+
+Upgrades remove the legacy `start_at_login` launcher key and disable the dashboard service once. They do not silently turn that old service preference into a visible browser autostart.
 
 The launcher checks the configured URL's `/api/health` endpoint. If the endpoint is unavailable, it starts the service, or restarts it when systemd reports that the service is already active. Browser launch happens only after a bounded health check succeeds.
 
@@ -188,7 +196,7 @@ Normal browser profiles and unrelated browser sessions are not reused, stopped, 
 
 A custom browser wrapper is supported, but the wrapper should `exec` the browser directly and retain the dashboard URL in its command line. The strongest lost-state recovery applies to the built-in Chromium/Chrome and Firefox integrations because they use a dedicated profile marker.
 
-`open-mmi-launcher --stop` continues to stop the dashboard service only. It does not kill browser processes.
+`open-mmi-launcher --stop` remains as a compatibility command for stopping the dashboard service; normal service management is documented through `open-mmi-config dashboard`. It does not kill browser processes.
 
 ## Shared dashboard clock
 
@@ -210,15 +218,15 @@ The clock updates at the next minute boundary rather than polling every second. 
 
 ## Status output
 
-`open-mmi-launcher --status` reports configured and actual startup state, dashboard service health, and the recorded browser instance, including whether its PID still matches the owned profile and URL.
+`open-mmi-launcher --status` reports application autostart, dashboard service state and health, and the recorded browser instance, including whether its PID still matches the owned profile and URL.
 
 ## Tests and CI
 
 Launcher behaviour is covered by `tests/test_launcher.py`, including:
 
 - graphical and terminal interface selection;
-- persisted default UI and startup preferences;
-- service enable/disable commands;
+- persisted default UI and graphical autostart preferences;
+- advanced dashboard service controls;
 - first launch and state recording;
 - repeated-click reuse;
 - best-effort focusing without a shell;

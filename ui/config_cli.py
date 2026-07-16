@@ -59,13 +59,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Configure Open MMI")
     groups = parser.add_subparsers(dest="group", required=True)
 
-    launcher_parser = groups.add_parser("launcher", help="configure launcher and startup")
+    launcher_parser = groups.add_parser("launcher", help="configure launcher and graphical autostart")
     launcher_commands = launcher_parser.add_subparsers(dest="command", required=True)
     launcher_commands.add_parser("status")
     default = launcher_commands.add_parser("default")
     default.add_argument("ui", choices=("web", "tui"))
-    startup = launcher_commands.add_parser("startup")
-    startup.add_argument("state", choices=("enable", "disable"))
+    autostart = launcher_commands.add_parser("autostart", aliases=("startup",))
+    autostart.add_argument("state", choices=("enable", "disable"))
 
     jellyfin_parser = groups.add_parser("jellyfin", help="configure Jellyfin")
     jellyfin_commands = jellyfin_parser.add_subparsers(dest="command", required=True)
@@ -77,7 +77,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     dashboard_parser = groups.add_parser("dashboard", help="manage dashboard service")
     dashboard_commands = dashboard_parser.add_subparsers(dest="command", required=True)
-    dashboard_commands.add_parser("restart")
+    for action in ("status", "start", "stop", "restart", "enable", "disable"):
+        dashboard_commands.add_parser(action)
     return parser
 
 
@@ -93,14 +94,30 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 _print({"ok": True, "default_ui": args.ui, "config_path": str(path)})
             else:
                 enabled = args.state == "enable"
-                launcher.configure_start_at_login(enabled)
-                launcher.save_start_at_login(enabled, path)
-                _print({"ok": True, "start_at_login": enabled, "config_path": str(path)})
+                launcher.configure_open_at_login(enabled)
+                _print({
+                    "ok": True,
+                    "open_at_login": launcher.open_at_login_enabled(),
+                    "autostart_path": str(launcher.default_autostart_path()),
+                })
             return 0
 
         if args.group == "dashboard":
-            restart_dashboard()
-            _print({"ok": True, "service": "open-mmi-dashboard.service"})
+            if args.command == "status":
+                path = launcher.default_config_path()
+                status = launcher.status_payload(launcher.load_config(path), path)
+                _print({
+                    "service": status["service"],
+                    "service_active": status["service_active"],
+                    "service_enabled": status["service_enabled"],
+                    "dashboard_reachable": status["dashboard_reachable"],
+                })
+            elif args.command == "restart":
+                restart_dashboard()
+                _print({"ok": True, "service": "open-mmi-dashboard.service", "action": "restart"})
+            else:
+                launcher.configure_dashboard_service(args.command)
+                _print({"ok": True, "service": "open-mmi-dashboard.service", "action": args.command})
             return 0
 
         if args.command == "status":

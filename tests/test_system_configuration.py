@@ -100,11 +100,20 @@ class SystemConfigurationTests(unittest.TestCase):
 
     def test_launcher_update_uses_shared_launcher_configuration(self):
         with patch.object(system_settings.launcher, "save_preferences") as save, patch.object(
-            system_settings.launcher, "configure_start_at_login"
+            system_settings.launcher, "configure_open_at_login"
         ) as configure, patch.object(system_settings, "_launcher_status", return_value={"default_ui": "tui"}):
-            result = system_settings._update_launcher({"default_ui": "tui", "start_at_login": False})
+            result = system_settings._update_launcher({"default_ui": "tui", "open_at_login": True})
+        configure.assert_called_once_with(True)
+        save.assert_called_once_with({"default_ui": "tui"})
+        self.assertTrue(result["ok"])
+
+    def test_launcher_autostart_only_update_does_not_require_json_preferences(self):
+        with patch.object(system_settings.launcher, "save_preferences") as save, patch.object(
+            system_settings.launcher, "configure_open_at_login"
+        ) as configure, patch.object(system_settings, "_launcher_status", return_value={"open_at_login": False}):
+            result = system_settings._update_launcher({"open_at_login": False})
         configure.assert_called_once_with(False)
-        save.assert_called_once_with({"default_ui": "tui", "start_at_login": False})
+        save.assert_not_called()
         self.assertTrue(result["ok"])
 
     def test_cli_setup_writes_credentials_without_printing_secrets(self):
@@ -130,18 +139,25 @@ class SystemConfigurationTests(unittest.TestCase):
         self.assertIn('"configured": true', rendered.lower())
         self.assertNotIn("never-print-this", rendered)
 
-    def test_cli_launcher_startup_uses_shared_launcher_helpers(self):
+    def test_cli_launcher_autostart_uses_shared_launcher_helpers(self):
         output = io.StringIO()
-        with patch.object(config_cli.launcher, "configure_start_at_login") as configure, patch.object(
-            config_cli.launcher, "save_start_at_login"
-        ) as save, patch.object(
-            config_cli.launcher, "default_config_path", return_value=Path("/tmp/launcher.json")
+        with patch.object(config_cli.launcher, "configure_open_at_login") as configure, patch.object(
+            config_cli.launcher, "open_at_login_enabled", return_value=False
+        ), patch.object(
+            config_cli.launcher, "default_autostart_path", return_value=Path("/tmp/open-mmi.desktop")
         ), contextlib.redirect_stdout(output):
-            result = config_cli.main(["launcher", "startup", "disable"])
+            result = config_cli.main(["launcher", "autostart", "disable"])
         self.assertEqual(result, 0)
         configure.assert_called_once_with(False)
-        save.assert_called_once_with(False, Path("/tmp/launcher.json"))
-        self.assertIn('"start_at_login": false', output.getvalue().lower())
+        self.assertIn('"open_at_login": false', output.getvalue().lower())
+
+    def test_cli_dashboard_enable_remains_advanced_service_control(self):
+        output = io.StringIO()
+        with patch.object(config_cli.launcher, "configure_dashboard_service") as configure, contextlib.redirect_stdout(output):
+            result = config_cli.main(["dashboard", "enable"])
+        self.assertEqual(result, 0)
+        configure.assert_called_once_with("enable")
+        self.assertIn('"action": "enable"', output.getvalue().lower())
 
 
 if __name__ == "__main__":
