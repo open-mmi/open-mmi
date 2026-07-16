@@ -469,3 +469,96 @@ for (const viewport of [
     await expectNoRuntimeFailures(failures);
   });
 }
+test("Bluetooth button follows a synthetic remote pause promptly", async ({ page }) => {
+  const failures = captureRuntimeFailures(page);
+
+  const initialSettings = {
+    mediaActiveSource: "bluetooth",
+    mediaDefaultSource: "bluetooth",
+    mediaSources: {
+      jellyfin: true,
+      radio: true,
+      usb: true,
+      bluetooth: true,
+    },
+  };
+
+  await loadDashboard(page, {
+    storage: {
+      [SETTINGS_KEY]: JSON.stringify(initialSettings),
+    },
+  });
+
+  await page.evaluate(() => {
+    window.__syntheticBluetoothPlaybackStatus = "playing";
+
+    const originalFetch = window.fetch;
+
+    window.fetch = async (input, init = {}) => {
+      const url = String(input instanceof Request ? input.url : input);
+
+      if (url.includes("/api/bluetooth/status")) {
+        return new Response(
+          JSON.stringify({
+            configured: true,
+            available: true,
+            status: "ready",
+            state_label: "connected",
+            subtitle: "Synthetic Bluetooth player",
+            playback_status: window.__syntheticBluetoothPlaybackStatus,
+            player_id: "synthetic-player",
+            device_name: "Synthetic phone",
+            player_name: "Synthetic Bluetooth",
+            position_seconds: 20,
+            duration_seconds: 180,
+            controls: {
+              play_pause: true,
+              previous: true,
+              next: true,
+              stop: true,
+            },
+            track: {
+              id: "synthetic-track",
+              title: "Synthetic track",
+              artist: "Open MMI",
+            },
+          }),
+          {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json",
+            },
+          },
+        );
+      }
+
+      return originalFetch(input, init);
+    };
+  });
+
+  await openMedia(page);
+
+  await page.evaluate(() => window.openMmiBluetoothMedia.refresh());
+
+  const playButton = page.locator("#ommiMediaPlay");
+
+  await expect(playButton).toHaveAttribute(
+    "aria-label",
+    /pause bluetooth playback/i,
+    { timeout: 2500 },
+  );
+
+  await page.evaluate(() => {
+    window.__syntheticBluetoothPlaybackStatus = "paused";
+  });
+
+  await page.evaluate(() => window.openMmiBluetoothMedia.refresh());
+
+  await expect(playButton).toHaveAttribute(
+    "aria-label",
+    /play bluetooth media/i,
+    { timeout: 2500 },
+  );
+
+  await expectNoRuntimeFailures(failures);
+});
