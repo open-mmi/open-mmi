@@ -17,6 +17,7 @@ class LauncherConfigTests(unittest.TestCase):
             config = launcher.load_config(Path(directory) / "missing.json")
         self.assertEqual(config["default_ui"], "web")
         self.assertEqual(config["web_url"], "http://127.0.0.1:8765")
+        self.assertTrue(config["start_at_login"])
 
     def test_user_config_merges_over_defaults(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -40,6 +41,21 @@ class LauncherConfigTests(unittest.TestCase):
             launcher.save_default_ui("tui", path)
             payload = json.loads(path.read_text(encoding="utf-8"))
         self.assertEqual(payload, {"browser_mode": "window", "default_ui": "tui"})
+
+    def test_save_start_at_login_preserves_other_settings(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "launcher.json"
+            path.write_text(json.dumps({"browser_mode": "window"}), encoding="utf-8")
+            launcher.save_start_at_login(False, path)
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual(payload, {"browser_mode": "window", "start_at_login": False})
+
+    def test_start_at_login_must_be_boolean(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "launcher.json"
+            path.write_text(json.dumps({"start_at_login": "yes"}), encoding="utf-8")
+            with self.assertRaises(launcher.LauncherError):
+                launcher.load_config(path)
 
 
 class LauncherServiceTests(unittest.TestCase):
@@ -363,6 +379,91 @@ class BrowserInstanceTests(unittest.TestCase):
             commands,
             [(["/usr/bin/wmctrl", "-x", "-a", launcher.BROWSER_WINDOW_CLASS], True)],
         )
+
+
+class LauncherChooserTests(unittest.TestCase):
+    @staticmethod
+    def result(returncode: int = 0, stdout: str = "", stderr: str = "") -> SimpleNamespace:
+        return SimpleNamespace(returncode=returncode, stdout=stdout, stderr=stderr)
+
+    @patch.dict("os.environ", {"DISPLAY": ":0"}, clear=True)
+    @patch("ui.launcher.shutil.which")
+    def test_graphical_chooser_uses_zenity(self, which) -> None:
+        which.side_effect = lambda name: "/usr/bin/zenity" if name == "zenity" else None
+        commands = []
+
+        def runner(args, *, capture_output=False):
+            commands.append((list(args), capture_output))
+            return self.result(stdout="Terminal UI\n")
+
+        self.assertEqual(launcher.choose_ui(runner), "tui")
+        self.assertEqual(commands[0][0][0], "/usr/bin/zenity")
+        self.assertIn("--radiolist", commands[0][0])
+        self.assertTrue(commands[0][1])
+
+    @patch.dict("os.environ", {"WAYLAND_DISPLAY": "wayland-0"}, clear=True)
+    @patch("ui.launcher.shutil.which", return_value="/usr/bin/zenity")
+    def test_graphical_chooser_reports_cancellation(self, _which) -> None:
+        with self.assertRaisesRegex(launcher.LauncherError, "cancelled"):
+            launcher.choose_ui(
+                lambda _args, *, capture_output=False: self.result(returncode=1)
+            )
+
+    @patch.dict("os.environ", {}, clear=True)
+    @patch("ui.launcher.sys.stdin.isatty", return_value=True)
+    @patch("ui.launcher.sys.stdout.isatty", return_value=True)
+    @patch("builtins.input", return_value="1")
+    def test_terminal_chooser_remains_available(
+        self,
+        _input,
+        _stdout_tty,
+        _stdin_tty,
+    ) -> None:
+        self.assertEqual(launcher.choose_ui(), "web")
+
+
+class LauncherStartupPreferenceTests(unittest.TestCase):
+    @staticmethod
+    def result(returncode: int = 0, stdout: str = "", stderr: str = "") -> SimpleNamespace:
+        return SimpleNamespace(returncode=returncode, stdout=stdout, stderr=stderr)
+
+    def test_configure_start_at_login_enables_service(self) -> None:
+        commands = []
+
+        def runner(args, *, capture_output=False):
+            commands.append((list(args), capture_output))
+            return self.result()
+
+        launcher.configure_start_at_login(True, runner)
+        self.assertEqual(
+            commands,
+            [(["systemctl", "--user", "enable", launcher.SERVICE_NAME], True)],
+        )
+
+    def test_configure_start_at_login_disables_service(self) -> None:
+        commands = []
+
+        def runner(args, *, capture_output=False):
+            commands.append((list(args), capture_output))
+            return self.result()
+
+        launcher.configure_start_at_login(False, runner)
+        self.assertEqual(
+            commands,
+            [(["systemctl", "--user", "disable", launcher.SERVICE_NAME], True)],
+        )
+
+    def test_status_reports_configured_and_actual_startup_state(self) -> None:
+        config = dict(launcher.DEFAULT_CONFIG)
+        with patch("ui.launcher.service_is_active", return_value=True), patch(
+            "ui.launcher.service_is_enabled", return_value=False
+        ), patch("ui.launcher.check_health", return_value=True), patch(
+            "ui.launcher.browser_status", return_value={"running": False}
+        ):
+            payload = launcher.status_payload(config, Path("/tmp/launcher.json"))
+
+        self.assertTrue(payload["start_at_login"])
+        self.assertFalse(payload["service_enabled"])
 
 
 if __name__ == "__main__":

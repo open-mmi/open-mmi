@@ -27,8 +27,10 @@ USER_CONFIG_DIR="$REAL_HOME/.config/open-mmi"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DESKTOP_ENTRY_SOURCE="$REPO_ROOT/packaging/linux-desktop/open-mmi-status.desktop"
+DESKTOP_ICON_SOURCE="$REPO_ROOT/packaging/linux-desktop/icons"
 APPLICATIONS_DIR="$REAL_HOME/.local/share/applications"
 APPLICATION_ENTRY="$APPLICATIONS_DIR/open-mmi.desktop"
+ICON_THEME_DIR="$REAL_HOME/.local/share/icons"
 DESKTOP_ENTRY_NAME="Open MMI.desktop"
 
 # =============================================================================
@@ -162,6 +164,44 @@ get_desktop_dir() {
     printf '%s\n' "$desktop_dir"
 }
 
+refresh_desktop_caches() {
+    if command -v update-desktop-database > /dev/null 2>&1; then
+        sudo -u "$REAL_USER" env HOME="$REAL_HOME" update-desktop-database "$APPLICATIONS_DIR" > /dev/null 2>&1 || true
+    fi
+
+    if command -v gtk-update-icon-cache > /dev/null 2>&1 && [ -d "$ICON_THEME_DIR/hicolor" ]; then
+        sudo -u "$REAL_USER" env HOME="$REAL_HOME" gtk-update-icon-cache -f -t "$ICON_THEME_DIR/hicolor" > /dev/null 2>&1 || true
+    fi
+}
+
+install_desktop_icons() {
+    if [ ! -d "$DESKTOP_ICON_SOURCE" ]; then
+        log_error "Desktop icon source not found: $DESKTOP_ICON_SOURCE"
+        return 1
+    fi
+
+    while IFS= read -r -d '' source_icon; do
+        local relative_path target_icon target_dir
+        relative_path="${source_icon#"$DESKTOP_ICON_SOURCE"/}"
+        target_icon="$ICON_THEME_DIR/$relative_path"
+        target_dir=$(dirname "$target_icon")
+        install -d -m 0755 -o "$REAL_USER" -g "$REAL_USER" "$target_dir"
+        install -m 0644 -o "$REAL_USER" -g "$REAL_USER" "$source_icon" "$target_icon"
+    done < <(find "$DESKTOP_ICON_SOURCE" -type f -print0)
+}
+
+remove_desktop_icons() {
+    if [ ! -d "$DESKTOP_ICON_SOURCE" ]; then
+        return 0
+    fi
+
+    while IFS= read -r -d '' source_icon; do
+        local relative_path
+        relative_path="${source_icon#"$DESKTOP_ICON_SOURCE"/}"
+        rm -f "$ICON_THEME_DIR/$relative_path"
+    done < <(find "$DESKTOP_ICON_SOURCE" -type f -print0)
+}
+
 install_desktop_entry() {
     local desktop_dir
     desktop_dir=$(get_desktop_dir)
@@ -171,7 +211,8 @@ install_desktop_entry() {
         return 1
     fi
 
-    log_info "Installing desktop launcher..."
+    log_info "Installing desktop launcher and icons..."
+    install_desktop_icons
     install -d -m 0755 -o "$REAL_USER" -g "$REAL_USER" "$APPLICATIONS_DIR" "$desktop_dir"
     install -m 0644 -o "$REAL_USER" -g "$REAL_USER" "$DESKTOP_ENTRY_SOURCE" "$APPLICATION_ENTRY"
     install -m 0755 -o "$REAL_USER" -g "$REAL_USER" "$DESKTOP_ENTRY_SOURCE" "$desktop_dir/$DESKTOP_ENTRY_NAME"
@@ -180,20 +221,48 @@ install_desktop_entry() {
         sudo -u "$REAL_USER" env HOME="$REAL_HOME" gio set "$desktop_dir/$DESKTOP_ENTRY_NAME" metadata::trusted true > /dev/null 2>&1 || true
     fi
 
-    if command -v update-desktop-database > /dev/null 2>&1; then
-        sudo -u "$REAL_USER" env HOME="$REAL_HOME" update-desktop-database "$APPLICATIONS_DIR" > /dev/null 2>&1 || true
-    fi
+    refresh_desktop_caches
 }
 
 remove_desktop_entry() {
     local desktop_dir
     desktop_dir=$(get_desktop_dir)
 
-    log_info "Removing desktop launcher..."
+    log_info "Removing desktop launcher and icons..."
     rm -f "$APPLICATION_ENTRY" "$desktop_dir/$DESKTOP_ENTRY_NAME"
+    remove_desktop_icons
+    refresh_desktop_caches
+}
 
-    if command -v update-desktop-database > /dev/null 2>&1; then
-        sudo -u "$REAL_USER" env HOME="$REAL_HOME" update-desktop-database "$APPLICATIONS_DIR" > /dev/null 2>&1 || true
+dashboard_start_at_login() {
+    local config_file="$USER_CONFIG_DIR/launcher.json"
+
+    if [ ! -f "$config_file" ]; then
+        return 0
+    fi
+
+    python3 - "$config_file" <<'PY_CONFIG'
+import json
+import sys
+from pathlib import Path
+
+try:
+    payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+except (OSError, json.JSONDecodeError):
+    raise SystemExit(0)
+
+raise SystemExit(0 if payload.get("start_at_login", True) is not False else 1)
+PY_CONFIG
+}
+
+configure_dashboard_autostart() {
+    export XDG_RUNTIME_DIR="/run/user/$USER_ID"
+    sudo -u "$REAL_USER" env HOME="$REAL_HOME" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user enable canbusd.service
+
+    if dashboard_start_at_login; then
+        sudo -u "$REAL_USER" env HOME="$REAL_HOME" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user enable open-mmi-dashboard.service
+    else
+        sudo -u "$REAL_USER" env HOME="$REAL_HOME" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user disable open-mmi-dashboard.service
     fi
 }
 
@@ -273,7 +342,8 @@ cmd_install() {
         python3-venv \
         can-utils \
         udev \
-        dbus-x11; then
+        dbus-x11 \
+        zenity; then
         log_error "Failed to install system dependencies"
         return 1
     fi
@@ -315,6 +385,7 @@ cmd_install() {
     fi
 
     cp -r "$REPO_ROOT/scripts" "$INSTALL_DIR/"
+    cp -r "$REPO_ROOT/packaging" "$INSTALL_DIR/"
     cp "$REPO_ROOT/pyproject.toml" "$INSTALL_DIR/"
     
     # Store version
@@ -332,8 +403,7 @@ cmd_install() {
     chown -R "$REAL_USER:$REAL_USER" "$REAL_HOME/.config/systemd/user"
 
     sudo -u "$REAL_USER" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user daemon-reload
-    sudo -u "$REAL_USER" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
-        systemctl --user enable canbusd.service open-mmi-dashboard.service
+    configure_dashboard_autostart
     # Apply default profile-driven CAN provisioning.
     # This creates user config if missing, writes the daemon runtime drop-in,
     # and generates udev rules from the selected vehicle profile metadata.
@@ -436,7 +506,7 @@ cmd_update() {
     # =========================================================
     log_info "Deploying to system..."
 
-    sudo rm -rf         "$INSTALL_DIR/canbusd"         "$INSTALL_DIR/vehicles"         "$INSTALL_DIR/bindings"         "$INSTALL_DIR/actions"         "$INSTALL_DIR/ui"         "$INSTALL_DIR/scripts"
+    sudo rm -rf         "$INSTALL_DIR/canbusd"         "$INSTALL_DIR/vehicles"         "$INSTALL_DIR/bindings"         "$INSTALL_DIR/actions"         "$INSTALL_DIR/ui"         "$INSTALL_DIR/scripts"         "$INSTALL_DIR/packaging"
 
     sudo cp -r "$REPO_ROOT/canbusd" "$INSTALL_DIR/"
     sudo cp -r "$REPO_ROOT/vehicles" "$INSTALL_DIR/"
@@ -448,6 +518,7 @@ cmd_update() {
     fi
 
     sudo cp -r "$REPO_ROOT/scripts" "$INSTALL_DIR/"
+    sudo cp -r "$REPO_ROOT/packaging" "$INSTALL_DIR/"
     sudo cp "$REPO_ROOT/pyproject.toml" "$INSTALL_DIR/"
 
     local user_systemd_dir="$REAL_HOME/.config/systemd/user"
@@ -459,7 +530,7 @@ cmd_update() {
     export XDG_RUNTIME_DIR="/run/user/$USER_ID"
 
     sudo -u "$REAL_USER" env HOME="$REAL_HOME" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user daemon-reload
-    sudo -u "$REAL_USER" env HOME="$REAL_HOME" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user enable canbusd.service open-mmi-dashboard.service
+    configure_dashboard_autostart
 
     # Version write (needs sudo because /opt is root-owned)
     sudo bash -c "echo '$new_version' > '$VERSION_FILE'"

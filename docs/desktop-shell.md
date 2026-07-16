@@ -9,9 +9,13 @@ open-mmi-launcher
 open-mmi-launcher web
 open-mmi-launcher tui
 open-mmi-launcher --choose --remember
+open-mmi-launcher --enable-startup
+open-mmi-launcher --disable-startup
 open-mmi-launcher --status
 open-mmi-launcher --stop
 ```
+
+`--choose` opens a Zenity or Yad selector when a graphical session is available. It falls back to the terminal chooser when run interactively without a graphical chooser. `--remember` persists the selected default interface.
 
 The default configuration path is:
 
@@ -28,11 +32,14 @@ Example:
   "browser_mode": "kiosk",
   "browser_command": "auto",
   "startup_timeout_seconds": 12,
-  "health_poll_interval_seconds": 0.25
+  "health_poll_interval_seconds": 0.25,
+  "start_at_login": true
 }
 ```
 
 `browser_command` may also be a command string or an argument array. The placeholders `{url}`, `{profile_dir}`, and `{window_class}` are replaced without invoking a shell.
+
+`--enable-startup` and `--disable-startup` update `start_at_login` and the enabled state of `open-mmi-dashboard.service`. Install and update operations preserve that preference. The CAN daemon remains enabled independently.
 
 ## Desktop launcher installation
 
@@ -43,7 +50,21 @@ Example:
 $(xdg-user-dir DESKTOP)/Open MMI.desktop
 ```
 
-The application-menu entry is installed read-only, while the desktop shortcut is executable and marked trusted with `gio` when available. `uninstall` removes both copies. This lifecycle is covered in CI without requiring a graphical desktop session.
+They also install the existing repository icon theme beneath:
+
+```text
+~/.local/share/icons/hicolor/
+```
+
+The application-menu entry is installed read-only, while the desktop shortcut is executable and marked trusted with `gio` when available. Icon and desktop caches are refreshed when the relevant desktop utilities are available. `uninstall` removes both desktop entries and only the Open MMI icon files installed from the repository.
+
+The desktop entry launches the remembered default interface. Its desktop actions provide explicit shortcuts for:
+
+- choosing and remembering an interface;
+- selecting the web dashboard;
+- selecting the terminal UI.
+
+The full desktop-entry and icon lifecycle is covered in CI without requiring a graphical desktop session.
 
 ## Dashboard service
 
@@ -100,12 +121,15 @@ A custom browser wrapper is supported, but the wrapper should `exec` the browser
 
 ## Status output
 
-`open-mmi-launcher --status` reports dashboard service health and the recorded browser instance, including whether its PID still matches the owned profile and URL.
+`open-mmi-launcher --status` reports configured and actual startup state, dashboard service health, and the recorded browser instance, including whether its PID still matches the owned profile and URL.
 
 ## Tests and CI
 
 Launcher behaviour is covered by `tests/test_launcher.py`, including:
 
+- graphical and terminal interface selection;
+- persisted default UI and startup preferences;
+- service enable/disable commands;
 - first launch and state recording;
 - repeated-click reuse;
 - best-effort focusing without a shell;
@@ -115,4 +139,4 @@ Launcher behaviour is covered by `tests/test_launcher.py`, including:
 - isolation from unrelated browser processes;
 - managed Chromium and Firefox command construction.
 
-The repository's GitHub Actions Python matrix runs these tests through the existing `unittest discover` step. No desktop session or real browser is required in CI because process, browser, and focus boundaries are injected in the unit tests.
+Desktop integration tests install and remove the real repository desktop entry and icon tree inside temporary directories. The repository's GitHub Actions Python matrix runs all of these tests through the existing `unittest discover` step. No desktop session or real browser is required in CI because process, chooser, browser, and filesystem boundaries are injected in the tests.

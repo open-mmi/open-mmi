@@ -9,3 +9,16 @@ Icon=open-mmi
 Terminal=false
 Categories=System;Utility;
 StartupNotify=true
+Actions=Choose;Web;TUI;
+
+[Desktop Action Choose]
+Name=Choose Open MMI Interface
+Exec=/opt/open-mmi/venv/bin/python -m ui.launcher --choose --remember
+
+[Desktop Action Web]
+Name=Use Web Dashboard
+Exec=/opt/open-mmi/venv/bin/python -m ui.launcher web --remember
+
+[Desktop Action TUI]
+Name=Use Terminal UI
+Exec=/opt/open-mmi/venv/bin/python -m ui.launcher tui --remember

@@ -35,6 +35,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "browser_command": "auto",
     "startup_timeout_seconds": 12.0,
     "health_poll_interval_seconds": 0.25,
+    "start_at_login": True,
 }
 BROWSER_CANDIDATES = (
     "chromium",
@@ -50,6 +51,7 @@ TERMINAL_CANDIDATES = (
     "xfce4-terminal",
     "xterm",
 )
+GRAPHICAL_CHOOSER_CANDIDATES = ("zenity", "yad")
 
 
 class LauncherError(RuntimeError):
@@ -97,6 +99,9 @@ def _validate_config(config: MutableMapping[str, Any]) -> None:
             raise LauncherError(f"{key} must be greater than zero")
         config[key] = value
 
+    if not isinstance(config["start_at_login"], bool):
+        raise LauncherError("start_at_login must be true or false")
+
     command = config["browser_command"]
     if not isinstance(command, (str, list, tuple)):
         raise LauncherError("browser_command must be 'auto', a command string, or an argument list")
@@ -131,8 +136,11 @@ def load_config(path: Optional[Path] = None) -> dict[str, Any]:
     return config
 
 
-def save_default_ui(ui_name: str, path: Optional[Path] = None) -> None:
-    """Persist only the selected default while preserving existing settings."""
+def save_preferences(
+    updates: Mapping[str, Any],
+    path: Optional[Path] = None,
+) -> None:
+    """Persist selected launcher preferences without discarding other settings."""
 
     target = path or default_config_path()
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -146,14 +154,32 @@ def save_default_ui(ui_name: str, path: Optional[Path] = None) -> None:
     except (OSError, json.JSONDecodeError) as exc:
         raise LauncherError(f"cannot update launcher configuration {target}: {exc}") from exc
 
-    current["default_ui"] = ui_name
+    current.update(updates)
     merged = dict(DEFAULT_CONFIG)
     merged.update(current)
     _validate_config(merged)
 
     temporary = target.with_suffix(target.suffix + ".tmp")
-    temporary.write_text(json.dumps(current, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    temporary.replace(target)
+    try:
+        temporary.write_text(
+            json.dumps(current, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        temporary.replace(target)
+    except OSError as exc:
+        try:
+            temporary.unlink()
+        except OSError:
+            pass
+        raise LauncherError(f"cannot update launcher configuration {target}: {exc}") from exc
+
+
+def save_default_ui(ui_name: str, path: Optional[Path] = None) -> None:
+    save_preferences({"default_ui": ui_name}, path)
+
+
+def save_start_at_login(enabled: bool, path: Optional[Path] = None) -> None:
+    save_preferences({"start_at_login": enabled}, path)
 
 
 def health_url(web_url: str) -> str:
@@ -192,6 +218,30 @@ def service_is_active(
         capture_output=True,
     )
     return result.returncode == 0
+
+
+def service_is_enabled(
+    command_runner: Callable[..., subprocess.CompletedProcess[str]] = run_command,
+) -> bool:
+    result = command_runner(
+        ["systemctl", "--user", "is-enabled", "--quiet", SERVICE_NAME],
+        capture_output=True,
+    )
+    return result.returncode == 0
+
+
+def configure_start_at_login(
+    enabled: bool,
+    command_runner: Callable[..., subprocess.CompletedProcess[str]] = run_command,
+) -> None:
+    action = "enable" if enabled else "disable"
+    result = command_runner(
+        ["systemctl", "--user", action, SERVICE_NAME],
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "systemctl failed").strip()
+        raise LauncherError(f"could not {action} {SERVICE_NAME}: {detail}")
 
 
 def ensure_dashboard_ready(
@@ -701,18 +751,73 @@ def launch_tui() -> int:
     raise LauncherError("no terminal emulator found for the TUI")
 
 
-def choose_ui() -> str:
-    if not sys.stdin.isatty():
-        raise LauncherError("--choose requires an interactive terminal")
+def _graphical_session_available() -> bool:
+    return bool(os.getenv("DISPLAY") or os.getenv("WAYLAND_DISPLAY"))
+
+
+def _graphical_chooser_command(executable: str) -> list[str]:
+    return [
+        executable,
+        "--list",
+        "--radiolist",
+        "--title=Open MMI",
+        "--text=Choose the interface to launch",
+        "--column=Select",
+        "--column=Interface",
+        "TRUE",
+        "Web Dashboard",
+        "FALSE",
+        "Terminal UI",
+        "--print-column=2",
+        "--width=420",
+        "--height=260",
+    ]
+
+
+def _selection_from_label(label: str) -> Optional[str]:
+    normalized = label.strip().lower()
+    if normalized in {"web dashboard", "web", "1", "w"}:
+        return "web"
+    if normalized in {"terminal ui", "terminal", "tui", "2", "t"}:
+        return "tui"
+    return None
+
+
+def choose_ui(
+    command_runner: Callable[..., subprocess.CompletedProcess[str]] = run_command,
+) -> str:
+    if _graphical_session_available():
+        for candidate in GRAPHICAL_CHOOSER_CANDIDATES:
+            executable = shutil.which(candidate)
+            if executable is None:
+                continue
+            result = command_runner(
+                _graphical_chooser_command(executable),
+                capture_output=True,
+            )
+            if result.returncode == 0:
+                selected = _selection_from_label(result.stdout or "")
+                if selected is None:
+                    raise LauncherError("graphical chooser returned an unknown interface")
+                return selected
+            if result.returncode in {1, 5}:
+                raise LauncherError("interface selection cancelled")
+            detail = (result.stderr or result.stdout or "chooser failed").strip()
+            raise LauncherError(f"graphical interface chooser failed: {detail}")
+
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        raise LauncherError(
+            "no graphical chooser is available; install zenity or run --choose in a terminal"
+        )
+
     print("Open MMI interface")
     print("  1. Web dashboard")
     print("  2. Terminal UI")
     while True:
         answer = input("Select [1-2]: ").strip().lower()
-        if answer in {"1", "web", "w"}:
-            return "web"
-        if answer in {"2", "tui", "terminal", "t"}:
-            return "tui"
+        selected = _selection_from_label(answer)
+        if selected is not None:
+            return selected
         print("Please choose 1 or 2.", file=sys.stderr)
 
 
@@ -721,10 +826,12 @@ def status_payload(config: Mapping[str, Any], config_path: Path) -> dict[str, An
     return {
         "config_path": str(config_path),
         "default_ui": config["default_ui"],
+        "start_at_login": config["start_at_login"],
         "web_url": config["web_url"],
         "health_url": endpoint,
         "service": SERVICE_NAME,
         "service_active": service_is_active(),
+        "service_enabled": service_is_enabled(),
         "dashboard_reachable": check_health(endpoint),
         "browser": browser_status(),
     }
@@ -737,6 +844,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--remember", action="store_true", help="remember an explicit or chosen interface")
     parser.add_argument("--status", action="store_true", help="show launcher and dashboard status")
     parser.add_argument("--stop", action="store_true", help="stop the dashboard service")
+    parser.add_argument(
+        "--enable-startup",
+        action="store_true",
+        help="enable dashboard startup at user login",
+    )
+    parser.add_argument(
+        "--disable-startup",
+        action="store_true",
+        help="disable dashboard startup at user login",
+    )
     parser.add_argument("--config", type=Path, help="use an alternate launcher configuration file")
     return parser
 
@@ -748,9 +865,23 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     try:
         config = load_config(config_path)
-        operation_count = sum(bool(value) for value in (args.choose, args.status, args.stop))
+        exclusive_operations = (
+            args.choose,
+            args.status,
+            args.stop,
+            args.enable_startup,
+            args.disable_startup,
+        )
+        operation_count = sum(bool(value) for value in exclusive_operations)
         if operation_count > 1:
-            raise LauncherError("--choose, --status, and --stop are mutually exclusive")
+            raise LauncherError(
+                "--choose, --status, --stop, --enable-startup, and "
+                "--disable-startup are mutually exclusive"
+            )
+        if args.ui and operation_count:
+            raise LauncherError("an explicit interface cannot be combined with an operation flag")
+        if args.remember and not (args.choose or args.ui):
+            raise LauncherError("--remember requires an explicit interface or --choose")
 
         if args.status:
             print(json.dumps(status_payload(config, config_path), indent=2, sort_keys=True))
@@ -764,6 +895,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             if result.returncode != 0:
                 detail = (result.stderr or result.stdout or "systemctl failed").strip()
                 raise LauncherError(f"could not stop {SERVICE_NAME}: {detail}")
+            return 0
+
+        if args.enable_startup or args.disable_startup:
+            enabled = bool(args.enable_startup)
+            configure_start_at_login(enabled)
+            save_start_at_login(enabled, config_path)
             return 0
 
         selected = choose_ui() if args.choose else (args.ui or str(config["default_ui"]))

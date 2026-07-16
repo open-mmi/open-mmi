@@ -6,6 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DESKTOP_ENTRY = ROOT / "packaging" / "linux-desktop" / "open-mmi-status.desktop"
 DASHBOARD_SERVICE = ROOT / "systemd" / "user" / "open-mmi-dashboard.service"
+ICON_ROOT = ROOT / "packaging" / "linux-desktop" / "icons" / "hicolor"
 
 
 def _parse_unit(path):
@@ -74,6 +75,29 @@ class DesktopShellAssetTests(unittest.TestCase):
         )
         self.assertNotIn("status_cli", command)
         self.assertNotIn("gnome-terminal", command)
+        self.assertEqual(_single(sections, "Desktop Entry", "Icon"), "open-mmi")
+
+        actions = _single(sections, "Desktop Entry", "Actions").split(";")
+        self.assertEqual([item for item in actions if item], ["Choose", "Web", "TUI"])
+        self.assertIn(
+            "--choose --remember",
+            _single(sections, "Desktop Action Choose", "Exec"),
+        )
+        self.assertIn(
+            "web --remember",
+            _single(sections, "Desktop Action Web", "Exec"),
+        )
+        self.assertIn(
+            "tui --remember",
+            _single(sections, "Desktop Action TUI", "Exec"),
+        )
+
+    def test_repository_contains_named_icon_theme_assets(self):
+        png_assets = sorted(ICON_ROOT.glob("*x*/apps/open-mmi.png"))
+        scalable = ICON_ROOT / "scalable" / "apps" / "open-mmi.svg"
+
+        self.assertTrue(png_assets, "no sized open-mmi PNG icons were found")
+        self.assertTrue(scalable.is_file(), "missing scalable Open MMI icon")
 
     def test_dashboard_service_is_local_restartable_user_service(self):
         sections = _parse_unit(DASHBOARD_SERVICE)

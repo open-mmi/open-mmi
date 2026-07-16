@@ -9,17 +9,18 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MANAGE_SCRIPT = ROOT / "scripts" / "manage.sh"
-DESKTOP_ENTRY = (
-    ROOT / "packaging" / "linux-desktop" / "open-mmi-status.desktop"
-)
+DESKTOP_ASSETS = ROOT / "packaging" / "linux-desktop"
+DESKTOP_ENTRY = DESKTOP_ASSETS / "open-mmi-status.desktop"
+DESKTOP_ICONS = DESKTOP_ASSETS / "icons"
 
 
 class DesktopEntryInstallationTests(unittest.TestCase):
-    def test_install_and_remove_desktop_entry(self) -> None:
+    def test_install_and_remove_desktop_entry_and_icons(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             temporary = Path(temporary_directory)
             home = temporary / "home"
             applications = home / ".local" / "share" / "applications"
+            icons = home / ".local" / "share" / "icons"
             desktop = home / "Desktop"
             installed_application = applications / "open-mmi.desktop"
             installed_shortcut = desktop / "Open MMI.desktop"
@@ -33,8 +34,10 @@ class DesktopEntryInstallationTests(unittest.TestCase):
                 REAL_HOME={str(home)!r}
                 REPO_ROOT={str(ROOT)!r}
                 DESKTOP_ENTRY_SOURCE={str(DESKTOP_ENTRY)!r}
+                DESKTOP_ICON_SOURCE={str(DESKTOP_ICONS)!r}
                 APPLICATIONS_DIR={str(applications)!r}
                 APPLICATION_ENTRY={str(installed_application)!r}
+                ICON_THEME_DIR={str(icons)!r}
                 DESKTOP_ENTRY_NAME="Open MMI.desktop"
 
                 xdg-user-dir() {{
@@ -46,6 +49,10 @@ class DesktopEntryInstallationTests(unittest.TestCase):
                 }}
 
                 update-desktop-database() {{
+                    return 0
+                }}
+
+                gtk-update-icon-cache() {{
                     return 0
                 }}
 
@@ -88,10 +95,22 @@ class DesktopEntryInstallationTests(unittest.TestCase):
                 cmp {str(DESKTOP_ENTRY)!r} {str(installed_application)!r}
                 cmp {str(DESKTOP_ENTRY)!r} {str(installed_shortcut)!r}
 
+                while IFS= read -r -d '' source_icon; do
+                    relative_path="${{source_icon#{str(DESKTOP_ICONS)!r}/}}"
+                    installed_icon={str(icons)!r}/"$relative_path"
+                    test -f "$installed_icon"
+                    test "$(stat -c '%a' "$installed_icon")" = "644"
+                    cmp "$source_icon" "$installed_icon"
+                done < <(find {str(DESKTOP_ICONS)!r} -type f -print0)
+
                 remove_desktop_entry
 
                 test ! -e {str(installed_application)!r}
                 test ! -e {str(installed_shortcut)!r}
+                while IFS= read -r -d '' source_icon; do
+                    relative_path="${{source_icon#{str(DESKTOP_ICONS)!r}/}}"
+                    test ! -e {str(icons)!r}/"$relative_path"
+                done < <(find {str(DESKTOP_ICONS)!r} -type f -print0)
                 """
             )
 

@@ -62,7 +62,7 @@ class ManageScriptLifecycleTests(unittest.TestCase):
             and "systemctl --user" in line
         ]
 
-        self.assertEqual(len(commands), 3)
+        self.assertEqual(len(commands), 2)
         for command in commands:
             with self.subTest(command=command):
                 self.assertFalse(command.endswith("\\"))
@@ -100,15 +100,27 @@ sudo() {{ printf '%s\\0' "$@"; }}
 
     def test_update_manages_both_service_units(self) -> None:
         self.assertIn(
-            "systemctl --user enable "
-            "canbusd.service open-mmi-dashboard.service",
-            self.text,
-        )
-        self.assertIn(
             "systemctl --user restart "
             "canbusd.service open-mmi-dashboard.service",
             self.text,
         )
+        self.assertIn(
+            "systemctl --user enable canbusd.service",
+            self.text,
+        )
+        self.assertIn(
+            "systemctl --user enable open-mmi-dashboard.service",
+            self.text,
+        )
+        self.assertIn(
+            "systemctl --user disable open-mmi-dashboard.service",
+            self.text,
+        )
+
+    def test_dashboard_autostart_reads_launcher_preference(self) -> None:
+        self.assertIn("dashboard_start_at_login()", self.text)
+        self.assertIn('payload.get("start_at_login", True) is not False', self.text)
+        self.assertGreaterEqual(self.text.count("configure_dashboard_autostart"), 3)
 
     def test_desktop_entry_is_managed_by_install_update_and_uninstall(self) -> None:
         install_start = self.text.index("cmd_install() {")
@@ -123,6 +135,10 @@ sudo() {{ printf '%s\\0' "$@"; }}
         self.assertIn("install_desktop_entry", install_block)
         self.assertIn("install_desktop_entry", update_block)
         self.assertIn("remove_desktop_entry", uninstall_block)
+        self.assertIn("install_desktop_icons", self.text)
+        self.assertIn("remove_desktop_icons", self.text)
+        self.assertIn('cp -r "$REPO_ROOT/packaging" "$INSTALL_DIR/"', install_block)
+        self.assertIn('sudo cp -r "$REPO_ROOT/packaging" "$INSTALL_DIR/"', update_block)
 
     def test_manage_script_can_be_sourced_without_running_main(self) -> None:
         self.assertIn(
