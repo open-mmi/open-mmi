@@ -140,6 +140,40 @@ sudo() {{ printf '%s\\0' "$@"; }}
         self.assertIn('cp -r "$REPO_ROOT/packaging" "$INSTALL_DIR/"', install_block)
         self.assertIn('sudo cp -r "$REPO_ROOT/packaging" "$INSTALL_DIR/"', update_block)
 
+    def test_package_and_command_links_are_managed_by_lifecycle(self) -> None:
+        install_start = self.text.index("cmd_install() {")
+        update_start = self.text.index("cmd_update() {")
+        uninstall_start = self.text.index("cmd_uninstall() {")
+        status_start = self.text.index("cmd_status() {")
+
+        install_block = self.text[install_start:update_start]
+        update_block = self.text[update_start:uninstall_start]
+        uninstall_block = self.text[uninstall_start:status_start]
+
+        self.assertIn("install_open_mmi_package", install_block)
+        self.assertIn("install_command_links", install_block)
+        self.assertIn("install_open_mmi_package", update_block)
+        self.assertIn("install_command_links", update_block)
+        self.assertIn("remove_command_links", uninstall_block)
+        self.assertIn('pip install --upgrade --force-reinstall "$INSTALL_DIR"', self.text)
+        self.assertIn('cp "$REPO_ROOT/README.md" "$INSTALL_DIR/"', install_block)
+        self.assertIn('cp "$REPO_ROOT/LICENSE" "$INSTALL_DIR/"', install_block)
+        self.assertIn('sudo cp "$REPO_ROOT/README.md" "$INSTALL_DIR/"', update_block)
+        self.assertIn('sudo cp "$REPO_ROOT/LICENSE" "$INSTALL_DIR/"', update_block)
+
+    def test_expected_console_commands_are_declared(self) -> None:
+        for command in (
+            "open-mmi-canbusd",
+            "open-mmi-dashboard",
+            "open-mmi-launcher",
+            "open-mmi-status",
+        ):
+            self.assertIn(command, self.text)
+        self.assertIn(
+            'COMMAND_LINK_DIR="${OPEN_MMI_COMMAND_LINK_DIR:-/usr/local/bin}"',
+            self.text,
+        )
+
     def test_manage_script_can_be_sourced_without_running_main(self) -> None:
         self.assertIn(
             'if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then\n'

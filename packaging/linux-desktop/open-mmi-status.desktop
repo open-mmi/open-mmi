@@ -3,7 +3,7 @@ Version=1.0
 Type=Application
 Name=Open MMI
 Comment=Launch the configured Open MMI interface
-Exec=/opt/open-mmi/venv/bin/python -m ui.launcher
+Exec=/usr/local/bin/open-mmi-launcher
 Path=/opt/open-mmi
 Icon=open-mmi
 Terminal=false
@@ -13,12 +13,12 @@ Actions=Choose;Web;TUI;
 
 [Desktop Action Choose]
 Name=Choose Open MMI Interface
-Exec=/opt/open-mmi/venv/bin/python -m ui.launcher --choose --remember
+Exec=/usr/local/bin/open-mmi-launcher --choose --remember
 
 [Desktop Action Web]
 Name=Use Web Dashboard
-Exec=/opt/open-mmi/venv/bin/python -m ui.launcher web --remember
+Exec=/usr/local/bin/open-mmi-launcher web --remember
 
 [Desktop Action TUI]
 Name=Use Terminal UI
-Exec=/opt/open-mmi/venv/bin/python -m ui.launcher tui --remember
+Exec=/usr/local/bin/open-mmi-launcher tui --remember

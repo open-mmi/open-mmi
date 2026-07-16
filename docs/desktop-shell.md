@@ -17,6 +17,19 @@ open-mmi-launcher --stop
 
 `--choose` opens a Zenity or Yad selector when a graphical session is available. It falls back to the terminal chooser when run interactively without a graphical chooser. `--remember` persists the selected default interface.
 
+## Installed commands
+
+Install and update build Open MMI from the deployed source tree into `/opt/open-mmi/venv`. The installer verifies all packaged console wrappers and exposes them through managed links in `/usr/local/bin`:
+
+```text
+open-mmi-canbusd
+open-mmi-dashboard
+open-mmi-launcher
+open-mmi-status
+```
+
+The installer refuses to replace unrelated files or symlinks with those names. Uninstall removes a command link only when it still points to the matching Open MMI wrapper. The desktop entry uses `/usr/local/bin/open-mmi-launcher`, so application-menu, desktop, and terminal launches all exercise the same installed command.
+
 The default configuration path is:
 
 ```text
@@ -158,4 +171,4 @@ Launcher behaviour is covered by `tests/test_launcher.py`, including:
 - managed Chromium and Firefox command construction.
 - shared clock formatting, persistence, minute-boundary scheduling, and page-navigation stability.
 
-Desktop integration tests install and remove the real repository desktop entry and icon tree inside temporary directories. The repository's GitHub Actions Python matrix runs all of these tests through the existing `unittest discover` step. No desktop session or real browser is required in CI because process, chooser, browser, and filesystem boundaries are injected in the tests.
+Desktop integration tests install and remove the real repository desktop entry and icon tree inside temporary directories. Command lifecycle tests simulate package installation, verify all console wrappers, create and remove managed command links, refuse unrelated command conflicts atomically, and preserve unrelated files during uninstall. The repository's GitHub Actions Python matrix runs all of these tests through the existing `unittest discover` step. No desktop session or real browser is required in CI because process, chooser, browser, package, and filesystem boundaries are injected in the tests.

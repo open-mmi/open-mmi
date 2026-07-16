@@ -32,6 +32,13 @@ APPLICATIONS_DIR="$REAL_HOME/.local/share/applications"
 APPLICATION_ENTRY="$APPLICATIONS_DIR/open-mmi.desktop"
 ICON_THEME_DIR="$REAL_HOME/.local/share/icons"
 DESKTOP_ENTRY_NAME="Open MMI.desktop"
+COMMAND_LINK_DIR="${OPEN_MMI_COMMAND_LINK_DIR:-/usr/local/bin}"
+OPEN_MMI_COMMANDS=(
+    open-mmi-canbusd
+    open-mmi-dashboard
+    open-mmi-launcher
+    open-mmi-status
+)
 
 # =============================================================================
 # UTILITIES
@@ -234,6 +241,78 @@ remove_desktop_entry() {
     refresh_desktop_caches
 }
 
+verify_console_commands() {
+    local command wrapper
+
+    for command in "${OPEN_MMI_COMMANDS[@]}"; do
+        wrapper="$INSTALL_DIR/venv/bin/$command"
+        if [ ! -x "$wrapper" ]; then
+            log_error "Installed command wrapper is missing or not executable: $wrapper"
+            return 1
+        fi
+    done
+}
+
+install_open_mmi_package() {
+    local python="$INSTALL_DIR/venv/bin/python"
+
+    if [ ! -x "$python" ]; then
+        log_error "Deployment Python is missing or not executable: $python"
+        return 1
+    fi
+
+    log_info "Installing Open MMI package and console commands..."
+    if ! "$python" -m pip install --upgrade --force-reinstall "$INSTALL_DIR"; then
+        log_error "Failed to install Open MMI package"
+        return 1
+    fi
+
+    verify_console_commands
+}
+
+install_command_links() {
+    local command wrapper link current_target
+
+    install -d -m 0755 "$COMMAND_LINK_DIR"
+
+    for command in "${OPEN_MMI_COMMANDS[@]}"; do
+        wrapper="$INSTALL_DIR/venv/bin/$command"
+        link="$COMMAND_LINK_DIR/$command"
+
+        if [ -e "$link" ] || [ -L "$link" ]; then
+            if [ -L "$link" ]; then
+                current_target=$(readlink "$link")
+                if [ "$current_target" = "$wrapper" ]; then
+                    continue
+                fi
+            fi
+
+            log_error "Refusing to replace unrelated command: $link"
+            return 1
+        fi
+    done
+
+    for command in "${OPEN_MMI_COMMANDS[@]}"; do
+        wrapper="$INSTALL_DIR/venv/bin/$command"
+        link="$COMMAND_LINK_DIR/$command"
+        if [ ! -L "$link" ]; then
+            ln -s "$wrapper" "$link"
+        fi
+    done
+}
+
+remove_command_links() {
+    local command wrapper link
+
+    for command in "${OPEN_MMI_COMMANDS[@]}"; do
+        wrapper="$INSTALL_DIR/venv/bin/$command"
+        link="$COMMAND_LINK_DIR/$command"
+        if [ -L "$link" ] && [ "$(readlink "$link")" = "$wrapper" ]; then
+            rm -f "$link"
+        fi
+    done
+}
+
 dashboard_start_at_login() {
     local config_file="$USER_CONFIG_DIR/launcher.json"
 
@@ -360,16 +439,9 @@ cmd_install() {
         return 1
     fi
     
-    log_info "Installing Python dependencies..."
-    if ! "$INSTALL_DIR/venv/bin/pip" install --upgrade pip; then
+    log_info "Preparing Python packaging tools..."
+    if ! "$INSTALL_DIR/venv/bin/python" -m pip install --upgrade pip; then
         log_error "Failed to upgrade pip"
-        return 1
-    fi
-    
-    if ! "$INSTALL_DIR/venv/bin/pip" install \
-        python-can \
-        evdev; then
-        log_error "Failed to install Python dependencies"
         return 1
     fi
     
@@ -387,6 +459,15 @@ cmd_install() {
     cp -r "$REPO_ROOT/scripts" "$INSTALL_DIR/"
     cp -r "$REPO_ROOT/packaging" "$INSTALL_DIR/"
     cp "$REPO_ROOT/pyproject.toml" "$INSTALL_DIR/"
+    cp "$REPO_ROOT/README.md" "$INSTALL_DIR/"
+    cp "$REPO_ROOT/LICENSE" "$INSTALL_DIR/"
+
+    if ! install_open_mmi_package; then
+        return 1
+    fi
+    if ! install_command_links; then
+        return 1
+    fi
     
     # Store version
     get_current_version > "$VERSION_FILE"
@@ -520,6 +601,15 @@ cmd_update() {
     sudo cp -r "$REPO_ROOT/scripts" "$INSTALL_DIR/"
     sudo cp -r "$REPO_ROOT/packaging" "$INSTALL_DIR/"
     sudo cp "$REPO_ROOT/pyproject.toml" "$INSTALL_DIR/"
+    sudo cp "$REPO_ROOT/README.md" "$INSTALL_DIR/"
+    sudo cp "$REPO_ROOT/LICENSE" "$INSTALL_DIR/"
+
+    if ! install_open_mmi_package; then
+        return 1
+    fi
+    if ! install_command_links; then
+        return 1
+    fi
 
     local user_systemd_dir="$REAL_HOME/.config/systemd/user"
     sudo install -d -m 0755 -o "$REAL_USER" -g "$REAL_USER" "$user_systemd_dir"
@@ -592,6 +682,7 @@ cmd_uninstall() {
         systemctl --user daemon-reload
 
     remove_desktop_entry
+    remove_command_links
     
     # Remove application directory
     log_info "Removing application files..."

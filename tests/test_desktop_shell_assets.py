@@ -61,35 +61,24 @@ class DesktopShellAssetTests(unittest.TestCase):
 
         command = _single(sections, "Desktop Entry", "Exec")
         arguments = shlex.split(command)
-        uses_console_script = arguments == [
-            "/opt/open-mmi/venv/bin/open-mmi-launcher"
-        ]
-        uses_module = (
-            arguments[-2:] == ["-m", "ui.launcher"]
-            if len(arguments) >= 2
-            else False
-        )
-        self.assertTrue(
-            uses_console_script or uses_module,
-            f"Desktop entry does not invoke the universal launcher: {command!r}",
-        )
+        self.assertEqual(arguments, ["/usr/local/bin/open-mmi-launcher"])
         self.assertNotIn("status_cli", command)
         self.assertNotIn("gnome-terminal", command)
         self.assertEqual(_single(sections, "Desktop Entry", "Icon"), "open-mmi")
 
         actions = _single(sections, "Desktop Entry", "Actions").split(";")
         self.assertEqual([item for item in actions if item], ["Choose", "Web", "TUI"])
-        self.assertIn(
-            "--choose --remember",
+        self.assertEqual(
             _single(sections, "Desktop Action Choose", "Exec"),
+            "/usr/local/bin/open-mmi-launcher --choose --remember",
         )
-        self.assertIn(
-            "web --remember",
+        self.assertEqual(
             _single(sections, "Desktop Action Web", "Exec"),
+            "/usr/local/bin/open-mmi-launcher web --remember",
         )
-        self.assertIn(
-            "tui --remember",
+        self.assertEqual(
             _single(sections, "Desktop Action TUI", "Exec"),
+            "/usr/local/bin/open-mmi-launcher tui --remember",
         )
 
     def test_repository_contains_named_icon_theme_assets(self):
