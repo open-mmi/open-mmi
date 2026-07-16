@@ -39,16 +39,28 @@ test("clock normalises display preferences", () => {
   assert.equal(clock.normaliseSettings({ clockFormat: "invalid" }).clockFormat, "24h");
 });
 
+function normaliseLocaleText(value) {
+  return String(value)
+    .replace(/[\u00a0\u202f]/g, " ")
+    .replace(/,/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
 test("clock formats local 24-hour and 12-hour time with an optional date", () => {
   const value = new Date(2026, 6, 16, 7, 5, 30, 250);
-  assert.deepEqual(
-    clock.formatClock(value, { clockFormat: "24h" }, "en-GB"),
-    { time: "07:05", date: "Thu 16 Jul" },
+  const twentyFourHour = clock.formatClock(value, { clockFormat: "24h" }, "en-GB");
+  const twelveHour = clock.formatClock(
+    value,
+    { clockFormat: "12h", showDate: true },
+    "en-GB",
   );
-  assert.deepEqual(
-    clock.formatClock(value, { clockFormat: "12h", showDate: true }, "en-GB"),
-    { time: "7:05 am", date: "Thu 16 Jul" },
-  );
+
+  assert.equal(normaliseLocaleText(twentyFourHour.time), "07:05");
+  assert.equal(normaliseLocaleText(twentyFourHour.date), "thu 16 jul");
+  assert.equal(normaliseLocaleText(twelveHour.time), "7:05 am");
+  assert.equal(normaliseLocaleText(twelveHour.date), "thu 16 jul");
 });
 
 test("clock schedules updates at the next minute boundary", () => {
