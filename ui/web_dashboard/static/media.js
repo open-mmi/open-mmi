@@ -262,6 +262,14 @@
       const activeId = activeSourceId(prefs);
       const activeLabel = activeId ? sourceById(activeId).label : "None";
       const defaultLabel = sourceById(prefs.mediaDefaultSource).label;
+      const signature = JSON.stringify({
+        activeId,
+        defaultId: prefs.mediaDefaultSource,
+        enabled: SOURCE_IDS.map((id) => [id, isEnabled(id, prefs)]),
+      });
+      const existing = panel.querySelector?.('[data-openmmi-media-settings-panel="true"]');
+      if (existing?.dataset?.openMmiMediaSettingsSignature === signature) return;
+
       panel.innerHTML = `
         <div data-openmmi-media-settings-panel="true">
           <div class="openmmi-settings-panel-head"><span>Media</span><small>sources</small></div>
@@ -273,6 +281,8 @@
           ${settingsRow("Media keys", "Browser/system media controls follow the currently selected source where supported.", '<button type="button" class="openmmi-setting-pill is-selected" disabled>active</button>')}
           <div id="openMmiJellyfinSettingsHost"></div>
         </div>`;
+      const rendered = panel.querySelector?.('[data-openmmi-media-settings-panel="true"]');
+      if (rendered?.dataset) rendered.dataset.openMmiMediaSettingsSignature = signature;
     }
 
     function apply() {

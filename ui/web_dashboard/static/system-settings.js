@@ -126,6 +126,38 @@
       }
     }
 
+    function focusedControlState(host) {
+      const active = documentRef.activeElement;
+      if (!active || !host?.contains?.(active)) return null;
+      return {
+        name: String(active.name || ""),
+        testid: String(active.dataset?.testid || active.getAttribute?.("data-testid") || ""),
+        selectionStart: Number.isInteger(active.selectionStart) ? active.selectionStart : null,
+        selectionEnd: Number.isInteger(active.selectionEnd) ? active.selectionEnd : null,
+        selectionDirection: active.selectionDirection || "none",
+      };
+    }
+
+    function restoreFocusedControl(host, state) {
+      if (!host || !state) return;
+      const controls = Array.from(host.querySelectorAll?.("input, select, textarea, button") || []);
+      const control = controls.find((candidate) => (
+        (state.testid && String(candidate.dataset?.testid || candidate.getAttribute?.("data-testid") || "") === state.testid)
+        || (state.name && String(candidate.name || "") === state.name)
+      ));
+      if (!control || typeof control.focus !== "function") return;
+      try { control.focus({ preventScroll: true }); }
+      catch (_) { control.focus(); }
+      if (
+        state.selectionStart !== null
+        && state.selectionEnd !== null
+        && typeof control.setSelectionRange === "function"
+      ) {
+        try { control.setSelectionRange(state.selectionStart, state.selectionEnd, state.selectionDirection); }
+        catch (_) {}
+      }
+    }
+
     function renderJellyfin() {
       if (activeSection() !== "media") return;
       let host = documentRef.querySelector("#openMmiJellyfinSettingsHost");
@@ -139,8 +171,10 @@
         const html = jellyfinTemplate();
         const missing = !host.querySelector?.('[data-openmmi-jellyfin-settings="true"]');
         if (html !== lastJellyfinHtml || missing) {
+          const focusState = focusedControlState(host);
           lastJellyfinHtml = html;
           host.innerHTML = html;
+          restoreFocusedControl(host, focusState);
         }
       }
     }

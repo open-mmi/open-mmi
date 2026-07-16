@@ -691,8 +691,19 @@ test("system settings and Jellyfin setup use the shared local configuration API"
 
   await page.locator('[data-openmmi-settings-section="media"]').click();
   await expect(page.locator('[data-openmmi-jellyfin-settings="true"]')).toBeVisible();
+  const username = page.getByTestId("jellyfin-username");
+  await username.click();
+  await page.keyboard.type("dr");
+  await page.waitForTimeout(1250);
+  await expect(username).toBeFocused();
+  await page.keyboard.type("h");
+  await expect(username).toBeFocused();
+  await expect(page.locator("#pageSettings")).toHaveClass(/active/);
+  await expect(page.locator('[data-openmmi-settings-section="media"]')).toHaveClass(/active/);
+  await expect(username).toHaveValue("drh");
+
   await page.getByTestId("jellyfin-url").fill("https://jellyfin.test:8096");
-  await page.getByTestId("jellyfin-username").fill("driver");
+  await username.fill("driver");
   await page.getByTestId("jellyfin-password").fill("not-exposed-after-submit");
   await page.getByTestId("jellyfin-test").click();
   await expect(page.getByRole("status")).toContainText("connection succeeded");

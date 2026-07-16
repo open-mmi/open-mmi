@@ -218,6 +218,13 @@
     function bindKeyboard() {
       if (!windowRef || typeof windowRef.addEventListener !== "function" || keyHandler) return;
       keyHandler = (event) => {
+        if (
+          event.defaultPrevented
+          || event.altKey
+          || event.ctrlKey
+          || event.metaKey
+          || isEditableTarget(event.target)
+        ) return;
         if (event.key === "ArrowRight") {
           setPage(state.activeIndex + 1);
           return;
@@ -226,7 +233,7 @@
           setPage(state.activeIndex - 1);
           return;
         }
-        if ((event.key === "Home" || event.key === "h" || event.key === "H") && !isEditableTarget(event.target)) {
+        if (event.key === "Home" || event.key === "h" || event.key === "H") {
           if (typeof event.preventDefault === "function") event.preventDefault();
           setPage(HOME_INDEX);
         }
