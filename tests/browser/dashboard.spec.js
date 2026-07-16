@@ -15,6 +15,7 @@ const CSS_FILES = [
   "styles-media-sources.css",
   "styles-diagnostics.css",
   "styles-media-final.css",
+  "styles-clock.css",
 ];
 
 function indexAssets() {
@@ -561,4 +562,58 @@ test("Bluetooth button follows a synthetic remote pause promptly", async ({ page
   );
 
   await expectNoRuntimeFailures(failures);
+});
+test("shared clock persists display preferences and survives page navigation", async ({ page, context }) => {
+  const failures = captureRuntimeFailures(page);
+  const dashboard = await loadDashboard(page);
+
+  const clock = page.locator("#openMmiClock");
+  await expect(clock).toBeVisible();
+  await expect(page.locator("#openMmiClockValue")).toHaveText(/^\d{2}:\d{2}$/);
+  await expect(clock).toHaveAttribute("data-clock-format", "24h");
+  await expect(clock).toHaveAttribute("data-show-date", "false");
+
+  await page.evaluate(() => { window.__openMmiClockElementIdentity = document.querySelector("#openMmiClock"); });
+  await page.locator('[data-openmmi-page="2"]').click();
+  await expect(page.locator("#pageDrive")).toHaveClass(/active/);
+  await page.locator('.pager button[data-page="0"]').click();
+  await expect(page.locator("#pageElectrical")).toHaveClass(/active/);
+  expect(await page.evaluate(() => window.__openMmiClockElementIdentity === document.querySelector("#openMmiClock"))).toBe(true);
+
+  await page.keyboard.press("Home");
+  await openSettings(page);
+  await page.locator('[data-openmmi-settings-section="display"]').click();
+
+  const formatRow = page.locator('[data-openmmi-clock-setting-row="clockFormat"]');
+  const dateRow = page.locator('[data-openmmi-clock-setting-row="showDate"]');
+  const visibilityRow = page.locator('[data-openmmi-clock-setting-row="showClock"]');
+  await expect(formatRow).toBeVisible();
+  await formatRow.getByRole("button", { name: "12-hour" }).click();
+  await dateRow.getByRole("button", { name: "on", exact: true }).click();
+
+  await expect(clock).toHaveAttribute("data-clock-format", "12h");
+  await expect(clock).toHaveAttribute("data-show-date", "true");
+  await expect(page.locator("#openMmiClockValue")).toHaveText(/^\d{1,2}:\d{2}\s(?:am|pm)$/i);
+  await expect(page.locator("#openMmiClockDate")).toBeVisible();
+
+  await visibilityRow.getByRole("button", { name: "off", exact: true }).click();
+  await expect(clock).toBeHidden();
+  await visibilityRow.getByRole("button", { name: "on", exact: true }).click();
+  await expect(clock).toBeVisible();
+
+  const saved = await dashboard.storage();
+  const prefs = JSON.parse(saved[SETTINGS_KEY]);
+  expect(prefs.clockFormat).toBe("12h");
+  expect(prefs.showDate).toBe(true);
+  expect(prefs.showClock).toBe(true);
+
+  const rebuilt = await context.newPage();
+  const rebuiltFailures = captureRuntimeFailures(rebuilt);
+  await loadDashboard(rebuilt, { storage: saved });
+  await expect(rebuilt.locator("#openMmiClock")).toHaveAttribute("data-clock-format", "12h");
+  await expect(rebuilt.locator("#openMmiClockDate")).toBeVisible();
+
+  await expectNoRuntimeFailures(failures);
+  await expectNoRuntimeFailures(rebuiltFailures);
+  await rebuilt.close();
 });

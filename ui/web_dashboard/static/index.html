@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="/styles-media-sources.css">
   <link rel="stylesheet" href="/styles-diagnostics.css">
   <link rel="stylesheet" href="/styles-media-final.css">
+  <link rel="stylesheet" href="/styles-clock.css">
 <!-- Open MMI Jellyfin Bootstrap media v3 start -->
 <!-- Open MMI Jellyfin Bootstrap media v3 end -->
 <!-- Open MMI Bootstrap deps start -->
@@ -24,10 +25,18 @@
         <h1 id="pageTitle">Drive</h1>
         <div class="subline">Open MMI live vehicle status</div>
       </div>
-      <div class="health-pill">
-        <span id="healthDot" class="health-dot waiting"></span>
-        <strong id="healthText">waiting</strong>
-        <span id="ageText">--</span>
+      <div class="openmmi-topbar-status">
+        <div id="openMmiClock" class="openmmi-clock" data-clock-format="24h" data-show-date="false">
+          <time id="openMmiClockTime" aria-label="Local time">
+            <span id="openMmiClockValue">--:--</span>
+            <small id="openMmiClockDate" hidden>---</small>
+          </time>
+        </div>
+        <div class="health-pill">
+          <span id="healthDot" class="health-dot waiting"></span>
+          <strong id="healthText">waiting</strong>
+          <span id="ageText">--</span>
+        </div>
       </div>
     </header>
 
@@ -169,6 +178,7 @@
 
   <script src="/api.js"></script>
   <script src="/preferences.js"></script>
+  <script src="/clock.js"></script>
   <script src="/status.js"></script>
   <script src="/navigation.js"></script>
   <script src="/overlays.js"></script>

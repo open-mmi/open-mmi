@@ -119,6 +119,24 @@ A custom browser wrapper is supported, but the wrapper should `exec` the browser
 
 `open-mmi-launcher --stop` continues to stop the dashboard service only. It does not kill browser processes.
 
+## Shared dashboard clock
+
+The web dashboard header contains one persistent local-time clock shared by every page. The browser uses the tablet's local timezone; no backend time endpoint is required.
+
+Clock preferences are stored with the existing dashboard settings under:
+
+```text
+openmmi.dashboard.settings.v1
+```
+
+The Display settings panel provides:
+
+- clock visibility;
+- 24-hour or 12-hour format;
+- optional local date.
+
+The clock updates at the next minute boundary rather than polling every second. Page navigation reuses the same header element, so changing pages does not recreate the clock or start additional timers.
+
 ## Status output
 
 `open-mmi-launcher --status` reports configured and actual startup state, dashboard service health, and the recorded browser instance, including whether its PID still matches the owned profile and URL.
@@ -138,5 +156,6 @@ Launcher behaviour is covered by `tests/test_launcher.py`, including:
 - changed-setting conflict handling;
 - isolation from unrelated browser processes;
 - managed Chromium and Firefox command construction.
+- shared clock formatting, persistence, minute-boundary scheduling, and page-navigation stability.
 
 Desktop integration tests install and remove the real repository desktop entry and icon tree inside temporary directories. The repository's GitHub Actions Python matrix runs all of these tests through the existing `unittest discover` step. No desktop session or real browser is required in CI because process, chooser, browser, and filesystem boundaries are injected in the tests.
