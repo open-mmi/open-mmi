@@ -26,6 +26,10 @@ USER_ID=$(id -u "$REAL_USER")
 USER_CONFIG_DIR="$REAL_HOME/.config/open-mmi"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+DESKTOP_ENTRY_SOURCE="$REPO_ROOT/packaging/linux-desktop/open-mmi-status.desktop"
+APPLICATIONS_DIR="$REAL_HOME/.local/share/applications"
+APPLICATION_ENTRY="$APPLICATIONS_DIR/open-mmi.desktop"
+DESKTOP_ENTRY_NAME="Open MMI.desktop"
 
 # =============================================================================
 # UTILITIES
@@ -141,6 +145,56 @@ open_editor_as_user() {
         HOME="$REAL_HOME" \
         XDG_RUNTIME_DIR="/run/user/$USER_ID" \
         "$editor" "$file"
+}
+
+
+get_desktop_dir() {
+    local desktop_dir=""
+
+    if command -v xdg-user-dir > /dev/null 2>&1; then
+        desktop_dir=$(sudo -u "$REAL_USER" env HOME="$REAL_HOME" xdg-user-dir DESKTOP 2>/dev/null || true)
+    fi
+
+    if [[ -z "$desktop_dir" || "$desktop_dir" != /* || "$desktop_dir" = "$REAL_HOME" ]]; then
+        desktop_dir="$REAL_HOME/Desktop"
+    fi
+
+    printf '%s\n' "$desktop_dir"
+}
+
+install_desktop_entry() {
+    local desktop_dir
+    desktop_dir=$(get_desktop_dir)
+
+    if [ ! -f "$DESKTOP_ENTRY_SOURCE" ]; then
+        log_error "Desktop entry source not found: $DESKTOP_ENTRY_SOURCE"
+        return 1
+    fi
+
+    log_info "Installing desktop launcher..."
+    install -d -m 0755 -o "$REAL_USER" -g "$REAL_USER" "$APPLICATIONS_DIR" "$desktop_dir"
+    install -m 0644 -o "$REAL_USER" -g "$REAL_USER" "$DESKTOP_ENTRY_SOURCE" "$APPLICATION_ENTRY"
+    install -m 0755 -o "$REAL_USER" -g "$REAL_USER" "$DESKTOP_ENTRY_SOURCE" "$desktop_dir/$DESKTOP_ENTRY_NAME"
+
+    if command -v gio > /dev/null 2>&1; then
+        sudo -u "$REAL_USER" env HOME="$REAL_HOME" gio set "$desktop_dir/$DESKTOP_ENTRY_NAME" metadata::trusted true > /dev/null 2>&1 || true
+    fi
+
+    if command -v update-desktop-database > /dev/null 2>&1; then
+        sudo -u "$REAL_USER" env HOME="$REAL_HOME" update-desktop-database "$APPLICATIONS_DIR" > /dev/null 2>&1 || true
+    fi
+}
+
+remove_desktop_entry() {
+    local desktop_dir
+    desktop_dir=$(get_desktop_dir)
+
+    log_info "Removing desktop launcher..."
+    rm -f "$APPLICATION_ENTRY" "$desktop_dir/$DESKTOP_ENTRY_NAME"
+
+    if command -v update-desktop-database > /dev/null 2>&1; then
+        sudo -u "$REAL_USER" env HOME="$REAL_HOME" update-desktop-database "$APPLICATIONS_DIR" > /dev/null 2>&1 || true
+    fi
 }
 
 
@@ -272,6 +326,7 @@ cmd_install() {
     install -d -m 0755 -o "$REAL_USER" -g "$REAL_USER" "$user_systemd_dir"
     install -m 0644 -o "$REAL_USER" -g "$REAL_USER" "$REPO_ROOT/systemd/user/canbusd.service" "$user_systemd_dir/canbusd.service"
     install -m 0644 -o "$REAL_USER" -g "$REAL_USER" "$REPO_ROOT/systemd/user/open-mmi-dashboard.service" "$user_systemd_dir/open-mmi-dashboard.service"
+    install_desktop_entry
     export XDG_RUNTIME_DIR="/run/user/$USER_ID"
     mkdir -p "$REAL_HOME/.config/systemd/user/default.target.wants"
     chown -R "$REAL_USER:$REAL_USER" "$REAL_HOME/.config/systemd/user"
@@ -399,6 +454,7 @@ cmd_update() {
     sudo install -d -m 0755 -o "$REAL_USER" -g "$REAL_USER" "$user_systemd_dir"
     sudo install -m 0644 -o "$REAL_USER" -g "$REAL_USER" "$REPO_ROOT/systemd/user/canbusd.service" "$user_systemd_dir/canbusd.service"
     sudo install -m 0644 -o "$REAL_USER" -g "$REAL_USER" "$REPO_ROOT/systemd/user/open-mmi-dashboard.service" "$user_systemd_dir/open-mmi-dashboard.service"
+    install_desktop_entry
 
     export XDG_RUNTIME_DIR="/run/user/$USER_ID"
 
@@ -463,6 +519,8 @@ cmd_uninstall() {
     sudo -u "$REAL_USER" \
         XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
         systemctl --user daemon-reload
+
+    remove_desktop_entry
     
     # Remove application directory
     log_info "Removing application files..."
@@ -859,4 +917,6 @@ main() {
     esac
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi

@@ -110,6 +110,28 @@ sudo() {{ printf '%s\\0' "$@"; }}
             self.text,
         )
 
+    def test_desktop_entry_is_managed_by_install_update_and_uninstall(self) -> None:
+        install_start = self.text.index("cmd_install() {")
+        update_start = self.text.index("cmd_update() {")
+        uninstall_start = self.text.index("cmd_uninstall() {")
+        status_start = self.text.index("cmd_status() {")
+
+        install_block = self.text[install_start:update_start]
+        update_block = self.text[update_start:uninstall_start]
+        uninstall_block = self.text[uninstall_start:status_start]
+
+        self.assertIn("install_desktop_entry", install_block)
+        self.assertIn("install_desktop_entry", update_block)
+        self.assertIn("remove_desktop_entry", uninstall_block)
+
+    def test_manage_script_can_be_sourced_without_running_main(self) -> None:
+        self.assertIn(
+            'if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then\n'
+            '    main "$@"\n'
+            "fi",
+            self.text,
+        )
+
     def test_uninstall_handles_absent_units_quietly(self) -> None:
         self.assertIn(
             "for service in canbusd.service open-mmi-dashboard.service; do",

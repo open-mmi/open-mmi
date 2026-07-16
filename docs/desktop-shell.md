@@ -34,6 +34,17 @@ Example:
 
 `browser_command` may also be a command string or an argument array. The placeholders `{url}`, `{profile_dir}`, and `{window_class}` are replaced without invoking a shell.
 
+## Desktop launcher installation
+
+`sudo ./scripts/manage.sh install` and `update` install the repository desktop entry in both locations:
+
+```text
+~/.local/share/applications/open-mmi.desktop
+$(xdg-user-dir DESKTOP)/Open MMI.desktop
+```
+
+The application-menu entry is installed read-only, while the desktop shortcut is executable and marked trusted with `gio` when available. `uninstall` removes both copies. This lifecycle is covered in CI without requiring a graphical desktop session.
+
 ## Dashboard service
 
 ```bash
