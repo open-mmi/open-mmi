@@ -268,11 +268,10 @@ cmd_install() {
     
     # Install systemd service
     log_info "Installing systemd user service..."
-    mkdir -p "$REAL_HOME/.config/systemd/user"
-    cp "$REPO_ROOT/systemd/user/canbusd.service" "$REAL_HOME/.config/systemd/user/canbusd.service"
-    cp "$REPO_ROOT/systemd/user/open-mmi-dashboard.service" "$REAL_HOME/.config/systemd/user/open-mmi-dashboard.service"
-    chown "$REAL_USER:$REAL_USER" "$REAL_HOME/.config/systemd/user/canbusd.service"
-    
+    local user_systemd_dir="$REAL_HOME/.config/systemd/user"
+    install -d -m 0755 -o "$REAL_USER" -g "$REAL_USER" "$user_systemd_dir"
+    install -m 0644 -o "$REAL_USER" -g "$REAL_USER" "$REPO_ROOT/systemd/user/canbusd.service" "$user_systemd_dir/canbusd.service"
+    install -m 0644 -o "$REAL_USER" -g "$REAL_USER" "$REPO_ROOT/systemd/user/open-mmi-dashboard.service" "$user_systemd_dir/open-mmi-dashboard.service"
     export XDG_RUNTIME_DIR="/run/user/$USER_ID"
     mkdir -p "$REAL_HOME/.config/systemd/user/default.target.wants"
     chown -R "$REAL_USER:$REAL_USER" "$REAL_HOME/.config/systemd/user"
@@ -396,20 +395,10 @@ cmd_update() {
     sudo cp -r "$REPO_ROOT/scripts" "$INSTALL_DIR/"
     sudo cp "$REPO_ROOT/pyproject.toml" "$INSTALL_DIR/"
 
-    sudo cp "$REPO_ROOT/systemd/user/canbusd.service" \
-
-        "$REAL_HOME/.config/systemd/user/canbusd.service"
-
-    sudo cp "$REPO_ROOT/systemd/user/open-mmi-dashboard.service" \
-
-        "$REAL_HOME/.config/systemd/user/open-mmi-dashboard.service"
-
-    sudo chown "$REAL_USER:$REAL_USER" \
-
-        "$REAL_HOME/.config/systemd/user/canbusd.service" \
-
-        "$REAL_HOME/.config/systemd/user/open-mmi-dashboard.service"
-
+    local user_systemd_dir="$REAL_HOME/.config/systemd/user"
+    sudo install -d -m 0755 -o "$REAL_USER" -g "$REAL_USER" "$user_systemd_dir"
+    sudo install -m 0644 -o "$REAL_USER" -g "$REAL_USER" "$REPO_ROOT/systemd/user/canbusd.service" "$user_systemd_dir/canbusd.service"
+    sudo install -m 0644 -o "$REAL_USER" -g "$REAL_USER" "$REPO_ROOT/systemd/user/open-mmi-dashboard.service" "$user_systemd_dir/open-mmi-dashboard.service"
 
     export XDG_RUNTIME_DIR="/run/user/$USER_ID"
 
@@ -471,14 +460,10 @@ cmd_uninstall() {
     # Stop services
     log_info "Stopping systemd services..."
     export XDG_RUNTIME_DIR="/run/user/$USER_ID"
-    sudo -u "$REAL_USER" \
-        XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
-        systemctl --user stop canbusd open-mmi-dashboard || true
-    
-    sudo -u "$REAL_USER" \
-        XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
-        systemctl --user disable canbusd open-mmi-dashboard || true
-    
+    for service in canbusd.service open-mmi-dashboard.service; do
+        sudo -u "$REAL_USER" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user disable --now "$service" >/dev/null 2>&1 || true
+    done
+
     # Remove service file
     log_info "Removing systemd service..."
     rm -f \
@@ -502,7 +487,9 @@ cmd_uninstall() {
     
     log_success "Uninstall complete"
     log_info "Note: User was not removed from 'video' and 'input' groups"
-    log_info "To clean up, run: sudo usermod -G $(groups $REAL_USER | cut -d: -f2 | sed 's/ video//g; s/ input//g') $REAL_USER"
+    log_info "Optional group cleanup:"
+    log_info "  sudo gpasswd -d $REAL_USER video"
+    log_info "  sudo gpasswd -d $REAL_USER input"
 }
 
 # =============================================================================
