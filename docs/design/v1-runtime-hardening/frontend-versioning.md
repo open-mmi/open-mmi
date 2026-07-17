@@ -222,7 +222,11 @@ The first runtime-hardening implementation slice now provides:
 - loaded/server identity and reconciliation state in Diagnostics;
 - Python, Node, browser-contract, packaging, and Playwright regression coverage.
 
-Remaining qualification is the installed update test on the persistent tablet Chromium profile. The branch design remains **In progress** until that real update path and CI Playwright suite pass.
+The first installed update that introduces this controller cannot be initiated by a frontend that was loaded before the controller existed. That one migration requires a normal or forced reload once; every later build is expected to reconcile automatically from the already-installed controller.
+
+The initial tablet qualification confirmed that the new frontend loaded after that one-time migration. It also exposed a Diagnostics regression: the live panel was rebuilding its DOM on every 200 ms status publication. Diagnostics now keeps stable field nodes and changes text only when values change; a structural rebuild occurs only when the set of decoded paths changes.
+
+Remaining qualification is a second installed update with the version controller already active. The branch design remains **In progress** until that update reloads automatically and the CI Playwright suite passes.
 
 ## Acceptance criteria
 

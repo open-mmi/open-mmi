@@ -329,6 +329,33 @@ test("diagnostics renders canonical profile values and all decoded paths", async
   await expectNoRuntimeFailures(failures);
 });
 
+test("diagnostics updates values in place without flashing or rebuilding fields", async ({ page }) => {
+  const failures = captureRuntimeFailures(page);
+  const dashboard = await loadDashboard(page);
+  await openSettings(page);
+  await page.locator('[data-openmmi-settings-section="diagnostics"]').click();
+
+  const voltage = page.locator('[data-openmmi-diagnostic-key="electrical.voltage"]');
+  await expect(voltage).toHaveText("13.9 V");
+  await page.evaluate(() => {
+    window.__openMmiDiagnosticsVoltageNode = document.querySelector(
+      '[data-openmmi-diagnostic-key="electrical.voltage"]',
+    );
+  });
+
+  await dashboard.setPayload(basePayload({
+    state: { electrical: { supply_voltage_v: 14.2, terminal30_voltage_v: 14.2 } },
+  }));
+  await expect(voltage).toHaveText("14.2 V");
+  await page.waitForTimeout(500);
+
+  expect(await page.evaluate(() => (
+    window.__openMmiDiagnosticsVoltageNode
+      === document.querySelector('[data-openmmi-diagnostic-key="electrical.voltage"]')
+  ))).toBe(true);
+  await expectNoRuntimeFailures(failures);
+});
+
 test("door and reverse overlays dismiss and reactivate on lifecycle changes", async ({ page }) => {
   const failures = captureRuntimeFailures(page);
   const dashboard = await loadDashboard(page);

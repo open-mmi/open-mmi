@@ -351,6 +351,10 @@ The server resolves one build identity from `OPEN_MMI_BUILD_ID`, `/opt/open-mmi/
 
 `/` and `/index.html` are generated with the same identity in a meta element and in every local JavaScript and CSS URL. Matching versioned asset URLs are served as immutable; unversioned compatibility URLs must revalidate. The browser checks the endpoint after startup, connectivity recovery, visibility recovery, and at a low visible-page interval. A changed build triggers one controlled reload. Active editing defers the reload and presents a **Reload now** action, while session storage prevents repeated reloads for the same target build. Clearing the managed Chromium profile is not part of the supported update process.
 
+The release that first introduces this controller needs one reload if an older pre-controller page is already open; that older page has no code capable of detecting the new build. This is a one-time migration condition. Subsequent updates must reload automatically without clearing the browser profile.
+
+Diagnostics updates its existing value nodes in place. It does not rebuild the full Diagnostics panel for each 200 ms status publication; a structural rebuild is reserved for changes to the decoded-path set.
+
 `static/styles.css` remains as an import-only compatibility manifest. `tools/verify_css_split.py` locks the module order and verifies that their concatenated bytes remain identical to the pre-split stylesheet, preventing accidental cascade changes during this structural phase.
 
 The platform modules resolve `window.fetch` and `window.localStorage` at call time. This keeps performance instrumentation compatible and lets the dashboard fail safely when browser storage is unavailable or restricted.

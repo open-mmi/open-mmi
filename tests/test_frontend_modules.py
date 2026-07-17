@@ -115,7 +115,14 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
         ):
             self.assertIn("typeof module === \"object\"", source)
             self.assertIn(f"root.{global_name}", source)
-            if global_name not in {"openMmiMediaShell", "openMmiJellyfinMedia", "openMmiRadioMedia", "openMmiUsbMediaController", "openMmiBluetoothMediaController"}:
+            if global_name not in {
+                "openMmiFrontendVersion",
+                "openMmiMediaShell",
+                "openMmiJellyfinMedia",
+                "openMmiRadioMedia",
+                "openMmiUsbMediaController",
+                "openMmiBluetoothMediaController",
+            }:
                 self.assertNotIn("document.", source)
 
 

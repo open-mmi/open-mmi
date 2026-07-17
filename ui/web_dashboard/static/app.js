@@ -593,6 +593,7 @@ openMmiNavigationController.init();
     diagnosticsInteracting: false,
     diagnosticsRenderPending: false,
     diagnosticsInteractionTimer: null,
+    diagnosticsSignature: "",
     restoringDiagnosticsScroll: false,
   };
 
@@ -659,8 +660,11 @@ openMmiNavigationController.init();
     return `<div class="openmmi-setting-row"><div><strong>${title}</strong><small>${note}</small></div><div class="openmmi-setting-controls">${controls}</div></div>`;
   }
 
-  function metric(label, value) {
-    return `<div class="openmmi-settings-metric"><span>${label}</span><strong>${value}</strong></div>`;
+  function metric(label, value, diagnosticKey = "") {
+    const keyAttribute = diagnosticKey
+      ? ` data-openmmi-diagnostic-key="${escapeDiagnosticText(diagnosticKey)}"`
+      : "";
+    return `<div class="openmmi-settings-metric"><span>${label}</span><strong${keyAttribute}>${value}</strong></div>`;
   }
 
   function escapeDiagnosticText(value) {
@@ -696,20 +700,7 @@ openMmiNavigationController.init();
     return output;
   }
 
-  function decodedStateMetrics(payload) {
-    const leaves = flattenDiagnosticState(payload?.state || {});
-    if (!leaves.length) return metric("Decoded profile values", "--");
-    return `
-      <details class="openmmi-settings-diagnostics-details" open>
-        <summary>Decoded profile values (${leaves.length})</summary>
-        <div class="openmmi-settings-diagnostics-values">
-          ${leaves.map(([path, value]) => metric(escapeDiagnosticText(path), escapeDiagnosticText(value))).join("")}
-        </div>
-      </details>
-    `;
-  }
-
-  function diagnosticsTemplate(payload) {
+  function diagnosticsSnapshot(payload) {
     const { vehicle, lighting, climate, engine, electrical, ageValue } = statusParts(payload);
     const frontendVersion = window.__openMmiFrontendVersionController?.snapshot?.() || {};
     const lightingText = text(lighting.mode).replaceAll("_", " ");
@@ -740,24 +731,86 @@ openMmiNavigationController.init();
       vehicle.battery_v
     );
     const rpm = firstValue(engine.speed_rpm, engine.rpm, vehicle.rpm);
+    const decodedLeaves = flattenDiagnosticState(payload?.state || {});
+    const values = new Map([
+      ["frontend.loaded", frontendVersion.loadedId || "--"],
+      ["frontend.server", frontendVersion.serverId || "--"],
+      ["frontend.state", frontendVersion.state || "unavailable"],
+      ["status.age", ageText],
+      ["lighting.mode", lightingText],
+      ["climate.outside.display", tempText(outsideDisplay)],
+      ["climate.outside.raw", tempText(outsideRaw)],
+      ["engine.coolant", tempText(coolant)],
+      ["electrical.voltage", voltsText(voltage)],
+      ["engine.rpm", rpmText(rpm)],
+      ["vehicle.reverse", boolText(vehicle.reverse ?? vehicle.reverse_selected)],
+      ["vehicle.handbrake", boolText(vehicle.handbrake ?? vehicle.parking_brake)],
+    ]);
+    decodedLeaves.forEach(([path, value]) => values.set(`decoded:${path}`, value));
+    return {
+      decodedLeaves,
+      signature: decodedLeaves.map(([path]) => path).join("\n"),
+      values,
+    };
+  }
 
+  function decodedStateMetrics(snapshot) {
+    const leaves = snapshot.decodedLeaves;
+    if (!leaves.length) return metric("Decoded profile values", "--", "decoded.empty");
+    return `
+      <details class="openmmi-settings-diagnostics-details" open>
+        <summary>Decoded profile values (${leaves.length})</summary>
+        <div class="openmmi-settings-diagnostics-values">
+          ${leaves.map(([path, value]) => metric(
+            escapeDiagnosticText(path),
+            escapeDiagnosticText(value),
+            `decoded:${path}`,
+          )).join("")}
+        </div>
+      </details>
+    `;
+  }
+
+  function diagnosticsTemplate(payload) {
+    const snapshot = diagnosticsSnapshot(payload);
+    const value = (key) => escapeDiagnosticText(snapshot.values.get(key) || "--");
     return `
       <div class="openmmi-settings-panel-head"><span>Diagnostics</span><small>live decoded state</small></div>
-      ${metric("Loaded frontend", escapeDiagnosticText(frontendVersion.loadedId || "--"))}
-      ${metric("Dashboard server", escapeDiagnosticText(frontendVersion.serverId || "--"))}
-      ${metric("Version state", escapeDiagnosticText(frontendVersion.state || "unavailable"))}
-      ${metric("Status age", ageText)}
-      ${metric("Lighting mode", lightingText)}
-      ${metric("Outside display", tempText(outsideDisplay))}
-      ${metric("Outside raw", tempText(outsideRaw))}
-      ${metric("Coolant", tempText(coolant))}
-      ${metric("Voltage", voltsText(voltage))}
-      ${metric("RPM", rpmText(rpm))}
-      ${metric("Reverse", boolText(vehicle.reverse ?? vehicle.reverse_selected))}
-      ${metric("Handbrake", boolText(vehicle.handbrake ?? vehicle.parking_brake))}
-      ${decodedStateMetrics(payload)}
+      ${metric("Loaded frontend", value("frontend.loaded"), "frontend.loaded")}
+      ${metric("Dashboard server", value("frontend.server"), "frontend.server")}
+      ${metric("Version state", value("frontend.state"), "frontend.state")}
+      ${metric("Status age", value("status.age"), "status.age")}
+      ${metric("Lighting mode", value("lighting.mode"), "lighting.mode")}
+      ${metric("Outside display", value("climate.outside.display"), "climate.outside.display")}
+      ${metric("Outside raw", value("climate.outside.raw"), "climate.outside.raw")}
+      ${metric("Coolant", value("engine.coolant"), "engine.coolant")}
+      ${metric("Voltage", value("electrical.voltage"), "electrical.voltage")}
+      ${metric("RPM", value("engine.rpm"), "engine.rpm")}
+      ${metric("Reverse", value("vehicle.reverse"), "vehicle.reverse")}
+      ${metric("Handbrake", value("vehicle.handbrake"), "vehicle.handbrake")}
+      ${decodedStateMetrics(snapshot)}
       <a class="openmmi-settings-link" href="/api/status" target="_blank" rel="noreferrer">Open raw /api/status</a>
     `;
+  }
+
+  function updateDiagnosticsPanel(payload) {
+    const panel = one("#openmmiSettingsPanel");
+    if (!panel || state.section !== "diagnostics") return false;
+    const snapshot = diagnosticsSnapshot(payload);
+    if (snapshot.signature !== state.diagnosticsSignature) {
+      if (state.diagnosticsInteracting) {
+        state.diagnosticsRenderPending = true;
+        return false;
+      }
+      renderSettingsPanel();
+      return true;
+    }
+
+    panel.querySelectorAll("[data-openmmi-diagnostic-key]").forEach((node) => {
+      const next = snapshot.values.get(node.dataset.openmmiDiagnosticKey);
+      if (next !== undefined && node.textContent !== String(next)) node.textContent = String(next);
+    });
+    return true;
   }
 
   function sectionTemplate(section, payload) {
@@ -822,6 +875,9 @@ openMmiNavigationController.init();
       : [];
 
     if (panel) panel.innerHTML = sectionTemplate(state.section, state.payload);
+    if (state.section === "diagnostics") {
+      state.diagnosticsSignature = diagnosticsSnapshot(state.payload).signature;
+    }
     openMmiApplyDriverDashboardCleanupV2();
 
     if (panel && detailsOpen.length) {
@@ -838,6 +894,7 @@ openMmiNavigationController.init();
     many("[data-openmmi-settings-section]").forEach((button) => {
       button.classList.toggle("active", button.dataset.openmmiSettingsSection === state.section);
     });
+    window.dispatchEvent(new CustomEvent("openmmi:settingsrender"));
   }
 
   function finishDiagnosticsInteraction() {
@@ -933,10 +990,8 @@ openMmiNavigationController.init();
   function updateSettings(payload) {
     state.payload = payload;
     if (one("#pageSettings.active") && state.section === "diagnostics") {
-      if (state.diagnosticsInteracting) state.diagnosticsRenderPending = true;
-      else renderSettingsPanel();
+      updateDiagnosticsPanel(payload);
     }
-    window.dispatchEvent(new CustomEvent("openmmi:settingsrender"));
   }
 
   function wrapRenderForSettings() {
@@ -958,6 +1013,11 @@ openMmiNavigationController.init();
   wrapRenderForSettings();
   window.openMmiShowSettingsPage = showSettingsPage;
   window.addEventListener("openmmi:pagechange", bindSettingsButtons);
+  window.addEventListener("openmmi:frontendversion", () => {
+    if (one("#pageSettings.active") && state.section === "diagnostics") {
+      updateDiagnosticsPanel(state.payload);
+    }
+  });
 })();
 // --- Open MMI V1 roadmap: settings shell end ---
 
