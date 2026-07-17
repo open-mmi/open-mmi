@@ -17,6 +17,7 @@ const CSS_FILES = [
   "styles-media-final.css",
   "styles-clock.css",
   "styles-system-settings.css",
+  "styles-runtime-hardening.css",
 ];
 
 function indexAssets() {
@@ -103,6 +104,12 @@ async function loadDashboard(page, options = {}) {
   const payload = options.payload || basePayload();
   const storage = options.storage || {};
   const bluetoothPayload = options.bluetoothPayload || { available: false, players: [] };
+  const versionPayload = options.versionPayload || {
+    api_version: 1,
+    build_id: "__OPEN_MMI_FRONTEND_ID__",
+    frontend_id: "__OPEN_MMI_FRONTEND_ID__",
+    reload_supported: true,
+  };
   const systemPayload = options.systemPayload || {
     local_only: true,
     launcher: {
@@ -129,7 +136,7 @@ async function loadDashboard(page, options = {}) {
   };
 
   await page.setContent(ASSETS.documentHtml, { waitUntil: "domcontentloaded" });
-  await page.evaluate(({ initialPayload, initialStorage, initialBluetoothPayload, initialSystemPayload }) => {
+  await page.evaluate(({ initialPayload, initialStorage, initialBluetoothPayload, initialSystemPayload, initialVersionPayload }) => {
     const values = Object.assign({}, initialStorage);
     const localStorageMock = {
       get length() { return Object.keys(values).length; },
@@ -144,6 +151,7 @@ async function loadDashboard(page, options = {}) {
     window.__openMmiStatusFixture = initialPayload;
     window.__openMmiBluetoothFixture = initialBluetoothPayload;
     window.__openMmiSystemFixture = initialSystemPayload;
+    window.__openMmiVersionFixture = initialVersionPayload;
 
     const json = (body, status = 200) => new Response(JSON.stringify(body), {
       status,
@@ -151,6 +159,7 @@ async function loadDashboard(page, options = {}) {
     });
     window.fetch = async (input, init = {}) => {
       const url = String(input instanceof Request ? input.url : input);
+      if (url.includes("/api/version")) return json(window.__openMmiVersionFixture);
       if (url.includes("/api/status")) return json(window.__openMmiStatusFixture);
       if (url.includes("/api/health")) return json({ ok: true });
       if (url.includes("/api/system/settings")) return json(window.__openMmiSystemFixture);
@@ -205,10 +214,22 @@ async function loadDashboard(page, options = {}) {
     initialStorage: storage,
     initialBluetoothPayload: bluetoothPayload,
     initialSystemPayload: systemPayload,
+    initialVersionPayload: versionPayload,
   });
 
+  if (options.focusBeforeReady) {
+    await page.evaluate(() => {
+      const input = document.createElement("input");
+      input.id = "openMmiUnsavedTestInput";
+      input.value = "unsaved";
+      input.dataset.openmmiDirty = "true";
+      document.body.appendChild(input);
+      input.focus();
+    });
+  }
   for (const script of ASSETS.scripts) {
-    const content = `${fs.readFileSync(path.join(STATIC, script), "utf8")}\n//# sourceURL=${script}`;
+    const content = `${fs.readFileSync(path.join(STATIC, script), "utf8")}
+//# sourceURL=${script}`;
     await page.addScriptTag({ content });
   }
   await page.evaluate(() => document.dispatchEvent(new Event("DOMContentLoaded", { bubbles: true })));
@@ -245,6 +266,25 @@ async function openMedia(page) {
   await expect(page.locator("#pageTitle")).toHaveText("Media");
   await expect(page.locator("#openMmiMediaRoot")).toBeVisible();
 }
+
+
+test("frontend build mismatch defers reload while an editable field is active", async ({ page }) => {
+  const failures = captureRuntimeFailures(page);
+  await loadDashboard(page, {
+    focusBeforeReady: true,
+    versionPayload: {
+      api_version: 1,
+      build_id: "build-b",
+      frontend_id: "build-b",
+      reload_supported: true,
+    },
+  });
+
+  await expect(page.locator("#openMmiUpdateNotice")).toBeVisible();
+  await expect(page.locator("[data-openmmi-update-message]")).toContainText("Finish editing");
+  await expect(page.locator("#openMmiUnsavedTestInput")).toBeFocused();
+  await expectNoRuntimeFailures(failures);
+});
 
 test("loads, renders status and navigates with buttons and keyboard", async ({ page }) => {
   const failures = captureRuntimeFailures(page);

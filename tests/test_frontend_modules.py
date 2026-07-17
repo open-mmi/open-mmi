@@ -9,6 +9,7 @@ STATIC = ROOT / "ui" / "web_dashboard" / "static"
 INDEX = STATIC / "index.html"
 APP = STATIC / "app.js"
 API = STATIC / "api.js"
+FRONTEND_VERSION = STATIC / "frontend-version.js"
 PREFERENCES = STATIC / "preferences.js"
 SYSTEM_SETTINGS = STATIC / "system-settings.js"
 STATUS = STATIC / "status.js"
@@ -26,6 +27,7 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
     def test_modules_load_before_application(self):
         html = INDEX.read_text(encoding="utf-8")
         api_index = html.index('<script src="/api.js"></script>')
+        frontend_version_index = html.index('<script src="/frontend-version.js"></script>')
         preferences_index = html.index('<script src="/preferences.js"></script>')
         system_settings_index = html.index('<script src="/system-settings.js"></script>')
         status_index = html.index('<script src="/status.js"></script>')
@@ -38,7 +40,8 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
         usb_index = html.index('<script src="/media-usb.js"></script>')
         bluetooth_index = html.index('<script src="/media-bluetooth.js"></script>')
         app_index = html.index('<script src="/app.js"></script>')
-        self.assertLess(api_index, preferences_index)
+        self.assertLess(api_index, frontend_version_index)
+        self.assertLess(frontend_version_index, preferences_index)
         self.assertLess(preferences_index, system_settings_index)
         self.assertLess(system_settings_index, status_index)
         self.assertLess(status_index, navigation_index)
@@ -83,6 +86,7 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
 
     def test_modules_are_browser_and_commonjs_compatible(self):
         api = API.read_text(encoding="utf-8")
+        frontend_version = FRONTEND_VERSION.read_text(encoding="utf-8")
         preferences = PREFERENCES.read_text(encoding="utf-8")
         system_settings = SYSTEM_SETTINGS.read_text(encoding="utf-8")
         status = STATUS.read_text(encoding="utf-8")
@@ -96,6 +100,7 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
         media_bluetooth = MEDIA_BLUETOOTH.read_text(encoding="utf-8")
         for source, global_name in (
             (api, "openMmiApi"),
+            (frontend_version, "openMmiFrontendVersion"),
             (preferences, "openMmiPreferences"),
             (system_settings, "openMmiSystemSettings"),
             (status, "openMmiStatus"),
@@ -113,6 +118,17 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
             if global_name not in {"openMmiMediaShell", "openMmiJellyfinMedia", "openMmiRadioMedia", "openMmiUsbMediaController", "openMmiBluetoothMediaController"}:
                 self.assertNotIn("document.", source)
 
+
+
+    def test_frontend_version_module_owns_cache_recovery(self):
+        source = FRONTEND_VERSION.read_text(encoding="utf-8")
+        html = INDEX.read_text(encoding="utf-8")
+        self.assertIn('meta name="open-mmi-frontend-id"', html)
+        self.assertIn('id="openMmiUpdateNotice"', html)
+        self.assertIn('const VERSION_PATH = "/api/version";', source)
+        self.assertIn('windowRef.location.replace(targetUrl(target))', source)
+        self.assertIn('"openmmi:dashboardconnected"', source)
+        self.assertIn('documentRef?.hidden', source)
 
     def test_status_module_owns_polling_and_shared_state(self):
         source = STATUS.read_text(encoding="utf-8")

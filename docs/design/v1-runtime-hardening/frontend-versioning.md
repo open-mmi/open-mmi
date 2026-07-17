@@ -3,7 +3,7 @@
 | Field | Value |
 | --- | --- |
 | Branch | `v1-runtime-hardening` |
-| Status | Proposed |
+| Status | In progress |
 | Owners | Dashboard server, static frontend, installer/update lifecycle |
 
 ## Problem
@@ -207,6 +207,22 @@ This makes stale-client reports diagnosable without comparing file hashes over S
 - simulate temporary downtime and verify recovery without a loop;
 - preserve local preferences across the update reload;
 - keep unsaved system-setting input until the user accepts reload.
+
+## Implementation status
+
+The first runtime-hardening implementation slice now provides:
+
+- authoritative build identity resolution;
+- uncached `/api/version`;
+- no-store generated HTML with consistently versioned local JavaScript and CSS;
+- immutable caching for matching versioned asset URLs and revalidation for compatibility URLs;
+- startup, visibility, online, and dashboard-connectivity version checks;
+- one-shot target-build reload protection through session storage;
+- deferred reload with a visible action while editable or explicitly dirty controls are active;
+- loaded/server identity and reconciliation state in Diagnostics;
+- Python, Node, browser-contract, packaging, and Playwright regression coverage.
+
+Remaining qualification is the installed update test on the persistent tablet Chromium profile. The branch design remains **In progress** until that real update path and CI Playwright suite pass.
 
 ## Acceptance criteria
 

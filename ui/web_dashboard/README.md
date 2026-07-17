@@ -320,6 +320,7 @@ Before adding or replacing icons, confirm the source licence and update `NOTICE.
 The browser loads small platform modules before the main dashboard application:
 
 - `static/api.js` owns same-origin JSON request behaviour.
+- `static/frontend-version.js` owns loaded/server build comparison, safe one-shot reloads, visibility-aware checking, and the update-ready notice.
 - `static/preferences.js` owns safe JSON persistence and the dashboard settings key.
 - `static/clock.js` owns the persistent header clock, minute-boundary scheduling, and clock-specific Display preferences.
 - `static/status.js` owns the shared status snapshot and fixed 200 ms `/api/status` polling lifecycle. It is DOM-independent and exposes subscriptions for later frontend modules.
@@ -342,6 +343,13 @@ The dashboard CSS keeps its six cascade-preserving legacy modules and loads the 
 - `static/styles-diagnostics.css` contains browser performance diagnostics.
 - `static/styles-media-final.css` contains USB, Bluetooth, final media-control and vehicle-correction rules.
 - `static/styles-clock.css` contains the shared header clock and responsive clock layout without changing the checksum-protected legacy CSS split.
+- `static/styles-runtime-hardening.css` contains the controlled frontend-update notice without changing the checksum-protected legacy CSS split.
+
+## Frontend build identity and cache recovery
+
+The server resolves one build identity from `OPEN_MMI_BUILD_ID`, `/opt/open-mmi/.version`, a development checkout, or the installed package fallback. `GET /api/version` exposes that identity with `Cache-Control: no-store`.
+
+`/` and `/index.html` are generated with the same identity in a meta element and in every local JavaScript and CSS URL. Matching versioned asset URLs are served as immutable; unversioned compatibility URLs must revalidate. The browser checks the endpoint after startup, connectivity recovery, visibility recovery, and at a low visible-page interval. A changed build triggers one controlled reload. Active editing defers the reload and presents a **Reload now** action, while session storage prevents repeated reloads for the same target build. Clearing the managed Chromium profile is not part of the supported update process.
 
 `static/styles.css` remains as an import-only compatibility manifest. `tools/verify_css_split.py` locks the module order and verifies that their concatenated bytes remain identical to the pre-split stylesheet, preventing accidental cascade changes during this structural phase.
 
@@ -356,7 +364,7 @@ Browser-level coverage lives in `tests/browser/` and runs in Chromium through Pl
 Run these before committing dashboard changes:
 
 ```bash
-python3 -m py_compile ui/web_dashboard/server.py ui/web_dashboard/bluetooth.py ui/web_dashboard/jellyfin.py ui/web_dashboard/radio.py ui/web_dashboard/usb.py
+python3 -m py_compile ui/web_dashboard/server.py ui/web_dashboard/versioning.py ui/web_dashboard/bluetooth.py ui/web_dashboard/jellyfin.py ui/web_dashboard/radio.py ui/web_dashboard/usb.py
 find ui/web_dashboard/static -maxdepth 1 -name '*.js' -print0 \
   | xargs -0 -n1 node --check
 node --test tests/js/*.test.js

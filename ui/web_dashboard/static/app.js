@@ -88,12 +88,22 @@ let render = function openMmiRenderVehicleStatus(payload) {
 };
 
 function init() {
+  let dashboardApiConnected = false;
   const statusPoller = openMmiStatusClient.createPoller({
     api: openMmiApiClient,
     store: openMmiStatusStore,
     intervalMs: openMmiStatusClient.DEFAULT_STATUS_INTERVAL_MS,
-    onPayload(payload) { render(payload); },
-    onError() { openMmiVehicleRenderer.updateHealth({ health: { status: "error", age_seconds: null } }); },
+    onPayload(payload) {
+      render(payload);
+      if (!dashboardApiConnected) {
+        dashboardApiConnected = true;
+        window.dispatchEvent(new CustomEvent("openmmi:dashboardconnected"));
+      }
+    },
+    onError() {
+      dashboardApiConnected = false;
+      openMmiVehicleRenderer.updateHealth({ health: { status: "error", age_seconds: null } });
+    },
   });
   window.openMmiStatusPoller = statusPoller;
   statusPoller.start();
@@ -701,6 +711,7 @@ openMmiNavigationController.init();
 
   function diagnosticsTemplate(payload) {
     const { vehicle, lighting, climate, engine, electrical, ageValue } = statusParts(payload);
+    const frontendVersion = window.__openMmiFrontendVersionController?.snapshot?.() || {};
     const lightingText = text(lighting.mode).replaceAll("_", " ");
     const ageText = Number.isFinite(Number(ageValue)) ? `${fmt(ageValue, 1)} s` : "live";
     const outsideDisplay = firstValue(
@@ -732,6 +743,9 @@ openMmiNavigationController.init();
 
     return `
       <div class="openmmi-settings-panel-head"><span>Diagnostics</span><small>live decoded state</small></div>
+      ${metric("Loaded frontend", escapeDiagnosticText(frontendVersion.loadedId || "--"))}
+      ${metric("Dashboard server", escapeDiagnosticText(frontendVersion.serverId || "--"))}
+      ${metric("Version state", escapeDiagnosticText(frontendVersion.state || "unavailable"))}
       ${metric("Status age", ageText)}
       ${metric("Lighting mode", lightingText)}
       ${metric("Outside display", tempText(outsideDisplay))}

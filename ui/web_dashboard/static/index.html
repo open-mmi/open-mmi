@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="open-mmi-frontend-id" content="__OPEN_MMI_FRONTEND_ID__">
   <title>Open MMI Factory Dashboard</title>
   <link rel="stylesheet" href="/styles-core.css">
   <link rel="stylesheet" href="/styles-media-layout.css">
@@ -12,6 +13,7 @@
   <link rel="stylesheet" href="/styles-media-final.css">
   <link rel="stylesheet" href="/styles-clock.css">
   <link rel="stylesheet" href="/styles-system-settings.css">
+  <link rel="stylesheet" href="/styles-runtime-hardening.css">
 <!-- Open MMI Jellyfin Bootstrap media v3 start -->
 <!-- Open MMI Jellyfin Bootstrap media v3 end -->
 <!-- Open MMI Bootstrap deps start -->
@@ -20,6 +22,10 @@
 <!-- Open MMI Bootstrap deps end -->
 </head>
 <body>
+  <aside id="openMmiUpdateNotice" class="openmmi-update-notice" hidden role="status" aria-live="polite">
+    <span data-openmmi-update-message>Dashboard update ready.</span>
+    <button type="button" data-openmmi-update-reload>Reload now</button>
+  </aside>
   <main class="screen">
     <header class="topbar">
       <div>
@@ -178,6 +184,7 @@
   </main>
 
   <script src="/api.js"></script>
+  <script src="/frontend-version.js"></script>
   <script src="/preferences.js"></script>
   <script src="/system-settings.js"></script>
   <script src="/clock.js"></script>
