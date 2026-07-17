@@ -1,0 +1,61 @@
+/* Open MMI shared dashboard clock */
+.openmmi-topbar-status {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: clamp(.55rem, 1.25vw, 1rem);
+}
+
+.openmmi-clock {
+  min-width: clamp(5.6rem, 10vw, 8.5rem);
+  color: var(--text);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.openmmi-clock[hidden] {
+  display: none !important;
+}
+
+.openmmi-clock time {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  line-height: 1;
+}
+
+#openMmiClockValue {
+  font-size: clamp(1.35rem, 2.6vw, 2.25rem);
+  font-weight: 300;
+  letter-spacing: -.04em;
+}
+
+#openMmiClockDate {
+  margin-top: .25rem;
+  color: var(--muted);
+  font-size: clamp(.62rem, .95vw, .82rem);
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+@media (max-width: 720px), (max-height: 520px) {
+  .openmmi-topbar-status {
+    gap: .45rem;
+  }
+
+  .openmmi-clock {
+    min-width: 4.8rem;
+  }
+
+  #openMmiClockValue {
+    font-size: clamp(1.1rem, 4vw, 1.55rem);
+  }
+
+  #openMmiClockDate {
+    font-size: .58rem;
+  }
+}

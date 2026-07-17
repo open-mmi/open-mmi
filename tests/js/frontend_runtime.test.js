@@ -193,7 +193,7 @@ test("dashboard scripts initialise extracted Jellyfin and Bluetooth controllers"
 
   const staticDir = path.resolve("ui/web_dashboard/static");
   const scripts = [
-    "api.js", "preferences.js", "status.js", "navigation.js", "overlays.js", "vehicle.js",
+    "api.js", "preferences.js", "system-settings.js", "clock.js", "status.js", "navigation.js", "overlays.js", "vehicle.js",
     "media.js", "media-jellyfin.js", "media-radio.js", "media-usb.js", "media-bluetooth.js", "app.js",
   ];
   for (const name of scripts) {
@@ -203,6 +203,7 @@ test("dashboard scripts initialise extracted Jellyfin and Bluetooth controllers"
       throw new Error(`Failed to execute ${name}: ${error.stack || error}`);
     }
   }
+  assert.equal(window.openMmiClock !== undefined, true);
   assert.equal(window.openMmiJellyfinMedia !== undefined, true);
   assert.equal(window.openMmiJellyfinPlayer !== undefined, true);
   assert.equal(window.openMmiBluetoothMediaController !== undefined, true);

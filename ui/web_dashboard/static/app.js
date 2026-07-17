@@ -9,7 +9,8 @@ const openMmiRadioMediaClient = window.openMmiRadioMedia;
 const openMmiUsbMediaClient = window.openMmiUsbMediaController;
 const openMmiJellyfinMediaClient = window.openMmiJellyfinMedia;
 const openMmiBluetoothMediaClient = window.openMmiBluetoothMediaController;
-if (!openMmiApiClient || !openMmiPrefs || !openMmiStatusClient || !openMmiNavigationClient || !openMmiOverlaysClient || !openMmiVehicleClient || !openMmiMediaClient || !openMmiRadioMediaClient || !openMmiUsbMediaClient || !openMmiJellyfinMediaClient || !openMmiBluetoothMediaClient) {
+const openMmiSystemSettingsClient = window.openMmiSystemSettings;
+if (!openMmiApiClient || !openMmiPrefs || !openMmiStatusClient || !openMmiNavigationClient || !openMmiOverlaysClient || !openMmiVehicleClient || !openMmiMediaClient || !openMmiRadioMediaClient || !openMmiUsbMediaClient || !openMmiJellyfinMediaClient || !openMmiBluetoothMediaClient || !openMmiSystemSettingsClient) {
   throw new Error("Open MMI frontend modules did not load");
 }
 
@@ -18,12 +19,14 @@ const openMmiNavigationController = openMmiNavigationClient.createController();
 const openMmiOverlaysController = openMmiOverlaysClient.createController();
 const openMmiVehicleRenderer = openMmiVehicleClient.createRenderer({ preferences: openMmiPrefs });
 const openMmiMediaSourcesController = openMmiMediaClient.createController({ preferences: openMmiPrefs });
+const openMmiSystemSettingsController = openMmiSystemSettingsClient.install({ api: openMmiApiClient });
 openMmiRadioMediaClient.installPrivacy({ preferences: openMmiPrefs });
 window.openMmiStatusStore = openMmiStatusStore;
 window.openMmiNavigationController = openMmiNavigationController;
 window.openMmiOverlaysController = openMmiOverlaysController;
 window.openMmiVehicleRenderer = openMmiVehicleRenderer;
 window.openMmiMediaSources = openMmiMediaSourcesController;
+window.openMmiSystemSettingsController = openMmiSystemSettingsController;
 window.openMmiApplyInlineDataTelltales = openMmiVehicleRenderer.applyInlineDataTelltales;
 window.openMmiApplyCoolantAndVoltageFixes = openMmiVehicleRenderer.applyCoolantAndVoltageFixes;
 window.setPage = (index) => openMmiNavigationController.setPage(index);
@@ -746,6 +749,14 @@ openMmiNavigationController.init();
   function sectionTemplate(section, payload) {
     const { vehicle } = statusParts(payload);
 
+    if (section === "system") {
+      return `
+        <div data-openmmi-system-settings-panel="true">
+          <div class="openmmi-settings-panel-head"><span>System</span><small>loading desktop shell status</small></div>
+        </div>
+      `;
+    }
+
     if (section === "display") {
       return `
         <div class="openmmi-settings-panel-head"><span>Display</span><small>visual preferences</small></div>
@@ -863,6 +874,7 @@ openMmiNavigationController.init();
           <h2>Settings</h2>
           <p>Preferences and diagnostics live here so Drive and Media stay clean.</p>
           <nav class="openmmi-settings-tree" aria-label="Settings tree">
+            <button type="button" data-openmmi-settings-section="system">System <small>launcher and startup</small></button>
             <button type="button" data-openmmi-settings-section="units">Units <small>mph, °C, raw values</small></button>
             <button type="button" data-openmmi-settings-section="display">Display <small>dim mode, animation</small></button>
             <button type="button" data-openmmi-settings-section="diagnostics">Diagnostics <small>live decoded state</small></button>

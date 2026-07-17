@@ -1,0 +1,30 @@
+.openmmi-config-message {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border: 1px solid rgba(140, 204, 255, 0.35);
+  border-radius: 8px;
+  background: rgba(33, 105, 160, 0.18);
+  font-size: 0.78rem;
+}
+.openmmi-config-message.error { border-color: rgba(255, 93, 93, 0.55); background: rgba(160, 33, 33, 0.22); }
+.openmmi-config-message.warning { border-color: rgba(255, 193, 75, 0.55); background: rgba(160, 106, 33, 0.2); }
+.openmmi-config-message.success { border-color: rgba(90, 220, 143, 0.45); background: rgba(33, 130, 78, 0.2); }
+.openmmi-config-form { display: grid; gap: 8px; }
+.openmmi-config-form > label { display: grid; grid-template-columns: minmax(120px, 0.8fr) minmax(180px, 1.4fr); gap: 10px; align-items: center; }
+.openmmi-config-form input,
+.openmmi-config-form select {
+  min-width: 0;
+  padding: 7px 9px;
+  border: 1px solid rgba(176, 215, 245, 0.26);
+  border-radius: 7px;
+  color: inherit;
+  background: rgba(4, 18, 30, 0.78);
+}
+.openmmi-config-checks { display: flex; flex-wrap: wrap; gap: 10px 18px; font-size: 0.76rem; }
+.openmmi-config-checks label { display: flex; gap: 6px; align-items: center; }
+.openmmi-config-secret-note { margin: 2px 0; font-size: 0.72rem; opacity: 0.78; }
+.openmmi-config-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+.openmmi-config-refresh { margin-top: 10px; }
+@media (max-width: 620px) {
+  .openmmi-config-form > label { grid-template-columns: 1fr; gap: 4px; }
+}

@@ -196,6 +196,61 @@ test("navigation normalises quick-page indices in both directions", () => {
   assert.equal(navigation.normaliseIndex("invalid"), navigation.HOME_INDEX);
 });
 
+test("navigation recognises editable controls before applying global shortcuts", () => {
+  const input = {
+    closest(selector) {
+      return selector.includes("input") ? this : null;
+    },
+  };
+  const body = { closest() { return null; } };
+  assert.equal(navigation.isEditableTarget(input), true);
+  assert.equal(navigation.isEditableTarget(body), false);
+});
+
+test("media settings keep the existing panel when source preferences are unchanged", () => {
+  let writes = 0;
+  let renderedRoot = null;
+  const panel = {
+    set innerHTML(value) {
+      this._innerHTML = String(value);
+      writes += 1;
+      renderedRoot = { dataset: {} };
+    },
+    get innerHTML() { return this._innerHTML || ""; },
+    querySelector(selector) {
+      if (selector === '[data-openmmi-media-settings-panel="true"]') return renderedRoot;
+      return null;
+    },
+  };
+  const activeSection = { dataset: { openmmiSettingsSection: "media" } };
+  const document = {
+    querySelector(selector) {
+      if (selector === "[data-openmmi-settings-section].active") return activeSection;
+      if (selector === "#openmmiSettingsPanel") return panel;
+      return null;
+    },
+    addEventListener() {},
+  };
+  const window = {
+    document,
+    addEventListener() {},
+    requestAnimationFrame(callback) { callback(); },
+    setTimeout(callback) { callback(); },
+  };
+  const preferences = {
+    readObject() { return {}; },
+    writeJson() {},
+  };
+  const controller = media.createController({ document, window, preferences });
+
+  controller.renderSettingsPanel();
+  const firstRoot = renderedRoot;
+  controller.renderSettingsPanel();
+
+  assert.equal(writes, 1);
+  assert.equal(renderedRoot, firstRoot);
+});
+
 test("navigation controller owns active page, pager and page-change state", () => {
   const pages = ["pageElectrical", "pageHome", "pageDrive", "pageClimate"].map((id) => ({ id, classList: fakeClassList() }));
   const buttons = [0, 1, 2].map(() => ({ classList: fakeClassList() }));

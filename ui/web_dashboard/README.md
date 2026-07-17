@@ -108,6 +108,30 @@ Keyboard shortcuts while the dashboard is focused:
 | `Alt+0` | Coolant hot / voltage warning test state |
 | `Alt+C` | Clear keyboard-forced states |
 
+
+## Desktop and startup settings
+
+**Settings → System** selects the remembered Web/TUI interface and whether Open MMI itself opens after graphical login. Enabling it creates `~/.config/autostart/open-mmi.desktop`; the launcher starts the dashboard service on demand before opening the selected interface.
+
+Equivalent commands:
+
+```bash
+open-mmi-config launcher default web
+open-mmi-config launcher autostart enable
+open-mmi-config launcher autostart disable
+```
+
+Dashboard service enablement is an advanced CLI-only control:
+
+```bash
+open-mmi-config dashboard status
+open-mmi-config dashboard start
+open-mmi-config dashboard stop
+open-mmi-config dashboard restart
+open-mmi-config dashboard enable
+open-mmi-config dashboard disable
+```
+
 ## Jellyfin media player
 
 The Jellyfin backend lives in `ui/web_dashboard/jellyfin.py`. The main
@@ -116,7 +140,20 @@ catalogue access, authentication, bounded responses, and media proxying to that
 provider. The Jellyfin module does not import the dashboard handler, keeping the
 provider boundary acyclic and independently testable.
 
-The Media page can connect to Jellyfin using environment variables. Keep the API key server-side; do not put it in `app.js`, `index.html`, or any committed file.
+For an installed tablet, configure Jellyfin from **Settings → Media → Jellyfin setup**. The form can test the connection, save server-side credentials, clear them, and restart the dashboard. Stored passwords and tokens are never returned to the browser.
+
+The equivalent CLI workflow is:
+
+```bash
+open-mmi-config jellyfin setup
+open-mmi-config jellyfin test
+open-mmi-config jellyfin status
+open-mmi-config dashboard restart
+```
+
+Persistent configuration is stored in `~/.config/open-mmi/dashboard.env` with mode `0600`; its parent directory is mode `0700`. The systemd user service loads this file automatically. `open-mmi-config jellyfin clear` removes the persisted credentials.
+
+Environment variables remain supported for checkout/development launches. Keep the API key server-side; do not put it in `app.js`, `index.html`, browser local storage, or any committed file.
 
 ```bash
 export OPEN_MMI_JELLYFIN_URL='https://jellyfin.example.local:8096'
@@ -236,7 +273,9 @@ Steering-wheel transport bindings use the shared `actions.audio` path. It first 
 
 ## Keeping secrets out of git
 
-Never commit Jellyfin API keys. A local env file is fine if it is ignored:
+For installed systems, prefer `open-mmi-config jellyfin setup` or the dashboard UI. They write the ignored, user-private `~/.config/open-mmi/dashboard.env`; do not copy that file into the repository.
+
+For checkout-only development, never commit Jellyfin API keys. A local shell env file is fine if it is ignored:
 
 ```bash
 cat > .env.local <<'EOF'
@@ -282,6 +321,7 @@ The browser loads small platform modules before the main dashboard application:
 
 - `static/api.js` owns same-origin JSON request behaviour.
 - `static/preferences.js` owns safe JSON persistence and the dashboard settings key.
+- `static/clock.js` owns the persistent header clock, minute-boundary scheduling, and clock-specific Display preferences.
 - `static/status.js` owns the shared status snapshot and fixed 200 ms `/api/status` polling lifecycle. It is DOM-independent and exposes subscriptions for later frontend modules.
 - `static/navigation.js` owns quick-page state, Home/menu construction, pager controls, keyboard navigation, and page-change events.
 - `static/overlays.js` owns door/reverse detection, dismissal lifecycle, and the two full-screen vehicle alerts.
@@ -293,7 +333,7 @@ The browser loads small platform modules before the main dashboard application:
 - `static/media-bluetooth.js` owns Bluetooth status polling, optimistic transport state, progress presentation, and BlueZ control requests.
 - `static/app.js` now owns settings, diagnostics, advanced tell-tales, and the remaining cross-cutting dashboard enhancements.
 
-The dashboard CSS is split into six cascade-preserving modules loaded directly by `index.html`:
+The dashboard CSS keeps its six cascade-preserving legacy modules and loads the clock as a separate extension directly from `index.html`:
 
 - `static/styles-core.css` contains the original shell, vehicle cards, RPM and early tell-tale rules.
 - `static/styles-media-layout.css` contains the base Jellyfin/player layout and Media containment fixes.
@@ -301,6 +341,7 @@ The dashboard CSS is split into six cascade-preserving modules loaded directly b
 - `static/styles-media-sources.css` contains the source shell, Radio controls and privacy dialog.
 - `static/styles-diagnostics.css` contains browser performance diagnostics.
 - `static/styles-media-final.css` contains USB, Bluetooth, final media-control and vehicle-correction rules.
+- `static/styles-clock.css` contains the shared header clock and responsive clock layout without changing the checksum-protected legacy CSS split.
 
 `static/styles.css` remains as an import-only compatibility manifest. `tools/verify_css_split.py` locks the module order and verifies that their concatenated bytes remain identical to the pre-split stylesheet, preventing accidental cascade changes during this structural phase.
 
@@ -308,7 +349,7 @@ The platform modules resolve `window.fetch` and `window.localStorage` at call ti
 
 The extracted player exposes temporary compatibility accessors for the Radio, USB, and Bluetooth adapters while the remaining frontend cleanup is completed. The player state itself remains single-owned by `media-jellyfin.js`; adapters do not create duplicate queues or playback state.
 
-Browser-level coverage lives in `tests/browser/` and runs in Chromium through Playwright. The suite executes the real HTML, CSS and JavaScript assets in browser order with deterministic same-origin API fixtures. It covers navigation and keyboard controls, live status rendering, door/reverse overlay lifecycles, settings and media-source persistence, 800×480 vehicle-display containment, a narrow portrait layout, and uncaught page/console errors. Screenshots and traces are retained on CI failures.
+Browser-level coverage lives in `tests/browser/` and runs in Chromium through Playwright. The suite executes the real HTML, CSS and JavaScript assets in browser order with deterministic same-origin API fixtures. It covers navigation and keyboard controls, live status rendering, door/reverse overlay lifecycles, settings, clock and media-source persistence, 800×480 vehicle-display containment, a narrow portrait layout, and uncaught page/console errors. Screenshots and traces are retained on CI failures.
 
 ## Development checks
 
@@ -373,6 +414,7 @@ Current Settings areas:
 - Units: speed/distance display can be shown as mph/mi or km/h/km; temperature display can be shown as °C or °F.
 - Display: normal, dim and boost modes are available for different cabin/tablet lighting conditions.
 - Display: reduced animation can be enabled for older tablets or lower-distraction use.
+- Display: the shared local clock can be shown or hidden, switched between 24-hour and 12-hour time, and optionally display the date.
 - Display: tell-tale test lights the existing footer tell-tale icons through the normal frontend render path. It is frontend-only and does not write to `/api/status` or transmit anything to the car.
 - Diagnostics: shows live decoded state and optional raw/debug detail for development.
 - Media: documents the server-side Jellyfin integration path.

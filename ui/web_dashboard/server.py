@@ -306,6 +306,15 @@ except ImportError as exc:  # pragma: no cover - older installed package fallbac
         raise
     import bluetooth as bluetooth_backend  # type: ignore[no-redef]
 
+# Local-only system and credential settings provider.
+try:
+    from ui.web_dashboard import system_settings as system_settings_backend
+except ModuleNotFoundError as exc:  # pragma: no cover - direct script fallback
+    if exc.name not in {"ui", "ui.web_dashboard"}:
+        raise
+    import system_settings as system_settings_backend  # type: ignore[no-redef]
+
+
 
 class DashboardHandler(SimpleHTTPRequestHandler):
     status_path: Path = default_status_path()
@@ -344,6 +353,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
     # --- Open MMI Bluetooth media POST route start ---
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
+        if system_settings_backend._handle_post(self, parsed.path):
+            return
         if parsed.path != "/api/bluetooth/control":
             self.send_error(404)
             return
@@ -365,7 +376,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
 
-
+        if system_settings_backend._handle_get(self, parsed.path):
+            return
 
         if parsed.path == "/api/jellyfin/status":
             self._send_json(jellyfin_backend._jellyfin_status_payload(self.demo_mode))

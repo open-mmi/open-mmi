@@ -72,6 +72,28 @@ python3 ui/web_dashboard/server.py --demo --demo-scenario traffic
 ```
 
 More details, including Jellyfin configuration, tell-tale test mode, media keys, demo scenarios, and icon attribution notes, are in [`ui/web_dashboard/README.md`](ui/web_dashboard/README.md).
+
+### Installed desktop and media configuration
+
+The installed desktop icon uses the remembered Web/TUI selection. Configure it in **Settings → System** or from the CLI:
+
+```bash
+open-mmi-config launcher status
+open-mmi-config launcher default web
+open-mmi-config launcher autostart enable
+```
+
+Configure Jellyfin in **Settings → Media → Jellyfin setup** or interactively:
+
+```bash
+open-mmi-config jellyfin setup
+open-mmi-config jellyfin test
+open-mmi-config dashboard restart
+```
+
+Credentials are stored server-side in `~/.config/open-mmi/dashboard.env` with mode `0600`. The dashboard browser receives only redacted configuration state and never receives the stored password or token. Environment variables remain supported for development launches and can be imported with `open-mmi-config jellyfin import-env`.
+
+See [`docs/desktop-shell.md`](docs/desktop-shell.md) for launcher, login-autostart, and advanced service details and [`ui/web_dashboard/README.md`](ui/web_dashboard/README.md) for Jellyfin scope and security guidance.
 <!-- OPEN_MMI_WEB_DASHBOARD_END -->
 
 ---
@@ -221,9 +243,9 @@ This will:
 * copy application files to `/opt/open-mmi`
 * copy management scripts to `/opt/open-mmi/scripts`
 * copy UI/dashboard files to `/opt/open-mmi/ui`
-* install the systemd user service
+* install the CAN daemon and dashboard systemd user services
 * configure user permissions
-* start the daemon
+* start the CAN daemon and make the dashboard available on demand
 
 ## 3. Verify installation
 
@@ -248,54 +270,50 @@ sudo ./scripts/manage.sh logs
 
 Press `Ctrl+C` to exit logs.
 
-## 5. Run the web dashboard
+## 5. Open Open MMI
 
-From the installed copy:
+The installer provides the universal launcher and desktop integration:
 
 ```bash
-cd /opt/open-mmi
-./venv/bin/python ui/web_dashboard/server.py
+open-mmi-launcher
 ```
 
-Or from a development checkout:
+The desktop icon uses the remembered Web/TUI choice. The launcher starts the dashboard service on demand, waits for `/api/health`, and then opens or reuses the managed browser window.
+
+For development away from the car:
 
 ```bash
 python3 ui/web_dashboard/server.py --demo --demo-scenario traffic
 ```
 
-The CLI diagnostic dashboard is still available when you want raw status inspection:
+The diagnostic terminal UI remains available:
 
 ```bash
-cd /opt/open-mmi
-./venv/bin/python ui/dashboard/status_cli.py
-./venv/bin/python ui/dashboard/status_cli.py --once
-./venv/bin/python ui/dashboard/status_cli.py --raw
+open-mmi-status
+open-mmi-status --once
+open-mmi-status --raw
 ```
 
-## 6. Optional desktop launcher
+## 6. Desktop and login behaviour
 
-Open MMI includes local web dashboard files plus optional Linux desktop launcher assets for the diagnostic status dashboard.
-
-The launcher is **not installed by default**. To install it for the current user:
+Install and update deploy the application-menu entry, desktop shortcut, repository icons, and packaged commands automatically. Configure the remembered interface and whether Open MMI itself opens after graphical login in **Settings → System**, or use:
 
 ```bash
-./scripts/open-mmi-desktop install
+open-mmi-config launcher default web
+open-mmi-config launcher autostart enable
+open-mmi-config launcher autostart disable
 ```
 
-To remove it:
+Application autostart is stored at `~/.config/autostart/open-mmi.desktop`. The dashboard service is started on demand by the launcher. Advanced service controls are CLI-only:
 
 ```bash
-./scripts/open-mmi-desktop remove
+open-mmi-config dashboard status
+open-mmi-config dashboard start
+open-mmi-config dashboard stop
+open-mmi-config dashboard restart
+open-mmi-config dashboard enable
+open-mmi-config dashboard disable
 ```
-
-This installs:
-
-```text
-~/.local/share/applications/open-mmi-status.desktop
-~/.local/share/icons/hicolor
-```
-
-The desktop launcher is currently intended as a lightweight diagnostic convenience, not as the final Open MMI user interface.
 
 ---
 
@@ -369,7 +387,7 @@ open-mmi/
 │
 ├── scripts/
 │   ├── manage.sh            ← install/update/uninstall/config
-│   └── open-mmi-desktop     ← optional desktop launcher install/remove
+│   └── manage.sh            ← install/update/uninstall and desktop lifecycle
 │
 ├── packaging/
 │   └── linux-desktop/
@@ -855,27 +873,17 @@ Normal setup uses repo/default vehicle profiles and repo/default bindings from `
 
 User override files under `~/.config/open-mmi` are opt-in only and must be selected explicitly with `OPEN_MMI_VEHICLE_CONFIG` or `OPEN_MMI_BINDINGS_FILE`.
 
-## Optional desktop launcher
+## Desktop shell
 
-Install the diagnostic status dashboard launcher for the current user:
-
-```bash
-./scripts/open-mmi-desktop install
-```
-
-Remove it:
+The main installer manages desktop entries, icons, packaged commands, and the dashboard user service. No separate desktop-helper command is required.
 
 ```bash
-./scripts/open-mmi-desktop remove
+open-mmi-launcher --choose --remember
+open-mmi-config launcher autostart enable
+open-mmi-config dashboard status
 ```
 
-Reinstall it:
-
-```bash
-./scripts/open-mmi-desktop reinstall
-```
-
-The desktop launcher is optional and is not required for headless, service-only, or custom UI installs.
+Fresh installs leave the dashboard service disabled at login. Opening the desktop icon starts it on demand. Enable the service separately only when another local client needs the API before the UI is opened.
 
 ## Uninstall
 
@@ -928,34 +936,25 @@ The UI should consume human-readable vehicle state, not raw CAN frames.
 
 # Desktop integration
 
-Open MMI includes optional Linux desktop integration for the diagnostic status dashboard.
+Open MMI installs its application-menu entry, desktop shortcut, repository icon theme, and managed command links through `scripts/manage.sh`.
 
-Files live in:
+Installed user files include:
 
 ```text
-packaging/linux-desktop/
-├── open-mmi-status.desktop
-└── icons/
-    └── hicolor/
+~/.local/share/applications/open-mmi.desktop
+$(xdg-user-dir DESKTOP)/Open MMI.desktop
+~/.local/share/icons/hicolor/.../apps/open-mmi.*
 ```
 
-The desktop launcher is intentionally opt-in. Open MMI includes the integration/backend layer and a local web dashboard. The diagnostic desktop launcher remains optional and development-focused.
+The desktop entry launches `/usr/local/bin/open-mmi-launcher`, which opens the remembered interface and reuses the existing managed browser instance. **Settings → System** can create or remove:
 
-The diagnostic launcher is useful for development, testing, and quick local status checks.
-
-Install:
-
-```bash
-./scripts/open-mmi-desktop install
+```text
+~/.config/autostart/open-mmi.desktop
 ```
 
-Remove:
+That login entry opens Open MMI after the graphical session starts. It is distinct from enabling the background dashboard service. Service start/stop/enable/disable remains available through `open-mmi-config dashboard`.
 
-```bash
-./scripts/open-mmi-desktop remove
-```
-
-The launcher is installed for the current user, not system-wide.
+Uninstall removes only Open MMI-managed desktop, icon, command-link, and login-autostart files.
 
 ---
 
@@ -1203,25 +1202,28 @@ If an override file exists but is not selected, the daemon logs a warning and co
 
 ## Desktop launcher does not appear
 
-Install or reinstall the optional desktop launcher:
+Run an update so the repository-managed desktop entry and icon assets are reinstalled:
 
 ```bash
-./scripts/open-mmi-desktop reinstall
+sudo ./scripts/manage.sh update
 ```
 
-Then restart your application launcher, log out and back in, or restart the desktop shell.
-
-You can also check that the desktop file exists:
+Check the installed files:
 
 ```bash
-ls ~/.local/share/applications/open-mmi-status.desktop
-```
-
-And that the icon files exist:
-
-```bash
+ls -l ~/.local/share/applications/open-mmi.desktop
+ls -l "$(xdg-user-dir DESKTOP)/Open MMI.desktop"
 ls ~/.local/share/icons/hicolor/scalable/apps/open-mmi.svg
 ```
+
+To inspect application autostart separately:
+
+```bash
+open-mmi-config launcher status
+ls -l ~/.config/autostart/open-mmi.desktop
+```
+
+If the entry was just installed, refresh the application menu or log out and back in.
 
 ## Permission denied for virtual input
 

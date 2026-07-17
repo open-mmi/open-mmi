@@ -108,6 +108,8 @@ jobs:
               "dashboard": Path(ui.web_dashboard.__file__).parent / "static" / "index.html",
               "frontend_api": Path(ui.web_dashboard.__file__).parent / "static" / "api.js",
               "frontend_preferences": Path(ui.web_dashboard.__file__).parent / "static" / "preferences.js",
+              "frontend_clock": Path(ui.web_dashboard.__file__).parent / "static" / "clock.js",
+              "frontend_system_settings": Path(ui.web_dashboard.__file__).parent / "static" / "system-settings.js",
               "frontend_status": Path(ui.web_dashboard.__file__).parent / "static" / "status.js",
               "frontend_vehicle": Path(ui.web_dashboard.__file__).parent / "static" / "vehicle.js",
               "frontend_media": Path(ui.web_dashboard.__file__).parent / "static" / "media.js",
@@ -121,6 +123,8 @@ jobs:
               "styles_media_sources": Path(ui.web_dashboard.__file__).parent / "static" / "styles-media-sources.css",
               "styles_diagnostics": Path(ui.web_dashboard.__file__).parent / "static" / "styles-diagnostics.css",
               "styles_media_final": Path(ui.web_dashboard.__file__).parent / "static" / "styles-media-final.css",
+              "styles_clock": Path(ui.web_dashboard.__file__).parent / "static" / "styles-clock.css",
+              "styles_system_settings": Path(ui.web_dashboard.__file__).parent / "static" / "styles-system-settings.css",
               "jellyfin": Path(jellyfin.__file__),
               "radio": Path(radio.__file__),
               "usb": Path(usb.__file__),
@@ -129,6 +133,51 @@ jobs:
           if missing:
               raise SystemExit("Missing installed assets:\n" + "\n".join(missing))
           print("Installed package imports and runtime assets verified")
+          PY
+
+      - name: Verify installed console entry points
+        run: |
+          cd "$(mktemp -d)"
+          python - <<'PY'
+          from importlib import import_module
+          from importlib.metadata import distribution
+          from shutil import which
+
+          expected = {
+              "open-mmi-canbusd": "canbusd.core:main",
+              "open-mmi-config": "ui.config_cli:main",
+              "open-mmi-dashboard": "ui.web_dashboard.server:main",
+              "open-mmi-launcher": "ui.launcher:main",
+              "open-mmi-status": "ui.dashboard.status_cli:main",
+          }
+          installed = {
+              entry.name: entry.value
+              for entry in distribution("open-mmi").entry_points
+              if entry.group == "console_scripts"
+          }
+
+          errors = []
+          for command, target in expected.items():
+              actual = installed.get(command)
+              if actual != target:
+                  errors.append(
+                      f"{command}: expected metadata target {target!r}, got {actual!r}"
+                  )
+              if which(command) is None:
+                  errors.append(f"{command}: installed command wrapper was not found on PATH")
+
+              module_name, attribute_name = target.split(":", 1)
+              module = import_module(module_name)
+              target_object = getattr(module, attribute_name, None)
+              if not callable(target_object):
+                  errors.append(f"{target}: target is missing or is not callable")
+
+          if errors:
+              raise SystemExit(
+                  "Installed console entry-point verification failed:\n"
+                  + "\n".join(errors)
+              )
+          print(f"Verified {len(expected)} installed console entry points")
           PY
 
   browser:
@@ -204,7 +253,7 @@ jobs:
           else:
               raise SystemExit(f"Dashboard did not become ready: {last_error}")
 
-          for endpoint in ("/", "/styles.css", "/styles-core.css", "/styles-media-layout.css", "/styles-shell.css", "/styles-media-sources.css", "/styles-diagnostics.css", "/styles-media-final.css", "/api.js", "/preferences.js", "/status.js", "/vehicle.js", "/media.js", "/media-jellyfin.js", "/media-radio.js", "/media-usb.js", "/media-bluetooth.js", "/app.js", "/api/status", "/api/health"):
+          for endpoint in ("/", "/styles.css", "/styles-core.css", "/styles-media-layout.css", "/styles-shell.css", "/styles-media-sources.css", "/styles-diagnostics.css", "/styles-media-final.css", "/styles-clock.css", "/styles-system-settings.css", "/api.js", "/preferences.js", "/system-settings.js", "/status.js", "/vehicle.js", "/media.js", "/media-jellyfin.js", "/media-radio.js", "/media-usb.js", "/media-bluetooth.js", "/app.js", "/api/status", "/api/health"):
               with urlopen(base + endpoint, timeout=3) as response:
                   if response.status != 200:
                       raise SystemExit(f"{endpoint} returned {response.status}")

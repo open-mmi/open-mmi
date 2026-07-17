@@ -24,8 +24,23 @@ REAL_USER="${SUDO_USER:-$USER}"
 REAL_HOME=$(getent passwd "$REAL_USER" | cut -d: -f6)
 USER_ID=$(id -u "$REAL_USER")
 USER_CONFIG_DIR="$REAL_HOME/.config/open-mmi"
+LOGIN_AUTOSTART_ENTRY="$REAL_HOME/.config/autostart/open-mmi.desktop"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+DESKTOP_ENTRY_SOURCE="$REPO_ROOT/packaging/linux-desktop/open-mmi-status.desktop"
+DESKTOP_ICON_SOURCE="$REPO_ROOT/packaging/linux-desktop/icons"
+APPLICATIONS_DIR="$REAL_HOME/.local/share/applications"
+APPLICATION_ENTRY="$APPLICATIONS_DIR/open-mmi.desktop"
+ICON_THEME_DIR="$REAL_HOME/.local/share/icons"
+DESKTOP_ENTRY_NAME="Open MMI.desktop"
+COMMAND_LINK_DIR="${OPEN_MMI_COMMAND_LINK_DIR:-/usr/local/bin}"
+OPEN_MMI_COMMANDS=(
+    open-mmi-canbusd
+    open-mmi-config
+    open-mmi-dashboard
+    open-mmi-launcher
+    open-mmi-status
+)
 
 # =============================================================================
 # UTILITIES
@@ -144,6 +159,217 @@ open_editor_as_user() {
 }
 
 
+get_desktop_dir() {
+    local desktop_dir=""
+
+    if command -v xdg-user-dir > /dev/null 2>&1; then
+        desktop_dir=$(sudo -u "$REAL_USER" env HOME="$REAL_HOME" xdg-user-dir DESKTOP 2>/dev/null || true)
+    fi
+
+    if [[ -z "$desktop_dir" || "$desktop_dir" != /* || "$desktop_dir" = "$REAL_HOME" ]]; then
+        desktop_dir="$REAL_HOME/Desktop"
+    fi
+
+    printf '%s\n' "$desktop_dir"
+}
+
+refresh_desktop_caches() {
+    if command -v update-desktop-database > /dev/null 2>&1; then
+        sudo -u "$REAL_USER" env HOME="$REAL_HOME" update-desktop-database "$APPLICATIONS_DIR" > /dev/null 2>&1 || true
+    fi
+
+    if command -v gtk-update-icon-cache > /dev/null 2>&1 && [ -d "$ICON_THEME_DIR/hicolor" ]; then
+        sudo -u "$REAL_USER" env HOME="$REAL_HOME" gtk-update-icon-cache -f -t "$ICON_THEME_DIR/hicolor" > /dev/null 2>&1 || true
+    fi
+}
+
+install_desktop_icons() {
+    if [ ! -d "$DESKTOP_ICON_SOURCE" ]; then
+        log_error "Desktop icon source not found: $DESKTOP_ICON_SOURCE"
+        return 1
+    fi
+
+    while IFS= read -r -d '' source_icon; do
+        local relative_path target_icon target_dir
+        relative_path="${source_icon#"$DESKTOP_ICON_SOURCE"/}"
+        target_icon="$ICON_THEME_DIR/$relative_path"
+        target_dir=$(dirname "$target_icon")
+        install -d -m 0755 -o "$REAL_USER" -g "$REAL_USER" "$target_dir"
+        install -m 0644 -o "$REAL_USER" -g "$REAL_USER" "$source_icon" "$target_icon"
+    done < <(find "$DESKTOP_ICON_SOURCE" -type f -print0)
+}
+
+remove_desktop_icons() {
+    if [ ! -d "$DESKTOP_ICON_SOURCE" ]; then
+        return 0
+    fi
+
+    while IFS= read -r -d '' source_icon; do
+        local relative_path
+        relative_path="${source_icon#"$DESKTOP_ICON_SOURCE"/}"
+        rm -f "$ICON_THEME_DIR/$relative_path"
+    done < <(find "$DESKTOP_ICON_SOURCE" -type f -print0)
+}
+
+install_desktop_entry() {
+    local desktop_dir
+    desktop_dir=$(get_desktop_dir)
+
+    if [ ! -f "$DESKTOP_ENTRY_SOURCE" ]; then
+        log_error "Desktop entry source not found: $DESKTOP_ENTRY_SOURCE"
+        return 1
+    fi
+
+    log_info "Installing desktop launcher and icons..."
+    install_desktop_icons
+    install -d -m 0755 -o "$REAL_USER" -g "$REAL_USER" "$APPLICATIONS_DIR" "$desktop_dir"
+    install -m 0644 -o "$REAL_USER" -g "$REAL_USER" "$DESKTOP_ENTRY_SOURCE" "$APPLICATION_ENTRY"
+    install -m 0755 -o "$REAL_USER" -g "$REAL_USER" "$DESKTOP_ENTRY_SOURCE" "$desktop_dir/$DESKTOP_ENTRY_NAME"
+
+    if command -v gio > /dev/null 2>&1; then
+        sudo -u "$REAL_USER" env HOME="$REAL_HOME" gio set "$desktop_dir/$DESKTOP_ENTRY_NAME" metadata::trusted true > /dev/null 2>&1 || true
+    fi
+
+    refresh_desktop_caches
+}
+
+remove_desktop_entry() {
+    local desktop_dir
+    desktop_dir=$(get_desktop_dir)
+
+    log_info "Removing desktop launcher and icons..."
+    rm -f "$APPLICATION_ENTRY" "$desktop_dir/$DESKTOP_ENTRY_NAME"
+    remove_desktop_icons
+    refresh_desktop_caches
+}
+
+verify_console_commands() {
+    local command wrapper
+
+    for command in "${OPEN_MMI_COMMANDS[@]}"; do
+        wrapper="$INSTALL_DIR/venv/bin/$command"
+        if [ ! -x "$wrapper" ]; then
+            log_error "Installed command wrapper is missing or not executable: $wrapper"
+            return 1
+        fi
+    done
+}
+
+install_open_mmi_package() {
+    local python="$INSTALL_DIR/venv/bin/python"
+
+    if [ ! -x "$python" ]; then
+        log_error "Deployment Python is missing or not executable: $python"
+        return 1
+    fi
+
+    log_info "Installing Open MMI package and console commands..."
+    if ! "$python" -m pip install --upgrade --force-reinstall "$INSTALL_DIR"; then
+        log_error "Failed to install Open MMI package"
+        return 1
+    fi
+
+    verify_console_commands
+}
+
+install_command_links() {
+    local command wrapper link current_target
+
+    install -d -m 0755 "$COMMAND_LINK_DIR"
+
+    for command in "${OPEN_MMI_COMMANDS[@]}"; do
+        wrapper="$INSTALL_DIR/venv/bin/$command"
+        link="$COMMAND_LINK_DIR/$command"
+
+        if [ -e "$link" ] || [ -L "$link" ]; then
+            if [ -L "$link" ]; then
+                current_target=$(readlink "$link")
+                if [ "$current_target" = "$wrapper" ]; then
+                    continue
+                fi
+            fi
+
+            log_error "Refusing to replace unrelated command: $link"
+            return 1
+        fi
+    done
+
+    for command in "${OPEN_MMI_COMMANDS[@]}"; do
+        wrapper="$INSTALL_DIR/venv/bin/$command"
+        link="$COMMAND_LINK_DIR/$command"
+        if [ ! -L "$link" ]; then
+            ln -s "$wrapper" "$link"
+        fi
+    done
+}
+
+remove_command_links() {
+    local command wrapper link
+
+    for command in "${OPEN_MMI_COMMANDS[@]}"; do
+        wrapper="$INSTALL_DIR/venv/bin/$command"
+        link="$COMMAND_LINK_DIR/$command"
+        if [ -L "$link" ] && [ "$(readlink "$link")" = "$wrapper" ]; then
+            rm -f "$link"
+        fi
+    done
+}
+
+migrate_legacy_dashboard_startup() {
+    local config_file="$USER_CONFIG_DIR/launcher.json"
+
+    if [ ! -f "$config_file" ]; then
+        return 0
+    fi
+
+    if sudo -u "$REAL_USER" env HOME="$REAL_HOME" python3 - "$config_file" <<'PY_CONFIG'
+import json
+import os
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+try:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+except (OSError, json.JSONDecodeError):
+    raise SystemExit(1)
+
+if not isinstance(payload, dict) or "start_at_login" not in payload:
+    raise SystemExit(1)
+
+payload.pop("start_at_login", None)
+temporary = path.with_suffix(path.suffix + ".tmp")
+temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+os.chmod(temporary, 0o600)
+temporary.replace(path)
+PY_CONFIG
+    then
+        log_info "Migrating legacy dashboard-service startup preference..."
+        export XDG_RUNTIME_DIR="/run/user/$USER_ID"
+        sudo -u "$REAL_USER" env HOME="$REAL_HOME" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user disable open-mmi-dashboard.service >/dev/null 2>&1 || true
+    fi
+}
+
+configure_install_service_defaults() {
+    export XDG_RUNTIME_DIR="/run/user/$USER_ID"
+    sudo -u "$REAL_USER" env HOME="$REAL_HOME" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user enable canbusd.service
+    sudo -u "$REAL_USER" env HOME="$REAL_HOME" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user disable open-mmi-dashboard.service >/dev/null 2>&1 || true
+    migrate_legacy_dashboard_startup
+}
+
+configure_update_service_defaults() {
+    export XDG_RUNTIME_DIR="/run/user/$USER_ID"
+    sudo -u "$REAL_USER" env HOME="$REAL_HOME" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user enable canbusd.service
+    migrate_legacy_dashboard_startup
+}
+
+remove_login_autostart() {
+    if [ -f "$LOGIN_AUTOSTART_ENTRY" ] && grep -Fqx "Exec=/usr/local/bin/open-mmi-launcher" "$LOGIN_AUTOSTART_ENTRY"; then
+        rm -f "$LOGIN_AUTOSTART_ENTRY"
+    fi
+}
+
+
 # =============================================================================
 # PROFILE-DRIVEN PROVISIONING
 # =============================================================================
@@ -219,7 +445,8 @@ cmd_install() {
         python3-venv \
         can-utils \
         udev \
-        dbus-x11; then
+        dbus-x11 \
+        zenity; then
         log_error "Failed to install system dependencies"
         return 1
     fi
@@ -236,16 +463,9 @@ cmd_install() {
         return 1
     fi
     
-    log_info "Installing Python dependencies..."
-    if ! "$INSTALL_DIR/venv/bin/pip" install --upgrade pip; then
+    log_info "Preparing Python packaging tools..."
+    if ! "$INSTALL_DIR/venv/bin/python" -m pip install --upgrade pip; then
         log_error "Failed to upgrade pip"
-        return 1
-    fi
-    
-    if ! "$INSTALL_DIR/venv/bin/pip" install \
-        python-can \
-        evdev; then
-        log_error "Failed to install Python dependencies"
         return 1
     fi
     
@@ -261,24 +481,34 @@ cmd_install() {
     fi
 
     cp -r "$REPO_ROOT/scripts" "$INSTALL_DIR/"
+    cp -r "$REPO_ROOT/packaging" "$INSTALL_DIR/"
     cp "$REPO_ROOT/pyproject.toml" "$INSTALL_DIR/"
+    cp "$REPO_ROOT/README.md" "$INSTALL_DIR/"
+    cp "$REPO_ROOT/LICENSE" "$INSTALL_DIR/"
+
+    if ! install_open_mmi_package; then
+        return 1
+    fi
+    if ! install_command_links; then
+        return 1
+    fi
     
     # Store version
     get_current_version > "$VERSION_FILE"
     
     # Install systemd service
     log_info "Installing systemd user service..."
-    mkdir -p "$REAL_HOME/.config/systemd/user"
-    cp "$REPO_ROOT/systemd/user/canbusd.service" "$REAL_HOME/.config/systemd/user/canbusd.service"
-    chown "$REAL_USER:$REAL_USER" "$REAL_HOME/.config/systemd/user/canbusd.service"
-    
+    local user_systemd_dir="$REAL_HOME/.config/systemd/user"
+    install -d -m 0755 -o "$REAL_USER" -g "$REAL_USER" "$user_systemd_dir"
+    install -m 0644 -o "$REAL_USER" -g "$REAL_USER" "$REPO_ROOT/systemd/user/canbusd.service" "$user_systemd_dir/canbusd.service"
+    install -m 0644 -o "$REAL_USER" -g "$REAL_USER" "$REPO_ROOT/systemd/user/open-mmi-dashboard.service" "$user_systemd_dir/open-mmi-dashboard.service"
+    install_desktop_entry
     export XDG_RUNTIME_DIR="/run/user/$USER_ID"
     mkdir -p "$REAL_HOME/.config/systemd/user/default.target.wants"
     chown -R "$REAL_USER:$REAL_USER" "$REAL_HOME/.config/systemd/user"
 
     sudo -u "$REAL_USER" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user daemon-reload
-    sudo -u "$REAL_USER" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user enable canbusd.service
-    
+    configure_install_service_defaults
     # Apply default profile-driven CAN provisioning.
     # This creates user config if missing, writes the daemon runtime drop-in,
     # and generates udev rules from the selected vehicle profile metadata.
@@ -295,9 +525,9 @@ cmd_install() {
         sudo chmod 664 /sys/class/backlight/intel_backlight/brightness || true
     fi
     
-    # Start daemon
-    log_info "Starting daemon..."
-    sudo -u "$REAL_USER" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user restart canbusd
+    # Start services
+    log_info "Starting Open MMI services..."
+    sudo -u "$REAL_USER" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user restart canbusd open-mmi-dashboard
     
     # Verify
     sleep 1
@@ -381,7 +611,7 @@ cmd_update() {
     # =========================================================
     log_info "Deploying to system..."
 
-    sudo rm -rf         "$INSTALL_DIR/canbusd"         "$INSTALL_DIR/vehicles"         "$INSTALL_DIR/bindings"         "$INSTALL_DIR/actions"         "$INSTALL_DIR/ui"         "$INSTALL_DIR/scripts"
+    sudo rm -rf         "$INSTALL_DIR/canbusd"         "$INSTALL_DIR/vehicles"         "$INSTALL_DIR/bindings"         "$INSTALL_DIR/actions"         "$INSTALL_DIR/ui"         "$INSTALL_DIR/scripts"         "$INSTALL_DIR/packaging"
 
     sudo cp -r "$REPO_ROOT/canbusd" "$INSTALL_DIR/"
     sudo cp -r "$REPO_ROOT/vehicles" "$INSTALL_DIR/"
@@ -393,16 +623,34 @@ cmd_update() {
     fi
 
     sudo cp -r "$REPO_ROOT/scripts" "$INSTALL_DIR/"
+    sudo cp -r "$REPO_ROOT/packaging" "$INSTALL_DIR/"
     sudo cp "$REPO_ROOT/pyproject.toml" "$INSTALL_DIR/"
+    sudo cp "$REPO_ROOT/README.md" "$INSTALL_DIR/"
+    sudo cp "$REPO_ROOT/LICENSE" "$INSTALL_DIR/"
+
+    if ! install_open_mmi_package; then
+        return 1
+    fi
+    if ! install_command_links; then
+        return 1
+    fi
+
+    local user_systemd_dir="$REAL_HOME/.config/systemd/user"
+    sudo install -d -m 0755 -o "$REAL_USER" -g "$REAL_USER" "$user_systemd_dir"
+    sudo install -m 0644 -o "$REAL_USER" -g "$REAL_USER" "$REPO_ROOT/systemd/user/canbusd.service" "$user_systemd_dir/canbusd.service"
+    sudo install -m 0644 -o "$REAL_USER" -g "$REAL_USER" "$REPO_ROOT/systemd/user/open-mmi-dashboard.service" "$user_systemd_dir/open-mmi-dashboard.service"
+    install_desktop_entry
+
+    export XDG_RUNTIME_DIR="/run/user/$USER_ID"
+
+    sudo -u "$REAL_USER" env HOME="$REAL_HOME" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user daemon-reload
+    configure_update_service_defaults
 
     # Version write (needs sudo because /opt is root-owned)
     sudo bash -c "echo '$new_version' > '$VERSION_FILE'"
 
-    # Restart daemon
-    export XDG_RUNTIME_DIR="/run/user/$USER_ID"
-    sudo -u "$REAL_USER" \
-        XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
-        systemctl --user restart canbusd
+    # Restart services
+    sudo -u "$REAL_USER" env HOME="$REAL_HOME" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user restart canbusd.service open-mmi-dashboard.service
 
     log_success "Update complete → $new_version"
 
@@ -441,23 +689,25 @@ cmd_uninstall() {
         fi
     fi
     
-    # Stop daemon
-    log_info "Stopping systemd service..."
+    # Stop services
+    log_info "Stopping systemd services..."
     export XDG_RUNTIME_DIR="/run/user/$USER_ID"
-    sudo -u "$REAL_USER" \
-        XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
-        systemctl --user stop canbusd || true
-    
-    sudo -u "$REAL_USER" \
-        XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
-        systemctl --user disable canbusd || true
-    
+    for service in canbusd.service open-mmi-dashboard.service; do
+        sudo -u "$REAL_USER" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user disable --now "$service" >/dev/null 2>&1 || true
+    done
+
     # Remove service file
     log_info "Removing systemd service..."
-    rm -f "$REAL_HOME/.config/systemd/user/canbusd.service"
+    rm -f \
+        "$REAL_HOME/.config/systemd/user/canbusd.service" \
+        "$REAL_HOME/.config/systemd/user/open-mmi-dashboard.service"
     sudo -u "$REAL_USER" \
         XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
         systemctl --user daemon-reload
+
+    remove_desktop_entry
+    remove_login_autostart
+    remove_command_links
     
     # Remove application directory
     log_info "Removing application files..."
@@ -473,7 +723,9 @@ cmd_uninstall() {
     
     log_success "Uninstall complete"
     log_info "Note: User was not removed from 'video' and 'input' groups"
-    log_info "To clean up, run: sudo usermod -G $(groups $REAL_USER | cut -d: -f2 | sed 's/ video//g; s/ input//g') $REAL_USER"
+    log_info "Optional group cleanup:"
+    log_info "  sudo gpasswd -d $REAL_USER video"
+    log_info "  sudo gpasswd -d $REAL_USER input"
 }
 
 # =============================================================================
@@ -852,4 +1104,6 @@ main() {
     esac
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi

@@ -10,6 +10,7 @@ INDEX = STATIC / "index.html"
 APP = STATIC / "app.js"
 API = STATIC / "api.js"
 PREFERENCES = STATIC / "preferences.js"
+SYSTEM_SETTINGS = STATIC / "system-settings.js"
 STATUS = STATIC / "status.js"
 NAVIGATION = STATIC / "navigation.js"
 OVERLAYS = STATIC / "overlays.js"
@@ -26,6 +27,7 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
         html = INDEX.read_text(encoding="utf-8")
         api_index = html.index('<script src="/api.js"></script>')
         preferences_index = html.index('<script src="/preferences.js"></script>')
+        system_settings_index = html.index('<script src="/system-settings.js"></script>')
         status_index = html.index('<script src="/status.js"></script>')
         navigation_index = html.index('<script src="/navigation.js"></script>')
         overlays_index = html.index('<script src="/overlays.js"></script>')
@@ -37,7 +39,8 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
         bluetooth_index = html.index('<script src="/media-bluetooth.js"></script>')
         app_index = html.index('<script src="/app.js"></script>')
         self.assertLess(api_index, preferences_index)
-        self.assertLess(preferences_index, status_index)
+        self.assertLess(preferences_index, system_settings_index)
+        self.assertLess(system_settings_index, status_index)
         self.assertLess(status_index, navigation_index)
         self.assertLess(navigation_index, overlays_index)
         self.assertLess(overlays_index, vehicle_index)
@@ -53,6 +56,7 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
         self.assertIn("window.openMmiApi", source)
         self.assertIn("window.openMmiPreferences", source)
         self.assertIn("window.openMmiStatus", source)
+        self.assertIn("window.openMmiSystemSettings", source)
         self.assertIn("window.openMmiNavigation", source)
         self.assertIn("window.openMmiOverlays", source)
         self.assertIn("window.openMmiVehicle", source)
@@ -80,6 +84,7 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
     def test_modules_are_browser_and_commonjs_compatible(self):
         api = API.read_text(encoding="utf-8")
         preferences = PREFERENCES.read_text(encoding="utf-8")
+        system_settings = SYSTEM_SETTINGS.read_text(encoding="utf-8")
         status = STATUS.read_text(encoding="utf-8")
         navigation = NAVIGATION.read_text(encoding="utf-8")
         overlays = OVERLAYS.read_text(encoding="utf-8")
@@ -92,6 +97,7 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
         for source, global_name in (
             (api, "openMmiApi"),
             (preferences, "openMmiPreferences"),
+            (system_settings, "openMmiSystemSettings"),
             (status, "openMmiStatus"),
             (navigation, "openMmiNavigation"),
             (overlays, "openMmiOverlays"),

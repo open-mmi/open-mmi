@@ -1,11 +1,24 @@
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=Open MMI Status
-Comment=View Open MMI diagnostic status
-Exec=/opt/open-mmi/venv/bin/python /opt/open-mmi/ui/dashboard/status_cli.py
+Name=Open MMI
+Comment=Launch the configured Open MMI interface
+Exec=/usr/local/bin/open-mmi-launcher
 Path=/opt/open-mmi
 Icon=open-mmi
-Terminal=true
-Categories=System;Monitor;
-StartupNotify=false
+Terminal=false
+Categories=System;Utility;
+StartupNotify=true
+Actions=Choose;Web;TUI;
+
+[Desktop Action Choose]
+Name=Choose Open MMI Interface
+Exec=/usr/local/bin/open-mmi-launcher --choose --remember
+
+[Desktop Action Web]
+Name=Use Web Dashboard
+Exec=/usr/local/bin/open-mmi-launcher web --remember
+
+[Desktop Action TUI]
+Name=Use Terminal UI
+Exec=/usr/local/bin/open-mmi-launcher tui --remember

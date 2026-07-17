@@ -14,7 +14,7 @@ import os
 import re
 import ssl
 import time
-from typing import Any, Dict
+from typing import Any, Dict, Mapping
 
 
 # --- Open MMI Jellyfin local audio client start ---
@@ -37,16 +37,20 @@ JELLYFIN_CLIENT_VERSION = "0.1.0"
 _JELLYFIN_LOGIN_CACHE: Dict[str, Dict[str, Any]] = {}
 
 
-def _jellyfin_config() -> Dict[str, Any]:
-    url = os.getenv("OPEN_MMI_JELLYFIN_URL", "").strip().rstrip("/")
-    token = os.getenv("OPEN_MMI_JELLYFIN_TOKEN", "").strip()
-    username = os.getenv("OPEN_MMI_JELLYFIN_USERNAME", "").strip()
-    password_set = "OPEN_MMI_JELLYFIN_PASSWORD" in os.environ
-    password = os.getenv("OPEN_MMI_JELLYFIN_PASSWORD", "")
-    session_id = os.getenv("OPEN_MMI_JELLYFIN_SESSION_ID", "").strip()
-    device_name = os.getenv("OPEN_MMI_JELLYFIN_DEVICE", "").strip().casefold()
-    user_id = os.getenv("OPEN_MMI_JELLYFIN_USER_ID", "").strip()
-    library_id = os.getenv("OPEN_MMI_JELLYFIN_LIBRARY_ID", "").strip()
+def _mapping_flag(values: Mapping[str, Any], name: str) -> bool:
+    return str(values.get(name, "")).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _jellyfin_config_from_mapping(values: Mapping[str, Any]) -> Dict[str, Any]:
+    url = str(values.get("OPEN_MMI_JELLYFIN_URL", "")).strip().rstrip("/")
+    token = str(values.get("OPEN_MMI_JELLYFIN_TOKEN", "")).strip()
+    username = str(values.get("OPEN_MMI_JELLYFIN_USERNAME", "")).strip()
+    password_set = "OPEN_MMI_JELLYFIN_PASSWORD" in values
+    password = str(values.get("OPEN_MMI_JELLYFIN_PASSWORD", ""))
+    session_id = str(values.get("OPEN_MMI_JELLYFIN_SESSION_ID", "")).strip()
+    device_name = str(values.get("OPEN_MMI_JELLYFIN_DEVICE", "")).strip().casefold()
+    user_id = str(values.get("OPEN_MMI_JELLYFIN_USER_ID", "")).strip()
+    library_id = str(values.get("OPEN_MMI_JELLYFIN_LIBRARY_ID", "")).strip()
     username_configured = bool(username and password_set)
     return {
         "configured": bool(url and (token or username_configured)),
@@ -60,9 +64,13 @@ def _jellyfin_config() -> Dict[str, Any]:
         "device_name": device_name,
         "user_id": user_id,
         "library_id": library_id,
-        "allow_global": _env_flag("OPEN_MMI_JELLYFIN_ALLOW_GLOBAL"),
-        "insecure_tls": _env_flag("OPEN_MMI_JELLYFIN_INSECURE_TLS"),
+        "allow_global": _mapping_flag(values, "OPEN_MMI_JELLYFIN_ALLOW_GLOBAL"),
+        "insecure_tls": _mapping_flag(values, "OPEN_MMI_JELLYFIN_INSECURE_TLS"),
     }
+
+
+def _jellyfin_config() -> Dict[str, Any]:
+    return _jellyfin_config_from_mapping(os.environ)
 
 def _jellyfin_header_value(value: Any) -> str:
     return str(value).replace("\\", "\\\\").replace('"', '\"')
@@ -280,6 +288,26 @@ def _jellyfin_request_json(config: Dict[str, Any], path: str) -> Any:
         raise RuntimeError("Jellyfin request timed out") from exc
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise RuntimeError("Jellyfin returned invalid JSON") from exc
+
+def _jellyfin_test_connection(config: Dict[str, Any]) -> Dict[str, Any]:
+    if not config.get("configured"):
+        raise RuntimeError("Jellyfin is not fully configured")
+
+    working = dict(config)
+    system_info = _jellyfin_request_json(working, "/System/Info")
+    if not isinstance(system_info, dict):
+        raise RuntimeError("Jellyfin system information response was invalid")
+
+    user_id = _jellyfin_user_id(working)
+    return {
+        "connected": True,
+        "server_name": str(system_info.get("ServerName") or system_info.get("Name") or "Jellyfin"),
+        "version": str(system_info.get("Version") or ""),
+        "user_id": user_id or "",
+        "library_id": str(working.get("library_id") or ""),
+        "auth_mode": str(working.get("auth_mode") or ""),
+    }
+
 
 def _env_flag(name: str) -> bool:
     return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
