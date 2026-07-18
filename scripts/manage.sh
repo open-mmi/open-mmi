@@ -401,13 +401,17 @@ install_open_mmi_package() {
     if [[ "$package_source" == *.whl ]]; then
         pip_arguments+=(--no-deps)
     fi
-    if ! env -u PYTHONPATH "$python" -m pip "${pip_arguments[@]}" "$package_source"; then
+    if ! ( umask 0022; env -u PYTHONPATH "$python" -m pip "${pip_arguments[@]}" "$package_source" ); then
         log_error "Failed to install Open MMI package"
         return 1
     fi
 
     verify_console_commands
     env -u PYTHONPATH "$python" -I -c 'import canbusd.core, ui.config_cli, ui.web_dashboard.server'
+    if [[ $EUID -eq 0 && "$REAL_USER" != root ]]; then
+        sudo -u "$REAL_USER" env -u PYTHONPATH "$python" -I \
+            -c 'import canbusd.core, ui.config_cli, ui.web_dashboard.server'
+    fi
 }
 
 install_command_links() {

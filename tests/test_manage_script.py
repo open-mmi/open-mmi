@@ -215,6 +215,8 @@ sudo() {{ printf '%s\\0' "$@"; }}
         self.assertIn("remove_command_links", uninstall_block)
         self.assertIn('local pip_arguments=(install --upgrade --force-reinstall)', self.text)
         self.assertIn('local package_source="${1:-$INSTALL_DIR}"', self.text)
+        self.assertIn('( umask 0022; env -u PYTHONPATH "$python" -m pip', self.text)
+        self.assertIn('sudo -u "$REAL_USER" env -u PYTHONPATH "$python" -I', self.text)
         self.assertIn('cp "$REPO_ROOT/README.md" "$INSTALL_DIR/"', install_block)
         self.assertIn('cp "$REPO_ROOT/LICENSE" "$INSTALL_DIR/"', install_block)
         self.assertIn('sudo cp "$REPO_ROOT/README.md" "$INSTALL_DIR/"', update_block)
