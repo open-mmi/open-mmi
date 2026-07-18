@@ -106,3 +106,11 @@ No failure is converted to `up-to-date`.
 - `stable` queries the same fixed tag namespace but accepts final `vMAJOR.MINOR.PATCH` tags only.
 
 No request field can select a channel, repository, ref, or tag pattern.
+
+## Candidate preparation
+
+`POST /api/system/update-prepare` accepts exactly `{"confirm": true}` and
+forwards a fixed prepare request to the local coordinator. It returns persistent
+coordinator state but exposes no staging path or remote URL. This operation may
+download and validate a candidate in root-owned staging; it does not install,
+restart services, or modify the live checkout or installation.

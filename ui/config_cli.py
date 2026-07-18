@@ -86,6 +86,7 @@ def build_parser() -> argparse.ArgumentParser:
     updates_commands.add_parser("check")
     updates_commands.add_parser("readiness")
     updates_commands.add_parser("coordinator")
+    updates_commands.add_parser("prepare")
     channel = updates_commands.add_parser("channel")
     channel.add_argument("channel", choices=("stable", "beta", "development"))
     return parser
@@ -138,6 +139,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 _print(update_readiness.readiness_payload(update_status.status_payload()))
             elif args.command == "coordinator":
                 _print(update_coordinator.client_status())
+            elif args.command == "prepare":
+                _print(update_coordinator.client_prepare())
             else:
                 _print({"ok": True, **update_status.configure_channel(args.channel)})
             return 0

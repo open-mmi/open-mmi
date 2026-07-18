@@ -3,7 +3,7 @@
 | Field | Value |
 | --- | --- |
 | Branch | `v1-update-management` |
-| Status | Persistent coordinator boundary implemented; update execution remains disabled |
+| Status | Restricted candidate preparation implemented; installation remains disabled |
 | Owners | Future update coordinator, installer, systemd integration |
 
 ## Required architecture
@@ -37,6 +37,26 @@ not yet acquire it because execution remains outside this slice.
 Readiness reports the boundary itself as available, but retains the separate
 `execution-authorization` blocker while `execution_enabled` is false. Installing
 this service therefore cannot accidentally expose an update action.
+
+## Candidate preparation
+
+The coordinator accepts exactly
+`{"api_version": 1, "action": "prepare", "confirm": true}`. The local
+dashboard bridge accepts only `{"confirm": true}` and supplies no repository,
+channel, ref, tag, commit, path, command, service, or environment value.
+
+Preparation re-reads the managed source and root-owned channel policy, checks
+installation, disk, command, power, and thermal readiness, and takes the
+exclusive transaction lock. It resolves the candidate from trusted policy,
+clones the recorded remote into a randomly named directory beneath
+`/var/lib/open-mmi/staging`, and proves that the installed commit is an
+ancestor of the candidate. Release channels also re-check that the selected tag
+still identifies the same commit after download.
+
+State advances through `preparing`, `downloading`, and `validating`, ending in
+`prepared` or `failed`. The prepared tree becomes root-owned and is not copied
+into `/opt/open-mmi`. `execution_enabled` and `installation_enabled` remain
+false; install and rollback requests are still rejected.
 
 ## Transaction stages
 

@@ -15,7 +15,7 @@ from typing import Any, Dict, Mapping
 from urllib.parse import urlparse
 
 try:
-    from ui import launcher, update_readiness
+    from ui import launcher, update_coordinator, update_readiness
     from ui.configuration import (
         ConfigurationError,
         client_is_loopback,
@@ -30,7 +30,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover - direct script fallback
     if exc.name != "ui":
         raise
     sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[2]))
-    from ui import launcher, update_readiness
+    from ui import launcher, update_coordinator, update_readiness
     from ui.configuration import (
         ConfigurationError,
         client_is_loopback,
@@ -186,6 +186,7 @@ def _handle_post(handler: Any, path: str) -> bool:
         "/api/system/jellyfin/clear",
         "/api/system/dashboard/restart",
         "/api/system/update-check",
+        "/api/system/update-prepare",
     }:
         return False
     if not _request_allowed(handler):
@@ -203,6 +204,11 @@ def _handle_post(handler: Any, path: str) -> bool:
             if payload not in ({}, {"confirm": True}):
                 raise ValueError("Invalid update check request")
             result = update_status.check_for_updates()
+        elif path == "/api/system/update-prepare":
+            payload = _json_body(handler)
+            if payload != {"confirm": True}:
+                raise ValueError("Invalid update preparation request")
+            result = update_coordinator.client_prepare()
         elif path == "/api/system/dashboard/restart":
             payload = _json_body(handler)
             if payload not in ({}, {"confirm": True}):
@@ -212,7 +218,7 @@ def _handle_post(handler: Any, path: str) -> bool:
         else:
             result = routes[path](_json_body(handler))
         handler._send_json(result)
-    except (ValueError, ConfigurationError, launcher.LauncherError, update_status.UpdateStatusError) as exc:
+    except (ValueError, ConfigurationError, launcher.LauncherError, update_coordinator.CoordinatorError, update_status.UpdateStatusError) as exc:
         handler._send_json({"ok": False, "error": str(exc)}, 400)
     except (RuntimeError, TimeoutError, OSError):
         handler._send_json({"ok": False, "error": "Configuration operation failed"}, 502)

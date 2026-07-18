@@ -387,6 +387,11 @@ The selected channel is separate root-owned policy in `/etc/open-mmi/update-poli
 
 `GET /api/system/update-status` reads local installation, policy, repository health, and the last process-local check result. It performs no network operation. **Settings → System → Software updates** displays the installed version, selected channel, available version, state, last check, and repository health.
 
+`POST /api/system/update-prepare` accepts only `{"confirm": true}` and asks the
+restricted coordinator to download and validate the policy-selected candidate
+in root-owned staging. It accepts no source, ref, path, command, or service
+input and does not install or restart anything.
+
 **Check for updates** calls same-origin `POST /api/system/update-check` with a fixed confirmation object. Development uses the recorded branch with bounded `git ls-remote`; beta and stable use only fixed semantic tag queries against the official Open MMI repository. The checker does not fetch, merge, reset, install, restart, or elevate privilege. Unknown ancestry, untrusted remotes, downgrades, and rewritten tags are reported conservatively. Network failure is never presented as up to date.
 
 Settings has no channel editor. Administrators use:

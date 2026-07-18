@@ -43,10 +43,11 @@ A privileged component must use root-owned source/channel policy or independentl
 
 Authorization should be explicit and auditable. The dashboard process should remain unprivileged.
 
-The initial coordinator slice implements only `status`. It has no generic
-dispatch table and rejects every execution action and every extra request
-field. Its root-owned state is safe for unprivileged inspection but cannot be
-used to inject commands or execution parameters.
+The coordinator implements `status` and fixed, confirmed `prepare`. It has no
+generic dispatch table and rejects every extra request field. Candidate source,
+identity, channel, staging location, and Git arguments come only from managed
+records and coordinator constants. Its root-owned state cannot inject commands
+or execution parameters. Installation and rollback remain disabled.
 
 ## Additional controls
 

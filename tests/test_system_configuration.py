@@ -169,6 +169,32 @@ class SystemConfigurationTests(unittest.TestCase):
         inspect.assert_called_once_with(status)
         self.assertEqual(handler.sent, (readiness, 200))
 
+    def test_update_prepare_accepts_only_fixed_confirmation(self):
+        class Handler:
+            client_address = ("127.0.0.1", 1234)
+            def __init__(self, body):
+                self.headers = {
+                    "Host": "127.0.0.1:8765", "Origin": "http://127.0.0.1:8765",
+                    "Content-Type": "application/json", "Content-Length": str(len(body)),
+                }
+                self.rfile = io.BytesIO(body)
+                self.sent = None
+            def _send_json(self, payload, status=200):
+                self.sent = (payload, status)
+
+        prepared = {"ok": True, "execution_enabled": False, "state": {"state": "prepared"}}
+        handler = Handler(b'{"confirm": true}')
+        with patch.object(system_settings.update_coordinator, "client_prepare", return_value=prepared) as prepare:
+            self.assertTrue(system_settings._handle_post(handler, "/api/system/update-prepare"))
+        prepare.assert_called_once_with()
+        self.assertEqual(handler.sent, (prepared, 200))
+
+        handler = Handler(b'{"confirm": true, "ref": "main"}')
+        with patch.object(system_settings.update_coordinator, "client_prepare") as prepare:
+            self.assertTrue(system_settings._handle_post(handler, "/api/system/update-prepare"))
+        prepare.assert_not_called()
+        self.assertEqual(handler.sent[1], 400)
+
     def test_update_check_rejects_caller_supplied_source_fields(self):
         class Handler:
             client_address = ("127.0.0.1", 1234)
