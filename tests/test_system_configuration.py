@@ -151,6 +151,24 @@ class SystemConfigurationTests(unittest.TestCase):
         check.assert_called_once_with()
         self.assertEqual(handler.sent, (checked, 200))
 
+    def test_update_readiness_route_is_local_and_has_no_caller_parameters(self):
+        class Handler:
+            client_address = ("127.0.0.1", 1234)
+            headers = {"Host": "127.0.0.1:8765", "Origin": "http://127.0.0.1:8765"}
+            sent = None
+            def _send_json(self, payload, status=200):
+                self.sent = (payload, status)
+
+        handler = Handler()
+        status = {"readiness": {"state": "ready", "blockers": []}}
+        readiness = {"api_version": 1, "read_only": True, "state": "blocked", "install_allowed": False}
+        with patch.object(system_settings.update_status, "status_payload", return_value=status), patch.object(
+            system_settings.update_readiness, "readiness_payload", return_value=readiness
+        ) as inspect:
+            self.assertTrue(system_settings._handle_get(handler, "/api/system/update-readiness"))
+        inspect.assert_called_once_with(status)
+        self.assertEqual(handler.sent, (readiness, 200))
+
     def test_update_check_rejects_caller_supplied_source_fields(self):
         class Handler:
             client_address = ("127.0.0.1", 1234)

@@ -3,7 +3,7 @@
 | Field | Value |
 | --- | --- |
 | Branch | `v1-update-management` |
-| Status | Proposed; required before browser-triggered installation |
+| Status | Pre-update inspection implemented; post-update health and rollback remain proposed |
 | Owners | Update coordinator, runtime services, release engineering |
 
 ## Pre-update readiness
@@ -22,6 +22,14 @@ An install action remains unavailable unless policy confirms:
 - required services are not in a restart loop.
 
 Thermal, battery, and charging values should reuse the runtime-diagnostics backend rather than implementing a second `/sys` reader.
+
+The read-only readiness slice exposes `GET /api/system/update-readiness` and
+`open-mmi-config updates readiness`. Both inspect a fixed set of local checks;
+neither accepts paths, commands, service names, thresholds, or policy overrides.
+Unknown power, thermal, or service state is reported as `indeterminate`, never
+silently treated as ready. Until the separately privileged coordinator exists,
+`privileged-coordinator` intentionally remains a blocker and
+`install_allowed` remains false.
 
 ## Post-update health
 

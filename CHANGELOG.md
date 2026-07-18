@@ -9,6 +9,8 @@
 - Branch-specific update source, API, UI, execution, rollback, health, and permission design records.
 - Root-owned `/etc/open-mmi/update-policy.json` with fixed `stable`, `beta`, and `development` channel selection.
 - Administrative `open-mmi-config updates status`, `updates check`, and `updates channel` commands.
+- Read-only pre-update readiness inspection through `GET /api/system/update-readiness` and `open-mmi-config updates readiness`.
+- Fail-closed disk, command, coordinator, transaction-lock, configuration-preservation, power, thermal, and service restart-loop checks.
 - Stable/beta semantic release-tag filtering, official-repository enforcement, downgrade refusal, and rewritten-tag detection.
 
 ### Security

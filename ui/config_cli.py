@@ -9,7 +9,7 @@ import os
 import sys
 from typing import Any, Mapping, Optional, Sequence
 
-from ui import launcher
+from ui import launcher, update_readiness
 from ui.configuration import (
     ConfigurationError,
     JELLYFIN_ENV_KEYS,
@@ -84,6 +84,7 @@ def build_parser() -> argparse.ArgumentParser:
     updates_commands = updates_parser.add_subparsers(dest="command", required=True)
     updates_commands.add_parser("status")
     updates_commands.add_parser("check")
+    updates_commands.add_parser("readiness")
     channel = updates_commands.add_parser("channel")
     channel.add_argument("channel", choices=("stable", "beta", "development"))
     return parser
@@ -132,6 +133,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 _print(update_status.status_payload())
             elif args.command == "check":
                 _print(update_status.check_for_updates())
+            elif args.command == "readiness":
+                _print(update_readiness.readiness_payload(update_status.status_payload()))
             else:
                 _print({"ok": True, **update_status.configure_channel(args.channel)})
             return 0

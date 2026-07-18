@@ -4,7 +4,7 @@
 | --- | --- |
 | Source branch | `v1-update-management` |
 | Intended target | `main` |
-| Status | Read-only status and trusted channel policy implemented |
+| Status | Read-only status, trusted channel policy, and pre-update readiness inspection implemented |
 | Predecessor | `v1-runtime-hardening` |
 | Initial delivery | Read-only update visibility |
 
@@ -39,7 +39,7 @@ Later slices may add readiness checks, a restricted update coordinator, health v
 1. Managed installed-source descriptor and read-only status model. **Implemented in the first branch slice.**
 2. Settings → System update panel and manual read-only check. **Implemented in the first branch slice.**
 3. Stable/beta/development channel policy. **Implemented with root-owned fixed-name policy and CLI-only selection.**
-4. Pre-update readiness checks.
+4. Pre-update readiness checks. **Implemented as a read-only fail-closed gate; installation remains unavailable.**
 5. Persistent coordinator state and fixed-action privileged boundary.
 6. User-triggered update execution.
 7. Post-update health validation.

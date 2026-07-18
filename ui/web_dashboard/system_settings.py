@@ -15,7 +15,7 @@ from typing import Any, Dict, Mapping
 from urllib.parse import urlparse
 
 try:
-    from ui import launcher
+    from ui import launcher, update_readiness
     from ui.configuration import (
         ConfigurationError,
         client_is_loopback,
@@ -30,7 +30,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover - direct script fallback
     if exc.name != "ui":
         raise
     sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[2]))
-    from ui import launcher
+    from ui import launcher, update_readiness
     from ui.configuration import (
         ConfigurationError,
         client_is_loopback,
@@ -165,6 +165,7 @@ def _handle_get(handler: Any, path: str) -> bool:
     routes = {
         "/api/system/settings": _settings_status,
         "/api/system/update-status": update_status.status_payload,
+        "/api/system/update-readiness": lambda: update_readiness.readiness_payload(update_status.status_payload()),
     }
     if path not in routes:
         return False
