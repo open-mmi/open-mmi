@@ -137,7 +137,10 @@ def _deployment_failure(output: str) -> str:
     matches = re.findall(r"Prepared deployment failed at stage: ([a-z-]+)", output or "")
     stage = matches[-1] if matches else ""
     if stage in _DEPLOYMENT_STAGES:
-        return f"Prepared deployment failed during {stage}"
+        failure = f"Prepared deployment failed during {stage}"
+        if "Prepared rollback verified" in (output or ""):
+            return f"{failure}; rollback verified"
+        return f"{failure}; rollback unverified"
     return "Prepared deployment failed"
 
 

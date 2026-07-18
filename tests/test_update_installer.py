@@ -99,8 +99,10 @@ class UpdateInstallerTests(unittest.TestCase):
 
     def test_deployment_failure_exposes_only_allowlisted_stage(self):
         self.assertEqual(
-            update_installer._deployment_failure("noise\nPrepared deployment failed at stage: api-health\nsecret"),
-            "Prepared deployment failed during api-health",
+            update_installer._deployment_failure(
+                "noise\nPrepared deployment failed at stage: api-health\nPrepared rollback verified\nsecret"
+            ),
+            "Prepared deployment failed during api-health; rollback verified",
         )
         self.assertEqual(
             update_installer._deployment_failure("Prepared deployment failed at stage: secret-path"),
@@ -108,7 +110,7 @@ class UpdateInstallerTests(unittest.TestCase):
         )
         self.assertEqual(
             update_installer._deployment_failure("Prepared deployment failed at stage: repository-fetch"),
-            "Prepared deployment failed during repository-fetch",
+            "Prepared deployment failed during repository-fetch; rollback unverified",
         )
 
     def test_source_change_after_preparation_blocks_installation(self):

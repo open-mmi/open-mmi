@@ -854,7 +854,7 @@ cmd_deploy_prepared() {
     install -d -m 0700 -o root -g root "$rollback_root"
     if [ -e "$INSTALL_DIR" ]; then
         cp -a -- "$INSTALL_DIR" "$rollback_root/installation"
-        "$rollback_root/installation/venv/bin/python" -c 'import ui.config_cli'
+        env -u PYTHONPATH "$rollback_root/installation/venv/bin/python" -I -c 'import ui.config_cli'
     fi
     install -d -m 0700 -o root -g root "$rollback_root/system-units" "$rollback_root/user-units"
     for unit in "$UPDATE_COORDINATOR_UNIT" "$UPDATE_INSTALLER_UNIT"; do
@@ -883,7 +883,8 @@ cmd_deploy_prepared() {
             cp -a -- "$rollback_root/installation" "$restored_install"
             mv -- "$INSTALL_DIR" "$failed_install"
             mv -- "$restored_install" "$INSTALL_DIR"
-            if "$INSTALL_DIR/venv/bin/python" -c 'import ui.config_cli' >/dev/null 2>&1; then
+            if env -u PYTHONPATH "$INSTALL_DIR/venv/bin/python" -I -c 'import ui.config_cli' >/dev/null 2>&1; then
+                log_success "Prepared rollback verified"
                 rm -rf -- "$failed_install"
             else
                 log_error "Previous Python installation could not be verified after restoration"
