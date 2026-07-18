@@ -7,6 +7,7 @@ browser cannot turn this module into a filesystem or process-inspection API.
 from __future__ import annotations
 
 import os
+import fcntl
 import shutil
 import socket
 import stat
@@ -14,6 +15,7 @@ import subprocess
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, Sequence
 
+from ui import update_coordinator
 from ui.web_dashboard import runtime_diagnostics
 
 
@@ -68,10 +70,29 @@ def _coordinator_check(path: Path) -> Dict[str, Any]:
     # A coordinator socket may deliberately be group-writable by a dedicated
     # authorization group, but it must never be writable by every local user.
     trusted = stat.S_ISSOCK(metadata.st_mode) and metadata.st_uid == 0 and not metadata.st_mode & 0o002
+    responsive = False
+    execution_enabled = False
+    if trusted:
+        try:
+            response = update_coordinator.client_status(path)
+            responsive = bool(response.get("ok"))
+            execution_enabled = response.get("execution_enabled") is True
+        except update_coordinator.CoordinatorError:
+            responsive = False
     return _check(
         "privileged-coordinator",
-        "pass" if trusted else "block",
-        "The privileged update coordinator boundary is available" if trusted else "The privileged update coordinator boundary is untrusted",
+        "pass" if trusted and responsive else "block",
+        "The privileged update coordinator boundary is available" if trusted and responsive else "The privileged update coordinator boundary is unavailable or untrusted",
+        execution_enabled=execution_enabled,
+    )
+
+
+def _execution_check(coordinator: Mapping[str, Any]) -> Dict[str, Any]:
+    enabled = coordinator.get("state") == "pass" and coordinator.get("execution_enabled") is True
+    return _check(
+        "execution-authorization",
+        "pass" if enabled else "block",
+        "Coordinator execution is authorized" if enabled else "Coordinator execution actions are not enabled",
     )
 
 
@@ -84,7 +105,15 @@ def _transaction_check(path: Path) -> Dict[str, Any]:
         return _check("active-transaction", "block", "Update transaction state cannot be inspected")
     if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != 0 or metadata.st_mode & 0o022:
         return _check("active-transaction", "block", "Update transaction lock is untrusted")
-    return _check("active-transaction", "block", "An update transaction may already be active")
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    except BlockingIOError:
+        return _check("active-transaction", "block", "An update transaction is active")
+    except OSError:
+        return _check("active-transaction", "block", "Update transaction state cannot be inspected")
+    return _check("active-transaction", "pass", "No update transaction is active")
 
 
 def _configuration_check(config_dir: Path) -> Dict[str, Any]:
@@ -166,12 +195,14 @@ def readiness_payload(
     base_blockers = list(base.get("blockers", [])) if isinstance(base, Mapping) else ["update-status-invalid"]
     runtime = diagnostics or runtime_diagnostics.runtime_diagnostics_payload()
     home_config = config_dir or (Path.home() / ".config/open-mmi")
+    coordinator = _coordinator_check(coordinator_socket)
     checks = [
         _check("managed-source", "block" if base_blockers else "pass", "Managed update source is ready" if not base_blockers else "Managed update source is not ready", blockers=base_blockers),
         _transaction_check(update_lock),
         _disk_check(install_dir),
         _command_check(),
-        _coordinator_check(coordinator_socket),
+        coordinator,
+        _execution_check(coordinator),
         _configuration_check(home_config),
         _power_check(runtime.get("power", {})),
         _thermal_check(runtime.get("thermal", {})),

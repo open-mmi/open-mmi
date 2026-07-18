@@ -11,6 +11,7 @@
 - Administrative `open-mmi-config updates status`, `updates check`, and `updates channel` commands.
 - Read-only pre-update readiness inspection through `GET /api/system/update-readiness` and `open-mmi-config updates readiness`.
 - Fail-closed disk, command, coordinator, transaction-lock, configuration-preservation, power, thermal, and service restart-loop checks.
+- Root-owned update coordinator service with atomic persistent state, crash recovery, exclusive transaction locking, and a status-only Unix-socket protocol.
 - Stable/beta semantic release-tag filtering, official-repository enforcement, downgrade refusal, and rewritten-tag detection.
 
 ### Security
@@ -21,7 +22,8 @@
 - Git inspection invoked through `sudo open-mmi-config` drops back to the original user before reading the user-owned checkout.
 
 ### Not yet included
-- No update installation, browser channel editor, scheduling, unattended updates, readiness enforcement, privileged coordinator, or rollback action.
+- No update installation, browser channel editor, scheduling, unattended updates, execution authorization, or rollback action.
+- The coordinator boundary does not yet enable prepare, install, service mutation, or rollback actions.
 
 ## Unreleased — V1 runtime hardening
 

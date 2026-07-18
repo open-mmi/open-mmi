@@ -3,7 +3,7 @@
 | Field | Value |
 | --- | --- |
 | Branch | `v1-update-management` |
-| Status | Proposed; deliberately not implemented in first slice |
+| Status | Persistent coordinator boundary implemented; update execution remains disabled |
 | Owners | Future update coordinator, installer, systemd integration |
 
 ## Required architecture
@@ -16,6 +16,27 @@ Web UI
 ```
 
 The dashboard process must not execute browser-supplied shell commands and must not run `sudo` with browser-controlled arguments.
+
+## Implemented coordinator boundary
+
+`open-mmi-update-coordinator.service` runs as root and owns a Unix socket at
+`/run/open-mmi/update-coordinator.sock`. Access is limited to root and the
+dedicated `open-mmi-update` group. State is atomically persisted at
+`/var/lib/open-mmi/update-state.json` with a fixed schema.
+
+The only enabled protocol request is exactly
+`{"api_version": 1, "action": "status"}`. Extra fields and all prepare,
+install, rollback, path, command, repository, ref, and service inputs are
+rejected. The response explicitly reports `execution_enabled: false`.
+
+An active state found at daemon startup is conservatively recovered to
+`failed` rather than resumed or called successful. The transaction lock uses a
+non-blocking exclusive filesystem lock and rejects overlap. Execution code does
+not yet acquire it because execution remains outside this slice.
+
+Readiness reports the boundary itself as available, but retains the separate
+`execution-authorization` blocker while `execution_enabled` is false. Installing
+this service therefore cannot accidentally expose an update action.
 
 ## Transaction stages
 

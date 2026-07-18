@@ -36,6 +36,7 @@ class UpdateReadinessTests(unittest.TestCase):
         self.assertEqual(payload["state"], "blocked")
         self.assertFalse(payload["install_allowed"])
         self.assertIn("privileged-coordinator", payload["blockers"])
+        self.assertIn("execution-authorization", payload["blockers"])
 
     def test_low_battery_thermal_constraint_and_existing_lock_are_blockers(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -44,9 +45,15 @@ class UpdateReadinessTests(unittest.TestCase):
             lock.write_text("active", encoding="utf-8")
             lock.chmod(0o600)
             transaction = update_readiness._transaction_check(lock)
-            self.assertEqual(transaction["state"], "block")
+            self.assertEqual(transaction["state"], "pass")
         self.assertEqual(update_readiness._power_check({"ac_online": False, "capacity_percent": 12})["state"], "block")
         self.assertEqual(update_readiness._thermal_check({"summary": "thermal-limit-active"})["state"], "block")
+
+    def test_held_transaction_lock_is_a_blocker(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "update.lock"
+            with update_readiness.update_coordinator.TransactionLock(path):
+                self.assertEqual(update_readiness._transaction_check(path)["state"], "block")
 
     def test_unexposed_power_and_thermal_are_unknown_not_assumed_safe(self):
         self.assertEqual(update_readiness._power_check({"ac_online": None})["state"], "unknown")
@@ -72,8 +79,13 @@ class UpdateReadinessTests(unittest.TestCase):
         trusted = SimpleNamespace(st_mode=stat.S_IFSOCK | 0o660, st_uid=0)
         untrusted = SimpleNamespace(st_mode=stat.S_IFSOCK | 0o666, st_uid=0)
         path = Path("/run/open-mmi/test.sock")
-        with patch.object(Path, "lstat", return_value=trusted):
-            self.assertEqual(update_readiness._coordinator_check(path)["state"], "pass")
+        response = {"ok": True, "execution_enabled": False}
+        with patch.object(Path, "lstat", return_value=trusted), patch.object(
+            update_readiness.update_coordinator, "client_status", return_value=response
+        ):
+            coordinator = update_readiness._coordinator_check(path)
+            self.assertEqual(coordinator["state"], "pass")
+            self.assertEqual(update_readiness._execution_check(coordinator)["state"], "block")
         with patch.object(Path, "lstat", return_value=untrusted):
             self.assertEqual(update_readiness._coordinator_check(path)["state"], "block")
 

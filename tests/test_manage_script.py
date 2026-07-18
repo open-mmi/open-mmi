@@ -219,6 +219,7 @@ sudo() {{ printf '%s\\0' "$@"; }}
             "open-mmi-dashboard",
             "open-mmi-launcher",
             "open-mmi-status",
+            "open-mmi-update-coordinator",
         ):
             self.assertIn(command, self.text)
         self.assertIn(

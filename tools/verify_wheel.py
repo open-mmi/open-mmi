@@ -14,6 +14,8 @@ REQUIRED_PATHS = {
     "canbusd/core.py",
     "ui/dashboard/status_cli.py",
     "ui/update_policy.py",
+    "ui/update_readiness.py",
+    "ui/update_coordinator.py",
     "ui/web_dashboard/bluetooth.py",
     "ui/web_dashboard/jellyfin.py",
     "ui/web_dashboard/radio.py",

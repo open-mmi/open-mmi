@@ -3,7 +3,7 @@
 | Field | Value |
 | --- | --- |
 | Branch | `v1-update-management` |
-| Status | Read-only and channel-policy boundary implemented; execution details pending |
+| Status | Status-only privileged boundary implemented; execution authorization pending |
 | Owners | Dashboard API, future privileged coordinator, installer |
 
 ## Threat boundary
@@ -42,6 +42,11 @@ A privileged component must use root-owned source/channel policy or independentl
 - rollback recorded transaction
 
 Authorization should be explicit and auditable. The dashboard process should remain unprivileged.
+
+The initial coordinator slice implements only `status`. It has no generic
+dispatch table and rejects every execution action and every extra request
+field. Its root-owned state is safe for unprivileged inspection but cannot be
+used to inject commands or execution parameters.
 
 ## Additional controls
 

@@ -9,7 +9,7 @@ import os
 import sys
 from typing import Any, Mapping, Optional, Sequence
 
-from ui import launcher, update_readiness
+from ui import launcher, update_coordinator, update_readiness
 from ui.configuration import (
     ConfigurationError,
     JELLYFIN_ENV_KEYS,
@@ -85,6 +85,7 @@ def build_parser() -> argparse.ArgumentParser:
     updates_commands.add_parser("status")
     updates_commands.add_parser("check")
     updates_commands.add_parser("readiness")
+    updates_commands.add_parser("coordinator")
     channel = updates_commands.add_parser("channel")
     channel.add_argument("channel", choices=("stable", "beta", "development"))
     return parser
@@ -135,6 +136,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 _print(update_status.check_for_updates())
             elif args.command == "readiness":
                 _print(update_readiness.readiness_payload(update_status.status_payload()))
+            elif args.command == "coordinator":
+                _print(update_coordinator.client_status())
             else:
                 _print({"ok": True, **update_status.configure_channel(args.channel)})
             return 0
@@ -165,7 +168,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         result = _jellyfin_test(values)
         _print({"ok": True, **result})
         return 0
-    except (ConfigurationError, launcher.LauncherError, update_status.UpdateStatusError, RuntimeError, ValueError) as exc:
+    except (ConfigurationError, launcher.LauncherError, update_coordinator.CoordinatorError, update_status.UpdateStatusError, RuntimeError, ValueError) as exc:
         print(f"open-mmi-config: {exc}", file=sys.stderr)
         return 1
 

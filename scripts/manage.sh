@@ -12,6 +12,10 @@ INSTALL_DIR="/opt/open-mmi"
 BACKUP_DIR="/opt/open-mmi-backups"
 VERSION_FILE="$INSTALL_DIR/.version"
 UPDATE_POLICY_FILE="/etc/open-mmi/update-policy.json"
+UPDATE_COORDINATOR_GROUP="open-mmi-update"
+UPDATE_COORDINATOR_UNIT="open-mmi-update-coordinator.service"
+UPDATE_COORDINATOR_STATE_DIR="/var/lib/open-mmi"
+UPDATE_COORDINATOR_RUNTIME_DIR="/run/open-mmi"
 
 # Color output
 RED=$'\033[0;31m'
@@ -43,6 +47,7 @@ OPEN_MMI_COMMANDS=(
     open-mmi-dashboard
     open-mmi-launcher
     open-mmi-status
+    open-mmi-update-coordinator
 )
 
 # =============================================================================
@@ -482,6 +487,20 @@ configure_update_service_defaults() {
     migrate_legacy_dashboard_startup
 }
 
+install_update_coordinator() {
+    if ! getent group "$UPDATE_COORDINATOR_GROUP" >/dev/null 2>&1; then
+        groupadd --system "$UPDATE_COORDINATOR_GROUP"
+    fi
+    usermod -aG "$UPDATE_COORDINATOR_GROUP" "$REAL_USER"
+    install -d -m 0755 -o root -g root /etc/systemd/system
+    install -m 0644 -o root -g root \
+        "$REPO_ROOT/systemd/system/$UPDATE_COORDINATOR_UNIT" \
+        "/etc/systemd/system/$UPDATE_COORDINATOR_UNIT"
+    install -d -m 0755 -o root -g root "$UPDATE_COORDINATOR_STATE_DIR"
+    systemctl daemon-reload
+    systemctl enable --now "$UPDATE_COORDINATOR_UNIT"
+}
+
 remove_login_autostart() {
     if [ -f "$LOGIN_AUTOSTART_ENTRY" ] && grep -Fqx "Exec=/usr/local/bin/open-mmi-launcher" "$LOGIN_AUTOSTART_ENTRY"; then
         rm -f "$LOGIN_AUTOSTART_ENTRY"
@@ -611,6 +630,7 @@ cmd_install() {
     if ! install_command_links; then
         return 1
     fi
+    install_update_coordinator
     
     # Store version and the managed source descriptor used by read-only checks.
     get_current_version > "$VERSION_FILE"
@@ -754,6 +774,7 @@ cmd_update() {
     if ! install_command_links; then
         return 1
     fi
+    install_update_coordinator
 
     local user_systemd_dir="$REAL_HOME/.config/systemd/user"
     sudo install -d -m 0755 -o "$REAL_USER" -g "$REAL_USER" "$user_systemd_dir"
@@ -816,6 +837,10 @@ cmd_uninstall() {
     for service in canbusd.service open-mmi-dashboard.service; do
         sudo -u "$REAL_USER" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user disable --now "$service" >/dev/null 2>&1 || true
     done
+    systemctl disable --now "$UPDATE_COORDINATOR_UNIT" >/dev/null 2>&1 || true
+    rm -f "/etc/systemd/system/$UPDATE_COORDINATOR_UNIT"
+    systemctl daemon-reload
+    rm -rf "$UPDATE_COORDINATOR_RUNTIME_DIR" "$UPDATE_COORDINATOR_STATE_DIR"
 
     # Remove service file
     log_info "Removing systemd service..."
