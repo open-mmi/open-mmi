@@ -112,6 +112,24 @@ class DashboardVersionHttpTests(unittest.TestCase):
         self.assertEqual(plain_headers.get("Cache-Control"), "no-cache")
         self.assertEqual(versioned_body, plain_body)
 
+    def test_runtime_diagnostics_endpoint_is_uncached_and_read_only(self):
+        fixture = {
+            "api_version": 1,
+            "sampled_at": "2026-07-16T22:29:54+00:00",
+            "cpu": {"average_mhz": 400.0},
+            "thermal": {"summary": "thermal-limit-active"},
+            "power": {"charging_state": "not-charging"},
+        }
+        with patch.object(
+            server.runtime_diagnostics_backend,
+            "runtime_diagnostics_payload",
+            return_value=fixture,
+        ):
+            status, headers, body = self.fetch("/api/system/diagnostics/runtime")
+        self.assertEqual(status, 200)
+        self.assertEqual(headers.get("Cache-Control"), "no-store")
+        self.assertEqual(json.loads(body), fixture)
+
 
 if __name__ == "__main__":
     unittest.main()

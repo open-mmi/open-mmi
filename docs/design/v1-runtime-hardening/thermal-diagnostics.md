@@ -3,7 +3,7 @@
 | Field | Value |
 | --- | --- |
 | Branch | `v1-runtime-hardening` |
-| Status | Proposed |
+| Status | In progress — implemented, pending Surface qualification |
 | Owners | Dashboard server, Settings → Diagnostics |
 
 ## Problem
@@ -229,6 +229,29 @@ Expandable details may show:
 - Permission failures and missing files become unavailable fields, not server errors.
 - The endpoint remains local-only under the dashboard's existing loopback model.
 - Battery serial numbers, hardware identifiers, and unrelated device metadata are excluded.
+
+## Implemented contract
+
+The runtime-hardening implementation uses:
+
+```text
+GET /api/system/diagnostics/runtime
+```
+
+The server-side collector lives in `ui/web_dashboard/runtime_diagnostics.py`. It reads only fixed, allowlisted properties beneath `/sys` and `/proc`; the request cannot select a path. Missing files, invalid firmware sentinel temperatures, permission failures, and symlinks resolving outside the configured root become unavailable data rather than request failures.
+
+The browser controller lives in `static/runtime-diagnostics.js`. It:
+
+- starts immediately when **Settings → Diagnostics** becomes active and visible;
+- polls every three seconds by default;
+- stops its timer when Diagnostics is left or the document is hidden;
+- prevents overlapping requests;
+- keeps session-only observed clock and temperature ranges;
+- requires two consecutive high-load, near-minimum-clock samples before reporting `Clock constrained`;
+- reports `Performance limited by temperature` only when that repeated clock signal agrees with an active thermal trip;
+- updates existing value nodes rather than rebuilding the panel every sample.
+
+The detail panel labels `power_now` only as a **reported battery-side** value. It never treats that driver field as charger capacity.
 
 ## Tests
 

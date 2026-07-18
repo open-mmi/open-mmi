@@ -12,6 +12,7 @@ API = STATIC / "api.js"
 FRONTEND_VERSION = STATIC / "frontend-version.js"
 PREFERENCES = STATIC / "preferences.js"
 SYSTEM_SETTINGS = STATIC / "system-settings.js"
+RUNTIME_DIAGNOSTICS = STATIC / "runtime-diagnostics.js"
 STATUS = STATIC / "status.js"
 NAVIGATION = STATIC / "navigation.js"
 OVERLAYS = STATIC / "overlays.js"
@@ -31,6 +32,7 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
         frontend_version_index = html.index('<script src="/frontend-version.js"></script>')
         preferences_index = html.index('<script src="/preferences.js"></script>')
         system_settings_index = html.index('<script src="/system-settings.js"></script>')
+        runtime_diagnostics_index = html.index('<script src="/runtime-diagnostics.js"></script>')
         status_index = html.index('<script src="/status.js"></script>')
         navigation_index = html.index('<script src="/navigation.js"></script>')
         overlays_index = html.index('<script src="/overlays.js"></script>')
@@ -45,7 +47,8 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
         self.assertLess(api_index, frontend_version_index)
         self.assertLess(frontend_version_index, preferences_index)
         self.assertLess(preferences_index, system_settings_index)
-        self.assertLess(system_settings_index, status_index)
+        self.assertLess(system_settings_index, runtime_diagnostics_index)
+        self.assertLess(runtime_diagnostics_index, status_index)
         self.assertLess(status_index, navigation_index)
         self.assertLess(navigation_index, overlays_index)
         self.assertLess(overlays_index, vehicle_index)
@@ -63,6 +66,7 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
         self.assertIn("window.openMmiPreferences", source)
         self.assertIn("window.openMmiStatus", source)
         self.assertIn("window.openMmiSystemSettings", source)
+        self.assertIn("window.openMmiRuntimeDiagnostics", source)
         self.assertIn("window.openMmiNavigation", source)
         self.assertIn("window.openMmiOverlays", source)
         self.assertIn("window.openMmiVehicle", source)
@@ -92,6 +96,7 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
         frontend_version = FRONTEND_VERSION.read_text(encoding="utf-8")
         preferences = PREFERENCES.read_text(encoding="utf-8")
         system_settings = SYSTEM_SETTINGS.read_text(encoding="utf-8")
+        runtime_diagnostics = RUNTIME_DIAGNOSTICS.read_text(encoding="utf-8")
         status = STATUS.read_text(encoding="utf-8")
         navigation = NAVIGATION.read_text(encoding="utf-8")
         overlays = OVERLAYS.read_text(encoding="utf-8")
@@ -107,6 +112,7 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
             (frontend_version, "openMmiFrontendVersion"),
             (preferences, "openMmiPreferences"),
             (system_settings, "openMmiSystemSettings"),
+            (runtime_diagnostics, "openMmiRuntimeDiagnostics"),
             (status, "openMmiStatus"),
             (navigation, "openMmiNavigation"),
             (overlays, "openMmiOverlays"),
@@ -122,6 +128,7 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
             self.assertIn(f"root.{global_name}", source)
             if global_name not in {
                 "openMmiFrontendVersion",
+                "openMmiRuntimeDiagnostics",
                 "openMmiMediaShell",
                 "openMmiJellyfinReconnect",
                 "openMmiJellyfinMedia",
@@ -132,6 +139,14 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
                 self.assertNotIn("document.", source)
 
 
+
+    def test_runtime_diagnostics_module_owns_visibility_aware_polling(self):
+        source = RUNTIME_DIAGNOSTICS.read_text(encoding="utf-8")
+        self.assertIn('const ENDPOINT = "/api/system/diagnostics/runtime";', source)
+        self.assertIn('activeSection() === "diagnostics"', source)
+        self.assertIn('!documentRef?.hidden', source)
+        self.assertIn('scheduler.setTimeout(poll', source)
+        self.assertIn('Reported power values are battery-side driver readings, not charger capacity.', source)
 
     def test_frontend_version_module_owns_cache_recovery(self):
         source = FRONTEND_VERSION.read_text(encoding="utf-8")

@@ -125,6 +125,43 @@ async function loadDashboard(page, options = {}) {
     items: [],
     error: "Jellyfin is not configured",
   };
+  const runtimeDiagnosticsPayload = options.runtimeDiagnosticsPayload || {
+    api_version: 1,
+    sampled_at: "2026-07-16T22:29:54+00:00",
+    cpu: {
+      online_count: 4,
+      current_mhz: [400, 399, 400, 400],
+      average_mhz: 399.8,
+      current_min_mhz: 399,
+      current_max_mhz: 400,
+      minimum_mhz: 400,
+      maximum_mhz: 3500,
+      governors: ["powersave"],
+      load_1m: 6.21,
+      load_high: true,
+      near_minimum: true,
+      cpus: [0, 1, 2, 3].map((index) => ({
+        cpu: `cpu${index}`, current_mhz: index === 1 ? 399 : 400, minimum_mhz: 400, maximum_mhz: 3500, governor: "powersave",
+      })),
+      intel_pstate: { status: "active", no_turbo: 0, min_perf_pct: 11, max_perf_pct: 100 },
+    },
+    thermal: {
+      summary: "thermal-limit-active",
+      selected_zone: "GEN4",
+      temperature_c: 52.5,
+      relevant_trip: { temperature_c: 48.05, types: ["active", "passive"], margin_c: -4.45 },
+      zones: [{
+        zone: "thermal_zone1", type: "GEN4", temperature_c: 52.5, state: "thermal-limit-active",
+        relevant_trip: { temperature_c: 48.05, types: ["active", "passive"], margin_c: -4.45 },
+        trips: [{ type: "active", temperature_c: 48.05 }, { type: "passive", temperature_c: 48.05 }],
+      }],
+      cooling_devices: [{ device: "cooling_device8", type: "TCC Offset", current_state: 10, maximum_state: 63 }],
+    },
+    power: {
+      ac_online: true, battery_status: "Not charging", capacity_percent: 65, energy_wh: 21.13, charging_state: "not-charging",
+      supplies: [{ name: "ADP1", type: "Mains", online: true }, { name: "BAT1", type: "Battery", status: "Not charging", capacity_percent: 65, reported_power_w: 53.946 }],
+    },
+  };
   const systemPayload = options.systemPayload || {
     local_only: true,
     launcher: {
@@ -151,7 +188,7 @@ async function loadDashboard(page, options = {}) {
   };
 
   await page.setContent(ASSETS.documentHtml, { waitUntil: "domcontentloaded" });
-  await page.evaluate(({ initialPayload, initialStorage, initialBluetoothPayload, initialSystemPayload, initialVersionPayload, initialJellyfinStatusPayload, initialJellyfinSearchPayload }) => {
+  await page.evaluate(({ initialPayload, initialStorage, initialBluetoothPayload, initialSystemPayload, initialVersionPayload, initialJellyfinStatusPayload, initialJellyfinSearchPayload, initialRuntimeDiagnosticsPayload, runtimeDiagnosticsIntervalMs }) => {
     const values = Object.assign({}, initialStorage);
     const localStorageMock = {
       get length() { return Object.keys(values).length; },
@@ -169,6 +206,9 @@ async function loadDashboard(page, options = {}) {
     window.__openMmiVersionFixture = initialVersionPayload;
     window.__openMmiJellyfinStatusFixture = initialJellyfinStatusPayload;
     window.__openMmiJellyfinSearchFixture = initialJellyfinSearchPayload;
+    window.__openMmiRuntimeDiagnosticsFixture = initialRuntimeDiagnosticsPayload;
+    window.__openMmiRuntimeDiagnosticsRequests = 0;
+    window.__openMmiRuntimeDiagnosticsIntervalMs = runtimeDiagnosticsIntervalMs;
     window.__openMmiJellyfinStatusRequests = 0;
     window.__openMmiJellyfinSearchRequests = 0;
 
@@ -181,6 +221,10 @@ async function loadDashboard(page, options = {}) {
       if (url.includes("/api/version")) return json(window.__openMmiVersionFixture);
       if (url.includes("/api/status")) return json(window.__openMmiStatusFixture);
       if (url.includes("/api/health")) return json({ ok: true });
+      if (url.includes("/api/system/diagnostics/runtime")) {
+        window.__openMmiRuntimeDiagnosticsRequests += 1;
+        return json(window.__openMmiRuntimeDiagnosticsFixture);
+      }
       if (url.includes("/api/system/settings")) return json(window.__openMmiSystemFixture);
       if (url.includes("/api/system/launcher")) {
         const body = JSON.parse(init.body || "{}");
@@ -243,6 +287,8 @@ async function loadDashboard(page, options = {}) {
     initialVersionPayload: versionPayload,
     initialJellyfinStatusPayload: jellyfinStatusPayload,
     initialJellyfinSearchPayload: jellyfinSearchPayload,
+    initialRuntimeDiagnosticsPayload: runtimeDiagnosticsPayload,
+    runtimeDiagnosticsIntervalMs: options.runtimeDiagnosticsIntervalMs || 60,
   });
 
   if (options.focusBeforeReady) {
@@ -274,6 +320,12 @@ async function loadDashboard(page, options = {}) {
     },
     async setJellyfinSearch(nextPayload) {
       await page.evaluate((next) => { window.__openMmiJellyfinSearchFixture = next; }, nextPayload);
+    },
+    async setRuntimeDiagnostics(nextPayload) {
+      await page.evaluate((next) => { window.__openMmiRuntimeDiagnosticsFixture = next; }, nextPayload);
+    },
+    async runtimeDiagnosticsRequests() {
+      return page.evaluate(() => window.__openMmiRuntimeDiagnosticsRequests);
     },
     async storage() {
       return page.evaluate(() => Object.assign({}, window.__openMmiBrowserStorage));
@@ -387,6 +439,33 @@ test("diagnostics updates values in place without flashing or rebuilding fields"
     window.__openMmiDiagnosticsVoltageNode
       === document.querySelector('[data-openmmi-diagnostic-key="electrical.voltage"]')
   ))).toBe(true);
+  await expectNoRuntimeFailures(failures);
+});
+
+test("thermal and power diagnostics poll only while visible and identify the Surface limit", async ({ page }) => {
+  const failures = captureRuntimeFailures(page);
+  const dashboard = await loadDashboard(page, { runtimeDiagnosticsIntervalMs: 50 });
+  await openSettings(page);
+  expect(await dashboard.runtimeDiagnosticsRequests()).toBe(0);
+
+  await page.locator('[data-openmmi-settings-section="diagnostics"]').click();
+  const runtimePanel = page.locator("#openMmiRuntimeDiagnostics");
+  await expect(runtimePanel).toBeVisible();
+  await expect(runtimePanel.locator('[data-openmmi-runtime-key="cpu.clock"]')).toHaveText("400 MHz average");
+  await expect(runtimePanel.locator('[data-openmmi-runtime-key="thermal.sensor"]')).toHaveText("GEN4 52.5 °C");
+  await expect(runtimePanel.locator('[data-openmmi-runtime-key="power.state"]')).toHaveText("AC connected — not charging");
+  await expect(runtimePanel.locator('[data-openmmi-runtime-key="system.state"]')).toHaveText("Performance limited by temperature");
+  const activeCount = await dashboard.runtimeDiagnosticsRequests();
+  expect(activeCount).toBeGreaterThanOrEqual(2);
+
+  await page.locator('[data-openmmi-settings-section="system"]').click();
+  await page.waitForTimeout(80);
+  const stoppedCount = await dashboard.runtimeDiagnosticsRequests();
+  await page.waitForTimeout(180);
+  expect(await dashboard.runtimeDiagnosticsRequests()).toBe(stoppedCount);
+
+  await page.locator('[data-openmmi-settings-section="diagnostics"]').click();
+  await expect.poll(() => dashboard.runtimeDiagnosticsRequests()).toBeGreaterThan(stoppedCount);
   await expectNoRuntimeFailures(failures);
 });
 
@@ -542,7 +621,7 @@ test("Diagnostics remains scrollable while live values refresh", async ({ page }
   await page.locator('[data-openmmi-settings-section="diagnostics"]').click();
 
   const scroller = page.locator("#pageSettings .openmmi-settings-panel-card");
-  await expect(scroller.locator("summary")).toContainText("Decoded profile values");
+  await expect(scroller.locator(".openmmi-settings-diagnostics-details summary")).toContainText("Decoded profile values");
   await scroller.evaluate((element) => { element.scrollTop = Math.max(1, element.scrollHeight - element.clientHeight - 40); });
   const before = await scroller.evaluate((element) => element.scrollTop);
   expect(before).toBeGreaterThan(0);

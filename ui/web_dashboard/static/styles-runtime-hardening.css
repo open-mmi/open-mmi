@@ -38,3 +38,143 @@
 #ommiMediaRetry[hidden] {
   display: none !important;
 }
+
+/* Runtime thermal, clock, and power diagnostics. */
+.openmmi-runtime-diagnostics {
+  margin: 0 0 0.85rem;
+  padding: 0.8rem;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 0.7rem;
+  background: rgba(5, 12, 20, 0.56);
+}
+
+.openmmi-runtime-diagnostics > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.8rem;
+  margin-bottom: 0.65rem;
+}
+
+.openmmi-runtime-diagnostics > header span {
+  display: block;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 0.62rem;
+  font-weight: 750;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.openmmi-runtime-diagnostics h3 {
+  margin: 0.08rem 0 0;
+  font-size: 1rem;
+}
+
+.openmmi-runtime-state {
+  max-width: 13rem;
+  padding: 0.24rem 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 999px;
+  font-size: 0.65rem;
+  line-height: 1.25;
+  text-align: center;
+}
+
+.openmmi-runtime-diagnostics[data-state="warning"] .openmmi-runtime-state {
+  border-color: rgba(255, 218, 117, 0.92);
+  color: #ffe29a;
+}
+
+.openmmi-runtime-diagnostics[data-state="danger"] .openmmi-runtime-state {
+  border-color: rgba(255, 130, 130, 0.96);
+  color: #ffb0b0;
+}
+
+.openmmi-runtime-diagnostics[data-state="normal"] .openmmi-runtime-state {
+  border-color: rgba(135, 235, 173, 0.82);
+  color: #a8f1c2;
+}
+
+.openmmi-runtime-summary-grid,
+.openmmi-runtime-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.openmmi-runtime-detail-metric {
+  min-width: 0;
+  padding: 0.48rem 0.52rem;
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.openmmi-runtime-detail-metric span,
+.openmmi-runtime-detail-metric strong {
+  display: block;
+}
+
+.openmmi-runtime-detail-metric span {
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 0.61rem;
+}
+
+.openmmi-runtime-detail-metric strong {
+  margin-top: 0.12rem;
+  overflow-wrap: anywhere;
+  color: #fff;
+  font-size: 0.72rem;
+}
+
+.openmmi-runtime-details {
+  margin-top: 0.65rem;
+}
+
+.openmmi-runtime-details details {
+  margin-top: 0.38rem;
+  padding: 0.45rem 0.52rem;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 0.5rem;
+}
+
+.openmmi-runtime-details summary {
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.7rem;
+  font-weight: 750;
+}
+
+.openmmi-runtime-details .openmmi-runtime-detail-grid {
+  margin-top: 0.45rem;
+}
+
+.openmmi-runtime-empty,
+.openmmi-runtime-note {
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 0.62rem;
+  line-height: 1.4;
+}
+
+.openmmi-runtime-note {
+  margin: 0.65rem 0 0;
+}
+
+@media (max-width: 700px), (max-height: 560px) {
+  .openmmi-runtime-diagnostics {
+    padding: 0.62rem;
+  }
+
+  .openmmi-runtime-diagnostics > header {
+    flex-direction: column;
+  }
+
+  .openmmi-runtime-state {
+    max-width: none;
+    text-align: left;
+  }
+
+  .openmmi-runtime-summary-grid,
+  .openmmi-runtime-detail-grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -45,7 +45,7 @@ The design set covers:
 1. Frontend version identity and cache-safe reload behaviour. **Implemented and qualified.**
 2. Dashboard and Jellyfin reconnection state machines. **Jellyfin provider recovery implemented; shared dashboard connectivity remains.**
 3. Touch-safe interface selection and TUI recovery. **Implemented; pending Surface qualification.**
-4. Thermal and power diagnostics.
+4. Thermal and power diagnostics. **Implemented; pending Surface qualification.**
 5. No-usability-impact runtime efficiency changes.
 6. Qualification on laptop and Surface Pro hardware.
 7. Documentation promotion and branch merge.

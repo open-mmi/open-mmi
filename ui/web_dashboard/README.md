@@ -323,6 +323,7 @@ The browser loads small platform modules before the main dashboard application:
 
 - `static/api.js` owns same-origin JSON request behaviour.
 - `static/frontend-version.js` owns loaded/server build comparison, safe one-shot reloads, visibility-aware checking, and the update-ready notice.
+- `static/runtime-diagnostics.js` owns the three-second, Diagnostics-only system-runtime polling lifecycle and conservative clock/thermal state derivation.
 - `static/preferences.js` owns safe JSON persistence and the dashboard settings key.
 - `static/clock.js` owns the persistent header clock, minute-boundary scheduling, and clock-specific Display preferences.
 - `static/status.js` owns the shared status snapshot and fixed 200 ms `/api/status` polling lifecycle. It is DOM-independent and exposes subscriptions for later frontend modules.
@@ -334,7 +335,7 @@ The browser loads small platform modules before the main dashboard application:
 - `static/media-radio.js` owns Internet Radio privacy consent, filter/favourite state, the Radio adapter, and source-aware player integration.
 - `static/media-usb.js` owns USB browsing, folder navigation, duration discovery, and the USB adapter.
 - `static/media-bluetooth.js` owns Bluetooth status polling, optimistic transport state, progress presentation, and BlueZ control requests.
-- `static/app.js` now owns settings, diagnostics, advanced tell-tales, and the remaining cross-cutting dashboard enhancements.
+- `static/app.js` owns the Settings shell, decoded vehicle-state diagnostics, advanced tell-tales, and the remaining cross-cutting dashboard enhancements.
 
 The dashboard CSS keeps its six cascade-preserving legacy modules and loads the clock as a separate extension directly from `index.html`:
 
@@ -370,7 +371,7 @@ Browser-level coverage lives in `tests/browser/` and runs in Chromium through Pl
 Run these before committing dashboard changes:
 
 ```bash
-python3 -m py_compile ui/web_dashboard/server.py ui/web_dashboard/versioning.py ui/web_dashboard/bluetooth.py ui/web_dashboard/jellyfin.py ui/web_dashboard/radio.py ui/web_dashboard/usb.py
+python3 -m py_compile ui/web_dashboard/server.py ui/web_dashboard/versioning.py ui/web_dashboard/runtime_diagnostics.py ui/web_dashboard/bluetooth.py ui/web_dashboard/jellyfin.py ui/web_dashboard/radio.py ui/web_dashboard/usb.py
 find ui/web_dashboard/static -maxdepth 1 -name '*.js' -print0 \
   | xargs -0 -n1 node --check
 node --test tests/js/*.test.js
@@ -419,6 +420,19 @@ OPEN_MMI_GPSD_PORT=2947
 ```
 
 <!-- OPENMMI_WEB_SETTINGS_DOCS_START -->
+## Thermal and power diagnostics
+
+**Settings → Diagnostics → Thermal and power** reads a local, read-only runtime endpoint and shows:
+
+- current and configured CPU clock ranges;
+- one-minute load context;
+- the platform thermal zone nearest or beyond a reported active, passive, hot, or critical trip;
+- AC connection, battery capacity, and charging state;
+- session-only observed clock and temperature ranges;
+- expandable per-core, thermal-zone, cooling-device, power-supply, and Intel `pstate` detail.
+
+The dashboard does not change governors, turbo, thermal trips, charging policy, or fan state. Polling runs only while Diagnostics is selected and the page is visible. Low clocks at low load are treated as normal idle behaviour; a clock constraint requires repeated high-load samples, and temperature is named as the cause only when a thermal trip is active too. Reported battery-side power is not charger capacity.
+
 ## Settings and local preferences
 
 The Settings page is local to the dashboard/browser and is designed for display behaviour, not vehicle control.
@@ -430,7 +444,7 @@ Current Settings areas:
 - Display: reduced animation can be enabled for older tablets or lower-distraction use.
 - Display: the shared local clock can be shown or hidden, switched between 24-hour and 12-hour time, and optionally display the date.
 - Display: tell-tale test lights the existing footer tell-tale icons through the normal frontend render path. It is frontend-only and does not write to `/api/status` or transmit anything to the car.
-- Diagnostics: shows live decoded state and optional raw/debug detail for development.
+- Diagnostics: shows thermal/power runtime state, live decoded vehicle state, and optional raw/debug detail for development.
 - Media: documents the server-side Jellyfin integration path.
 - Reverse assist: provides a placeholder overlay path for later PDC/camera work.
 

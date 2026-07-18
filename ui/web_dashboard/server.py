@@ -321,6 +321,12 @@ except ModuleNotFoundError as exc:  # pragma: no cover - direct script fallback
         raise
     import system_settings as system_settings_backend  # type: ignore[no-redef]
 
+try:
+    from ui.web_dashboard import runtime_diagnostics as runtime_diagnostics_backend
+except ModuleNotFoundError as exc:  # pragma: no cover - direct script fallback
+    if exc.name not in {"ui", "ui.web_dashboard"}:
+        raise
+    import runtime_diagnostics as runtime_diagnostics_backend  # type: ignore[no-redef]
 
 
 class DashboardHandler(SimpleHTTPRequestHandler):
@@ -521,6 +527,10 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         # --- Open MMI Bluetooth media GET route end ---
         if parsed.path == "/api/version":
             self._send_json(versioning_backend.version_payload(self.build_id))
+            return
+
+        if parsed.path == "/api/system/diagnostics/runtime":
+            self._send_json(runtime_diagnostics_backend.runtime_diagnostics_payload())
             return
 
         if parsed.path == "/api/status":

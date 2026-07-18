@@ -10,7 +10,8 @@ const openMmiUsbMediaClient = window.openMmiUsbMediaController;
 const openMmiJellyfinMediaClient = window.openMmiJellyfinMedia;
 const openMmiBluetoothMediaClient = window.openMmiBluetoothMediaController;
 const openMmiSystemSettingsClient = window.openMmiSystemSettings;
-if (!openMmiApiClient || !openMmiPrefs || !openMmiStatusClient || !openMmiNavigationClient || !openMmiOverlaysClient || !openMmiVehicleClient || !openMmiMediaClient || !openMmiRadioMediaClient || !openMmiUsbMediaClient || !openMmiJellyfinMediaClient || !openMmiBluetoothMediaClient || !openMmiSystemSettingsClient) {
+const openMmiRuntimeDiagnosticsClient = window.openMmiRuntimeDiagnostics;
+if (!openMmiApiClient || !openMmiPrefs || !openMmiStatusClient || !openMmiNavigationClient || !openMmiOverlaysClient || !openMmiVehicleClient || !openMmiMediaClient || !openMmiRadioMediaClient || !openMmiUsbMediaClient || !openMmiJellyfinMediaClient || !openMmiBluetoothMediaClient || !openMmiSystemSettingsClient || !openMmiRuntimeDiagnosticsClient) {
   throw new Error("Open MMI frontend modules did not load");
 }
 
@@ -20,6 +21,7 @@ const openMmiOverlaysController = openMmiOverlaysClient.createController();
 const openMmiVehicleRenderer = openMmiVehicleClient.createRenderer({ preferences: openMmiPrefs });
 const openMmiMediaSourcesController = openMmiMediaClient.createController({ preferences: openMmiPrefs });
 const openMmiSystemSettingsController = openMmiSystemSettingsClient.install({ api: openMmiApiClient });
+const openMmiRuntimeDiagnosticsController = openMmiRuntimeDiagnosticsClient.install({ api: openMmiApiClient });
 openMmiRadioMediaClient.installPrivacy({ preferences: openMmiPrefs });
 window.openMmiStatusStore = openMmiStatusStore;
 window.openMmiNavigationController = openMmiNavigationController;
@@ -27,6 +29,7 @@ window.openMmiOverlaysController = openMmiOverlaysController;
 window.openMmiVehicleRenderer = openMmiVehicleRenderer;
 window.openMmiMediaSources = openMmiMediaSourcesController;
 window.openMmiSystemSettingsController = openMmiSystemSettingsController;
+window.openMmiRuntimeDiagnosticsController = openMmiRuntimeDiagnosticsController;
 window.openMmiApplyInlineDataTelltales = openMmiVehicleRenderer.applyInlineDataTelltales;
 window.openMmiApplyCoolantAndVoltageFixes = openMmiVehicleRenderer.applyCoolantAndVoltageFixes;
 window.setPage = (index) => openMmiNavigationController.setPage(index);
