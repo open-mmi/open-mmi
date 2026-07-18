@@ -57,15 +57,42 @@
       return `<div class="openmmi-setting-row"><div><strong>${escapeHtml(title)}</strong><small>${escapeHtml(note)}</small></div><div class="openmmi-setting-controls">${controls}</div></div>`;
     }
 
+    function frontendVersionSnapshot() {
+      try {
+        return windowRef.__openMmiFrontendVersionController?.snapshot?.() || {};
+      } catch (_) {
+        return {};
+      }
+    }
+
+    function frontendVersionStateLabel(value) {
+      const labels = {
+        current: "up to date",
+        reloading: "applying update",
+        "update-ready": "reload ready",
+        "mismatch-after-reload": "reload required",
+        reconnecting: "checking…",
+        unavailable: "unavailable",
+      };
+      return labels[String(value || "")] || String(value || "unavailable");
+    }
+
     function systemTemplate() {
       const launcher = snapshot?.launcher || {};
+      const version = frontendVersionSnapshot();
       const defaultUi = launcher.default_ui || "web";
       const autostart = launcher.open_at_login === true;
       const reachable = launcher.dashboard_reachable ? "reachable" : "unreachable";
+      const loadedVersion = version.loadedId || "--";
+      const serverVersion = version.serverId || "--";
+      const versionState = frontendVersionStateLabel(version.state);
       return `
-        <div data-openmmi-system-settings-panel="true">
-          <div class="openmmi-settings-panel-head"><span>System</span><small>desktop shell</small></div>
+        <div data-openmmi-system-settings-panel="true" data-openmmi-system-settings-ready="true">
+          <div class="openmmi-settings-panel-head"><span>System</span><small>desktop shell and updates</small></div>
           ${statusBanner()}
+          <div class="openmmi-settings-metric"><span>Dashboard version</span><strong data-testid="system-frontend-version">${escapeHtml(loadedVersion)}</strong></div>
+          <div class="openmmi-settings-metric"><span>Server version</span><strong data-testid="system-server-version">${escapeHtml(serverVersion)}</strong></div>
+          <div class="openmmi-settings-metric"><span>Update status</span><strong data-testid="system-version-state">${escapeHtml(versionState)}</strong></div>
           <div class="openmmi-settings-metric"><span>Health endpoint</span><strong>${escapeHtml(reachable)}</strong></div>
           ${row("Default interface", "Used by the desktop icon and open-mmi-launcher without arguments.",
             pill("Web", defaultUi === "web", 'data-openmmi-launcher-ui="web" data-testid="launcher-default-web"')
@@ -119,7 +146,7 @@
       const panel = documentRef.querySelector("#openmmiSettingsPanel");
       if (activeSection() !== "system" || !panel) return;
       const html = systemTemplate();
-      const missing = !panel.querySelector?.('[data-openmmi-system-settings-panel="true"]');
+      const missing = !panel.querySelector?.('[data-openmmi-system-settings-ready="true"]');
       if (html !== lastSystemHtml || missing) {
         lastSystemHtml = html;
         panel.innerHTML = html;
@@ -299,6 +326,7 @@
     documentRef.addEventListener("input", inputHandler);
     documentRef.addEventListener("change", changeHandler);
     windowRef.addEventListener("openmmi:settingsrender", () => windowRef.requestAnimationFrame(renderActive));
+    windowRef.addEventListener("openmmi:frontendversion", () => windowRef.requestAnimationFrame(renderSystem));
     documentRef.addEventListener("DOMContentLoaded", () => refresh());
 
     const Observer = windowRef.MutationObserver;
@@ -318,6 +346,8 @@
       renderJellyfin,
       renderSystem,
       systemTemplate,
+      frontendVersionSnapshot,
+      frontendVersionStateLabel,
       jellyfinTemplate,
     });
   }

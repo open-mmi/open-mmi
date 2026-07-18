@@ -784,6 +784,20 @@ test("system settings and Jellyfin setup use the shared local configuration API"
   await expect(page.locator('[data-openmmi-system-settings-panel="true"]')).toBeVisible();
   await expect(page.getByTestId("launcher-default-web")).toHaveClass(/is-selected/);
   await expect(page.getByTestId("launcher-autostart-on")).toHaveClass(/is-selected/);
+  await expect(page.getByTestId("system-frontend-version")).toHaveText("__OPEN_MMI_FRONTEND_ID__");
+  await expect(page.getByTestId("system-server-version")).toHaveText("__OPEN_MMI_FRONTEND_ID__");
+  await expect(page.getByTestId("system-version-state")).toHaveText("up to date");
+
+  await page.evaluate(() => {
+    const panel = document.querySelector("#openmmiSettingsPanel");
+    panel.innerHTML = `
+      <div data-openmmi-system-settings-panel="true">
+        <div class="openmmi-settings-panel-head"><span>System</span><small>loading desktop shell status</small></div>
+      </div>`;
+    window.dispatchEvent(new CustomEvent("openmmi:settingsrender"));
+  });
+  await expect(page.getByTestId("launcher-default-web")).toBeVisible();
+  await expect(page.getByTestId("system-version-state")).toHaveText("up to date");
 
   await page.getByTestId("launcher-default-tui").click();
   await expect(page.getByTestId("launcher-default-tui")).toHaveClass(/is-selected/);

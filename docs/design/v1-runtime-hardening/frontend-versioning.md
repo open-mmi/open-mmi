@@ -235,3 +235,10 @@ Remaining qualification is a second installed update with the version controller
 - Same-build server restarts recover without page reload.
 - Changed-build server restarts cause no more than one automatic reload.
 - Diagnostics exposes enough identity information to distinguish deployment and browser-cache problems.
+
+
+## Settings placement
+
+The user-facing dashboard version, server version, and update state are shown under **Settings → System**, matching the conventional location users expect for software and update information. Diagnostics retains the lower-level loaded/server comparison for troubleshooting.
+
+The System panel uses a distinct ready marker from its loading placeholder so unrelated settings renders cannot leave the page stuck on “loading desktop shell status”.
