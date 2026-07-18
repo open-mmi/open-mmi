@@ -21,6 +21,7 @@ REQUIRED_PATHS = {
     "ui/web_dashboard/versioning.py",
     "ui/web_dashboard/usb.py",
     "ui/web_dashboard/static/api.js",
+    "ui/web_dashboard/static/dashboard-connection.js",
     "ui/web_dashboard/static/frontend-version.js",
     "ui/web_dashboard/static/runtime-diagnostics.js",
     "ui/web_dashboard/static/app.js",

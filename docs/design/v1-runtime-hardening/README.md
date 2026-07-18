@@ -43,7 +43,7 @@ The design set covers:
 ## Implementation order
 
 1. Frontend version identity and cache-safe reload behaviour. **Implemented and qualified.**
-2. Dashboard and Jellyfin reconnection state machines. **Jellyfin provider recovery implemented; shared dashboard connectivity remains.**
+2. Dashboard and Jellyfin reconnection state machines. **Implemented; pending laptop/Surface qualification.**
 3. Touch-safe interface selection and TUI recovery. **Implemented; pending Surface qualification.**
 4. Thermal and power diagnostics. **Implemented; pending Surface qualification.**
 5. No-usability-impact runtime efficiency changes. **First browser pass implemented; pending laptop/Surface comparison and separate CAN profiling.**

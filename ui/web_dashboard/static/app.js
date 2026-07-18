@@ -1,4 +1,5 @@
 const openMmiApiClient = window.openMmiApi;
+const openMmiDashboardConnectionClient = window.openMmiDashboardConnection;
 const openMmiPrefs = window.openMmiPreferences;
 const openMmiStatusClient = window.openMmiStatus;
 const openMmiNavigationClient = window.openMmiNavigation;
@@ -11,11 +12,12 @@ const openMmiJellyfinMediaClient = window.openMmiJellyfinMedia;
 const openMmiBluetoothMediaClient = window.openMmiBluetoothMediaController;
 const openMmiSystemSettingsClient = window.openMmiSystemSettings;
 const openMmiRuntimeDiagnosticsClient = window.openMmiRuntimeDiagnostics;
-if (!openMmiApiClient || !openMmiPrefs || !openMmiStatusClient || !openMmiNavigationClient || !openMmiOverlaysClient || !openMmiVehicleClient || !openMmiMediaClient || !openMmiRadioMediaClient || !openMmiUsbMediaClient || !openMmiJellyfinMediaClient || !openMmiBluetoothMediaClient || !openMmiSystemSettingsClient || !openMmiRuntimeDiagnosticsClient) {
+if (!openMmiApiClient || !openMmiDashboardConnectionClient || !openMmiPrefs || !openMmiStatusClient || !openMmiNavigationClient || !openMmiOverlaysClient || !openMmiVehicleClient || !openMmiMediaClient || !openMmiRadioMediaClient || !openMmiUsbMediaClient || !openMmiJellyfinMediaClient || !openMmiBluetoothMediaClient || !openMmiSystemSettingsClient || !openMmiRuntimeDiagnosticsClient) {
   throw new Error("Open MMI frontend modules did not load");
 }
 
 const openMmiStatusStore = openMmiStatusClient.createStore();
+const openMmiDashboardConnectionController = openMmiDashboardConnectionClient.createController({ api: openMmiApiClient });
 const openMmiNavigationController = openMmiNavigationClient.createController();
 const openMmiOverlaysController = openMmiOverlaysClient.createController();
 const openMmiVehicleRenderer = openMmiVehicleClient.createRenderer({ preferences: openMmiPrefs });
@@ -24,6 +26,7 @@ const openMmiSystemSettingsController = openMmiSystemSettingsClient.install({ ap
 const openMmiRuntimeDiagnosticsController = openMmiRuntimeDiagnosticsClient.install({ api: openMmiApiClient });
 openMmiRadioMediaClient.installPrivacy({ preferences: openMmiPrefs });
 window.openMmiStatusStore = openMmiStatusStore;
+window.openMmiDashboardConnectionController = openMmiDashboardConnectionController;
 window.openMmiNavigationController = openMmiNavigationController;
 window.openMmiOverlaysController = openMmiOverlaysController;
 window.openMmiVehicleRenderer = openMmiVehicleRenderer;
@@ -91,24 +94,30 @@ let render = function openMmiRenderVehicleStatus(payload) {
 };
 
 function init() {
-  let dashboardApiConnected = false;
   const statusPoller = openMmiStatusClient.createPoller({
     api: openMmiApiClient,
     store: openMmiStatusStore,
     intervalMs: openMmiStatusClient.DEFAULT_STATUS_INTERVAL_MS,
     onPayload(payload) {
       render(payload);
-      if (!dashboardApiConnected) {
-        dashboardApiConnected = true;
-        window.dispatchEvent(new CustomEvent("openmmi:dashboardconnected"));
-      }
     },
     onError() {
-      dashboardApiConnected = false;
       openMmiVehicleRenderer.updateHealth({ health: { status: "error", age_seconds: null } });
     },
   });
+
+  function syncStatusPolling(event) {
+    const connectionState = event?.detail?.state || openMmiDashboardConnectionController.snapshot().state;
+    if (connectionState === "ready") statusPoller.start();
+    else {
+      statusPoller.stop();
+      openMmiVehicleRenderer.updateHealth({ health: { status: "error", age_seconds: null } });
+    }
+  }
+
   window.openMmiStatusPoller = statusPoller;
+  window.addEventListener("openmmi:dashboardconnection", syncStatusPolling);
+  openMmiDashboardConnectionController.start();
   statusPoller.start();
 }
 

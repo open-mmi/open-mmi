@@ -3,7 +3,7 @@
 | Field | Value |
 | --- | --- |
 | Branch | `v1-runtime-hardening` |
-| Status | In progress |
+| Status | Implemented — pending hardware qualification |
 | Owners | Frontend API client, Media/Jellyfin integration, dashboard service |
 
 ## Problem
@@ -47,7 +47,18 @@ The first implementation slice covers Jellyfin provider recovery:
 - no full-page reload for Jellyfin outages;
 - Python, Node, and Playwright regression coverage.
 
-The shared dashboard-server connectivity controller described later in this document remains deferred to the next reconnection slice. Frontend version reconciliation already owns changed-build reloads.
+The shared dashboard-server recovery slice is now implemented:
+
+- the shared API client reports transport reachability without treating ordinary HTTP errors as disconnection;
+- one dashboard connection controller owns `/api/health` recovery probes and 1, 2, 5, 10, then 15 second backoff;
+- the 200 ms vehicle-status poller stops after transport loss and resumes once when the dashboard returns;
+- retry timers pause while Chromium is hidden and visibility restoration performs one immediate probe;
+- a non-blocking dashboard reconnecting banner preserves the current page and DOM;
+- live server-backed controls are temporarily disabled without destroying forms or navigation;
+- same-build recovery emits `openmmi:dashboardconnected` for in-place version reconciliation;
+- changed-build recovery remains owned by the one-shot frontend-version reload controller;
+- Settings → Diagnostics exposes dashboard connection state, probe count, and recovery count;
+- Node, Python contract, and Playwright recovery coverage prevent duplicate retry owners and page reloads.
 
 ## State model
 
@@ -146,12 +157,12 @@ The browser cannot complete API requests while the Open MMI server is restarting
 
 The frontend should:
 
-- detect repeated network failures in the shared API client;
+- detect transport failures in the shared API client;
 - show a non-blocking `Dashboard reconnecting` state;
-- retry health/version requests with backoff;
-- avoid each feature starting its own reconnect loop;
+- stop the high-frequency status poller while unavailable;
+- retry `/api/health` through one bounded-backoff owner;
 - notify feature clients when the shared connection returns;
-- call version reconciliation before resuming normal polling.
+- trigger version reconciliation before normal polling continues.
 
 If the build is unchanged, normal status and provider refreshes resume without reload. If the build changed, the frontend-versioning design controls one safe reload.
 

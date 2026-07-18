@@ -90,6 +90,12 @@ The dashboard keeps the existing visible vehicle-status cadence, but avoids dupl
 
 Settings → Diagnostics shows lightweight session counters for status fetches, overlap skips, vehicle renders, unchanged render skips, and Media layout activity. The counters are intended for comparison and troubleshooting; they do not change dashboard behaviour.
 
+## Dashboard server recovery
+
+The long-lived browser reconnects to the local Open MMI dashboard server without discarding the current page. A transport failure stops the high-frequency vehicle-status poller, shows a non-blocking reconnecting banner, and retries `/api/health` with bounded backoff. Server-backed controls are paused while unavailable, but navigation, existing readings, and unsaved form contents remain mounted.
+
+When the server returns, the frontend compares build identities before normal polling resumes. The same build recovers in place; a changed build uses the controlled one-shot frontend reload path. Settings → Diagnostics reports the shared connection state, health-probe count, and recovery count.
+
 ## Tell-tale test mode
 
 Tell-tales can be forced in the browser for visual testing. This is frontend-only; it does not modify the backend status snapshot or vehicle state.

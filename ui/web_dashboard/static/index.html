@@ -26,6 +26,10 @@
     <span data-openmmi-update-message>Dashboard update ready.</span>
     <button type="button" data-openmmi-update-reload>Reload now</button>
   </aside>
+  <aside id="openMmiDashboardConnectionNotice" class="openmmi-connection-notice" hidden role="status" aria-live="polite">
+    <span class="openmmi-connection-dot" aria-hidden="true"></span>
+    <span data-openmmi-dashboard-connection-message>Connecting to dashboard…</span>
+  </aside>
   <main class="screen">
     <header class="topbar">
       <div>
@@ -184,6 +188,7 @@
   </main>
 
   <script src="/api.js"></script>
+  <script src="/dashboard-connection.js"></script>
   <script src="/frontend-version.js"></script>
   <script src="/preferences.js"></script>
   <script src="/system-settings.js"></script>

@@ -188,7 +188,7 @@ async function loadDashboard(page, options = {}) {
   };
 
   await page.setContent(ASSETS.documentHtml, { waitUntil: "domcontentloaded" });
-  await page.evaluate(({ initialPayload, initialStorage, initialBluetoothPayload, initialSystemPayload, initialVersionPayload, initialJellyfinStatusPayload, initialJellyfinSearchPayload, initialRuntimeDiagnosticsPayload, runtimeDiagnosticsIntervalMs }) => {
+  await page.evaluate(({ initialPayload, initialStorage, initialBluetoothPayload, initialSystemPayload, initialVersionPayload, initialJellyfinStatusPayload, initialJellyfinSearchPayload, initialRuntimeDiagnosticsPayload, runtimeDiagnosticsIntervalMs, dashboardRetryDelaysMs }) => {
     const values = Object.assign({}, initialStorage);
     const localStorageMock = {
       get length() { return Object.keys(values).length; },
@@ -209,6 +209,11 @@ async function loadDashboard(page, options = {}) {
     window.__openMmiRuntimeDiagnosticsFixture = initialRuntimeDiagnosticsPayload;
     window.__openMmiRuntimeDiagnosticsRequests = 0;
     window.__openMmiRuntimeDiagnosticsIntervalMs = runtimeDiagnosticsIntervalMs;
+    window.__openMmiDashboardRetryDelaysMs = dashboardRetryDelaysMs;
+    window.__openMmiDashboardOnline = true;
+    window.__openMmiDashboardHealthRequests = 0;
+    window.__openMmiDashboardStatusRequests = 0;
+    window.__openMmiDashboardVersionRequests = 0;
     window.__openMmiJellyfinStatusRequests = 0;
     window.__openMmiJellyfinSearchRequests = 0;
 
@@ -218,9 +223,21 @@ async function loadDashboard(page, options = {}) {
     });
     window.fetch = async (input, init = {}) => {
       const url = String(input instanceof Request ? input.url : input);
-      if (url.includes("/api/version")) return json(window.__openMmiVersionFixture);
-      if (url.includes("/api/status")) return json(window.__openMmiStatusFixture);
-      if (url.includes("/api/health")) return json({ ok: true });
+      if (url.includes("/api/") && window.__openMmiDashboardOnline === false) {
+        throw new TypeError("dashboard offline");
+      }
+      if (url.includes("/api/version")) {
+        window.__openMmiDashboardVersionRequests += 1;
+        return json(window.__openMmiVersionFixture);
+      }
+      if (url.includes("/api/status")) {
+        window.__openMmiDashboardStatusRequests += 1;
+        return json(window.__openMmiStatusFixture);
+      }
+      if (url.includes("/api/health")) {
+        window.__openMmiDashboardHealthRequests += 1;
+        return json({ ok: true });
+      }
       if (url.includes("/api/system/diagnostics/runtime")) {
         window.__openMmiRuntimeDiagnosticsRequests += 1;
         return json(window.__openMmiRuntimeDiagnosticsFixture);
@@ -289,6 +306,7 @@ async function loadDashboard(page, options = {}) {
     initialJellyfinSearchPayload: jellyfinSearchPayload,
     initialRuntimeDiagnosticsPayload: runtimeDiagnosticsPayload,
     runtimeDiagnosticsIntervalMs: options.runtimeDiagnosticsIntervalMs || 60,
+    dashboardRetryDelaysMs: options.dashboardRetryDelaysMs || [50, 75, 100],
   });
 
   if (options.focusBeforeReady) {
@@ -326,6 +344,16 @@ async function loadDashboard(page, options = {}) {
     },
     async runtimeDiagnosticsRequests() {
       return page.evaluate(() => window.__openMmiRuntimeDiagnosticsRequests);
+    },
+    async setDashboardOnline(online) {
+      await page.evaluate((value) => { window.__openMmiDashboardOnline = Boolean(value); }, online);
+    },
+    async dashboardRequestCounts() {
+      return page.evaluate(() => ({
+        health: window.__openMmiDashboardHealthRequests,
+        status: window.__openMmiDashboardStatusRequests,
+        version: window.__openMmiDashboardVersionRequests,
+      }));
     },
     async storage() {
       return page.evaluate(() => Object.assign({}, window.__openMmiBrowserStorage));
@@ -994,5 +1022,34 @@ test("Jellyfin restart recovers without reloading Chromium or rebuilding Media",
   await expect(page.locator("#pageElectrical")).toHaveClass(/active/);
   await expect(page.locator("#pageTitle")).toHaveText("Media");
   expect(await page.evaluate(() => document.querySelector("#openMmiMediaRoot").__reconnectIdentity)).toBe("preserved");
+  await expectNoRuntimeFailures(failures);
+});
+
+test("same-build dashboard restart recovers in place with one shared retry owner", async ({ page }) => {
+  const failures = captureRuntimeFailures(page);
+  const dashboard = await loadDashboard(page, { dashboardRetryDelaysMs: [50, 75, 100] });
+
+  await expect(page.locator("body")).toHaveAttribute("data-openmmi-dashboard-connection", "ready");
+  await page.evaluate(() => { document.querySelector("#pageHome").__dashboardRecoveryIdentity = "preserved"; });
+  const before = await dashboard.dashboardRequestCounts();
+
+  await dashboard.setDashboardOnline(false);
+  await expect(page.locator("#openMmiDashboardConnectionNotice")).toBeVisible({ timeout: 2000 });
+  await expect(page.locator("body")).toHaveAttribute("data-openmmi-dashboard-connection", /reconnecting|unavailable/);
+  await expect(page.locator("#openMmiDashboardConnectionNotice")).toContainText(/Dashboard (reconnecting|unavailable)/);
+
+  const afterFailure = await dashboard.dashboardRequestCounts();
+  await page.waitForTimeout(350);
+  const whileOffline = await dashboard.dashboardRequestCounts();
+  expect(whileOffline.status - afterFailure.status).toBeLessThanOrEqual(1);
+  expect(whileOffline.health).toBeGreaterThanOrEqual(before.health);
+
+  await dashboard.setDashboardOnline(true);
+  await expect(page.locator("body")).toHaveAttribute("data-openmmi-dashboard-connection", "ready", { timeout: 3000 });
+  await expect(page.locator("#openMmiDashboardConnectionNotice")).toBeHidden();
+  expect(await page.evaluate(() => document.querySelector("#pageHome").__dashboardRecoveryIdentity)).toBe("preserved");
+
+  await expect.poll(async () => (await dashboard.dashboardRequestCounts()).status).toBeGreaterThan(whileOffline.status);
+  await expect.poll(async () => (await dashboard.dashboardRequestCounts()).version).toBeGreaterThan(before.version);
   await expectNoRuntimeFailures(failures);
 });

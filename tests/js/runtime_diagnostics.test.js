@@ -76,10 +76,12 @@ test("charging suspension remains distinct from disconnected AC and charger capa
 
 test("frontend activity values expose status, render and media suppression counters", () => {
   const values = runtime.frontendActivityValues({
+    openMmiDashboardConnectionController: { snapshot() { return { state: "ready", metrics: { probes: 2, recoveries: 1 } }; } },
     openMmiStatusPoller: { getMetrics() { return { fetches: 20, overlapping_fetches_skipped: 3 }; } },
     openMmiVehicleRenderer: { getMetrics() { return { render_calls: 20, vehicle_renders: 4, unchanged_renders_skipped: 16 }; } },
     openMmiMediaPerformanceMetrics: { layout_runs: 2, layout_requests: 5 },
   });
+  assert.equal(values["frontend.connection"], "ready · 2 probes · 1 recoveries");
   assert.equal(values["frontend.status"], "20 fetches · 3 overlap skips");
   assert.equal(values["frontend.render"], "4 renders · 16 unchanged skipped");
   assert.equal(values["frontend.media"], "2 layouts · 5 requests");

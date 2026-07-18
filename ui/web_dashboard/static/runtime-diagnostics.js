@@ -220,10 +220,15 @@
 
 
   function frontendActivityValues(windowRef) {
+    const connection = windowRef?.openMmiDashboardConnectionController?.snapshot?.() || {};
     const status = windowRef?.openMmiStatusPoller?.getMetrics?.() || {};
     const vehicle = windowRef?.openMmiVehicleRenderer?.getMetrics?.() || {};
     const media = windowRef?.openMmiMediaPerformanceMetrics || {};
+    const connectionMetrics = connection.metrics || {};
     return {
+      "frontend.connection": connection.state
+        ? `${connection.state} · ${connectionMetrics.probes || 0} probes · ${connectionMetrics.recoveries || 0} recoveries`
+        : "--",
       "frontend.status": Number.isFinite(Number(status.fetches))
         ? `${status.fetches} fetches · ${status.overlapping_fetches_skipped || 0} overlap skips`
         : "--",
@@ -289,6 +294,7 @@
           ${detailMetric("Charging state", "power.state")}
           ${detailMetric("Observed clock", "session.clock")}
           ${detailMetric("Observed temperature", "session.temp")}
+          ${detailMetric("Dashboard connection", "frontend.connection")}
           ${detailMetric("Status activity", "frontend.status")}
           ${detailMetric("Vehicle renders", "frontend.render")}
           ${detailMetric("Media layouts", "frontend.media")}

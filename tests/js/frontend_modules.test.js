@@ -90,6 +90,27 @@ test("API errors expose status and server payload", async () => {
   );
 });
 
+
+test("API connection observers distinguish transport loss from HTTP errors", async () => {
+  const events = [];
+  const unsubscribe = api.subscribeConnection((detail) => events.push(detail));
+
+  global.fetch = async () => ({
+    ok: false,
+    status: 503,
+    json: async () => ({ error: "busy" }),
+  });
+  await assert.rejects(() => api.getJson("/api/busy", { usePayloadError: true }));
+  assert.equal(events.at(-1).reachable, true, "an HTTP response proves the dashboard server is reachable");
+  assert.equal(events.at(-1).status, 503);
+
+  global.fetch = async () => { throw new TypeError("network offline"); };
+  await assert.rejects(() => api.getJson("/api/status"), /network offline/);
+  assert.equal(events.at(-1).reachable, false);
+  assert.equal(events.at(-1).error.connection_unreachable, true);
+  unsubscribe();
+});
+
 const status = require("../../ui/web_dashboard/static/status.js");
 
 test("status store publishes snapshots and isolates subscribers", () => {

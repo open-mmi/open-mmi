@@ -95,12 +95,12 @@
           <div class="openmmi-settings-metric"><span>Update status</span><strong data-testid="system-version-state">${escapeHtml(versionState)}</strong></div>
           <div class="openmmi-settings-metric"><span>Health endpoint</span><strong>${escapeHtml(reachable)}</strong></div>
           ${row("Default interface", "Used by the desktop icon and open-mmi-launcher without arguments.",
-            pill("Web", defaultUi === "web", 'data-openmmi-launcher-ui="web" data-testid="launcher-default-web"')
-            + pill("TUI", defaultUi === "tui", 'data-openmmi-launcher-ui="tui" data-testid="launcher-default-tui"'))}
+            pill("Web", defaultUi === "web", 'data-openmmi-launcher-ui="web" data-openmmi-requires-dashboard="true" data-testid="launcher-default-web"')
+            + pill("TUI", defaultUi === "tui", 'data-openmmi-launcher-ui="tui" data-openmmi-requires-dashboard="true" data-testid="launcher-default-tui"'))}
           ${row("Open Open MMI at login", "Launch the remembered interface after graphical login. The launcher starts the dashboard service when needed.",
-            pill("off", !autostart, 'data-openmmi-launcher-autostart="false" data-testid="launcher-autostart-off"')
-            + pill("on", autostart, 'data-openmmi-launcher-autostart="true" data-testid="launcher-autostart-on"'))}
-          <button type="button" class="openmmi-settings-link openmmi-config-refresh" data-openmmi-system-refresh="true" ${busy ? "disabled" : ""}>Refresh status</button>
+            pill("off", !autostart, 'data-openmmi-launcher-autostart="false" data-openmmi-requires-dashboard="true" data-testid="launcher-autostart-off"')
+            + pill("on", autostart, 'data-openmmi-launcher-autostart="true" data-openmmi-requires-dashboard="true" data-testid="launcher-autostart-on"'))}
+          <button type="button" class="openmmi-settings-link openmmi-config-refresh" data-openmmi-system-refresh="true" data-openmmi-requires-dashboard="true" ${busy ? "disabled" : ""}>Refresh status</button>
         </div>`;
     }
 
@@ -133,10 +133,10 @@
             </div>
             <p class="openmmi-config-secret-note">Passwords and tokens are written to <code>${escapeHtml(config.path || "~/.config/open-mmi/dashboard.env")}</code> with mode 0600. They are never returned to this browser.</p>
             <div class="openmmi-config-actions">
-              <button type="button" class="openmmi-setting-pill" data-openmmi-jellyfin-test="true" data-testid="jellyfin-test" ${busy ? "disabled" : ""}>test</button>
-              <button type="button" class="openmmi-setting-pill is-selected" data-openmmi-jellyfin-save="true" data-testid="jellyfin-save" ${busy ? "disabled" : ""}>save</button>
-              <button type="button" class="openmmi-setting-pill" data-openmmi-jellyfin-clear="true" data-testid="jellyfin-clear" ${busy ? "disabled" : ""}>clear</button>
-              ${config.restart_required ? `<button type="button" class="openmmi-setting-pill" data-openmmi-dashboard-restart="true" ${busy ? "disabled" : ""}>restart dashboard</button>` : ""}
+              <button type="button" class="openmmi-setting-pill" data-openmmi-jellyfin-test="true" data-openmmi-requires-dashboard="true" data-testid="jellyfin-test" ${busy ? "disabled" : ""}>test</button>
+              <button type="button" class="openmmi-setting-pill is-selected" data-openmmi-jellyfin-save="true" data-openmmi-requires-dashboard="true" data-testid="jellyfin-save" ${busy ? "disabled" : ""}>save</button>
+              <button type="button" class="openmmi-setting-pill" data-openmmi-jellyfin-clear="true" data-openmmi-requires-dashboard="true" data-testid="jellyfin-clear" ${busy ? "disabled" : ""}>clear</button>
+              ${config.restart_required ? `<button type="button" class="openmmi-setting-pill" data-openmmi-dashboard-restart="true" data-openmmi-requires-dashboard="true" ${busy ? "disabled" : ""}>restart dashboard</button>` : ""}
             </div>
           </form>
         </div>`;
