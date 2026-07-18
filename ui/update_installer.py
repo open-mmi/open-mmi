@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import pwd
+import re
 import stat
 import subprocess
 from pathlib import Path
@@ -125,6 +126,20 @@ def _run_deployment(command: Sequence[str], environment: Mapping[str, str]) -> s
     )
 
 
+_DEPLOYMENT_STAGES = {
+    "backup", "repository", "files", "package", "system-services",
+    "user-services", "service-health", "api-health", "version-health",
+}
+
+
+def _deployment_failure(output: str) -> str:
+    matches = re.findall(r"Prepared deployment failed at stage: ([a-z-]+)", output or "")
+    stage = matches[-1] if matches else ""
+    if stage in _DEPLOYMENT_STAGES:
+        return f"Prepared deployment failed during {stage}"
+    return "Prepared deployment failed"
+
+
 def install_prepared(
     state_path: Path = update_coordinator.DEFAULT_STATE_FILE,
     lock_path: Path = update_coordinator.DEFAULT_LOCK,
@@ -154,7 +169,7 @@ def install_prepared(
             result = None
             failure = "Prepared deployment could not complete"
         else:
-            failure = "Prepared deployment failed"
+            failure = _deployment_failure(result.stdout)
         if result is None or result.returncode != 0:
             state.update({
                 "state": "failed", "stage": "installation",

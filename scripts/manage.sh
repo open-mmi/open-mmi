@@ -830,6 +830,7 @@ cmd_deploy_prepared() {
     local previous_commit="${OPEN_MMI_PREVIOUS_COMMIT:-}"
     local version="${OPEN_MMI_PREPARED_VERSION:-}"
     local rollback_root="/var/lib/open-mmi/rollback/$transaction"
+    local deployment_stage="backup"
     local resolved_stage
 
     [[ $EUID -eq 0 ]] || { log_error "Prepared deployment requires root"; return 1; }
@@ -853,6 +854,7 @@ cmd_deploy_prepared() {
     install -d -m 0700 -o root -g root "$rollback_root"
     if [ -e "$INSTALL_DIR" ]; then
         cp -a -- "$INSTALL_DIR" "$rollback_root/installation"
+        "$rollback_root/installation/venv/bin/python" -c 'import ui.config_cli'
     fi
     install -d -m 0700 -o root -g root "$rollback_root/system-units" "$rollback_root/user-units"
     for unit in "$UPDATE_COORDINATOR_UNIT" "$UPDATE_INSTALLER_UNIT"; do
@@ -872,11 +874,20 @@ cmd_deploy_prepared() {
 
     rollback_prepared_deployment() {
         trap - ERR
-        log_error "Prepared deployment failed; restoring previous installation"
+        log_error "Prepared deployment failed at stage: $deployment_stage"
+        log_error "Restoring previous installation"
         if [ -d "$rollback_root/installation" ]; then
-            find "$INSTALL_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
-            cp -a -- "$rollback_root/installation/." "$INSTALL_DIR/"
-            "$INSTALL_DIR/venv/bin/python" -m pip install --upgrade --force-reinstall "$INSTALL_DIR" >/dev/null 2>&1 || true
+            local failed_install="$INSTALL_DIR.failed-$transaction"
+            local restored_install="$INSTALL_DIR.restore-$transaction"
+            rm -rf -- "$failed_install" "$restored_install"
+            cp -a -- "$rollback_root/installation" "$restored_install"
+            mv -- "$INSTALL_DIR" "$failed_install"
+            mv -- "$restored_install" "$INSTALL_DIR"
+            if "$INSTALL_DIR/venv/bin/python" -c 'import ui.config_cli' >/dev/null 2>&1; then
+                rm -rf -- "$failed_install"
+            else
+                log_error "Previous Python installation could not be verified after restoration"
+            fi
         fi
         if [ -d "${OPEN_MMI_MANAGED_REPOSITORY:-}/.git" ]; then
             sudo -u "$REAL_USER" git -C "$OPEN_MMI_MANAGED_REPOSITORY" reset --hard "$previous_commit" >/dev/null 2>&1 || true
@@ -905,12 +916,14 @@ cmd_deploy_prepared() {
     }
     trap rollback_prepared_deployment ERR
 
+    deployment_stage="repository"
     [[ $(sudo -u "$REAL_USER" git -C "$OPEN_MMI_MANAGED_REPOSITORY" rev-parse HEAD) == "$previous_commit" ]]
     sudo -u "$REAL_USER" git -C "$OPEN_MMI_MANAGED_REPOSITORY" diff --quiet
     sudo -u "$REAL_USER" git -C "$OPEN_MMI_MANAGED_REPOSITORY" diff --cached --quiet
     sudo -u "$REAL_USER" git -C "$OPEN_MMI_MANAGED_REPOSITORY" fetch -- "${OPEN_MMI_MANAGED_UPSTREAM%%/*}"
     sudo -u "$REAL_USER" git -C "$OPEN_MMI_MANAGED_REPOSITORY" merge --ff-only "$commit"
 
+    deployment_stage="files"
     log_info "Deploying prepared candidate $version..."
     find "$INSTALL_DIR" -mindepth 1 -maxdepth 1 \
         \( -name venv -o -name .version -o -name .update-source.json \) -prune \
@@ -926,10 +939,13 @@ cmd_deploy_prepared() {
     DESKTOP_ENTRY_SOURCE="$REPO_ROOT/packaging/linux-desktop/open-mmi-status.desktop"
     CHOOSER_ENTRY_SOURCE="$REPO_ROOT/packaging/linux-desktop/open-mmi-chooser.desktop"
     DESKTOP_ICON_SOURCE="$REPO_ROOT/packaging/linux-desktop/icons"
+    deployment_stage="package"
     install_open_mmi_package
     install_command_links
+    deployment_stage="system-services"
     install_update_coordinator
 
+    deployment_stage="user-services"
     local user_systemd_dir="$REAL_HOME/.config/systemd/user"
     install -d -m 0755 -o "$REAL_USER" -g "$REAL_USER" "$user_systemd_dir"
     install -m 0644 -o "$REAL_USER" -g "$REAL_USER" "$REPO_ROOT/systemd/user/canbusd.service" "$user_systemd_dir/canbusd.service"
@@ -944,9 +960,12 @@ cmd_deploy_prepared() {
     sudo -u "$REAL_USER" env HOME="$REAL_HOME" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
         systemctl --user restart canbusd.service open-mmi-dashboard.service
 
+    deployment_stage="service-health"
     sudo -u "$REAL_USER" env HOME="$REAL_HOME" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
         systemctl --user is-active --quiet canbusd.service open-mmi-dashboard.service
+    deployment_stage="api-health"
     curl --fail --silent --max-time 15 http://127.0.0.1:8765/api/health >/dev/null
+    deployment_stage="version-health"
     curl --fail --silent --max-time 15 http://127.0.0.1:8765/api/version | \
         python3 -c 'import json,sys; expected=sys.argv[1]; payload=json.load(sys.stdin); raise SystemExit(0 if payload.get("build_id") == expected else 1)' "$version"
     trap - ERR

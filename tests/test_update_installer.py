@@ -97,6 +97,16 @@ class UpdateInstallerTests(unittest.TestCase):
         self.assertEqual(failed["state"], "failed")
         self.assertNotIn("secret", failed["error"])
 
+    def test_deployment_failure_exposes_only_allowlisted_stage(self):
+        self.assertEqual(
+            update_installer._deployment_failure("noise\nPrepared deployment failed at stage: api-health\nsecret"),
+            "Prepared deployment failed during api-health",
+        )
+        self.assertEqual(
+            update_installer._deployment_failure("Prepared deployment failed at stage: secret-path"),
+            "Prepared deployment failed",
+        )
+
     def test_source_change_after_preparation_blocks_installation(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
