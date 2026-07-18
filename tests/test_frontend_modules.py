@@ -155,7 +155,10 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
         self.assertIn('data-testid="system-update-check"', source)
         self.assertIn('Checking is read-only.', source)
         self.assertIn('"remote-different": "remote differs"', source)
+        self.assertIn('"downgrade-blocked": "downgrade blocked"', source)
+        self.assertIn('Channel selection is administrative CLI policy', source)
         self.assertNotIn("Install update", source)
+        self.assertNotIn('data-openmmi-update-channel', source)
         self.assertNotIn("repository_path", source)
 
     def test_runtime_diagnostics_module_owns_visibility_aware_polling(self):

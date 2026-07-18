@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -30,6 +32,46 @@ class ManageScriptLifecycleTests(unittest.TestCase):
         start = self.text.index(marker) + len(marker)
         end = self.text.index("\nPY_UPDATE_SOURCE", start)
         compile(self.text[start:end], "manage.sh:PY_UPDATE_SOURCE", "exec")
+
+    def test_update_source_writer_migrates_and_preserves_named_channel_policy(self) -> None:
+        marker = "<<'PY_UPDATE_SOURCE'\n"
+        start = self.text.index(marker) + len(marker)
+        end = self.text.index("\nPY_UPDATE_SOURCE", start)
+        program = self.text[start:end]
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            metadata = root / "install" / ".update-source.json"
+            policy = root / "etc" / "update-policy.json"
+            source = root / "source"
+            source.mkdir()
+            arguments = [
+                "python3", "-c", program,
+                str(metadata), str(source), "main", "origin/main",
+                "a" * 40, "v0.1.0", str(policy),
+            ]
+            first = subprocess.run(arguments, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+            self.assertEqual(first.returncode, 0, first.stderr)
+            self.assertEqual(json.loads(policy.read_text(encoding="utf-8"))["channel"], "development")
+            self.assertEqual(json.loads(metadata.read_text(encoding="utf-8"))["channel"], "development")
+
+            policy.write_text(json.dumps({
+                "schema_version": 1,
+                "channel": "beta",
+                "updated_at": "2026-07-18T12:00:00+00:00",
+            }), encoding="utf-8")
+            policy.chmod(0o644)
+            second = subprocess.run(arguments, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+            self.assertEqual(second.returncode, 0, second.stderr)
+            self.assertEqual(json.loads(metadata.read_text(encoding="utf-8"))["channel"], "beta")
+
+            policy.write_text(json.dumps({
+                "schema_version": 1,
+                "channel": "beta",
+                "repository": "https://evil.test/repo",
+            }), encoding="utf-8")
+            policy.chmod(0o644)
+            invalid = subprocess.run(arguments, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+            self.assertNotEqual(invalid.returncode, 0)
 
     def test_service_units_use_single_command_source_and_destination(self) -> None:
         install_canbusd = (
@@ -214,14 +256,17 @@ sudo() {{ printf '%s\\0' "$@"; }}
         metadata_block = self.text[metadata_start:metadata_end]
 
         self.assertIn('destination="$INSTALL_DIR/.update-source.json"', metadata_block)
+        self.assertIn('UPDATE_POLICY_FILE="/etc/open-mmi/update-policy.json"', self.text)
         self.assertIn('"schema_version": 1', metadata_block)
         self.assertIn('"channel": "development"', metadata_block)
+        self.assertIn('"channel": policy["channel"]', metadata_block)
+        self.assertIn('approved_channels = {"stable", "beta", "development"}', metadata_block)
         self.assertIn('"repository_path": str(Path(sys.argv[2]).resolve())', metadata_block)
         self.assertIn('"installed_commit": sys.argv[5].lower()', metadata_block)
         self.assertIn('tempfile.NamedTemporaryFile(', metadata_block)
         self.assertIn('os.fsync(temporary.fileno())', metadata_block)
         self.assertIn('os.replace(temporary_name, path)', metadata_block)
-        self.assertIn('os.chmod(temporary_name, 0o644)', metadata_block)
+        self.assertIn('atomic_json(metadata_path, payload, 0o644)', metadata_block)
         self.assertIn("write_update_source_metadata", install_block)
         self.assertIn("write_update_source_metadata", update_block)
         self.assertGreater(install_block.index('get_current_version > "$VERSION_FILE"'), 0)
@@ -233,6 +278,13 @@ sudo() {{ printf '%s\\0' "$@"; }}
             update_block.index("write_update_source_metadata"),
             update_block.index("echo '$new_version' > '$VERSION_FILE'"),
         )
+
+    def test_uninstall_removes_root_owned_update_policy(self) -> None:
+        uninstall_start = self.text.index("cmd_uninstall() {")
+        status_start = self.text.index("cmd_status() {")
+        uninstall_block = self.text[uninstall_start:status_start]
+        self.assertIn('sudo rm -f "$UPDATE_POLICY_FILE"', uninstall_block)
+        self.assertIn('sudo rmdir "$(dirname "$UPDATE_POLICY_FILE")"', uninstall_block)
 
     def test_group_cleanup_guidance_is_safe(self) -> None:
         self.assertNotIn("sudo usermod -G $(groups", self.text)

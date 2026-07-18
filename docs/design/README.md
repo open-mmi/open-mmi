@@ -34,4 +34,4 @@ Current user and operator instructions belong in normal product documents such a
 ## Current design sets
 
 - [`v1-runtime-hardening`](v1-runtime-hardening/README.md) — implementation complete; merge qualification recorded in its close-out documents.
-- [`v1-update-management`](v1-update-management/README.md) — active design set; first read-only visibility slice implemented.
+- [`v1-update-management`](v1-update-management/README.md) — active design set; read-only visibility and trusted channel policy implemented.

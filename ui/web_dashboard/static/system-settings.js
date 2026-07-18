@@ -87,6 +87,8 @@
         "remote-different": "remote differs",
         "local-ahead": "local source ahead",
         diverged: "source diverged",
+        "downgrade-blocked": "downgrade blocked",
+        "release-rewritten": "release tag changed",
         unavailable: "check unavailable",
         blocked: "check blocked",
         "source-unavailable": "source not configured",
@@ -102,6 +104,8 @@
         "source-changed": "source differs from installed",
         detached: "detached HEAD",
         "branch-mismatch": "different branch",
+        "channel-source-mismatch": "channel/source mismatch",
+        "untrusted-remote": "untrusted remote",
         unavailable: "unavailable",
         unconfigured: "not configured",
         invalid: "invalid configuration",
@@ -119,8 +123,11 @@
       const state = String(payload?.update?.state || "");
       if (state === "up-to-date") return ["Open MMI is up to date", "success"];
       if (state === "update-available") return ["An update is available", "warning"];
-      if (["remote-different", "local-ahead", "diverged"].includes(state)) {
-        return ["The tracked remote differs; installation direction is not assumed", "warning"];
+      if (["remote-different", "local-ahead", "diverged", "release-rewritten"].includes(state)) {
+        return [payload?.update?.error || "The tracked source differs; installation direction is not assumed", "warning"];
+      }
+      if (state === "downgrade-blocked") {
+        return [payload?.update?.error || "The selected channel would require a downgrade", "warning"];
       }
       if (["blocked", "source-unavailable", "source-invalid"].includes(state)) {
         return [payload?.update?.error || "Update check is blocked", "warning"];
@@ -167,7 +174,7 @@
             <div class="openmmi-settings-metric"><span>Last checked</span><strong data-testid="system-update-checked-at">${escapeHtml(lastChecked)}</strong></div>
             <div class="openmmi-settings-metric"><span>Repository health</span><strong data-testid="system-update-repository">${escapeHtml(repositoryState)}</strong></div>
             ${updateError}
-            <p class="openmmi-update-status-note">Checking is read-only. Installing, channel changes, readiness checks, and rollback are not enabled in this slice.</p>
+            <p class="openmmi-update-status-note">Checking is read-only. Channel selection is administrative CLI policy; installing, readiness enforcement, and rollback are not enabled in this slice.</p>
             <button type="button" class="openmmi-settings-link openmmi-config-refresh" data-openmmi-update-check="true" data-openmmi-requires-dashboard="true" data-testid="system-update-check" ${updateBusy ? "disabled" : ""}>${updateBusy ? "Checking…" : "Check for updates"}</button>
           </div>
           ${row("Default interface", "Used by the desktop icon and open-mmi-launcher without arguments.",

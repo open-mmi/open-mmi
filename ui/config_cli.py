@@ -20,7 +20,7 @@ from ui.configuration import (
     restart_dashboard,
     write_environment_file,
 )
-from ui.web_dashboard import jellyfin
+from ui.web_dashboard import jellyfin, update_status
 
 
 def _print(payload: Mapping[str, Any]) -> None:
@@ -79,6 +79,13 @@ def build_parser() -> argparse.ArgumentParser:
     dashboard_commands = dashboard_parser.add_subparsers(dest="command", required=True)
     for action in ("status", "start", "stop", "restart", "enable", "disable"):
         dashboard_commands.add_parser(action)
+
+    updates_parser = groups.add_parser("updates", help="inspect trusted update policy")
+    updates_commands = updates_parser.add_subparsers(dest="command", required=True)
+    updates_commands.add_parser("status")
+    updates_commands.add_parser("check")
+    channel = updates_commands.add_parser("channel")
+    channel.add_argument("channel", choices=("stable", "beta", "development"))
     return parser
 
 
@@ -120,6 +127,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 _print({"ok": True, "service": "open-mmi-dashboard.service", "action": args.command})
             return 0
 
+        if args.group == "updates":
+            if args.command == "status":
+                _print(update_status.status_payload())
+            elif args.command == "check":
+                _print(update_status.check_for_updates())
+            else:
+                _print({"ok": True, **update_status.configure_channel(args.channel)})
+            return 0
+
         if args.command == "status":
             _print(jellyfin_environment_status())
             return 0
@@ -146,7 +162,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         result = _jellyfin_test(values)
         _print({"ok": True, **result})
         return 0
-    except (ConfigurationError, launcher.LauncherError, RuntimeError, ValueError) as exc:
+    except (ConfigurationError, launcher.LauncherError, update_status.UpdateStatusError, RuntimeError, ValueError) as exc:
         print(f"open-mmi-config: {exc}", file=sys.stderr)
         return 1
 

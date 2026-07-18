@@ -7,14 +7,19 @@
 - Local-only read-only update status and manual update-check endpoints.
 - Settings → System visibility for installed version, channel, tracked remote version, check state, last check, and repository health.
 - Branch-specific update source, API, UI, execution, rollback, health, and permission design records.
+- Root-owned `/etc/open-mmi/update-policy.json` with fixed `stable`, `beta`, and `development` channel selection.
+- Administrative `open-mmi-config updates status`, `updates check`, and `updates channel` commands.
+- Stable/beta semantic release-tag filtering, official-repository enforcement, downgrade refusal, and rewritten-tag detection.
 
 ### Security
 - Update checks accept no browser-selected repository, path, remote, branch, ref, timeout, or command.
 - Git credential prompts are disabled, checks use bounded argument-list subprocesses, and raw remote errors are not exposed to the browser.
 - A remote commit mismatch is reported conservatively when update direction cannot be proven without changing the checkout.
+- Channel policy rejects symlinks, writable files, unknown fields, unsupported channels, non-root production ownership, untrusted release remotes, and browser-selected source data.
+- Git inspection invoked through `sudo open-mmi-config` drops back to the original user before reading the user-owned checkout.
 
 ### Not yet included
-- No update installation, channel changes, scheduling, unattended updates, readiness enforcement, privileged coordinator, or rollback action.
+- No update installation, browser channel editor, scheduling, unattended updates, readiness enforcement, privileged coordinator, or rollback action.
 
 ## Unreleased — V1 runtime hardening
 

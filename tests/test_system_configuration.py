@@ -210,6 +210,34 @@ class SystemConfigurationTests(unittest.TestCase):
         configure.assert_called_once_with(False)
         self.assertIn('"open_at_login": false', output.getvalue().lower())
 
+    def test_cli_updates_status_and_check_use_fixed_backend_actions(self):
+        output = io.StringIO()
+        fixture = {"channel": "development", "update": {"state": "not-checked"}}
+        with patch.object(config_cli.update_status, "status_payload", return_value=fixture) as status, contextlib.redirect_stdout(output):
+            result = config_cli.main(["updates", "status"])
+        self.assertEqual(result, 0)
+        status.assert_called_once_with()
+        self.assertIn('"channel": "development"', output.getvalue())
+
+        output = io.StringIO()
+        checked = {"channel": "development", "update": {"state": "up-to-date"}}
+        with patch.object(config_cli.update_status, "check_for_updates", return_value=checked) as check, contextlib.redirect_stdout(output):
+            result = config_cli.main(["updates", "check"])
+        self.assertEqual(result, 0)
+        check.assert_called_once_with()
+        self.assertIn('"state": "up-to-date"', output.getvalue())
+
+    def test_cli_channel_selection_accepts_only_named_policy(self):
+        output = io.StringIO()
+        fixture = {"channel": "beta", "update": {"state": "not-checked"}}
+        with patch.object(config_cli.update_status, "configure_channel", return_value=fixture) as configure, contextlib.redirect_stdout(output):
+            result = config_cli.main(["updates", "channel", "beta"])
+        self.assertEqual(result, 0)
+        configure.assert_called_once_with("beta")
+        self.assertIn('"channel": "beta"', output.getvalue())
+        with self.assertRaises(SystemExit):
+            config_cli.build_parser().parse_args(["updates", "channel", "nightly"])
+
     def test_cli_dashboard_enable_remains_advanced_service_control(self):
         output = io.StringIO()
         with patch.object(config_cli.launcher, "configure_dashboard_service") as configure, contextlib.redirect_stdout(output):

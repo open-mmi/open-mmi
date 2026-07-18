@@ -97,7 +97,22 @@ See [`docs/desktop-shell.md`](docs/desktop-shell.md) for launcher, login-autosta
 
 See [`docs/runtime-hardening.md`](docs/runtime-hardening.md) for update/cache recovery, service reconnection, thermal diagnostics, and runtime-efficiency behaviour. Vehicle installations should also review [`docs/vehicle-tablet-installation.md`](docs/vehicle-tablet-installation.md).
 
-The first `v1-update-management` slice adds read-only software update visibility under **Settings → System**. It can inspect the installer-recorded development source and manually compare its tracked remote without fetching or modifying the installation. Update installation, channel changes, scheduling, readiness enforcement, and rollback are not enabled yet; see [`docs/design/v1-update-management/`](docs/design/v1-update-management/README.md).
+The first `v1-update-management` slices add read-only software update visibility under **Settings → System** plus trusted administrative channel policy. The dashboard never selects a repository, ref, or channel. Inspect or check from the CLI with:
+
+```bash
+open-mmi-config updates status
+open-mmi-config updates check
+```
+
+Select one approved channel administratively:
+
+```bash
+sudo open-mmi-config updates channel development
+sudo open-mmi-config updates channel beta
+sudo open-mmi-config updates channel stable
+```
+
+Development remains bound to the installer-recorded branch. Beta and stable require the official Open MMI repository, `main`, and fixed semantic release-tag forms; downgrade and rewritten-tag states fail closed. Update installation, scheduling, readiness enforcement, a privileged coordinator, and rollback are not enabled yet; see [`docs/design/v1-update-management/`](docs/design/v1-update-management/README.md).
 <!-- OPEN_MMI_WEB_DASHBOARD_END -->
 
 ---

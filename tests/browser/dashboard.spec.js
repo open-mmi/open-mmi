@@ -192,6 +192,7 @@ async function loadDashboard(page, options = {}) {
     read_only: true,
     installed: { managed: true, version: "v1-runtime-hardening-42-gabc1234", commit: "abc1234def56" },
     channel: "development",
+    policy: { state: "configured", implicit: false, updated_at: "2026-07-18T12:00:00+00:00" },
     source: {
       configured: true,
       state: "ready",
@@ -200,6 +201,7 @@ async function loadDashboard(page, options = {}) {
       expected_branch: "v1-update-management",
       upstream: "origin/v1-update-management",
       commit: "abc1234def56",
+      trusted: true,
     },
     update: {
       state: "not-checked",

@@ -11,6 +11,7 @@ APP_NAME="open-mmi"
 INSTALL_DIR="/opt/open-mmi"
 BACKUP_DIR="/opt/open-mmi-backups"
 VERSION_FILE="$INSTALL_DIR/.version"
+UPDATE_POLICY_FILE="/etc/open-mmi/update-policy.json"
 
 # Color output
 RED=$'\033[0;31m'
@@ -147,50 +148,104 @@ write_update_source_metadata() {
         return 0
     fi
 
-    python3 - "$destination" "$REPO_ROOT" "$branch" "$upstream" "$commit" "$version" <<'PY_UPDATE_SOURCE'
+    python3 - "$destination" "$REPO_ROOT" "$branch" "$upstream" "$commit" "$version" "$UPDATE_POLICY_FILE" <<'PY_UPDATE_SOURCE'
 import json
 import os
+import stat
 import sys
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 
-path = Path(sys.argv[1])
+metadata_path = Path(sys.argv[1])
+policy_path = Path(sys.argv[7])
+approved_channels = {"stable", "beta", "development"}
+
+
+def timestamp():
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+def atomic_json(path, payload, mode):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_name = ""
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            delete=False,
+        ) as temporary:
+            temporary_name = temporary.name
+            json.dump(payload, temporary, indent=2, sort_keys=True)
+            temporary.write("\n")
+            temporary.flush()
+            os.fsync(temporary.fileno())
+        os.chmod(temporary_name, mode)
+        os.replace(temporary_name, path)
+        directory_fd = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+    except Exception:
+        if temporary_name:
+            try:
+                os.unlink(temporary_name)
+            except OSError:
+                pass
+        raise
+
+
+production_policy = policy_path == Path("/etc/open-mmi/update-policy.json")
+if policy_path.is_symlink():
+    raise RuntimeError("update policy must not be a symlink")
+if production_policy and policy_path.parent.is_symlink():
+    raise RuntimeError("update policy directory must not be a symlink")
+if production_policy and policy_path.parent.exists():
+    parent_metadata = policy_path.parent.lstat()
+    if not stat.S_ISDIR(parent_metadata.st_mode) or parent_metadata.st_uid != 0:
+        raise RuntimeError("production update policy directory must be root owned")
+    if parent_metadata.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+        raise RuntimeError("production update policy directory must not be group/world writable")
+if policy_path.exists():
+    metadata = policy_path.lstat()
+    if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
+        raise RuntimeError("update policy must be a regular file")
+    if metadata.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+        raise RuntimeError("update policy must not be group/world writable")
+    if policy_path == Path("/etc/open-mmi/update-policy.json") and metadata.st_uid != 0:
+        raise RuntimeError("production update policy must be root owned")
+    policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    if not isinstance(policy, dict) or set(policy) - {"schema_version", "channel", "updated_at"}:
+        raise RuntimeError("update policy contains unsupported fields")
+    if policy.get("schema_version") != 1 or policy.get("channel") not in approved_channels:
+        raise RuntimeError("update policy is invalid")
+else:
+    policy = {
+        "schema_version": 1,
+        "channel": "development",
+        "updated_at": timestamp(),
+    }
+    if production_policy:
+        policy_path.parent.mkdir(parents=True, exist_ok=True)
+        os.chmod(policy_path.parent, 0o755)
+    atomic_json(policy_path, policy, 0o644)
+
 payload = {
     "schema_version": 1,
-    "channel": "development",
+    "channel": policy["channel"],
     "repository_path": str(Path(sys.argv[2]).resolve()),
     "branch": sys.argv[3],
     "upstream": sys.argv[4],
     "installed_commit": sys.argv[5].lower(),
     "installed_version": sys.argv[6],
 }
-temporary_name = ""
-try:
-    with tempfile.NamedTemporaryFile(
-        "w",
-        encoding="utf-8",
-        dir=path.parent,
-        prefix=f".{path.name}.",
-        delete=False,
-    ) as temporary:
-        temporary_name = temporary.name
-        json.dump(payload, temporary, indent=2, sort_keys=True)
-        temporary.write("\n")
-        temporary.flush()
-        os.fsync(temporary.fileno())
-    os.chmod(temporary_name, 0o644)
-    os.replace(temporary_name, path)
-except Exception:
-    if temporary_name:
-        try:
-            os.unlink(temporary_name)
-        except OSError:
-            pass
-    raise
+atomic_json(metadata_path, payload, 0o644)
 PY_UPDATE_SOURCE
-    log_success "Recorded managed update source"
+    log_success "Recorded managed update source and channel policy"
 }
-
 
 copy_if_missing() {
     local src="$1"
@@ -775,9 +830,11 @@ cmd_uninstall() {
     remove_login_autostart
     remove_command_links
     
-    # Remove application directory
+    # Remove application directory and root-owned update policy.
     log_info "Removing application files..."
     sudo rm -rf "$INSTALL_DIR"
+    sudo rm -f "$UPDATE_POLICY_FILE"
+    sudo rmdir "$(dirname "$UPDATE_POLICY_FILE")" >/dev/null 2>&1 || true
     
     # Remove udev rules
     if [ -f /etc/udev/rules.d/80-canbus.rules ]; then

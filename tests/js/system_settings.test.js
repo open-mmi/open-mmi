@@ -48,7 +48,8 @@ function fixture(options = {}) {
     read_only: true,
     installed: { managed: true, version: "v1-runtime-42-gabc1234", commit: "abc1234def56" },
     channel: "development",
-    source: { configured: true, state: "ready", clean: true, branch: "main", upstream: "origin/main" },
+    policy: { state: "configured", implicit: false, updated_at: "2026-07-18T12:00:00+00:00" },
+    source: { configured: true, state: "ready", clean: true, branch: "main", upstream: "origin/main", trusted: true },
     update: {
       state: "not-checked", checked_at: null, available_version: "", available_commit: "",
       remote_differs: null, update_available: null, error: "",
@@ -107,6 +108,7 @@ test("system and Jellyfin templates expose read-only update state without stored
   assert.match(systemHtml, /not checked/);
   assert.match(systemHtml, /Repository health/);
   assert.match(systemHtml, /Check for updates/);
+  assert.match(systemHtml, /Channel selection is administrative CLI policy/);
   assert.doesNotMatch(systemHtml, /Install update|Rollback|repository_path|https:\/\/github/);
   assert.deepEqual(state.calls.slice(0, 2), [
     ["GET", "/api/system/settings"],
@@ -149,6 +151,9 @@ test("frontend and update states use conservative user-facing labels", () => {
   }
   assert.equal(controller.updateStateLabel("remote-different"), "remote differs");
   assert.equal(controller.updateStateLabel("update-available"), "update available");
+  assert.equal(controller.updateStateLabel("downgrade-blocked"), "downgrade blocked");
+  assert.equal(controller.updateStateLabel("release-rewritten"), "release tag changed");
   assert.equal(controller.repositoryStateLabel("dirty"), "local changes");
+  assert.equal(controller.repositoryStateLabel("untrusted-remote"), "untrusted remote");
   assert.equal(controller.checkedAtLabel(null), "never");
 });
