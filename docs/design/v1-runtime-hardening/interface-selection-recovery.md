@@ -4,7 +4,7 @@
 | --- | --- |
 | Source branch | `v1-runtime-hardening` |
 | Intended target | `main` |
-| Status | Implemented, pending hardware qualification |
+| Status | Implemented on branch — final Linux Mint touch qualification pending |
 | Owner | Desktop shell runtime |
 
 ## Problem
@@ -122,3 +122,9 @@ Before merge, verify on the target Surface Pro using touch only:
 7. Repeat using **Open MMI Interface Chooser** from the application menu.
 
 - Linux Mint terminal wrappers are resolved to their native `.real` executable before GNOME-specific lifecycle arguments are used.
+
+## Implementation outcome and deviations
+
+The installed recovery entry remains application-menu only; the literal desktop receives only the primary Open MMI shortcut. Linux Mint's `gnome-terminal.wrapper` required an additional compatibility correction: the launcher resolves the native `.real` executable before using GNOME-specific lifecycle arguments and otherwise falls back to the portable terminal form.
+
+Final touch-only qualification remains recorded in [`../../runtime-hardening-qualification.md`](../../runtime-hardening-qualification.md).

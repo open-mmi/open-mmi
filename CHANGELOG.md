@@ -1,5 +1,33 @@
 # Changelog
 
+## Unreleased — V1 runtime hardening
+
+### Added
+- Build-aware frontend identity, versioned local assets, `/api/version`, and one-shot automatic reload after installed updates.
+- Shared dashboard connection recovery with bounded health backoff and in-place same-build restart recovery.
+- Jellyfin provider reconnection without reloading Chromium.
+- Touch-safe **Open MMI Interface Chooser** and guarded graphical TUI recovery.
+- Read-only thermal, CPU-frequency, power, charging, cooling-device, and runtime activity diagnostics.
+- Branch-specific design records plus permanent runtime-hardening and vehicle-tablet installation guidance.
+
+### Changed
+- User-facing version and update state now appear in Settings → System; lower-level build comparison remains in Diagnostics.
+- Vehicle rendering skips unchanged state while retaining the visible 200 ms status cadence.
+- Media layout, tell-tale maintenance, media-key setup, Diagnostics polling, and retry work now follow page/document visibility and explicit ownership.
+- Server-backed controls pause during dashboard transport loss without destroying navigation or unsaved forms.
+
+### Fixed
+- Managed Chromium no longer requires routine cache/profile clearing after later updates.
+- Diagnostics fields remain mounted instead of flashing from repeated panel reconstruction.
+- Settings → System no longer remains stuck on “loading desktop shell status”.
+- Linux Mint terminal-wrapper handling now launches the actual TUI instead of an idle shell in `/opt/open-mmi`.
+- Touchscreen users can return from a remembered TUI default without terminal commands.
+
+### Known limitations
+- The first update from a frontend that predates the version controller may require one manual reload.
+- Hot, passively cooled tablets may still throttle and suspend charging; firmware protections are not bypassed.
+- CAN-daemon profiling, cooling hardware, and update download/rollback management remain later work.
+
 ## Unreleased — V1 foundation hardening
 
 ### Added

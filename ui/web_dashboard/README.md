@@ -79,6 +79,8 @@ Inspect the status payload:
 curl http://127.0.0.1:8765/api/status | python3 -m json.tool
 ```
 
+For an operator-focused summary of cache recovery, service recovery, Diagnostics, and known limitations, see [`../../docs/runtime-hardening.md`](../../docs/runtime-hardening.md).
+
 ## Runtime efficiency and activity counters
 
 The dashboard keeps the existing visible vehicle-status cadence, but avoids duplicate work:

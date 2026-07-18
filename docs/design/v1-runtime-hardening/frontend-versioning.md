@@ -3,7 +3,7 @@
 | Field | Value |
 | --- | --- |
 | Branch | `v1-runtime-hardening` |
-| Status | In progress |
+| Status | Implemented on branch — installed automatic refresh qualified |
 | Owners | Dashboard server, static frontend, installer/update lifecycle |
 
 ## Problem
@@ -226,7 +226,7 @@ The first installed update that introduces this controller cannot be initiated b
 
 The initial tablet qualification confirmed that the new frontend loaded after that one-time migration. It also exposed a Diagnostics regression: the live panel was rebuilding its DOM on every 200 ms status publication. Diagnostics now keeps stable field nodes and changes text only when values change; a structural rebuild occurs only when the set of decoded paths changes.
 
-Remaining qualification is a second installed update with the version controller already active. The branch design remains **In progress** until that update reloads automatically and the CI Playwright suite passes.
+A later installed update with the controller already active refreshed automatically, and the associated CI run passed. No managed-profile or cache deletion was required.
 
 ## Acceptance criteria
 

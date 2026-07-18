@@ -3,7 +3,7 @@
 | Field | Value |
 | --- | --- |
 | Branch | `v1-runtime-hardening` |
-| Status | Implemented — first no-usability-impact pass; pending hardware qualification |
+| Status | Implemented on branch — browser pass complete; CAN profiling deferred |
 | Owners | Dashboard frontend, dashboard server, CAN daemon |
 
 ## Context
@@ -221,3 +221,9 @@ Any such setting requires:
 - Existing driver interactions remain responsive in cold-condition vehicle testing.
 - Any CPU reduction is attributable through counters and scenario comparison.
 - No performance setting is introduced merely to hide avoidable work.
+
+## Implementation outcome and deferred work
+
+The first pass shipped without a user-facing performance mode and without reducing the visible 200 ms status cadence. It removes duplicate requests, writes, layout work and permanent maintenance timers, and exposes counters so the result can be checked without developer tools.
+
+CAN-daemon profiling remains deferred. It must be measured separately from browser work before behaviour is changed. A low-power mode also remains deferred until measurements demonstrate a real user-visible trade-off after redundant work has been removed.

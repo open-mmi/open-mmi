@@ -3,7 +3,7 @@
 | Field | Value |
 | --- | --- |
 | Branch | `v1-runtime-hardening` |
-| Status | Proposed guidance |
+| Status | Guidance accepted — hardware prototype and validation deferred |
 | Scope | Vehicle-installed tablets, with Surface Pro 1796 as the qualification reference |
 
 ## Purpose
@@ -181,3 +181,7 @@ For the reference Surface installation, the cooling system should:
 ## Promotion after implementation
 
 After the cooling prototype is validated, stable and general guidance should move into a permanent installation document. Surface-specific test values should remain identified as one reference result rather than universal requirements.
+
+## Implementation outcome and deferred work
+
+The general guidance has been promoted to [`../../vehicle-tablet-installation.md`](../../vehicle-tablet-installation.md). No cooling hardware, fan controller or universal Surface-specific requirement ships in Open MMI. Fan-only prototyping and any later spreader/heatsink design remain installation work outside the runtime-hardening merge gate.

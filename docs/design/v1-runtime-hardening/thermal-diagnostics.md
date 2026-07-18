@@ -3,7 +3,7 @@
 | Field | Value |
 | --- | --- |
 | Branch | `v1-runtime-hardening` |
-| Status | In progress — implemented, pending Surface qualification |
+| Status | Implemented on branch — multi-hardware rendering observed; final vehicle check pending |
 | Owners | Dashboard server, Settings → Diagnostics |
 
 ## Problem
@@ -293,3 +293,9 @@ Use a configurable fake sysfs/proc root to test:
 - Charging suspension is clearly visible while AC remains online.
 - Platforms without Linux thermal or cpufreq data continue to run normally.
 - Adding Diagnostics does not create another permanent background workload.
+
+## Implementation outcome and deviations
+
+The shipped endpoint exposes raw read-only runtime data and leaves conservative thermal-state derivation in the browser. This keeps unsupported platforms usable and prevents one transient minimum-frequency sample from being labelled as throttling. Thermal diagnostics rendered successfully on more than one Linux hardware platform.
+
+The branch does not infer charger capacity from battery `power_now`, control fans, modify governors or write thermal policy.

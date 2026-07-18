@@ -4,7 +4,7 @@
 | --- | --- |
 | Source branch | `v1-runtime-hardening` |
 | Intended target | `main` |
-| Status | In progress |
+| Status | Implemented on branch — pending final qualification and merge |
 | Predecessor | `v1-desktop-shell` |
 | Next planned phase | `v1-update-management` |
 
@@ -42,13 +42,13 @@ The design set covers:
 
 ## Implementation order
 
-1. Frontend version identity and cache-safe reload behaviour. **Implemented and qualified.**
-2. Dashboard and Jellyfin reconnection state machines. **Implemented; pending laptop/Surface qualification.**
-3. Touch-safe interface selection and TUI recovery. **Implemented; pending Surface qualification.**
-4. Thermal and power diagnostics. **Implemented; pending Surface qualification.**
-5. No-usability-impact runtime efficiency changes. **First browser pass implemented; pending laptop/Surface comparison and separate CAN profiling.**
-6. Qualification on laptop and Surface Pro hardware.
-7. Documentation promotion and branch merge.
+1. Frontend version identity and cache-safe reload behaviour. **Implemented; installed automatic refresh observed.**
+2. Dashboard and Jellyfin reconnection state machines. **Implemented; final current-HEAD device checks remain.**
+3. Touch-safe interface selection and TUI recovery. **Implemented; final Linux Mint touch-only check remains.**
+4. Thermal and power diagnostics. **Implemented; multi-hardware rendering observed.**
+5. No-usability-impact runtime efficiency changes. **Implemented; the visible 200 ms status cadence is retained.**
+6. Permanent operator and installation documentation. **Added.**
+7. Final qualification and branch merge. **Pending.**
 
 This order ensures that later update-management work can rely on a proven version endpoint and controlled browser reload path.
 
@@ -84,4 +84,12 @@ The branch is ready to merge when:
 
 ## Documentation lifecycle
 
-After merge, this index should record the merge commit or release tag and change status to `Implemented`. Stable operator-facing behaviour must then be copied into permanent documentation. Any proposal that did not ship should remain visible here as deferred or superseded.
+Stable operator-facing behaviour has been promoted to [`docs/runtime-hardening.md`](../../runtime-hardening.md), and vehicle installation guidance to [`docs/vehicle-tablet-installation.md`](../../vehicle-tablet-installation.md). The final branch checklist is [`docs/runtime-hardening-qualification.md`](../../runtime-hardening-qualification.md).
+
+After merge, record the merge commit or release tag in this index and change the status to `Implemented and merged`. Deferred work remains explicit:
+
+- CAN-daemon profiling and optimisation;
+- any measured low-power/performance mode;
+- hardware fan control;
+- cooling-prototype validation;
+- update download, rollback and channel management in `v1-update-management`.

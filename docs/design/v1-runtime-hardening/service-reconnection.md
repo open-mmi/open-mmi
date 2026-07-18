@@ -3,7 +3,7 @@
 | Field | Value |
 | --- | --- |
 | Branch | `v1-runtime-hardening` |
-| Status | Implemented — pending hardware qualification |
+| Status | Implemented on branch — final current-HEAD device qualification pending |
 | Owners | Frontend API client, Media/Jellyfin integration, dashboard service |
 
 ## Problem
@@ -249,3 +249,9 @@ Do not instruct the user to refresh the browser as the normal recovery path.
 - Same-build dashboard restarts recover in place.
 - Changed-build dashboard restarts defer to the controlled frontend reload design.
 - Retry work stops while hidden and resumes once without timer multiplication.
+
+## Implementation outcome and deviations
+
+The implementation kept dashboard and Jellyfin recovery separate as designed. Dashboard transport reachability is centralised in one controller, while Jellyfin owns provider-specific configuration and authentication states. The high-frequency status poller stops during a real transport outage and resumes after version reconciliation. Ordinary HTTP failures do not mark the whole dashboard offline.
+
+The final merge candidate still requires the real-device same-build restart and Jellyfin restart checks in [`../../runtime-hardening-qualification.md`](../../runtime-hardening-qualification.md).
