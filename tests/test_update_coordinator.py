@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import stat
 import subprocess
 import tempfile
 import unittest
@@ -156,6 +157,7 @@ class UpdateCoordinatorTests(unittest.TestCase):
             path = Path(temporary) / "update.lock"
             with update_coordinator.TransactionLock(path):
                 self.assertTrue(path.exists())
+                self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o644)
                 with self.assertRaisesRegex(update_coordinator.CoordinatorError, "Another update"):
                     with update_coordinator.TransactionLock(path):
                         pass

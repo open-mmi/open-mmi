@@ -967,10 +967,26 @@ cmd_deploy_prepared() {
     sudo -u "$REAL_USER" env HOME="$REAL_HOME" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
         systemctl --user is-active --quiet canbusd.service open-mmi-dashboard.service
     deployment_stage="api-health"
-    curl --fail --silent --max-time 15 http://127.0.0.1:8765/api/health >/dev/null
+    local api_ready=false
+    for _attempt in {1..15}; do
+        if curl --fail --silent --max-time 2 http://127.0.0.1:8765/api/health >/dev/null; then
+            api_ready=true
+            break
+        fi
+        sleep 1
+    done
+    [[ "$api_ready" == true ]]
     deployment_stage="version-health"
-    curl --fail --silent --max-time 15 http://127.0.0.1:8765/api/version | \
-        python3 -c 'import json,sys; expected=sys.argv[1]; payload=json.load(sys.stdin); raise SystemExit(0 if payload.get("build_id") == expected else 1)' "$version"
+    local version_ready=false
+    for _attempt in {1..15}; do
+        if curl --fail --silent --max-time 2 http://127.0.0.1:8765/api/version | \
+            python3 -c 'import json,sys; expected=sys.argv[1]; payload=json.load(sys.stdin); raise SystemExit(0 if payload.get("build_id") == expected else 1)' "$version"; then
+            version_ready=true
+            break
+        fi
+        sleep 1
+    done
+    [[ "$version_ready" == true ]]
     trap - ERR
     log_success "Prepared update complete → $version"
 }

@@ -180,7 +180,9 @@ class TransactionLock(AbstractContextManager["TransactionLock"]):
     def __enter__(self) -> "TransactionLock":
         self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o755)
         self.handle = self.path.open("a+", encoding="utf-8")
-        os.chmod(self.path, 0o600)
+        # Readiness runs unprivileged and needs to open the trusted lock file
+        # to distinguish an active flock from an idle persistent inode.
+        os.chmod(self.path, 0o644)
         try:
             fcntl.flock(self.handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as exc:

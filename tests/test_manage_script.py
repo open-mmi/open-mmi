@@ -266,8 +266,11 @@ sudo() {{ printf '%s\\0' "$@"; }}
         self.assertIn('"$rollback_root/installation/venv/bin/python" -c \'import ui.config_cli\'', block)
         self.assertIn('mv -- "$restored_install" "$INSTALL_DIR"', block)
         self.assertNotIn('pip install --upgrade --force-reinstall "$INSTALL_DIR"', block)
-        self.assertIn('curl --fail --silent --max-time 15 http://127.0.0.1:8765/api/health', block)
+        self.assertIn('curl --fail --silent --max-time 2 http://127.0.0.1:8765/api/health', block)
         self.assertIn('payload.get("build_id") == expected', block)
+        self.assertIn('for _attempt in {1..15}; do', block)
+        self.assertIn('[[ "$api_ready" == true ]]', block)
+        self.assertIn('[[ "$version_ready" == true ]]', block)
         self.assertNotIn("eval ", block)
 
     def test_installer_unit_is_one_shot_and_accepts_no_arguments(self) -> None:
