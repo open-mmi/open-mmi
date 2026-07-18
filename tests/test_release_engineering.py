@@ -32,10 +32,12 @@ class DesktopInstallerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             data_home = Path(tmp) / "share"
             desktop_file = data_home / "applications" / "open-mmi-status.desktop"
+            chooser_file = data_home / "applications" / "open-mmi-chooser.desktop"
 
             installed = self.run_installer("install", data_home)
             self.assertEqual(installed.returncode, 0, installed.stderr)
             self.assertTrue(desktop_file.is_file())
+            self.assertTrue(chooser_file.is_file())
 
             for source in ICON_SOURCE.rglob("*"):
                 if source.is_file():
@@ -45,10 +47,12 @@ class DesktopInstallerTests(unittest.TestCase):
             reinstalled = self.run_installer("reinstall", data_home)
             self.assertEqual(reinstalled.returncode, 0, reinstalled.stderr)
             self.assertTrue(desktop_file.is_file())
+            self.assertTrue(chooser_file.is_file())
 
             removed = self.run_installer("remove", data_home)
             self.assertEqual(removed.returncode, 0, removed.stderr)
             self.assertFalse(desktop_file.exists())
+            self.assertFalse(chooser_file.exists())
 
             for source in ICON_SOURCE.rglob("*"):
                 if source.is_file():

@@ -1,4 +1,5 @@
 const openMmiApiClient = window.openMmiApi;
+const openMmiDashboardConnectionClient = window.openMmiDashboardConnection;
 const openMmiPrefs = window.openMmiPreferences;
 const openMmiStatusClient = window.openMmiStatus;
 const openMmiNavigationClient = window.openMmiNavigation;
@@ -10,23 +11,28 @@ const openMmiUsbMediaClient = window.openMmiUsbMediaController;
 const openMmiJellyfinMediaClient = window.openMmiJellyfinMedia;
 const openMmiBluetoothMediaClient = window.openMmiBluetoothMediaController;
 const openMmiSystemSettingsClient = window.openMmiSystemSettings;
-if (!openMmiApiClient || !openMmiPrefs || !openMmiStatusClient || !openMmiNavigationClient || !openMmiOverlaysClient || !openMmiVehicleClient || !openMmiMediaClient || !openMmiRadioMediaClient || !openMmiUsbMediaClient || !openMmiJellyfinMediaClient || !openMmiBluetoothMediaClient || !openMmiSystemSettingsClient) {
+const openMmiRuntimeDiagnosticsClient = window.openMmiRuntimeDiagnostics;
+if (!openMmiApiClient || !openMmiDashboardConnectionClient || !openMmiPrefs || !openMmiStatusClient || !openMmiNavigationClient || !openMmiOverlaysClient || !openMmiVehicleClient || !openMmiMediaClient || !openMmiRadioMediaClient || !openMmiUsbMediaClient || !openMmiJellyfinMediaClient || !openMmiBluetoothMediaClient || !openMmiSystemSettingsClient || !openMmiRuntimeDiagnosticsClient) {
   throw new Error("Open MMI frontend modules did not load");
 }
 
 const openMmiStatusStore = openMmiStatusClient.createStore();
+const openMmiDashboardConnectionController = openMmiDashboardConnectionClient.createController({ api: openMmiApiClient });
 const openMmiNavigationController = openMmiNavigationClient.createController();
 const openMmiOverlaysController = openMmiOverlaysClient.createController();
 const openMmiVehicleRenderer = openMmiVehicleClient.createRenderer({ preferences: openMmiPrefs });
 const openMmiMediaSourcesController = openMmiMediaClient.createController({ preferences: openMmiPrefs });
 const openMmiSystemSettingsController = openMmiSystemSettingsClient.install({ api: openMmiApiClient });
+const openMmiRuntimeDiagnosticsController = openMmiRuntimeDiagnosticsClient.install({ api: openMmiApiClient });
 openMmiRadioMediaClient.installPrivacy({ preferences: openMmiPrefs });
 window.openMmiStatusStore = openMmiStatusStore;
+window.openMmiDashboardConnectionController = openMmiDashboardConnectionController;
 window.openMmiNavigationController = openMmiNavigationController;
 window.openMmiOverlaysController = openMmiOverlaysController;
 window.openMmiVehicleRenderer = openMmiVehicleRenderer;
 window.openMmiMediaSources = openMmiMediaSourcesController;
 window.openMmiSystemSettingsController = openMmiSystemSettingsController;
+window.openMmiRuntimeDiagnosticsController = openMmiRuntimeDiagnosticsController;
 window.openMmiApplyInlineDataTelltales = openMmiVehicleRenderer.applyInlineDataTelltales;
 window.openMmiApplyCoolantAndVoltageFixes = openMmiVehicleRenderer.applyCoolantAndVoltageFixes;
 window.setPage = (index) => openMmiNavigationController.setPage(index);
@@ -92,10 +98,26 @@ function init() {
     api: openMmiApiClient,
     store: openMmiStatusStore,
     intervalMs: openMmiStatusClient.DEFAULT_STATUS_INTERVAL_MS,
-    onPayload(payload) { render(payload); },
-    onError() { openMmiVehicleRenderer.updateHealth({ health: { status: "error", age_seconds: null } }); },
+    onPayload(payload) {
+      render(payload);
+    },
+    onError() {
+      openMmiVehicleRenderer.updateHealth({ health: { status: "error", age_seconds: null } });
+    },
   });
+
+  function syncStatusPolling(event) {
+    const connectionState = event?.detail?.state || openMmiDashboardConnectionController.snapshot().state;
+    if (connectionState === "ready") statusPoller.start();
+    else {
+      statusPoller.stop();
+      openMmiVehicleRenderer.updateHealth({ health: { status: "error", age_seconds: null } });
+    }
+  }
+
   window.openMmiStatusPoller = statusPoller;
+  window.addEventListener("openmmi:dashboardconnection", syncStatusPolling);
+  openMmiDashboardConnectionController.start();
   statusPoller.start();
 }
 
@@ -583,6 +605,7 @@ openMmiNavigationController.init();
     diagnosticsInteracting: false,
     diagnosticsRenderPending: false,
     diagnosticsInteractionTimer: null,
+    diagnosticsSignature: "",
     restoringDiagnosticsScroll: false,
   };
 
@@ -649,8 +672,11 @@ openMmiNavigationController.init();
     return `<div class="openmmi-setting-row"><div><strong>${title}</strong><small>${note}</small></div><div class="openmmi-setting-controls">${controls}</div></div>`;
   }
 
-  function metric(label, value) {
-    return `<div class="openmmi-settings-metric"><span>${label}</span><strong>${value}</strong></div>`;
+  function metric(label, value, diagnosticKey = "") {
+    const keyAttribute = diagnosticKey
+      ? ` data-openmmi-diagnostic-key="${escapeDiagnosticText(diagnosticKey)}"`
+      : "";
+    return `<div class="openmmi-settings-metric"><span>${label}</span><strong${keyAttribute}>${value}</strong></div>`;
   }
 
   function escapeDiagnosticText(value) {
@@ -686,21 +712,9 @@ openMmiNavigationController.init();
     return output;
   }
 
-  function decodedStateMetrics(payload) {
-    const leaves = flattenDiagnosticState(payload?.state || {});
-    if (!leaves.length) return metric("Decoded profile values", "--");
-    return `
-      <details class="openmmi-settings-diagnostics-details" open>
-        <summary>Decoded profile values (${leaves.length})</summary>
-        <div class="openmmi-settings-diagnostics-values">
-          ${leaves.map(([path, value]) => metric(escapeDiagnosticText(path), escapeDiagnosticText(value))).join("")}
-        </div>
-      </details>
-    `;
-  }
-
-  function diagnosticsTemplate(payload) {
+  function diagnosticsSnapshot(payload) {
     const { vehicle, lighting, climate, engine, electrical, ageValue } = statusParts(payload);
+    const frontendVersion = window.__openMmiFrontendVersionController?.snapshot?.() || {};
     const lightingText = text(lighting.mode).replaceAll("_", " ");
     const ageText = Number.isFinite(Number(ageValue)) ? `${fmt(ageValue, 1)} s` : "live";
     const outsideDisplay = firstValue(
@@ -729,21 +743,86 @@ openMmiNavigationController.init();
       vehicle.battery_v
     );
     const rpm = firstValue(engine.speed_rpm, engine.rpm, vehicle.rpm);
+    const decodedLeaves = flattenDiagnosticState(payload?.state || {});
+    const values = new Map([
+      ["frontend.loaded", frontendVersion.loadedId || "--"],
+      ["frontend.server", frontendVersion.serverId || "--"],
+      ["frontend.state", frontendVersion.state || "unavailable"],
+      ["status.age", ageText],
+      ["lighting.mode", lightingText],
+      ["climate.outside.display", tempText(outsideDisplay)],
+      ["climate.outside.raw", tempText(outsideRaw)],
+      ["engine.coolant", tempText(coolant)],
+      ["electrical.voltage", voltsText(voltage)],
+      ["engine.rpm", rpmText(rpm)],
+      ["vehicle.reverse", boolText(vehicle.reverse ?? vehicle.reverse_selected)],
+      ["vehicle.handbrake", boolText(vehicle.handbrake ?? vehicle.parking_brake)],
+    ]);
+    decodedLeaves.forEach(([path, value]) => values.set(`decoded:${path}`, value));
+    return {
+      decodedLeaves,
+      signature: decodedLeaves.map(([path]) => path).join("\n"),
+      values,
+    };
+  }
 
+  function decodedStateMetrics(snapshot) {
+    const leaves = snapshot.decodedLeaves;
+    if (!leaves.length) return metric("Decoded profile values", "--", "decoded.empty");
+    return `
+      <details class="openmmi-settings-diagnostics-details" open>
+        <summary>Decoded profile values (${leaves.length})</summary>
+        <div class="openmmi-settings-diagnostics-values">
+          ${leaves.map(([path, value]) => metric(
+            escapeDiagnosticText(path),
+            escapeDiagnosticText(value),
+            `decoded:${path}`,
+          )).join("")}
+        </div>
+      </details>
+    `;
+  }
+
+  function diagnosticsTemplate(payload) {
+    const snapshot = diagnosticsSnapshot(payload);
+    const value = (key) => escapeDiagnosticText(snapshot.values.get(key) || "--");
     return `
       <div class="openmmi-settings-panel-head"><span>Diagnostics</span><small>live decoded state</small></div>
-      ${metric("Status age", ageText)}
-      ${metric("Lighting mode", lightingText)}
-      ${metric("Outside display", tempText(outsideDisplay))}
-      ${metric("Outside raw", tempText(outsideRaw))}
-      ${metric("Coolant", tempText(coolant))}
-      ${metric("Voltage", voltsText(voltage))}
-      ${metric("RPM", rpmText(rpm))}
-      ${metric("Reverse", boolText(vehicle.reverse ?? vehicle.reverse_selected))}
-      ${metric("Handbrake", boolText(vehicle.handbrake ?? vehicle.parking_brake))}
-      ${decodedStateMetrics(payload)}
+      ${metric("Loaded frontend", value("frontend.loaded"), "frontend.loaded")}
+      ${metric("Dashboard server", value("frontend.server"), "frontend.server")}
+      ${metric("Version state", value("frontend.state"), "frontend.state")}
+      ${metric("Status age", value("status.age"), "status.age")}
+      ${metric("Lighting mode", value("lighting.mode"), "lighting.mode")}
+      ${metric("Outside display", value("climate.outside.display"), "climate.outside.display")}
+      ${metric("Outside raw", value("climate.outside.raw"), "climate.outside.raw")}
+      ${metric("Coolant", value("engine.coolant"), "engine.coolant")}
+      ${metric("Voltage", value("electrical.voltage"), "electrical.voltage")}
+      ${metric("RPM", value("engine.rpm"), "engine.rpm")}
+      ${metric("Reverse", value("vehicle.reverse"), "vehicle.reverse")}
+      ${metric("Handbrake", value("vehicle.handbrake"), "vehicle.handbrake")}
+      ${decodedStateMetrics(snapshot)}
       <a class="openmmi-settings-link" href="/api/status" target="_blank" rel="noreferrer">Open raw /api/status</a>
     `;
+  }
+
+  function updateDiagnosticsPanel(payload) {
+    const panel = one("#openmmiSettingsPanel");
+    if (!panel || state.section !== "diagnostics") return false;
+    const snapshot = diagnosticsSnapshot(payload);
+    if (snapshot.signature !== state.diagnosticsSignature) {
+      if (state.diagnosticsInteracting) {
+        state.diagnosticsRenderPending = true;
+        return false;
+      }
+      renderSettingsPanel();
+      return true;
+    }
+
+    panel.querySelectorAll("[data-openmmi-diagnostic-key]").forEach((node) => {
+      const next = snapshot.values.get(node.dataset.openmmiDiagnosticKey);
+      if (next !== undefined && node.textContent !== String(next)) node.textContent = String(next);
+    });
+    return true;
   }
 
   function sectionTemplate(section, payload) {
@@ -808,6 +887,9 @@ openMmiNavigationController.init();
       : [];
 
     if (panel) panel.innerHTML = sectionTemplate(state.section, state.payload);
+    if (state.section === "diagnostics") {
+      state.diagnosticsSignature = diagnosticsSnapshot(state.payload).signature;
+    }
     openMmiApplyDriverDashboardCleanupV2();
 
     if (panel && detailsOpen.length) {
@@ -824,6 +906,7 @@ openMmiNavigationController.init();
     many("[data-openmmi-settings-section]").forEach((button) => {
       button.classList.toggle("active", button.dataset.openmmiSettingsSection === state.section);
     });
+    window.dispatchEvent(new CustomEvent("openmmi:settingsrender"));
   }
 
   function finishDiagnosticsInteraction() {
@@ -919,10 +1002,8 @@ openMmiNavigationController.init();
   function updateSettings(payload) {
     state.payload = payload;
     if (one("#pageSettings.active") && state.section === "diagnostics") {
-      if (state.diagnosticsInteracting) state.diagnosticsRenderPending = true;
-      else renderSettingsPanel();
+      updateDiagnosticsPanel(payload);
     }
-    window.dispatchEvent(new CustomEvent("openmmi:settingsrender"));
   }
 
   function wrapRenderForSettings() {
@@ -944,6 +1025,11 @@ openMmiNavigationController.init();
   wrapRenderForSettings();
   window.openMmiShowSettingsPage = showSettingsPage;
   window.addEventListener("openmmi:pagechange", bindSettingsButtons);
+  window.addEventListener("openmmi:frontendversion", () => {
+    if (one("#pageSettings.active") && state.section === "diagnostics") {
+      updateDiagnosticsPanel(state.payload);
+    }
+  });
 })();
 // --- Open MMI V1 roadmap: settings shell end ---
 
@@ -1397,14 +1483,17 @@ openMmiOverlaysController.init();
   window.openMmiApplyTellTaleTest = applyTellTaleTest;
   window.openMmiSyncTellTaleSettingButtons = syncTellTaleSettingButtons;
 
-  document.addEventListener("DOMContentLoaded", () => {
+  function syncTellTaleVisualTest() {
     applyTellTaleTest();
     syncTellTaleSettingButtons();
+  }
+
+  document.addEventListener("DOMContentLoaded", syncTellTaleVisualTest);
+  window.addEventListener("storage", syncTellTaleVisualTest);
+  ["openmmi:settingsrender", "openmmi:pagechange", "openmmi:settingschange"].forEach((name) => {
+    window.addEventListener(name, () => requestAnimationFrame(syncTellTaleVisualTest));
   });
-  setInterval(() => {
-    applyTellTaleTest();
-    syncTellTaleSettingButtons();
-  }, 750);
+  if (document.readyState !== "loading") requestAnimationFrame(syncTellTaleVisualTest);
 })();
 /* end open-mmi dashboard display setting: frontend-only tell-tale visual test */
 
@@ -1552,12 +1641,12 @@ openMmiOverlaysController.init();
     applyTelltaleTestMode();
   });
 
-  // While active, keep any older experimental visual strip out of the DOM and
-  // keep the real footer slots forced through the existing tell-tale API.
-  setInterval(() => {
+  // Settings/page events own cleanup; avoid a permanent timer on every dashboard page.
+  function syncExistingTelltaleTest() {
     if (testActive()) applyTelltaleTestMode();
     else removeLegacyVisualTestStrips();
-  }, 1000);
+  }
+  window.addEventListener("storage", () => requestAnimationFrame(syncExistingTelltaleTest));
 
   ensureSettingsControls();
   applyTelltaleTestMode();

@@ -1,0 +1,222 @@
+.openmmi-update-notice {
+  position: fixed;
+  z-index: 12000;
+  inset: max(0.75rem, env(safe-area-inset-top)) 0.75rem auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 0.7rem;
+  background: rgba(15, 23, 42, 0.96);
+  color: #fff;
+  box-shadow: 0 0.8rem 2rem rgba(0, 0, 0, 0.35);
+  font-size: 0.95rem;
+}
+
+.openmmi-update-notice[hidden] {
+  display: none;
+}
+
+.openmmi-update-notice button {
+  min-height: 2.25rem;
+  padding: 0.35rem 0.75rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+/* Jellyfin provider recovery keeps the Media DOM mounted while live actions pause. */
+#openMmiMediaRoot[data-jellyfin-state="reconnecting"] .ommi-media-card,
+#openMmiMediaRoot[data-jellyfin-state="server-error"] .ommi-media-card {
+  border-color: color-mix(in srgb, var(--warning, #f0ad4e) 55%, transparent);
+}
+
+#ommiMediaRetry[hidden] {
+  display: none !important;
+}
+
+/* Runtime thermal, clock, and power diagnostics. */
+.openmmi-runtime-diagnostics {
+  margin: 0 0 0.85rem;
+  padding: 0.8rem;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 0.7rem;
+  background: rgba(5, 12, 20, 0.56);
+}
+
+.openmmi-runtime-diagnostics > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.8rem;
+  margin-bottom: 0.65rem;
+}
+
+.openmmi-runtime-diagnostics > header span {
+  display: block;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 0.62rem;
+  font-weight: 750;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.openmmi-runtime-diagnostics h3 {
+  margin: 0.08rem 0 0;
+  font-size: 1rem;
+}
+
+.openmmi-runtime-state {
+  max-width: 13rem;
+  padding: 0.24rem 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 999px;
+  font-size: 0.65rem;
+  line-height: 1.25;
+  text-align: center;
+}
+
+.openmmi-runtime-diagnostics[data-state="warning"] .openmmi-runtime-state {
+  border-color: rgba(255, 218, 117, 0.92);
+  color: #ffe29a;
+}
+
+.openmmi-runtime-diagnostics[data-state="danger"] .openmmi-runtime-state {
+  border-color: rgba(255, 130, 130, 0.96);
+  color: #ffb0b0;
+}
+
+.openmmi-runtime-diagnostics[data-state="normal"] .openmmi-runtime-state {
+  border-color: rgba(135, 235, 173, 0.82);
+  color: #a8f1c2;
+}
+
+.openmmi-runtime-summary-grid,
+.openmmi-runtime-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.openmmi-runtime-detail-metric {
+  min-width: 0;
+  padding: 0.48rem 0.52rem;
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.openmmi-runtime-detail-metric span,
+.openmmi-runtime-detail-metric strong {
+  display: block;
+}
+
+.openmmi-runtime-detail-metric span {
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 0.61rem;
+}
+
+.openmmi-runtime-detail-metric strong {
+  margin-top: 0.12rem;
+  overflow-wrap: anywhere;
+  color: #fff;
+  font-size: 0.72rem;
+}
+
+.openmmi-runtime-details {
+  margin-top: 0.65rem;
+}
+
+.openmmi-runtime-details details {
+  margin-top: 0.38rem;
+  padding: 0.45rem 0.52rem;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 0.5rem;
+}
+
+.openmmi-runtime-details summary {
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.7rem;
+  font-weight: 750;
+}
+
+.openmmi-runtime-details .openmmi-runtime-detail-grid {
+  margin-top: 0.45rem;
+}
+
+.openmmi-runtime-empty,
+.openmmi-runtime-note {
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 0.62rem;
+  line-height: 1.4;
+}
+
+.openmmi-runtime-note {
+  margin: 0.65rem 0 0;
+}
+
+@media (max-width: 700px), (max-height: 560px) {
+  .openmmi-runtime-diagnostics {
+    padding: 0.62rem;
+  }
+
+  .openmmi-runtime-diagnostics > header {
+    flex-direction: column;
+  }
+
+  .openmmi-runtime-state {
+    max-width: none;
+    text-align: left;
+  }
+
+  .openmmi-runtime-summary-grid,
+  .openmmi-runtime-detail-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.openmmi-connection-notice {
+  position: fixed;
+  z-index: 11950;
+  inset: max(0.75rem, env(safe-area-inset-top)) 0.75rem auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  padding: 0.62rem 0.85rem;
+  border: 1px solid rgba(255, 202, 92, 0.72);
+  border-radius: 0.7rem;
+  background: rgba(54, 37, 4, 0.96);
+  color: #ffe5a0;
+  box-shadow: 0 0.8rem 2rem rgba(0, 0, 0, 0.34);
+  font-size: 0.9rem;
+}
+
+.openmmi-connection-notice[hidden] {
+  display: none;
+}
+
+.openmmi-connection-dot {
+  width: 0.62rem;
+  height: 0.62rem;
+  border: 0.12rem solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: openmmi-connection-spin 0.9s linear infinite;
+}
+
+@keyframes openmmi-connection-spin {
+  to { transform: rotate(360deg); }
+}
+
+body:not([data-openmmi-dashboard-connection="ready"]) [aria-disabled="true"] {
+  opacity: 0.55;
+}
+
+body:not([data-openmmi-dashboard-connection="ready"]) [data-open-mmi-track][aria-disabled="true"] {
+  pointer-events: none;
+}

@@ -9,13 +9,17 @@ STATIC = ROOT / "ui" / "web_dashboard" / "static"
 INDEX = STATIC / "index.html"
 APP = STATIC / "app.js"
 API = STATIC / "api.js"
+DASHBOARD_CONNECTION = STATIC / "dashboard-connection.js"
+FRONTEND_VERSION = STATIC / "frontend-version.js"
 PREFERENCES = STATIC / "preferences.js"
 SYSTEM_SETTINGS = STATIC / "system-settings.js"
+RUNTIME_DIAGNOSTICS = STATIC / "runtime-diagnostics.js"
 STATUS = STATIC / "status.js"
 NAVIGATION = STATIC / "navigation.js"
 OVERLAYS = STATIC / "overlays.js"
 VEHICLE = STATIC / "vehicle.js"
 MEDIA = STATIC / "media.js"
+JELLYFIN_RECONNECTION = STATIC / "jellyfin-reconnection.js"
 MEDIA_JELLYFIN = STATIC / "media-jellyfin.js"
 MEDIA_RADIO = STATIC / "media-radio.js"
 MEDIA_USB = STATIC / "media-usb.js"
@@ -26,26 +30,34 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
     def test_modules_load_before_application(self):
         html = INDEX.read_text(encoding="utf-8")
         api_index = html.index('<script src="/api.js"></script>')
+        dashboard_connection_index = html.index('<script src="/dashboard-connection.js"></script>')
+        frontend_version_index = html.index('<script src="/frontend-version.js"></script>')
         preferences_index = html.index('<script src="/preferences.js"></script>')
         system_settings_index = html.index('<script src="/system-settings.js"></script>')
+        runtime_diagnostics_index = html.index('<script src="/runtime-diagnostics.js"></script>')
         status_index = html.index('<script src="/status.js"></script>')
         navigation_index = html.index('<script src="/navigation.js"></script>')
         overlays_index = html.index('<script src="/overlays.js"></script>')
         vehicle_index = html.index('<script src="/vehicle.js"></script>')
         media_index = html.index('<script src="/media.js"></script>')
+        jellyfin_reconnection_index = html.index('<script src="/jellyfin-reconnection.js"></script>')
         jellyfin_index = html.index('<script src="/media-jellyfin.js"></script>')
         radio_index = html.index('<script src="/media-radio.js"></script>')
         usb_index = html.index('<script src="/media-usb.js"></script>')
         bluetooth_index = html.index('<script src="/media-bluetooth.js"></script>')
         app_index = html.index('<script src="/app.js"></script>')
-        self.assertLess(api_index, preferences_index)
+        self.assertLess(api_index, dashboard_connection_index)
+        self.assertLess(dashboard_connection_index, frontend_version_index)
+        self.assertLess(frontend_version_index, preferences_index)
         self.assertLess(preferences_index, system_settings_index)
-        self.assertLess(system_settings_index, status_index)
+        self.assertLess(system_settings_index, runtime_diagnostics_index)
+        self.assertLess(runtime_diagnostics_index, status_index)
         self.assertLess(status_index, navigation_index)
         self.assertLess(navigation_index, overlays_index)
         self.assertLess(overlays_index, vehicle_index)
         self.assertLess(vehicle_index, media_index)
-        self.assertLess(media_index, jellyfin_index)
+        self.assertLess(media_index, jellyfin_reconnection_index)
+        self.assertLess(jellyfin_reconnection_index, jellyfin_index)
         self.assertLess(jellyfin_index, radio_index)
         self.assertLess(radio_index, usb_index)
         self.assertLess(usb_index, bluetooth_index)
@@ -54,9 +66,11 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
     def test_application_uses_frontend_modules(self):
         source = APP.read_text(encoding="utf-8")
         self.assertIn("window.openMmiApi", source)
+        self.assertIn("window.openMmiDashboardConnection", source)
         self.assertIn("window.openMmiPreferences", source)
         self.assertIn("window.openMmiStatus", source)
         self.assertIn("window.openMmiSystemSettings", source)
+        self.assertIn("window.openMmiRuntimeDiagnostics", source)
         self.assertIn("window.openMmiNavigation", source)
         self.assertIn("window.openMmiOverlays", source)
         self.assertIn("window.openMmiVehicle", source)
@@ -66,6 +80,7 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
         self.assertIn("window.openMmiUsbMediaController", source)
         self.assertIn("window.openMmiBluetoothMediaController", source)
         self.assertIn("openMmiStatusClient.createStore()", source)
+        self.assertIn("openMmiDashboardConnectionClient.createController({ api: openMmiApiClient })", source)
         self.assertIn("openMmiNavigationClient.createController()", source)
         self.assertIn("openMmiOverlaysClient.createController()", source)
         self.assertIn("openMmiVehicleClient.createRenderer({ preferences: openMmiPrefs })", source)
@@ -83,26 +98,34 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
 
     def test_modules_are_browser_and_commonjs_compatible(self):
         api = API.read_text(encoding="utf-8")
+        dashboard_connection = DASHBOARD_CONNECTION.read_text(encoding="utf-8")
+        frontend_version = FRONTEND_VERSION.read_text(encoding="utf-8")
         preferences = PREFERENCES.read_text(encoding="utf-8")
         system_settings = SYSTEM_SETTINGS.read_text(encoding="utf-8")
+        runtime_diagnostics = RUNTIME_DIAGNOSTICS.read_text(encoding="utf-8")
         status = STATUS.read_text(encoding="utf-8")
         navigation = NAVIGATION.read_text(encoding="utf-8")
         overlays = OVERLAYS.read_text(encoding="utf-8")
         vehicle = VEHICLE.read_text(encoding="utf-8")
         media = MEDIA.read_text(encoding="utf-8")
+        jellyfin_reconnection = JELLYFIN_RECONNECTION.read_text(encoding="utf-8")
         media_jellyfin = MEDIA_JELLYFIN.read_text(encoding="utf-8")
         media_radio = MEDIA_RADIO.read_text(encoding="utf-8")
         media_usb = MEDIA_USB.read_text(encoding="utf-8")
         media_bluetooth = MEDIA_BLUETOOTH.read_text(encoding="utf-8")
         for source, global_name in (
             (api, "openMmiApi"),
+            (dashboard_connection, "openMmiDashboardConnection"),
+            (frontend_version, "openMmiFrontendVersion"),
             (preferences, "openMmiPreferences"),
             (system_settings, "openMmiSystemSettings"),
+            (runtime_diagnostics, "openMmiRuntimeDiagnostics"),
             (status, "openMmiStatus"),
             (navigation, "openMmiNavigation"),
             (overlays, "openMmiOverlays"),
             (vehicle, "openMmiVehicle"),
             (media, "openMmiMediaShell"),
+            (jellyfin_reconnection, "openMmiJellyfinReconnect"),
             (media_jellyfin, "openMmiJellyfinMedia"),
             (media_radio, "openMmiRadioMedia"),
             (media_usb, "openMmiUsbMediaController"),
@@ -110,9 +133,50 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
         ):
             self.assertIn("typeof module === \"object\"", source)
             self.assertIn(f"root.{global_name}", source)
-            if global_name not in {"openMmiMediaShell", "openMmiJellyfinMedia", "openMmiRadioMedia", "openMmiUsbMediaController", "openMmiBluetoothMediaController"}:
+            if global_name not in {
+                "openMmiDashboardConnection",
+                "openMmiFrontendVersion",
+                "openMmiRuntimeDiagnostics",
+                "openMmiMediaShell",
+                "openMmiJellyfinReconnect",
+                "openMmiJellyfinMedia",
+                "openMmiRadioMedia",
+                "openMmiUsbMediaController",
+                "openMmiBluetoothMediaController",
+            }:
                 self.assertNotIn("document.", source)
 
+
+
+    def test_runtime_diagnostics_module_owns_visibility_aware_polling(self):
+        source = RUNTIME_DIAGNOSTICS.read_text(encoding="utf-8")
+        self.assertIn('const ENDPOINT = "/api/system/diagnostics/runtime";', source)
+        self.assertIn('activeSection() === "diagnostics"', source)
+        self.assertIn('!documentRef?.hidden', source)
+        self.assertIn('scheduler.setTimeout(poll', source)
+        self.assertIn('Reported power values are battery-side driver readings, not charger capacity.', source)
+
+
+    def test_dashboard_connection_module_owns_shared_recovery(self):
+        source = DASHBOARD_CONNECTION.read_text(encoding="utf-8")
+        html = INDEX.read_text(encoding="utf-8")
+        self.assertIn('id="openMmiDashboardConnectionNotice"', html)
+        self.assertIn('const HEALTH_PATH = "/api/health";', source)
+        self.assertIn('DEFAULT_RETRY_DELAYS_MS', source)
+        self.assertIn('api.subscribeConnection(onApiConnection)', source)
+        self.assertIn('"openmmi:dashboardconnected"', source)
+        self.assertIn('documentRef?.hidden', source)
+        self.assertIn('documentRef.body.dataset.openmmiDashboardConnection', source)
+
+    def test_frontend_version_module_owns_cache_recovery(self):
+        source = FRONTEND_VERSION.read_text(encoding="utf-8")
+        html = INDEX.read_text(encoding="utf-8")
+        self.assertIn('meta name="open-mmi-frontend-id"', html)
+        self.assertIn('id="openMmiUpdateNotice"', html)
+        self.assertIn('const VERSION_PATH = "/api/version";', source)
+        self.assertIn('windowRef.location.replace(targetUrl(target))', source)
+        self.assertIn('"openmmi:dashboardconnected"', source)
+        self.assertIn('documentRef?.hidden', source)
 
     def test_status_module_owns_polling_and_shared_state(self):
         source = STATUS.read_text(encoding="utf-8")
@@ -162,17 +226,20 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
     def test_media_modules_own_all_frontend_controllers(self):
         app = APP.read_text(encoding="utf-8")
         media = MEDIA.read_text(encoding="utf-8")
+        reconnect = JELLYFIN_RECONNECTION.read_text(encoding="utf-8")
         jellyfin = MEDIA_JELLYFIN.read_text(encoding="utf-8")
         radio = MEDIA_RADIO.read_text(encoding="utf-8")
         usb = MEDIA_USB.read_text(encoding="utf-8")
         bluetooth = MEDIA_BLUETOOTH.read_text(encoding="utf-8")
         self.assertIn("function createController(options = {})", media)
         self.assertIn("function activeSourceFromPreferences(prefs)", media)
+        self.assertIn("function createController(options = {})", reconnect)
         self.assertIn("function installController(options = {})", jellyfin)
         self.assertIn("function installPrivacy(options = {})", radio)
         self.assertIn("function installController(options = {})", radio)
         self.assertIn("function installController(options = {})", usb)
         self.assertIn("function installController(options = {})", bluetooth)
+        self.assertIn("DEFAULT_RETRY_DELAYS_MS", reconnect)
         self.assertIn('/api/jellyfin/status', jellyfin)
         self.assertIn('/api/bluetooth/status', bluetooth)
         self.assertIn('id: "radio"', radio)

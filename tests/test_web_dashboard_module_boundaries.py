@@ -6,7 +6,7 @@ import sys
 import unittest
 from pathlib import Path
 
-from ui.web_dashboard import bluetooth, jellyfin, radio, server, system_settings, usb
+from ui.web_dashboard import bluetooth, jellyfin, radio, runtime_diagnostics, server, system_settings, usb
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -137,6 +137,16 @@ class DashboardModuleBoundaryTests(unittest.TestCase):
         self.assertIn("system_settings_backend._handle_get(self, parsed.path)", get_source)
         self.assertIn("system_settings_backend._handle_post(self, parsed.path)", post_source)
         self.assertFalse(hasattr(system_settings, "DashboardHandler"))
+
+    def test_server_routes_delegate_to_runtime_diagnostics_provider(self):
+        get_source = inspect.getsource(server.DashboardHandler.do_GET)
+        self.assertIn(
+            "runtime_diagnostics_backend.runtime_diagnostics_payload()",
+            get_source,
+        )
+        self.assertFalse(hasattr(runtime_diagnostics, "DashboardHandler"))
+        source = inspect.getsource(runtime_diagnostics)
+        self.assertNotIn("from ui.web_dashboard.server", source)
 
     def test_server_does_not_reexport_provider_private_helpers(self):
         private_names = (

@@ -306,6 +306,13 @@ except ImportError as exc:  # pragma: no cover - older installed package fallbac
         raise
     import bluetooth as bluetooth_backend  # type: ignore[no-redef]
 
+try:
+    from ui.web_dashboard import versioning as versioning_backend
+except ModuleNotFoundError as exc:  # pragma: no cover - direct script fallback
+    if exc.name not in {"ui", "ui.web_dashboard"}:
+        raise
+    import versioning as versioning_backend  # type: ignore[no-redef]
+
 # Local-only system and credential settings provider.
 try:
     from ui.web_dashboard import system_settings as system_settings_backend
@@ -314,6 +321,12 @@ except ModuleNotFoundError as exc:  # pragma: no cover - direct script fallback
         raise
     import system_settings as system_settings_backend  # type: ignore[no-redef]
 
+try:
+    from ui.web_dashboard import runtime_diagnostics as runtime_diagnostics_backend
+except ModuleNotFoundError as exc:  # pragma: no cover - direct script fallback
+    if exc.name not in {"ui", "ui.web_dashboard"}:
+        raise
+    import runtime_diagnostics as runtime_diagnostics_backend  # type: ignore[no-redef]
 
 
 class DashboardHandler(SimpleHTTPRequestHandler):
@@ -322,6 +335,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
     demo_mode: bool = False
     demo_scenario: str = "drive"
     demo_started_at: float = time.time()
+    build_id: str = versioning_backend.resolve_build_id()
+    frontend_id: str = build_id
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, directory=str(self.static_dir), **kwargs)
@@ -329,6 +344,29 @@ class DashboardHandler(SimpleHTTPRequestHandler):
     def log_message(self, fmt: str, *args: Any) -> None:
         if os.getenv("OPEN_MMI_WEB_LOG", "").strip():
             super().log_message(fmt, *args)
+
+    def end_headers(self) -> None:
+        cache_control = getattr(self, "_open_mmi_cache_control", "")
+        if cache_control:
+            self.send_header("Cache-Control", cache_control)
+            self._open_mmi_cache_control = ""
+        super().end_headers()
+
+    def _send_html(self, body: str, status: int = 200) -> None:
+        encoded = body.encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Cross-Origin-Resource-Policy", "same-origin")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Content-Length", str(len(encoded)))
+        self.end_headers()
+        self.wfile.write(encoded)
+
+    def _send_index(self) -> None:
+        template = (self.static_dir / "index.html").read_text(encoding="utf-8")
+        self._send_html(versioning_backend.render_index(template, self.frontend_id))
 
     def _send_json(self, body: Dict[str, Any], status: int = 200) -> None:
         encoded = json.dumps(body, indent=2, sort_keys=True).encode("utf-8")
@@ -487,6 +525,14 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._send_json(bluetooth_backend._bluetooth_status_payload())
             return
         # --- Open MMI Bluetooth media GET route end ---
+        if parsed.path == "/api/version":
+            self._send_json(versioning_backend.version_payload(self.build_id))
+            return
+
+        if parsed.path == "/api/system/diagnostics/runtime":
+            self._send_json(runtime_diagnostics_backend.runtime_diagnostics_payload())
+            return
+
         if parsed.path == "/api/status":
             payload = self._current_payload(parsed.query)
             payload["health"] = health_for(payload)
@@ -498,8 +544,18 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._send_json({"path": payload.get("path", str(self.status_path)), "health": health_for(payload)})
             return
 
-        if parsed.path == "/":
-            self.path = "/index.html"
+        if parsed.path in {"/", "/index.html"}:
+            self._send_index()
+            return
+
+        if parsed.path.endswith((".js", ".css")):
+            query = parse_qs(parsed.query or "")
+            version = query.get("v", [""])[0]
+            if version and version == self.frontend_id:
+                self._open_mmi_cache_control = "public, max-age=31536000, immutable"
+            else:
+                self._open_mmi_cache_control = "no-cache"
+            self.path = parsed.path
 
         return super().do_GET()
 

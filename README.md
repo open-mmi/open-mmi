@@ -94,6 +94,8 @@ open-mmi-config dashboard restart
 Credentials are stored server-side in `~/.config/open-mmi/dashboard.env` with mode `0600`. The dashboard browser receives only redacted configuration state and never receives the stored password or token. Environment variables remain supported for development launches and can be imported with `open-mmi-config jellyfin import-env`.
 
 See [`docs/desktop-shell.md`](docs/desktop-shell.md) for launcher, login-autostart, and advanced service details and [`ui/web_dashboard/README.md`](ui/web_dashboard/README.md) for Jellyfin scope and security guidance.
+
+See [`docs/runtime-hardening.md`](docs/runtime-hardening.md) for update/cache recovery, service reconnection, thermal diagnostics, and runtime-efficiency behaviour. Vehicle installations should also review [`docs/vehicle-tablet-installation.md`](docs/vehicle-tablet-installation.md).
 <!-- OPEN_MMI_WEB_DASHBOARD_END -->
 
 ---
@@ -278,7 +280,7 @@ The installer provides the universal launcher and desktop integration:
 open-mmi-launcher
 ```
 
-The desktop icon uses the remembered Web/TUI choice. The launcher starts the dashboard service on demand, waits for `/api/health`, and then opens or reuses the managed browser window.
+The desktop icon uses the remembered Web/TUI choice. The independent **Open MMI Interface Chooser** application always opens the selector, so a touchscreen-only installation can recover even when the Terminal UI is remembered. The launcher starts the dashboard service on demand, waits for `/api/health`, and then opens or reuses the managed browser window.
 
 For development away from the car:
 
@@ -392,6 +394,7 @@ open-mmi/
 ├── packaging/
 │   └── linux-desktop/
 │       ├── open-mmi-status.desktop
+│       ├── open-mmi-chooser.desktop
 │       └── icons/
 │           ├── hicolor/
 │           ├── open-mmi-dark/
@@ -878,7 +881,7 @@ User override files under `~/.config/open-mmi` are opt-in only and must be selec
 The main installer manages desktop entries, icons, packaged commands, and the dashboard user service. No separate desktop-helper command is required.
 
 ```bash
-open-mmi-launcher --choose --remember
+open-mmi-launcher --choose --ask-remember
 open-mmi-config launcher autostart enable
 open-mmi-config dashboard status
 ```
@@ -942,11 +945,12 @@ Installed user files include:
 
 ```text
 ~/.local/share/applications/open-mmi.desktop
+~/.local/share/applications/open-mmi-chooser.desktop
 $(xdg-user-dir DESKTOP)/Open MMI.desktop
 ~/.local/share/icons/hicolor/.../apps/open-mmi.*
 ```
 
-The desktop entry launches `/usr/local/bin/open-mmi-launcher`, which opens the remembered interface and reuses the existing managed browser instance. **Settings → System** can create or remove:
+The main desktop entry launches `/usr/local/bin/open-mmi-launcher`, which opens the remembered interface and reuses the existing managed browser instance. The separate chooser entry ignores the remembered default, asks whether a new choice should be saved, and provides a route back after a graphical TUI window closes. **Settings → System** can create or remove:
 
 ```text
 ~/.config/autostart/open-mmi.desktop
@@ -1024,6 +1028,7 @@ python3 -m json.tool bindings/default.json >/dev/null
 
 ```bash
 desktop-file-validate packaging/linux-desktop/open-mmi-status.desktop
+desktop-file-validate packaging/linux-desktop/open-mmi-chooser.desktop
 ```
 
 ## Run tests

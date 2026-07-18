@@ -13,7 +13,7 @@ Actions=Choose;Web;TUI;
 
 [Desktop Action Choose]
 Name=Choose Open MMI Interface
-Exec=/usr/local/bin/open-mmi-launcher --choose --remember
+Exec=/usr/local/bin/open-mmi-launcher --choose --ask-remember
 
 [Desktop Action Web]
 Name=Use Web Dashboard

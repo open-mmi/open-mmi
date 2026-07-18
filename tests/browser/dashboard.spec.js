@@ -17,6 +17,7 @@ const CSS_FILES = [
   "styles-media-final.css",
   "styles-clock.css",
   "styles-system-settings.css",
+  "styles-runtime-hardening.css",
 ];
 
 function indexAssets() {
@@ -103,6 +104,64 @@ async function loadDashboard(page, options = {}) {
   const payload = options.payload || basePayload();
   const storage = options.storage || {};
   const bluetoothPayload = options.bluetoothPayload || { available: false, players: [] };
+  const versionPayload = options.versionPayload || {
+    api_version: 1,
+    build_id: "__OPEN_MMI_FRONTEND_ID__",
+    frontend_id: "__OPEN_MMI_FRONTEND_ID__",
+    reload_supported: true,
+  };
+  const jellyfinStatusPayload = options.jellyfinStatusPayload || {
+    configured: false,
+    status: "unconfigured",
+    connection_state: "configuration-missing",
+    retryable: false,
+    state_label: "not configured",
+    subtitle: "Jellyfin is not configured",
+  };
+  const jellyfinSearchPayload = options.jellyfinSearchPayload || {
+    configured: false,
+    connection_state: "configuration-missing",
+    retryable: false,
+    items: [],
+    error: "Jellyfin is not configured",
+  };
+  const runtimeDiagnosticsPayload = options.runtimeDiagnosticsPayload || {
+    api_version: 1,
+    sampled_at: "2026-07-16T22:29:54+00:00",
+    cpu: {
+      online_count: 4,
+      current_mhz: [400, 399, 400, 400],
+      average_mhz: 399.8,
+      current_min_mhz: 399,
+      current_max_mhz: 400,
+      minimum_mhz: 400,
+      maximum_mhz: 3500,
+      governors: ["powersave"],
+      load_1m: 6.21,
+      load_high: true,
+      near_minimum: true,
+      cpus: [0, 1, 2, 3].map((index) => ({
+        cpu: `cpu${index}`, current_mhz: index === 1 ? 399 : 400, minimum_mhz: 400, maximum_mhz: 3500, governor: "powersave",
+      })),
+      intel_pstate: { status: "active", no_turbo: 0, min_perf_pct: 11, max_perf_pct: 100 },
+    },
+    thermal: {
+      summary: "thermal-limit-active",
+      selected_zone: "GEN4",
+      temperature_c: 52.5,
+      relevant_trip: { temperature_c: 48.05, types: ["active", "passive"], margin_c: -4.45 },
+      zones: [{
+        zone: "thermal_zone1", type: "GEN4", temperature_c: 52.5, state: "thermal-limit-active",
+        relevant_trip: { temperature_c: 48.05, types: ["active", "passive"], margin_c: -4.45 },
+        trips: [{ type: "active", temperature_c: 48.05 }, { type: "passive", temperature_c: 48.05 }],
+      }],
+      cooling_devices: [{ device: "cooling_device8", type: "TCC Offset", current_state: 10, maximum_state: 63 }],
+    },
+    power: {
+      ac_online: true, battery_status: "Not charging", capacity_percent: 65, energy_wh: 21.13, charging_state: "not-charging",
+      supplies: [{ name: "ADP1", type: "Mains", online: true }, { name: "BAT1", type: "Battery", status: "Not charging", capacity_percent: 65, reported_power_w: 53.946 }],
+    },
+  };
   const systemPayload = options.systemPayload || {
     local_only: true,
     launcher: {
@@ -129,7 +188,7 @@ async function loadDashboard(page, options = {}) {
   };
 
   await page.setContent(ASSETS.documentHtml, { waitUntil: "domcontentloaded" });
-  await page.evaluate(({ initialPayload, initialStorage, initialBluetoothPayload, initialSystemPayload }) => {
+  await page.evaluate(({ initialPayload, initialStorage, initialBluetoothPayload, initialSystemPayload, initialVersionPayload, initialJellyfinStatusPayload, initialJellyfinSearchPayload, initialRuntimeDiagnosticsPayload, runtimeDiagnosticsIntervalMs, dashboardRetryDelaysMs }) => {
     const values = Object.assign({}, initialStorage);
     const localStorageMock = {
       get length() { return Object.keys(values).length; },
@@ -144,6 +203,19 @@ async function loadDashboard(page, options = {}) {
     window.__openMmiStatusFixture = initialPayload;
     window.__openMmiBluetoothFixture = initialBluetoothPayload;
     window.__openMmiSystemFixture = initialSystemPayload;
+    window.__openMmiVersionFixture = initialVersionPayload;
+    window.__openMmiJellyfinStatusFixture = initialJellyfinStatusPayload;
+    window.__openMmiJellyfinSearchFixture = initialJellyfinSearchPayload;
+    window.__openMmiRuntimeDiagnosticsFixture = initialRuntimeDiagnosticsPayload;
+    window.__openMmiRuntimeDiagnosticsRequests = 0;
+    window.__openMmiRuntimeDiagnosticsIntervalMs = runtimeDiagnosticsIntervalMs;
+    window.__openMmiDashboardRetryDelaysMs = dashboardRetryDelaysMs;
+    window.__openMmiDashboardOnline = true;
+    window.__openMmiDashboardHealthRequests = 0;
+    window.__openMmiDashboardStatusRequests = 0;
+    window.__openMmiDashboardVersionRequests = 0;
+    window.__openMmiJellyfinStatusRequests = 0;
+    window.__openMmiJellyfinSearchRequests = 0;
 
     const json = (body, status = 200) => new Response(JSON.stringify(body), {
       status,
@@ -151,8 +223,25 @@ async function loadDashboard(page, options = {}) {
     });
     window.fetch = async (input, init = {}) => {
       const url = String(input instanceof Request ? input.url : input);
-      if (url.includes("/api/status")) return json(window.__openMmiStatusFixture);
-      if (url.includes("/api/health")) return json({ ok: true });
+      if (url.includes("/api/") && window.__openMmiDashboardOnline === false) {
+        throw new TypeError("dashboard offline");
+      }
+      if (url.includes("/api/version")) {
+        window.__openMmiDashboardVersionRequests += 1;
+        return json(window.__openMmiVersionFixture);
+      }
+      if (url.includes("/api/status")) {
+        window.__openMmiDashboardStatusRequests += 1;
+        return json(window.__openMmiStatusFixture);
+      }
+      if (url.includes("/api/health")) {
+        window.__openMmiDashboardHealthRequests += 1;
+        return json({ ok: true });
+      }
+      if (url.includes("/api/system/diagnostics/runtime")) {
+        window.__openMmiRuntimeDiagnosticsRequests += 1;
+        return json(window.__openMmiRuntimeDiagnosticsFixture);
+      }
       if (url.includes("/api/system/settings")) return json(window.__openMmiSystemFixture);
       if (url.includes("/api/system/launcher")) {
         const body = JSON.parse(init.body || "{}");
@@ -181,8 +270,15 @@ async function loadDashboard(page, options = {}) {
         window.__openMmiSystemFixture.jellyfin.restart_required = false;
         return json({ ok: true, restarting: true });
       }
-      if (url.includes("/api/jellyfin/status")) return json({ configured: false, available: false, libraries: [] });
-      if (url.includes("/api/jellyfin/")) return json({ configured: false, available: false, items: [] });
+      if (url.includes("/api/jellyfin/status")) {
+        window.__openMmiJellyfinStatusRequests += 1;
+        return json(window.__openMmiJellyfinStatusFixture);
+      }
+      if (url.includes("/api/jellyfin/search")) {
+        window.__openMmiJellyfinSearchRequests += 1;
+        return json(window.__openMmiJellyfinSearchFixture);
+      }
+      if (url.includes("/api/jellyfin/")) return json({ configured: false, connection_state: "configuration-missing", retryable: false, items: [] });
       if (url.includes("/api/bluetooth/status")) return json(window.__openMmiBluetoothFixture);
       if (url.includes("/api/bluetooth/control")) return json({ ok: false, error: "Unavailable" }, 409);
       if (url.includes("/api/usb/status")) return json({ available: false, roots: [] });
@@ -205,10 +301,27 @@ async function loadDashboard(page, options = {}) {
     initialStorage: storage,
     initialBluetoothPayload: bluetoothPayload,
     initialSystemPayload: systemPayload,
+    initialVersionPayload: versionPayload,
+    initialJellyfinStatusPayload: jellyfinStatusPayload,
+    initialJellyfinSearchPayload: jellyfinSearchPayload,
+    initialRuntimeDiagnosticsPayload: runtimeDiagnosticsPayload,
+    runtimeDiagnosticsIntervalMs: options.runtimeDiagnosticsIntervalMs || 60,
+    dashboardRetryDelaysMs: options.dashboardRetryDelaysMs || [50, 75, 100],
   });
 
+  if (options.focusBeforeReady) {
+    await page.evaluate(() => {
+      const input = document.createElement("input");
+      input.id = "openMmiUnsavedTestInput";
+      input.value = "unsaved";
+      input.dataset.openmmiDirty = "true";
+      document.body.appendChild(input);
+      input.focus();
+    });
+  }
   for (const script of ASSETS.scripts) {
-    const content = `${fs.readFileSync(path.join(STATIC, script), "utf8")}\n//# sourceURL=${script}`;
+    const content = `${fs.readFileSync(path.join(STATIC, script), "utf8")}
+//# sourceURL=${script}`;
     await page.addScriptTag({ content });
   }
   await page.evaluate(() => document.dispatchEvent(new Event("DOMContentLoaded", { bubbles: true })));
@@ -219,6 +332,28 @@ async function loadDashboard(page, options = {}) {
     },
     async setBluetoothPayload(nextPayload) {
       await page.evaluate((next) => { window.__openMmiBluetoothFixture = next; }, nextPayload);
+    },
+    async setJellyfinStatus(nextPayload) {
+      await page.evaluate((next) => { window.__openMmiJellyfinStatusFixture = next; }, nextPayload);
+    },
+    async setJellyfinSearch(nextPayload) {
+      await page.evaluate((next) => { window.__openMmiJellyfinSearchFixture = next; }, nextPayload);
+    },
+    async setRuntimeDiagnostics(nextPayload) {
+      await page.evaluate((next) => { window.__openMmiRuntimeDiagnosticsFixture = next; }, nextPayload);
+    },
+    async runtimeDiagnosticsRequests() {
+      return page.evaluate(() => window.__openMmiRuntimeDiagnosticsRequests);
+    },
+    async setDashboardOnline(online) {
+      await page.evaluate((value) => { window.__openMmiDashboardOnline = Boolean(value); }, online);
+    },
+    async dashboardRequestCounts() {
+      return page.evaluate(() => ({
+        health: window.__openMmiDashboardHealthRequests,
+        status: window.__openMmiDashboardStatusRequests,
+        version: window.__openMmiDashboardVersionRequests,
+      }));
     },
     async storage() {
       return page.evaluate(() => Object.assign({}, window.__openMmiBrowserStorage));
@@ -245,6 +380,25 @@ async function openMedia(page) {
   await expect(page.locator("#pageTitle")).toHaveText("Media");
   await expect(page.locator("#openMmiMediaRoot")).toBeVisible();
 }
+
+
+test("frontend build mismatch defers reload while an editable field is active", async ({ page }) => {
+  const failures = captureRuntimeFailures(page);
+  await loadDashboard(page, {
+    focusBeforeReady: true,
+    versionPayload: {
+      api_version: 1,
+      build_id: "build-b",
+      frontend_id: "build-b",
+      reload_supported: true,
+    },
+  });
+
+  await expect(page.locator("#openMmiUpdateNotice")).toBeVisible();
+  await expect(page.locator("[data-openmmi-update-message]")).toContainText("Finish editing");
+  await expect(page.locator("#openMmiUnsavedTestInput")).toBeFocused();
+  await expectNoRuntimeFailures(failures);
+});
 
 test("loads, renders status and navigates with buttons and keyboard", async ({ page }) => {
   const failures = captureRuntimeFailures(page);
@@ -286,6 +440,63 @@ test("diagnostics renders canonical profile values and all decoded paths", async
   await expect(page.locator(".openmmi-settings-diagnostics-details")).toContainText("electrical.supply_voltage_v");
   await expect(page.locator(".openmmi-settings-diagnostics-details")).toContainText("climate.blower_load_percent");
 
+  await expectNoRuntimeFailures(failures);
+});
+
+test("diagnostics updates values in place without flashing or rebuilding fields", async ({ page }) => {
+  const failures = captureRuntimeFailures(page);
+  const dashboard = await loadDashboard(page);
+  await openSettings(page);
+  await page.locator('[data-openmmi-settings-section="diagnostics"]').click();
+
+  const voltage = page.locator('[data-openmmi-diagnostic-key="electrical.voltage"]');
+  await expect(voltage).toHaveText("13.9 V");
+  await page.evaluate(() => {
+    window.__openMmiDiagnosticsVoltageNode = document.querySelector(
+      '[data-openmmi-diagnostic-key="electrical.voltage"]',
+    );
+  });
+
+  await dashboard.setPayload(basePayload({
+    state: { electrical: { supply_voltage_v: 14.2, terminal30_voltage_v: 14.2 } },
+  }));
+  await expect(voltage).toHaveText("14.2 V");
+  await page.waitForTimeout(500);
+
+  expect(await page.evaluate(() => (
+    window.__openMmiDiagnosticsVoltageNode
+      === document.querySelector('[data-openmmi-diagnostic-key="electrical.voltage"]')
+  ))).toBe(true);
+  await expectNoRuntimeFailures(failures);
+});
+
+test("thermal and power diagnostics poll only while visible and identify the Surface limit", async ({ page }) => {
+  const failures = captureRuntimeFailures(page);
+  const dashboard = await loadDashboard(page, { runtimeDiagnosticsIntervalMs: 50 });
+  await openSettings(page);
+  expect(await dashboard.runtimeDiagnosticsRequests()).toBe(0);
+
+  await page.locator('[data-openmmi-settings-section="diagnostics"]').click();
+  const runtimePanel = page.locator("#openMmiRuntimeDiagnostics");
+  await expect(runtimePanel).toBeVisible();
+  await expect(runtimePanel.locator('[data-openmmi-runtime-key="cpu.clock"]')).toHaveText("400 MHz average");
+  await expect(runtimePanel.locator('[data-openmmi-runtime-key="thermal.sensor"]')).toHaveText("GEN4 52.5 °C");
+  await expect(runtimePanel.locator('[data-openmmi-runtime-key="power.state"]')).toHaveText("AC connected — not charging");
+  await expect(runtimePanel.locator('[data-openmmi-runtime-key="system.state"]')).toHaveText("Performance limited by temperature");
+  await expect(runtimePanel.locator('[data-openmmi-runtime-key="frontend.status"]')).toContainText("fetches");
+  await expect(runtimePanel.locator('[data-openmmi-runtime-key="frontend.render"]')).toContainText("renders");
+  await expect(runtimePanel.locator('[data-openmmi-runtime-key="frontend.media"]')).toContainText("layouts");
+  const activeCount = await dashboard.runtimeDiagnosticsRequests();
+  expect(activeCount).toBeGreaterThanOrEqual(2);
+
+  await page.locator('[data-openmmi-settings-section="system"]').click();
+  await page.waitForTimeout(80);
+  const stoppedCount = await dashboard.runtimeDiagnosticsRequests();
+  await page.waitForTimeout(180);
+  expect(await dashboard.runtimeDiagnosticsRequests()).toBe(stoppedCount);
+
+  await page.locator('[data-openmmi-settings-section="diagnostics"]').click();
+  await expect.poll(() => dashboard.runtimeDiagnosticsRequests()).toBeGreaterThan(stoppedCount);
   await expectNoRuntimeFailures(failures);
 });
 
@@ -441,7 +652,7 @@ test("Diagnostics remains scrollable while live values refresh", async ({ page }
   await page.locator('[data-openmmi-settings-section="diagnostics"]').click();
 
   const scroller = page.locator("#pageSettings .openmmi-settings-panel-card");
-  await expect(scroller.locator("summary")).toContainText("Decoded profile values");
+  await expect(scroller.locator(".openmmi-settings-diagnostics-details summary")).toContainText("Decoded profile values");
   await scroller.evaluate((element) => { element.scrollTop = Math.max(1, element.scrollHeight - element.clientHeight - 40); });
   const before = await scroller.evaluate((element) => element.scrollTop);
   expect(before).toBeGreaterThan(0);
@@ -683,6 +894,20 @@ test("system settings and Jellyfin setup use the shared local configuration API"
   await expect(page.locator('[data-openmmi-system-settings-panel="true"]')).toBeVisible();
   await expect(page.getByTestId("launcher-default-web")).toHaveClass(/is-selected/);
   await expect(page.getByTestId("launcher-autostart-on")).toHaveClass(/is-selected/);
+  await expect(page.getByTestId("system-frontend-version")).toHaveText("__OPEN_MMI_FRONTEND_ID__");
+  await expect(page.getByTestId("system-server-version")).toHaveText("__OPEN_MMI_FRONTEND_ID__");
+  await expect(page.getByTestId("system-version-state")).toHaveText("up to date");
+
+  await page.evaluate(() => {
+    const panel = document.querySelector("#openmmiSettingsPanel");
+    panel.innerHTML = `
+      <div data-openmmi-system-settings-panel="true">
+        <div class="openmmi-settings-panel-head"><span>System</span><small>loading desktop shell status</small></div>
+      </div>`;
+    window.dispatchEvent(new CustomEvent("openmmi:settingsrender"));
+  });
+  await expect(page.getByTestId("launcher-default-web")).toBeVisible();
+  await expect(page.getByTestId("system-version-state")).toHaveText("up to date");
 
   await page.getByTestId("launcher-default-tui").click();
   await expect(page.getByTestId("launcher-default-tui")).toHaveClass(/is-selected/);
@@ -715,5 +940,116 @@ test("system settings and Jellyfin setup use the shared local configuration API"
   await expect(page.getByTestId("jellyfin-password")).toHaveValue("");
   await expect(page.locator('[data-openmmi-jellyfin-settings="true"]')).not.toContainText("not-exposed-after-submit");
 
+  await expectNoRuntimeFailures(failures);
+});
+
+test("inactive Media performs no recurring layout work", async ({ page }) => {
+  const failures = captureRuntimeFailures(page);
+  await loadDashboard(page);
+
+  await openMedia(page);
+  await page.waitForTimeout(250);
+  const activeLayouts = await page.evaluate(() => window.openMmiMediaPerformanceMetrics?.layout_runs || 0);
+  expect(activeLayouts).toBeGreaterThan(0);
+
+  await page.evaluate(() => window.setPage(1));
+  await expect(page.locator("#pageHome")).toHaveClass(/active/);
+  const beforeIdle = await page.evaluate(() => window.openMmiMediaPerformanceMetrics?.layout_runs || 0);
+  await page.waitForTimeout(1800);
+  const afterIdle = await page.evaluate(() => window.openMmiMediaPerformanceMetrics?.layout_runs || 0);
+  expect(afterIdle).toBe(beforeIdle);
+
+  await expectNoRuntimeFailures(failures);
+});
+
+test("Jellyfin restart recovers without reloading Chromium or rebuilding Media", async ({ page }) => {
+  const failures = captureRuntimeFailures(page);
+  const dashboard = await loadDashboard(page, {
+    jellyfinStatusPayload: {
+      configured: true,
+      status: "ready",
+      connection_state: "ready",
+      retryable: false,
+      state_label: "local player ready",
+      subtitle: "Jellyfin ready",
+    },
+    jellyfinSearchPayload: {
+      configured: true,
+      connection_state: "ready",
+      retryable: false,
+      filter: "recent",
+      items: [{ id: "track-1", name: "Before restart", artist: "Artist", album: "Album", duration_seconds: 60 }],
+    },
+  });
+
+  await openMedia(page);
+  await expect(page.locator("#ommiMediaRemoteState")).toHaveText("READY");
+  await expect(page.locator("#ommiMediaResults")).toContainText("Before restart");
+  await page.evaluate(() => { document.querySelector("#openMmiMediaRoot").__reconnectIdentity = "preserved"; });
+
+  await dashboard.setJellyfinStatus({
+    configured: true,
+    status: "error",
+    connection_state: "reconnecting",
+    retryable: true,
+    state_label: "reconnecting",
+    subtitle: "Jellyfin connection failed",
+  });
+  await page.evaluate(() => window.openMmiJellyfinPlayer.reconnection.refreshNow("browser-test-offline"));
+
+  await expect(page.locator("#ommiMediaRemoteState")).toHaveText("RECONNECTING");
+  await expect(page.locator("#ommiMediaResults")).toContainText("Before restart");
+  await expect(page.locator("#ommiMediaRetry")).toBeVisible();
+  expect(await page.evaluate(() => document.querySelector("#openMmiMediaRoot").__reconnectIdentity)).toBe("preserved");
+
+  await dashboard.setJellyfinSearch({
+    configured: true,
+    connection_state: "ready",
+    retryable: false,
+    filter: "recent",
+    items: [{ id: "track-2", name: "After restart", artist: "Artist", album: "Album", duration_seconds: 61 }],
+  });
+  await dashboard.setJellyfinStatus({
+    configured: true,
+    status: "ready",
+    connection_state: "ready",
+    retryable: false,
+    state_label: "local player ready",
+    subtitle: "Jellyfin ready",
+  });
+  await expect(page.locator("#ommiMediaRemoteState")).toHaveText("READY", { timeout: 4000 });
+  await expect(page.locator("#ommiMediaResults")).toContainText("After restart");
+  await expect(page.locator("#pageElectrical")).toHaveClass(/active/);
+  await expect(page.locator("#pageTitle")).toHaveText("Media");
+  expect(await page.evaluate(() => document.querySelector("#openMmiMediaRoot").__reconnectIdentity)).toBe("preserved");
+  await expectNoRuntimeFailures(failures);
+});
+
+test("same-build dashboard restart recovers in place with one shared retry owner", async ({ page }) => {
+  const failures = captureRuntimeFailures(page);
+  const dashboard = await loadDashboard(page, { dashboardRetryDelaysMs: [50, 75, 100] });
+
+  await expect(page.locator("body")).toHaveAttribute("data-openmmi-dashboard-connection", "ready");
+  await page.evaluate(() => { document.querySelector("#pageHome").__dashboardRecoveryIdentity = "preserved"; });
+  const before = await dashboard.dashboardRequestCounts();
+
+  await dashboard.setDashboardOnline(false);
+  await expect(page.locator("#openMmiDashboardConnectionNotice")).toBeVisible({ timeout: 2000 });
+  await expect(page.locator("body")).toHaveAttribute("data-openmmi-dashboard-connection", /reconnecting|unavailable/);
+  await expect(page.locator("#openMmiDashboardConnectionNotice")).toContainText(/Dashboard (reconnecting|unavailable)/);
+
+  const afterFailure = await dashboard.dashboardRequestCounts();
+  await page.waitForTimeout(350);
+  const whileOffline = await dashboard.dashboardRequestCounts();
+  expect(whileOffline.status - afterFailure.status).toBeLessThanOrEqual(1);
+  expect(whileOffline.health).toBeGreaterThanOrEqual(before.health);
+
+  await dashboard.setDashboardOnline(true);
+  await expect(page.locator("body")).toHaveAttribute("data-openmmi-dashboard-connection", "ready", { timeout: 3000 });
+  await expect(page.locator("#openMmiDashboardConnectionNotice")).toBeHidden();
+  expect(await page.evaluate(() => document.querySelector("#pageHome").__dashboardRecoveryIdentity)).toBe("preserved");
+
+  await expect.poll(async () => (await dashboard.dashboardRequestCounts()).status).toBeGreaterThan(whileOffline.status);
+  await expect.poll(async () => (await dashboard.dashboardRequestCounts()).version).toBeGreaterThan(before.version);
   await expectNoRuntimeFailures(failures);
 });

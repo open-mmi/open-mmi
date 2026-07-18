@@ -90,6 +90,27 @@ test("API errors expose status and server payload", async () => {
   );
 });
 
+
+test("API connection observers distinguish transport loss from HTTP errors", async () => {
+  const events = [];
+  const unsubscribe = api.subscribeConnection((detail) => events.push(detail));
+
+  global.fetch = async () => ({
+    ok: false,
+    status: 503,
+    json: async () => ({ error: "busy" }),
+  });
+  await assert.rejects(() => api.getJson("/api/busy", { usePayloadError: true }));
+  assert.equal(events.at(-1).reachable, true, "an HTTP response proves the dashboard server is reachable");
+  assert.equal(events.at(-1).status, 503);
+
+  global.fetch = async () => { throw new TypeError("network offline"); };
+  await assert.rejects(() => api.getJson("/api/status"), /network offline/);
+  assert.equal(events.at(-1).reachable, false);
+  assert.equal(events.at(-1).error.connection_unreachable, true);
+  unsubscribe();
+});
+
 const status = require("../../ui/web_dashboard/static/status.js");
 
 test("status store publishes snapshots and isolates subscribers", () => {
@@ -151,6 +172,59 @@ test("status poller preserves immediate and fixed-interval polling", async () =>
   assert.equal(poller.stop(), true);
   assert.equal(cleared, 42);
   assert.equal(poller.isRunning(), false);
+});
+
+
+test("status poller pauses while hidden and never overlaps requests", async () => {
+  let intervalCallback = null;
+  let cleared = 0;
+  const listeners = new Map();
+  const document = {
+    visibilityState: "visible",
+    hidden: false,
+    addEventListener(name, callback) { listeners.set(name, callback); },
+    removeEventListener(name) { listeners.delete(name); },
+  };
+  const scheduler = {
+    setInterval(callback) { intervalCallback = callback; return 7; },
+    clearInterval() { cleared += 1; intervalCallback = null; },
+  };
+  let resolveRequest = null;
+  let calls = 0;
+  const poller = status.createPoller({
+    document,
+    scheduler,
+    api: {
+      getJson() {
+        calls += 1;
+        return new Promise((resolve) => { resolveRequest = resolve; });
+      },
+    },
+  });
+
+  poller.start();
+  assert.equal(calls, 1);
+  const overlapping = poller.fetchStatus();
+  assert.equal(calls, 1);
+  assert.equal(poller.getMetrics().overlapping_fetches_skipped, 1);
+  resolveRequest({ sequence: 1 });
+  await overlapping;
+
+  document.hidden = true;
+  document.visibilityState = "hidden";
+  listeners.get("visibilitychange")();
+  assert.equal(cleared, 1);
+  assert.equal(intervalCallback, null);
+
+  document.hidden = false;
+  document.visibilityState = "visible";
+  listeners.get("visibilitychange")();
+  assert.equal(calls, 2);
+  resolveRequest({ sequence: 2 });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(poller.getMetrics().visibility_pauses, 1);
+  assert.equal(poller.getMetrics().visibility_resumes, 1);
+  poller.stop();
 });
 
 test("status poller records failures and keeps the render error path separate", async () => {
@@ -323,6 +397,31 @@ test("reverse overlay detection and dismissal reset at the end of reverse", () =
   assert.deepEqual(state, { active: false, dismissedThisReverse: false, visible: false });
   state = overlays.reduceReverseOverlay(state, true);
   assert.equal(state.visible, true);
+});
+
+
+test("vehicle renderer skips unchanged non-health DOM work", () => {
+  const document = {
+    documentElement: {
+      style: { setProperty() {}, removeProperty() {} },
+      classList: { add() {}, remove() {}, toggle() {}, contains() { return false; } },
+    },
+    addEventListener() {},
+    querySelector() { return null; },
+    querySelectorAll() { return []; },
+  };
+  const renderer = vehicle.createRenderer({
+    document,
+    enhancements: false,
+    preferences: { readDashboardSettings(defaults) { return defaults; } },
+  });
+  const payload = { health: { status: "ok", age_seconds: 0.1 }, state: { vehicle: { speed_kmh: 50 } } };
+  renderer.render(payload);
+  renderer.render({ health: { status: "ok", age_seconds: 0.2 }, state: { vehicle: { speed_kmh: 50 } } });
+  const metrics = renderer.getMetrics();
+  assert.equal(metrics.render_calls, 2);
+  assert.equal(metrics.vehicle_renders, 1);
+  assert.equal(metrics.unchanged_renders_skipped, 1);
 });
 
 test("vehicle view model formats representative imperial status", () => {

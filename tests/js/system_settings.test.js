@@ -24,6 +24,11 @@ test("system and Jellyfin templates never contain stored secrets", () => {
   };
   const window = {
     document,
+    __openMmiFrontendVersionController: {
+      snapshot() {
+        return { loadedId: "frontend-abc", serverId: "server-def", state: "update-ready" };
+      },
+    },
     addEventListener() {},
     requestAnimationFrame(callback) { callback(); },
     MutationObserver: class { observe() {} },
@@ -51,6 +56,11 @@ test("system and Jellyfin templates never contain stored secrets", () => {
     const systemHtml = controller.systemTemplate();
     assert.match(systemHtml, /Default interface/);
     assert.match(systemHtml, /Open Open MMI at login/);
+    assert.match(systemHtml, /data-openmmi-system-settings-ready="true"/);
+    assert.match(systemHtml, /Dashboard version/);
+    assert.match(systemHtml, /frontend-abc/);
+    assert.match(systemHtml, /server-def/);
+    assert.match(systemHtml, /reload ready/);
     assert.doesNotMatch(systemHtml, /Enable or disable the dashboard systemd user service/);
     active.dataset.openmmiSettingsSection = "media";
     const jellyfinHtml = controller.jellyfinTemplate();
@@ -58,4 +68,25 @@ test("system and Jellyfin templates never contain stored secrets", () => {
     assert.doesNotMatch(jellyfinHtml, /secret-value|saved-password|saved-token/);
     assert.match(jellyfinHtml, /Leave blank to keep saved password/);
   });
+});
+
+
+test("frontend version states are presented as user-facing update labels", () => {
+  assert.equal(settings.createController ? true : false, true);
+  const labels = {
+    current: "up to date",
+    reloading: "applying update",
+    "update-ready": "reload ready",
+    "mismatch-after-reload": "reload required",
+    reconnecting: "checking…",
+    unavailable: "unavailable",
+  };
+  // Exercise the exported helper through a minimal controller instance.
+  const document = { body: {}, querySelector() { return null; }, addEventListener() {} };
+  const window = { document, addEventListener() {}, requestAnimationFrame(cb) { cb(); }, MutationObserver: class { observe() {} }, FormData: class {}, setTimeout };
+  const api = { async getJson() { return {}; }, async postJson() { return {}; } };
+  const controller = settings.createController({ window, document, api });
+  for (const [state, label] of Object.entries(labels)) {
+    assert.equal(controller.frontendVersionStateLabel(state), label);
+  }
 });

@@ -77,6 +77,7 @@
       throw new TypeError("Status polling requires setInterval() and clearInterval()");
     }
 
+    const documentRef = options.document || root?.document || null;
     const path = options.path || DEFAULT_STATUS_PATH;
     const intervalMs = Number.isFinite(Number(options.intervalMs))
       ? Number(options.intervalMs)
@@ -84,40 +85,111 @@
     const onPayload = typeof options.onPayload === "function" ? options.onPayload : null;
     const onError = typeof options.onError === "function" ? options.onError : null;
     let intervalId = null;
+    let inFlight = null;
+    let requestedRunning = false;
+    let visibilityBound = false;
+    const metrics = {
+      fetches: 0,
+      failures: 0,
+      overlapping_fetches_skipped: 0,
+      visibility_pauses: 0,
+      visibility_resumes: 0,
+    };
 
-    async function fetchStatus() {
-      try {
-        const nextPayload = await api.getJson(path, { requireOk: false });
-        store.publish(nextPayload);
-        if (onPayload) onPayload(nextPayload, store.getSnapshot());
-        return nextPayload;
-      } catch (caught) {
-        const error = store.fail(caught);
-        if (onError) onError(error, store.getSnapshot());
-        return null;
-      }
+    function isHidden() {
+      return documentRef?.hidden === true || documentRef?.visibilityState === "hidden";
     }
 
-    function start() {
-      if (intervalId !== null) return false;
-      fetchStatus();
+    async function fetchStatus() {
+      if (inFlight) {
+        metrics.overlapping_fetches_skipped += 1;
+        return inFlight;
+      }
+      metrics.fetches += 1;
+      inFlight = (async () => {
+        try {
+          const nextPayload = await api.getJson(path, { requireOk: false });
+          store.publish(nextPayload);
+          if (onPayload) onPayload(nextPayload, store.getSnapshot());
+          return nextPayload;
+        } catch (caught) {
+          metrics.failures += 1;
+          const error = store.fail(caught);
+          if (onError) onError(error, store.getSnapshot());
+          return null;
+        } finally {
+          inFlight = null;
+        }
+      })();
+      return inFlight;
+    }
+
+    function startInterval() {
+      if (intervalId !== null || !requestedRunning || isHidden()) return false;
       intervalId = scheduler.setInterval(fetchStatus, intervalMs);
       return true;
     }
 
-    function stop() {
+    function stopInterval() {
       if (intervalId === null) return false;
       scheduler.clearInterval(intervalId);
       intervalId = null;
       return true;
     }
 
+    function handleVisibilityChange() {
+      if (!requestedRunning) return;
+      if (isHidden()) {
+        if (stopInterval()) metrics.visibility_pauses += 1;
+        return;
+      }
+      metrics.visibility_resumes += 1;
+      fetchStatus();
+      startInterval();
+    }
+
+    function bindVisibility() {
+      if (visibilityBound || typeof documentRef?.addEventListener !== "function") return;
+      documentRef.addEventListener("visibilitychange", handleVisibilityChange);
+      visibilityBound = true;
+    }
+
+    function unbindVisibility() {
+      if (!visibilityBound || typeof documentRef?.removeEventListener !== "function") return;
+      documentRef.removeEventListener("visibilitychange", handleVisibilityChange);
+      visibilityBound = false;
+    }
+
+    function start() {
+      if (requestedRunning) return false;
+      requestedRunning = true;
+      bindVisibility();
+      if (!isHidden()) {
+        fetchStatus();
+        startInterval();
+      }
+      return true;
+    }
+
+    function stop() {
+      if (!requestedRunning) return false;
+      requestedRunning = false;
+      stopInterval();
+      unbindVisibility();
+      return true;
+    }
+
     function isRunning() {
-      return intervalId !== null;
+      return requestedRunning;
+    }
+
+    function getMetrics() {
+      return Object.freeze({ ...metrics, in_flight: Boolean(inFlight), interval_active: intervalId !== null });
     }
 
     return Object.freeze({
       fetchStatus,
+      getMetrics,
       isRunning,
       start,
       stop,

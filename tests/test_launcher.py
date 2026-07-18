@@ -399,6 +399,23 @@ class LauncherChooserTests(unittest.TestCase):
         self.assertIn("--radiolist", commands[0][0])
         self.assertTrue(commands[0][1])
 
+    @patch.dict("os.environ", {"DISPLAY": ":0"}, clear=True)
+    @patch("ui.launcher.shutil.which", return_value="/usr/bin/zenity")
+    def test_graphical_chooser_can_remember_or_use_once(self, _which) -> None:
+        remember = launcher.confirm_remember_choice(
+            "web",
+            lambda args, *, capture_output=False: self.result(
+                returncode=0 if "--question" in args else 1
+            ),
+        )
+        use_once = launcher.confirm_remember_choice(
+            "tui",
+            lambda _args, *, capture_output=False: self.result(returncode=1),
+        )
+
+        self.assertTrue(remember)
+        self.assertFalse(use_once)
+
     @patch.dict("os.environ", {"WAYLAND_DISPLAY": "wayland-0"}, clear=True)
     @patch("ui.launcher.shutil.which", return_value="/usr/bin/zenity")
     def test_graphical_chooser_reports_cancellation(self, _which) -> None:
@@ -418,6 +435,136 @@ class LauncherChooserTests(unittest.TestCase):
         _stdin_tty,
     ) -> None:
         self.assertEqual(launcher.choose_ui(), "web")
+
+    def test_native_gnome_terminal_waits_for_terminal_lifecycle(self) -> None:
+        command = ["/usr/local/bin/open-mmi-status"]
+        self.assertEqual(
+            launcher._terminal_command("/usr/bin/gnome-terminal.real", command),
+            ["/usr/bin/gnome-terminal.real", "--wait", "--"] + command,
+        )
+
+    def test_linux_mint_wrapper_is_unwrapped_to_native_terminal(self) -> None:
+        with patch(
+            "ui.launcher.os.path.realpath",
+            return_value="/usr/bin/gnome-terminal.wrapper",
+        ), patch("ui.launcher.os.access", return_value=True):
+            self.assertEqual(
+                launcher._unwrap_terminal_executable("/usr/bin/x-terminal-emulator"),
+                "/usr/bin/gnome-terminal.real",
+            )
+
+    def test_wrapper_fallback_uses_portable_execute_argument(self) -> None:
+        command = ["/usr/local/bin/open-mmi-status"]
+        self.assertEqual(
+            launcher._terminal_command("/usr/bin/gnome-terminal.wrapper", command),
+            ["/usr/bin/gnome-terminal.wrapper", "-e"] + command,
+        )
+
+    @patch("ui.launcher.sys.stdin.isatty", return_value=False)
+    @patch("ui.launcher.sys.stdout.isatty", return_value=False)
+    def test_tui_uses_native_binary_behind_mint_wrapper(
+        self,
+        _stdout_tty,
+        _stdin_tty,
+    ) -> None:
+        process = SimpleNamespace(wait=lambda: 0)
+
+        def which(name: str):
+            if name == "open-mmi-status":
+                return "/usr/local/bin/open-mmi-status"
+            if name == "x-terminal-emulator":
+                return "/usr/bin/x-terminal-emulator"
+            return None
+
+        with patch("ui.launcher.shutil.which", side_effect=which), patch(
+            "ui.launcher.os.path.realpath",
+            return_value="/usr/bin/gnome-terminal.wrapper",
+        ), patch("ui.launcher.os.access", return_value=True), patch(
+            "ui.launcher.subprocess.Popen",
+            return_value=process,
+        ) as popen:
+            self.assertEqual(launcher._run_tui_once(), 0)
+
+        self.assertEqual(
+            popen.call_args.args[0],
+            [
+                "/usr/bin/gnome-terminal.real",
+                "--wait",
+                "--",
+                "/usr/local/bin/open-mmi-status",
+            ],
+        )
+
+    def test_tui_exit_can_recover_to_web_dashboard(self) -> None:
+        config = dict(launcher.DEFAULT_CONFIG)
+        with patch("ui.launcher._run_tui_once", return_value=0) as run_tui, patch(
+            "ui.launcher._recover_after_tui", return_value="web"
+        ) as recover, patch("ui.launcher._open_web_dashboard", return_value=0) as open_web:
+            result = launcher.launch_tui(config, Path("/tmp/launcher.json"))
+
+        self.assertEqual(result, 0)
+        run_tui.assert_called_once_with()
+        recover.assert_called_once_with(config, Path("/tmp/launcher.json"))
+        open_web.assert_called_once_with(config)
+
+    def test_tui_can_be_selected_again_without_losing_recovery(self) -> None:
+        config = dict(launcher.DEFAULT_CONFIG)
+        selections = iter(("tui", "web"))
+        with patch("ui.launcher._run_tui_once", side_effect=(0, 0)) as run_tui, patch(
+            "ui.launcher._recover_after_tui", side_effect=lambda *_args: next(selections)
+        ), patch("ui.launcher._open_web_dashboard", return_value=0):
+            self.assertEqual(
+                launcher.launch_tui(config, Path("/tmp/launcher.json")),
+                0,
+            )
+
+        self.assertEqual(run_tui.call_count, 2)
+
+    @patch.dict("os.environ", {"DISPLAY": ":0"}, clear=True)
+    def test_tui_launch_failure_enters_recovery(self) -> None:
+        config = dict(launcher.DEFAULT_CONFIG)
+        with patch(
+            "ui.launcher._run_tui_once",
+            side_effect=launcher.LauncherError("no terminal emulator found"),
+        ), patch("ui.launcher._recover_after_tui", return_value="web") as recover, patch(
+            "ui.launcher._open_web_dashboard", return_value=0
+        ) as open_web:
+            result = launcher.launch_tui(config, Path("/tmp/launcher.json"))
+
+        self.assertEqual(result, 0)
+        recover.assert_called_once_with(config, Path("/tmp/launcher.json"))
+        open_web.assert_called_once_with(config)
+
+    @patch.dict("os.environ", {"DISPLAY": ":0"}, clear=True)
+    @patch("ui.launcher.choose_ui", side_effect=launcher.LauncherError("cancelled"))
+    def test_cancelled_recovery_opens_web_for_the_session(self, _choose) -> None:
+        self.assertEqual(
+            launcher._recover_after_tui(
+                dict(launcher.DEFAULT_CONFIG),
+                Path("/tmp/launcher.json"),
+            ),
+            "web",
+        )
+
+
+class LauncherMainTests(unittest.TestCase):
+    def test_ask_remember_requires_interactive_choice(self) -> None:
+        self.assertEqual(launcher.main(["--ask-remember"]), 1)
+
+    def test_chooser_persists_only_after_confirmation(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            config_path = Path(directory) / "launcher.json"
+            with patch("ui.launcher.choose_ui", return_value="web"), patch(
+                "ui.launcher.confirm_remember_choice", return_value=True
+            ), patch("ui.launcher._open_web_dashboard", return_value=0):
+                result = launcher.main(
+                    ["--choose", "--ask-remember", "--config", str(config_path)]
+                )
+
+            payload = json.loads(config_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(result, 0)
+        self.assertEqual(payload["default_ui"], "web")
 
 
 class LauncherAutostartPreferenceTests(unittest.TestCase):

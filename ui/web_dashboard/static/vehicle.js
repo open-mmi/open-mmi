@@ -138,6 +138,11 @@
     const documentRef = options.document || (root && root.document);
     const preferences = options.preferences || (root && root.openMmiPreferences);
     const enhancementsEnabled = options.enhancements !== false;
+    const enhancedFields = new Set(["indicators", "voltage_v"]);
+    const enhancedBooleans = new Set(["handbrake", "hazards", "bulb_out"]);
+    let lastRenderSignature = null;
+    let lastTachSignature = null;
+    const metrics = { render_calls: 0, vehicle_renders: 0, unchanged_renders_skipped: 0, dom_writes: 0 };
 
     function requireDocument() {
       if (!documentRef) throw new Error("Vehicle renderer requires a document");
@@ -157,22 +162,47 @@
       return normaliseSettings(preferences.readDashboardSettings(DEFAULT_SETTINGS));
     }
 
+    function setText(node, value) {
+      const next = String(value);
+      if (node.textContent === next) return false;
+      node.textContent = next;
+      metrics.dom_writes += 1;
+      return true;
+    }
+
+    function setHtml(node, html, signature = html) {
+      const nextSignature = String(signature);
+      if (node.dataset?.openMmiRenderSignature === nextSignature) return false;
+      node.innerHTML = html;
+      if (node.dataset) node.dataset.openMmiRenderSignature = nextSignature;
+      metrics.dom_writes += 1;
+      return true;
+    }
+
+    function setAttribute(node, name, value) {
+      const next = String(value);
+      if (node.getAttribute?.(name) === next) return false;
+      node.setAttribute?.(name, next);
+      metrics.dom_writes += 1;
+      return true;
+    }
+
     function setField(name, value) {
-      queryAll(`[data-field="${name}"]`).forEach((node) => { node.textContent = value; });
+      queryAll(`[data-field="${name}"]`).forEach((node) => { setText(node, value); });
     }
 
     function setBoolean(name, value) {
-      queryAll(`[data-bool="${name}"]`).forEach((node) => { node.textContent = booleanText(value); });
+      queryAll(`[data-bool="${name}"]`).forEach((node) => { setText(node, booleanText(value)); });
     }
 
     function setBooleanYesNo(name, value) {
-      queryAll(`[data-bool-no="${name}"]`).forEach((node) => { node.textContent = booleanYesNoText(value); });
+      queryAll(`[data-bool-no="${name}"]`).forEach((node) => { setText(node, booleanYesNoText(value)); });
     }
 
     function updateDoor(name, value) {
       const isOpen = value === true;
       const text = value === true ? "Open" : value === false ? "Closed" : "--";
-      queryAll(`[data-door-text="${name}"]`).forEach((node) => { node.textContent = text; });
+      queryAll(`[data-door-text="${name}"]`).forEach((node) => { setText(node, text); });
       queryAll(`[data-door-row="${name}"]`).forEach((node) => { node.classList.toggle("open", isOpen); });
       queryAll(`[data-door-mark="${name}"]`).forEach((node) => { node.classList.toggle("open", isOpen); });
     }
@@ -182,9 +212,12 @@
       const dot = query("#healthDot");
       const text = query("#healthText");
       const age = query("#ageText");
-      if (dot) dot.className = `health-dot ${view.status}`;
-      if (text) text.textContent = view.status;
-      if (age) age.textContent = view.ageText;
+      if (dot) {
+        const className = `health-dot ${view.status}`;
+        if (dot.className !== className) { dot.className = className; metrics.dom_writes += 1; }
+      }
+      if (text) setText(text, view.status);
+      if (age) setText(age, view.ageText);
       return view;
     }
 
@@ -193,7 +226,7 @@
         queryAll(`[data-field="${field}"]`).forEach((node) => {
           const value = node.closest ? node.closest(".value") : null;
           const small = value ? value.querySelector("small") : node.parentElement?.querySelector?.("small");
-          if (small) small.textContent = unit;
+          if (small) setText(small, unit);
         });
       });
     }
@@ -203,12 +236,6 @@
       const known = Number.isFinite(number);
       const clamped = known ? Math.max(0, Math.min(6000, number)) : 0;
       const progress = clamped / 6000;
-      const rootNode = requireDocument().documentElement;
-
-      rootNode.style.setProperty("--rpm-scale", progress.toFixed(4));
-      rootNode.style.setProperty("--rpm-fill", `${(progress * 100).toFixed(2)}%`);
-      rootNode.classList.remove("rpm-unknown", "rpm-idle", "rpm-normal", "rpm-high", "rpm-redline");
-
       let state = "rpm-unknown";
       if (known) {
         if (clamped < 900) state = "rpm-idle";
@@ -216,7 +243,15 @@
         else if (clamped < 5200) state = "rpm-high";
         else state = "rpm-redline";
       }
+      const signature = `${progress.toFixed(4)}:${state}`;
+      if (signature === lastTachSignature) return;
+      lastTachSignature = signature;
+      const rootNode = requireDocument().documentElement;
+      rootNode.style.setProperty("--rpm-scale", progress.toFixed(4));
+      rootNode.style.setProperty("--rpm-fill", `${(progress * 100).toFixed(2)}%`);
+      rootNode.classList.remove("rpm-unknown", "rpm-idle", "rpm-normal", "rpm-high", "rpm-redline");
       rootNode.classList.add(state);
+      metrics.dom_writes += 3;
     }
 
     function applyDriverFacingCleanup() {
@@ -287,8 +322,10 @@
 
   function setNodeIcon(selector, kind, value, label, src) {
     qsa(selector).forEach((node) => {
-      node.innerHTML = icon(kind, value, label, src);
-      markHost(node, kind, `${label}: ${stateText(value)}`);
+      const signature = `${kind}:${stateText(value)}`;
+      if (setHtml(node, icon(kind, value, label, src), signature)) {
+        markHost(node, kind, `${label}: ${stateText(value)}`);
+      }
     });
   }
 
@@ -308,12 +345,14 @@
     const label = indicatorLabel(lighting);
 
     qsa('[data-field="indicators"]').forEach((node) => {
-      node.innerHTML =
+      const html =
         `<span class="openmmi-indicator-pair ${hazards ? "is-hazard" : ""}">` +
           icon("left-turn", left, "Left direction indicator", ICONS.leftTurn) +
           icon("right-turn", right, "Right direction indicator", ICONS.rightTurn) +
         `</span>` + sr(label);
-      markHost(node, "indicators", label);
+      if (setHtml(node, html, `${stateText(left)}:${stateText(right)}:${hazards}`)) {
+        markHost(node, "indicators", label);
+      }
     });
   }
 
@@ -372,14 +411,17 @@
     const voltage = asNumber(electrical.supply_voltage_v ?? electrical.terminal30_voltage_v);
     const status = voltageState(voltage);
 
+    const text = voltage === null ? "--" : formatNumber(voltage, 1);
     qsa('[data-field="voltage_v"]').forEach((node) => {
-      const text = node.textContent && node.textContent.trim() ? node.textContent.trim() : "--";
       node.classList.add("openmmi-voltage-field");
-      node.innerHTML =
+      setHtml(
+        node,
         '<span class="openmmi-voltage-readout is-' + status + '" title="Supply voltage: ' + text + ' V">' +
           batterySvg() +
           '<span class="openmmi-voltage-number">' + text + '</span>' +
-        '</span>';
+        '</span>',
+        `voltage:${status}:${text}`,
+      );
 
       const tile = node.closest('.tile');
       if (tile) {
@@ -401,15 +443,16 @@
       bar.classList.add('is-' + status);
 
       if (tempC === null) {
-        bar.style.removeProperty('--coolant-pos');
-        bar.setAttribute('title', 'Coolant temperature: unknown');
+        if (bar.style.getPropertyValue?.('--coolant-pos')) { bar.style.removeProperty('--coolant-pos'); metrics.dom_writes += 1; }
+        setAttribute(bar, 'title', 'Coolant temperature: unknown');
         return;
       }
 
       // The printed scale is 50 / 90 / 130 °C, so map the marker to that range.
       const percent = clamp(((tempC - 50) / 80) * 100, 0, 100);
-      bar.style.setProperty('--coolant-pos', percent.toFixed(1) + '%');
-      bar.setAttribute('title', 'Coolant temperature: ' + formatTempFromC(tempC, 0, readSettings()) + ' ' + tempUnitLabel(readSettings()));
+      const position = percent.toFixed(1) + '%';
+      if (bar.style.getPropertyValue?.('--coolant-pos') !== position) { bar.style.setProperty('--coolant-pos', position); metrics.dom_writes += 1; }
+      setAttribute(bar, 'title', 'Coolant temperature: ' + formatTempFromC(tempC, 0, readSettings()) + ' ' + tempUnitLabel(readSettings()));
     });
   }
 
@@ -421,22 +464,43 @@
     })();
 
     function render(payload = {}) {
+      metrics.render_calls += 1;
       const settings = readSettings();
       const view = buildViewModel(payload, settings);
       updateHealth(payload);
-      Object.entries(view.fields).forEach(([name, value]) => setField(name, value));
+      const state = payload.state || {};
+      const renderSignature = JSON.stringify({
+        fields: view.fields,
+        booleans: view.booleans,
+        doors: view.doors,
+        anyDoorOpen: view.anyDoorOpen,
+        tachRpm: view.tachRpm,
+        units: view.units,
+        lighting: state.lighting || {},
+        coolantTempC: state.engine?.coolant_temp_c ?? null,
+        supplyVoltageV: state.electrical?.supply_voltage_v ?? state.electrical?.terminal30_voltage_v ?? null,
+      });
+      if (renderSignature === lastRenderSignature) {
+        metrics.unchanged_renders_skipped += 1;
+        return view;
+      }
+      lastRenderSignature = renderSignature;
+      metrics.vehicle_renders += 1;
+
+      Object.entries(view.fields).forEach(([name, value]) => {
+        if (!enhancementsEnabled || !enhancedFields.has(name)) setField(name, value);
+      });
       applyUnitLabels(view.units);
       const tellTaleTest = root && root.openMmiApplyTellTaleTest;
       if (typeof tellTaleTest === "function") tellTaleTest();
-      applyDriverFacingCleanup();
 
-      setBoolean("handbrake", view.booleans.handbrake);
+      if (!enhancementsEnabled || !enhancedBooleans.has("handbrake")) setBoolean("handbrake", view.booleans.handbrake);
       setBoolean("reverse", view.booleans.reverse);
       setBoolean("rear_heater", view.booleans.rear_heater);
       setBoolean("recirculation", view.booleans.recirculation);
       setBoolean("compressor", view.booleans.compressor);
-      setBoolean("hazards", view.booleans.hazards);
-      setBooleanYesNo("bulb_out", view.booleans.bulb_out);
+      if (!enhancementsEnabled || !enhancedBooleans.has("hazards")) setBoolean("hazards", view.booleans.hazards);
+      if (!enhancementsEnabled || !enhancedBooleans.has("bulb_out")) setBooleanYesNo("bulb_out", view.booleans.bulb_out);
 
       DOORS.forEach((name) => updateDoor(name, view.doors[name]));
       queryAll(".car-shell").forEach((node) => { node.classList.toggle("any-open", view.anyDoorOpen); });
@@ -449,7 +513,22 @@
       return view;
     }
 
+    function scheduleDriverFacingCleanup() {
+      const callback = () => { try { applyDriverFacingCleanup(); } catch (_) {} };
+      if (typeof root?.requestAnimationFrame === "function") root.requestAnimationFrame(callback);
+      else callback();
+    }
+
+    documentRef?.addEventListener?.("DOMContentLoaded", scheduleDriverFacingCleanup);
+    root?.addEventListener?.("openmmi:settingsrender", scheduleDriverFacingCleanup);
+    scheduleDriverFacingCleanup();
+
+    function getMetrics() {
+      return Object.freeze({ ...metrics });
+    }
+
     return Object.freeze({
+      getMetrics,
       render,
       updateHealth,
       updateTach,

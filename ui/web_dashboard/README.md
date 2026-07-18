@@ -79,6 +79,25 @@ Inspect the status payload:
 curl http://127.0.0.1:8765/api/status | python3 -m json.tool
 ```
 
+For an operator-focused summary of cache recovery, service recovery, Diagnostics, and known limitations, see [`../../docs/runtime-hardening.md`](../../docs/runtime-hardening.md).
+
+## Runtime efficiency and activity counters
+
+The dashboard keeps the existing visible vehicle-status cadence, but avoids duplicate work:
+
+- status requests do not overlap and pause while the document is hidden;
+- unchanged vehicle values do not rerun the full DOM render path;
+- Media layout fitting is event-driven and stops outside the active Media page;
+- tell-tale maintenance and media-key installation do not use permanent background probe timers.
+
+Settings → Diagnostics shows lightweight session counters for status fetches, overlap skips, vehicle renders, unchanged render skips, and Media layout activity. The counters are intended for comparison and troubleshooting; they do not change dashboard behaviour.
+
+## Dashboard server recovery
+
+The long-lived browser reconnects to the local Open MMI dashboard server without discarding the current page. A transport failure stops the high-frequency vehicle-status poller, shows a non-blocking reconnecting banner, and retries `/api/health` with bounded backoff. Server-backed controls are paused while unavailable, but navigation, existing readings, and unsaved form contents remain mounted.
+
+When the server returns, the frontend compares build identities before normal polling resumes. The same build recovers in place; a changed build uses the controlled one-shot frontend reload path. Settings → Diagnostics reports the shared connection state, health-probe count, and recovery count.
+
 ## Tell-tale test mode
 
 Tell-tales can be forced in the browser for visual testing. This is frontend-only; it does not modify the backend status snapshot or vehicle state.
@@ -204,6 +223,8 @@ Search test:
 curl 'http://127.0.0.1:8765/api/jellyfin/search?limit=5' | python3 -m json.tool
 ```
 
+The Media page reconnects to Jellyfin without refreshing Chromium. During a provider outage it keeps the existing page and last successful library visible, marks the controls as reconnecting, and retries with bounded backoff. Authentication and missing-configuration states stop continuous retries until the user saves configuration or selects **Retry**. When Jellyfin returns, the active library view refreshes automatically.
+
 <!-- open-mmi-items-4-6:start -->
 ### Security and library scope
 
@@ -320,6 +341,8 @@ Before adding or replacing icons, confirm the source licence and update `NOTICE.
 The browser loads small platform modules before the main dashboard application:
 
 - `static/api.js` owns same-origin JSON request behaviour.
+- `static/frontend-version.js` owns loaded/server build comparison, safe one-shot reloads, visibility-aware checking, and the update-ready notice.
+- `static/runtime-diagnostics.js` owns the three-second, Diagnostics-only system-runtime polling lifecycle and conservative clock/thermal state derivation.
 - `static/preferences.js` owns safe JSON persistence and the dashboard settings key.
 - `static/clock.js` owns the persistent header clock, minute-boundary scheduling, and clock-specific Display preferences.
 - `static/status.js` owns the shared status snapshot and fixed 200 ms `/api/status` polling lifecycle. It is DOM-independent and exposes subscriptions for later frontend modules.
@@ -331,7 +354,7 @@ The browser loads small platform modules before the main dashboard application:
 - `static/media-radio.js` owns Internet Radio privacy consent, filter/favourite state, the Radio adapter, and source-aware player integration.
 - `static/media-usb.js` owns USB browsing, folder navigation, duration discovery, and the USB adapter.
 - `static/media-bluetooth.js` owns Bluetooth status polling, optimistic transport state, progress presentation, and BlueZ control requests.
-- `static/app.js` now owns settings, diagnostics, advanced tell-tales, and the remaining cross-cutting dashboard enhancements.
+- `static/app.js` owns the Settings shell, decoded vehicle-state diagnostics, advanced tell-tales, and the remaining cross-cutting dashboard enhancements.
 
 The dashboard CSS keeps its six cascade-preserving legacy modules and loads the clock as a separate extension directly from `index.html`:
 
@@ -342,6 +365,17 @@ The dashboard CSS keeps its six cascade-preserving legacy modules and loads the 
 - `static/styles-diagnostics.css` contains browser performance diagnostics.
 - `static/styles-media-final.css` contains USB, Bluetooth, final media-control and vehicle-correction rules.
 - `static/styles-clock.css` contains the shared header clock and responsive clock layout without changing the checksum-protected legacy CSS split.
+- `static/styles-runtime-hardening.css` contains the controlled frontend-update notice without changing the checksum-protected legacy CSS split.
+
+## Frontend build identity and cache recovery
+
+The server resolves one build identity from `OPEN_MMI_BUILD_ID`, `/opt/open-mmi/.version`, a development checkout, or the installed package fallback. `GET /api/version` exposes that identity with `Cache-Control: no-store`.
+
+`/` and `/index.html` are generated with the same identity in a meta element and in every local JavaScript and CSS URL. Matching versioned asset URLs are served as immutable; unversioned compatibility URLs must revalidate. The browser checks the endpoint after startup, connectivity recovery, visibility recovery, and at a low visible-page interval. A changed build triggers one controlled reload. Active editing defers the reload and presents a **Reload now** action, while session storage prevents repeated reloads for the same target build. Clearing the managed Chromium profile is not part of the supported update process.
+
+The release that first introduces this controller needs one reload if an older pre-controller page is already open; that older page has no code capable of detecting the new build. This is a one-time migration condition. Subsequent updates must reload automatically without clearing the browser profile.
+
+Diagnostics updates its existing value nodes in place. It does not rebuild the full Diagnostics panel for each 200 ms status publication; a structural rebuild is reserved for changes to the decoded-path set.
 
 `static/styles.css` remains as an import-only compatibility manifest. `tools/verify_css_split.py` locks the module order and verifies that their concatenated bytes remain identical to the pre-split stylesheet, preventing accidental cascade changes during this structural phase.
 
@@ -356,7 +390,7 @@ Browser-level coverage lives in `tests/browser/` and runs in Chromium through Pl
 Run these before committing dashboard changes:
 
 ```bash
-python3 -m py_compile ui/web_dashboard/server.py ui/web_dashboard/bluetooth.py ui/web_dashboard/jellyfin.py ui/web_dashboard/radio.py ui/web_dashboard/usb.py
+python3 -m py_compile ui/web_dashboard/server.py ui/web_dashboard/versioning.py ui/web_dashboard/runtime_diagnostics.py ui/web_dashboard/bluetooth.py ui/web_dashboard/jellyfin.py ui/web_dashboard/radio.py ui/web_dashboard/usb.py
 find ui/web_dashboard/static -maxdepth 1 -name '*.js' -print0 \
   | xargs -0 -n1 node --check
 node --test tests/js/*.test.js
@@ -405,6 +439,19 @@ OPEN_MMI_GPSD_PORT=2947
 ```
 
 <!-- OPENMMI_WEB_SETTINGS_DOCS_START -->
+## Thermal and power diagnostics
+
+**Settings → Diagnostics → Thermal and power** reads a local, read-only runtime endpoint and shows:
+
+- current and configured CPU clock ranges;
+- one-minute load context;
+- the platform thermal zone nearest or beyond a reported active, passive, hot, or critical trip;
+- AC connection, battery capacity, and charging state;
+- session-only observed clock and temperature ranges;
+- expandable per-core, thermal-zone, cooling-device, power-supply, and Intel `pstate` detail.
+
+The dashboard does not change governors, turbo, thermal trips, charging policy, or fan state. Polling runs only while Diagnostics is selected and the page is visible. Low clocks at low load are treated as normal idle behaviour; a clock constraint requires repeated high-load samples, and temperature is named as the cause only when a thermal trip is active too. Reported battery-side power is not charger capacity.
+
 ## Settings and local preferences
 
 The Settings page is local to the dashboard/browser and is designed for display behaviour, not vehicle control.
@@ -416,7 +463,7 @@ Current Settings areas:
 - Display: reduced animation can be enabled for older tablets or lower-distraction use.
 - Display: the shared local clock can be shown or hidden, switched between 24-hour and 12-hour time, and optionally display the date.
 - Display: tell-tale test lights the existing footer tell-tale icons through the normal frontend render path. It is frontend-only and does not write to `/api/status` or transmit anything to the car.
-- Diagnostics: shows live decoded state and optional raw/debug detail for development.
+- Diagnostics: shows thermal/power runtime state, live decoded vehicle state, and optional raw/debug detail for development.
 - Media: documents the server-side Jellyfin integration path.
 - Reverse assist: provides a placeholder overlay path for later PDC/camera work.
 

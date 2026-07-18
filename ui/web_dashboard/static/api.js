@@ -5,6 +5,25 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function createOpenMmiApi(root) {
   "use strict";
 
+  const connectionSubscribers = new Set();
+  let lastConnectionEvent = null;
+
+  function notifyConnection(detail) {
+    lastConnectionEvent = Object.freeze({ ...detail });
+    for (const listener of Array.from(connectionSubscribers)) {
+      try { listener(lastConnectionEvent); }
+      catch (_) { /* Optional observers must not break API requests. */ }
+    }
+    return lastConnectionEvent;
+  }
+
+  function subscribeConnection(listener, options = {}) {
+    if (typeof listener !== "function") throw new TypeError("Connection subscriber must be a function");
+    connectionSubscribers.add(listener);
+    if (options.emitCurrent && lastConnectionEvent) listener(lastConnectionEvent);
+    return () => connectionSubscribers.delete(listener);
+  }
+
   function activeFetch() {
     const fetchImpl = root && root.fetch;
     if (typeof fetchImpl !== "function") {
@@ -27,10 +46,18 @@
   }
 
   async function requestJson(path, init = {}, options = {}) {
-    const response = await activeFetch()(path, {
-      cache: "no-store",
-      ...init,
-    });
+    let response;
+    try {
+      response = await activeFetch()(path, {
+        cache: "no-store",
+        ...init,
+      });
+      notifyConnection({ reachable: true, path: String(path), status: Number(response.status || 0) });
+    } catch (error) {
+      if (error && typeof error === "object") error.connection_unreachable = true;
+      notifyConnection({ reachable: false, path: String(path), error });
+      throw error;
+    }
 
     let payload = null;
     try {
@@ -66,5 +93,6 @@
     getJson,
     postJson,
     requestJson,
+    subscribeConnection,
   });
 });

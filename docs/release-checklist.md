@@ -29,3 +29,15 @@
 - [ ] Update changelog and migration notes.
 - [ ] Record supported vehicles, tested hardware, known limitations, and security assumptions.
 - [ ] Freeze the reviewed commit and merge that exact SHA.
+
+## Runtime-hardening checkpoint
+
+Use [`runtime-hardening-qualification.md`](runtime-hardening-qualification.md) for the full branch close-out. At minimum:
+
+- [ ] Changed-build installed update reloads once without cache/profile deletion.
+- [ ] Same-build dashboard restart recovers in place.
+- [ ] Jellyfin restart recovers without Chromium reload.
+- [ ] Touch-only TUI → chooser → Web recovery works on Linux Mint.
+- [ ] Thermal/power Diagnostics stops polling outside its visible panel.
+- [ ] Runtime counters confirm unchanged vehicle renders and inactive Media layout are suppressed.
+- [ ] Repeat the cold-condition vehicle qualification on the exact merge candidate.

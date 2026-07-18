@@ -1,30 +1,34 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_ID="open-mmi-status"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ASSET_ROOT="$REPO_ROOT/packaging/linux-desktop"
-DESKTOP_SOURCE="$ASSET_ROOT/${APP_ID}.desktop"
+DESKTOP_SOURCES=(
+    "$ASSET_ROOT/open-mmi-status.desktop"
+    "$ASSET_ROOT/open-mmi-chooser.desktop"
+)
 ICON_SOURCE="$ASSET_ROOT/icons"
 DATA_HOME="${XDG_DATA_HOME:-${HOME:?HOME is not set}/.local/share}"
 APPLICATION_DIR="$DATA_HOME/applications"
 ICON_DESTINATION="$DATA_HOME/icons"
-DESKTOP_DESTINATION="$APPLICATION_DIR/${APP_ID}.desktop"
 
 usage() {
     cat <<USAGE
 Usage: $0 {install|remove|reinstall}
 
-Installs or removes the optional Open MMI diagnostic desktop launcher for the
-current user. XDG_DATA_HOME is honoured when set.
+Installs or removes the Open MMI launcher and interface-recovery application
+entries for the current user. XDG_DATA_HOME is honoured when set.
 USAGE
 }
 
 require_assets() {
-    if [[ ! -f "$DESKTOP_SOURCE" ]]; then
-        echo "[desktop] ERROR: missing desktop entry: $DESKTOP_SOURCE" >&2
-        return 1
-    fi
+    local desktop_source
+    for desktop_source in "${DESKTOP_SOURCES[@]}"; do
+        if [[ ! -f "$desktop_source" ]]; then
+            echo "[desktop] ERROR: missing desktop entry: $desktop_source" >&2
+            return 1
+        fi
+    done
     if [[ ! -d "$ICON_SOURCE" ]]; then
         echo "[desktop] ERROR: missing icon directory: $ICON_SOURCE" >&2
         return 1
@@ -43,22 +47,28 @@ refresh_caches() {
 }
 
 install_launcher() {
+    local desktop_source desktop_destination
     require_assets
 
     mkdir -p "$APPLICATION_DIR" "$ICON_DESTINATION"
-    install -m 0644 "$DESKTOP_SOURCE" "$DESKTOP_DESTINATION"
+    for desktop_source in "${DESKTOP_SOURCES[@]}"; do
+        desktop_destination="$APPLICATION_DIR/$(basename "$desktop_source")"
+        install -m 0644 "$desktop_source" "$desktop_destination"
+        if command -v desktop-file-validate >/dev/null 2>&1; then
+            desktop-file-validate "$desktop_destination"
+        fi
+    done
     cp -a "$ICON_SOURCE/." "$ICON_DESTINATION/"
 
-    if command -v desktop-file-validate >/dev/null 2>&1; then
-        desktop-file-validate "$DESKTOP_DESTINATION"
-    fi
-
     refresh_caches
-    echo "[desktop] Installed $DESKTOP_DESTINATION"
+    echo "[desktop] Installed Open MMI launchers in $APPLICATION_DIR"
 }
 
 remove_launcher() {
-    rm -f "$DESKTOP_DESTINATION"
+    local desktop_source
+    for desktop_source in "${DESKTOP_SOURCES[@]}"; do
+        rm -f "$APPLICATION_DIR/$(basename "$desktop_source")"
+    done
 
     if [[ -d "$ICON_SOURCE" ]]; then
         while IFS= read -r -d '' source_icon; do

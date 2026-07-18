@@ -134,6 +134,8 @@ class Document {
 test("dashboard scripts initialise extracted Jellyfin and Bluetooth controllers", async () => {
   const document = new Document();
   const local = new Map();
+  let intervalCount = 0;
+  const windowListeners = new Map();
   const window = {
     document,
     innerHeight: 480,
@@ -151,14 +153,23 @@ test("dashboard scripts initialise extracted Jellyfin and Bluetooth controllers"
     CustomEvent: class { constructor(type, init = {}) { this.type = type; this.detail = init.detail; } },
     Event: class { constructor(type) { this.type = type; } },
     getComputedStyle: () => ({ display: "block", visibility: "visible", getPropertyValue: () => "" }),
-    addEventListener() {},
-    removeEventListener() {},
-    dispatchEvent() { return true; },
+    addEventListener(name, callback) {
+      if (!windowListeners.has(name)) windowListeners.set(name, []);
+      windowListeners.get(name).push(callback);
+    },
+    removeEventListener(name, callback) {
+      const listeners = windowListeners.get(name) || [];
+      windowListeners.set(name, listeners.filter((entry) => entry !== callback));
+    },
+    dispatchEvent(event) {
+      for (const callback of windowListeners.get(event.type) || []) callback(event);
+      return true;
+    },
     requestAnimationFrame() { return 1; },
     cancelAnimationFrame() {},
     setTimeout() { return 1; },
     clearTimeout() {},
-    setInterval() { return 1; },
+    setInterval() { intervalCount += 1; return intervalCount; },
     clearInterval() {},
     fetch: async () => ({ ok: true, status: 200, json: async () => ({ health: { status: "ok" }, state: {} }) }),
   };
@@ -193,8 +204,8 @@ test("dashboard scripts initialise extracted Jellyfin and Bluetooth controllers"
 
   const staticDir = path.resolve("ui/web_dashboard/static");
   const scripts = [
-    "api.js", "preferences.js", "system-settings.js", "clock.js", "status.js", "navigation.js", "overlays.js", "vehicle.js",
-    "media.js", "media-jellyfin.js", "media-radio.js", "media-usb.js", "media-bluetooth.js", "app.js",
+    "api.js", "dashboard-connection.js", "preferences.js", "system-settings.js", "runtime-diagnostics.js", "clock.js", "status.js", "navigation.js", "overlays.js", "vehicle.js",
+    "media.js", "jellyfin-reconnection.js", "media-jellyfin.js", "media-radio.js", "media-usb.js", "media-bluetooth.js", "app.js",
   ];
   for (const name of scripts) {
     try {
@@ -203,7 +214,10 @@ test("dashboard scripts initialise extracted Jellyfin and Bluetooth controllers"
       throw new Error(`Failed to execute ${name}: ${error.stack || error}`);
     }
   }
+  assert.equal(window.openMmiDashboardConnection !== undefined, true);
+  assert.equal(window.openMmiDashboardConnectionController !== undefined, true);
   assert.equal(window.openMmiClock !== undefined, true);
+  assert.equal(window.openMmiJellyfinReconnect !== undefined, true);
   assert.equal(window.openMmiJellyfinMedia !== undefined, true);
   assert.equal(window.openMmiJellyfinPlayer !== undefined, true);
   assert.equal(window.openMmiBluetoothMediaController !== undefined, true);
@@ -214,5 +228,6 @@ test("dashboard scripts initialise extracted Jellyfin and Bluetooth controllers"
   );
   assert.equal(typeof window.ommiMediaLoadLibrary, "function");
   assert.equal(window.openMmiJellyfinPlayer.state, window.openMmiMedia);
+  assert.equal(intervalCount, 1, "only the shared status poller should retain a permanent interval");
   await new Promise((resolve) => setImmediate(resolve));
 });

@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MANAGE_SCRIPT = ROOT / "scripts" / "manage.sh"
 DESKTOP_ASSETS = ROOT / "packaging" / "linux-desktop"
 DESKTOP_ENTRY = DESKTOP_ASSETS / "open-mmi-status.desktop"
+CHOOSER_ENTRY = DESKTOP_ASSETS / "open-mmi-chooser.desktop"
 DESKTOP_ICONS = DESKTOP_ASSETS / "icons"
 
 
@@ -23,6 +24,7 @@ class DesktopEntryInstallationTests(unittest.TestCase):
             icons = home / ".local" / "share" / "icons"
             desktop = home / "Desktop"
             installed_application = applications / "open-mmi.desktop"
+            installed_chooser = applications / "open-mmi-chooser.desktop"
             installed_shortcut = desktop / "Open MMI.desktop"
 
             shell = textwrap.dedent(
@@ -34,9 +36,11 @@ class DesktopEntryInstallationTests(unittest.TestCase):
                 REAL_HOME={str(home)!r}
                 REPO_ROOT={str(ROOT)!r}
                 DESKTOP_ENTRY_SOURCE={str(DESKTOP_ENTRY)!r}
+                CHOOSER_ENTRY_SOURCE={str(CHOOSER_ENTRY)!r}
                 DESKTOP_ICON_SOURCE={str(DESKTOP_ICONS)!r}
                 APPLICATIONS_DIR={str(applications)!r}
                 APPLICATION_ENTRY={str(installed_application)!r}
+                CHOOSER_APPLICATION_ENTRY={str(installed_chooser)!r}
                 ICON_THEME_DIR={str(icons)!r}
                 DESKTOP_ENTRY_NAME="Open MMI.desktop"
 
@@ -89,10 +93,13 @@ class DesktopEntryInstallationTests(unittest.TestCase):
                 install_desktop_entry
 
                 test -f {str(installed_application)!r}
+                test -f {str(installed_chooser)!r}
                 test -f {str(installed_shortcut)!r}
                 test "$(stat -c '%a' {str(installed_application)!r})" = "644"
+                test "$(stat -c '%a' {str(installed_chooser)!r})" = "644"
                 test "$(stat -c '%a' {str(installed_shortcut)!r})" = "755"
                 cmp {str(DESKTOP_ENTRY)!r} {str(installed_application)!r}
+                cmp {str(CHOOSER_ENTRY)!r} {str(installed_chooser)!r}
                 cmp {str(DESKTOP_ENTRY)!r} {str(installed_shortcut)!r}
 
                 while IFS= read -r -d '' source_icon; do
@@ -106,6 +113,7 @@ class DesktopEntryInstallationTests(unittest.TestCase):
                 remove_desktop_entry
 
                 test ! -e {str(installed_application)!r}
+                test ! -e {str(installed_chooser)!r}
                 test ! -e {str(installed_shortcut)!r}
                 while IFS= read -r -d '' source_icon; do
                     relative_path="${{source_icon#{str(DESKTOP_ICONS)!r}/}}"

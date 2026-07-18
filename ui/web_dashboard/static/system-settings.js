@@ -57,23 +57,50 @@
       return `<div class="openmmi-setting-row"><div><strong>${escapeHtml(title)}</strong><small>${escapeHtml(note)}</small></div><div class="openmmi-setting-controls">${controls}</div></div>`;
     }
 
+    function frontendVersionSnapshot() {
+      try {
+        return windowRef.__openMmiFrontendVersionController?.snapshot?.() || {};
+      } catch (_) {
+        return {};
+      }
+    }
+
+    function frontendVersionStateLabel(value) {
+      const labels = {
+        current: "up to date",
+        reloading: "applying update",
+        "update-ready": "reload ready",
+        "mismatch-after-reload": "reload required",
+        reconnecting: "checking…",
+        unavailable: "unavailable",
+      };
+      return labels[String(value || "")] || String(value || "unavailable");
+    }
+
     function systemTemplate() {
       const launcher = snapshot?.launcher || {};
+      const version = frontendVersionSnapshot();
       const defaultUi = launcher.default_ui || "web";
       const autostart = launcher.open_at_login === true;
       const reachable = launcher.dashboard_reachable ? "reachable" : "unreachable";
+      const loadedVersion = version.loadedId || "--";
+      const serverVersion = version.serverId || "--";
+      const versionState = frontendVersionStateLabel(version.state);
       return `
-        <div data-openmmi-system-settings-panel="true">
-          <div class="openmmi-settings-panel-head"><span>System</span><small>desktop shell</small></div>
+        <div data-openmmi-system-settings-panel="true" data-openmmi-system-settings-ready="true">
+          <div class="openmmi-settings-panel-head"><span>System</span><small>desktop shell and updates</small></div>
           ${statusBanner()}
+          <div class="openmmi-settings-metric"><span>Dashboard version</span><strong data-testid="system-frontend-version">${escapeHtml(loadedVersion)}</strong></div>
+          <div class="openmmi-settings-metric"><span>Server version</span><strong data-testid="system-server-version">${escapeHtml(serverVersion)}</strong></div>
+          <div class="openmmi-settings-metric"><span>Update status</span><strong data-testid="system-version-state">${escapeHtml(versionState)}</strong></div>
           <div class="openmmi-settings-metric"><span>Health endpoint</span><strong>${escapeHtml(reachable)}</strong></div>
           ${row("Default interface", "Used by the desktop icon and open-mmi-launcher without arguments.",
-            pill("Web", defaultUi === "web", 'data-openmmi-launcher-ui="web" data-testid="launcher-default-web"')
-            + pill("TUI", defaultUi === "tui", 'data-openmmi-launcher-ui="tui" data-testid="launcher-default-tui"'))}
+            pill("Web", defaultUi === "web", 'data-openmmi-launcher-ui="web" data-openmmi-requires-dashboard="true" data-testid="launcher-default-web"')
+            + pill("TUI", defaultUi === "tui", 'data-openmmi-launcher-ui="tui" data-openmmi-requires-dashboard="true" data-testid="launcher-default-tui"'))}
           ${row("Open Open MMI at login", "Launch the remembered interface after graphical login. The launcher starts the dashboard service when needed.",
-            pill("off", !autostart, 'data-openmmi-launcher-autostart="false" data-testid="launcher-autostart-off"')
-            + pill("on", autostart, 'data-openmmi-launcher-autostart="true" data-testid="launcher-autostart-on"'))}
-          <button type="button" class="openmmi-settings-link openmmi-config-refresh" data-openmmi-system-refresh="true" ${busy ? "disabled" : ""}>Refresh status</button>
+            pill("off", !autostart, 'data-openmmi-launcher-autostart="false" data-openmmi-requires-dashboard="true" data-testid="launcher-autostart-off"')
+            + pill("on", autostart, 'data-openmmi-launcher-autostart="true" data-openmmi-requires-dashboard="true" data-testid="launcher-autostart-on"'))}
+          <button type="button" class="openmmi-settings-link openmmi-config-refresh" data-openmmi-system-refresh="true" data-openmmi-requires-dashboard="true" ${busy ? "disabled" : ""}>Refresh status</button>
         </div>`;
     }
 
@@ -106,10 +133,10 @@
             </div>
             <p class="openmmi-config-secret-note">Passwords and tokens are written to <code>${escapeHtml(config.path || "~/.config/open-mmi/dashboard.env")}</code> with mode 0600. They are never returned to this browser.</p>
             <div class="openmmi-config-actions">
-              <button type="button" class="openmmi-setting-pill" data-openmmi-jellyfin-test="true" data-testid="jellyfin-test" ${busy ? "disabled" : ""}>test</button>
-              <button type="button" class="openmmi-setting-pill is-selected" data-openmmi-jellyfin-save="true" data-testid="jellyfin-save" ${busy ? "disabled" : ""}>save</button>
-              <button type="button" class="openmmi-setting-pill" data-openmmi-jellyfin-clear="true" data-testid="jellyfin-clear" ${busy ? "disabled" : ""}>clear</button>
-              ${config.restart_required ? `<button type="button" class="openmmi-setting-pill" data-openmmi-dashboard-restart="true" ${busy ? "disabled" : ""}>restart dashboard</button>` : ""}
+              <button type="button" class="openmmi-setting-pill" data-openmmi-jellyfin-test="true" data-openmmi-requires-dashboard="true" data-testid="jellyfin-test" ${busy ? "disabled" : ""}>test</button>
+              <button type="button" class="openmmi-setting-pill is-selected" data-openmmi-jellyfin-save="true" data-openmmi-requires-dashboard="true" data-testid="jellyfin-save" ${busy ? "disabled" : ""}>save</button>
+              <button type="button" class="openmmi-setting-pill" data-openmmi-jellyfin-clear="true" data-openmmi-requires-dashboard="true" data-testid="jellyfin-clear" ${busy ? "disabled" : ""}>clear</button>
+              ${config.restart_required ? `<button type="button" class="openmmi-setting-pill" data-openmmi-dashboard-restart="true" data-openmmi-requires-dashboard="true" ${busy ? "disabled" : ""}>restart dashboard</button>` : ""}
             </div>
           </form>
         </div>`;
@@ -119,7 +146,7 @@
       const panel = documentRef.querySelector("#openmmiSettingsPanel");
       if (activeSection() !== "system" || !panel) return;
       const html = systemTemplate();
-      const missing = !panel.querySelector?.('[data-openmmi-system-settings-panel="true"]');
+      const missing = !panel.querySelector?.('[data-openmmi-system-settings-ready="true"]');
       if (html !== lastSystemHtml || missing) {
         lastSystemHtml = html;
         panel.innerHTML = html;
@@ -299,6 +326,7 @@
     documentRef.addEventListener("input", inputHandler);
     documentRef.addEventListener("change", changeHandler);
     windowRef.addEventListener("openmmi:settingsrender", () => windowRef.requestAnimationFrame(renderActive));
+    windowRef.addEventListener("openmmi:frontendversion", () => windowRef.requestAnimationFrame(renderSystem));
     documentRef.addEventListener("DOMContentLoaded", () => refresh());
 
     const Observer = windowRef.MutationObserver;
@@ -318,6 +346,8 @@
       renderJellyfin,
       renderSystem,
       systemTemplate,
+      frontendVersionSnapshot,
+      frontendVersionStateLabel,
       jellyfinTemplate,
     });
   }

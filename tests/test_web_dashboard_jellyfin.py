@@ -176,6 +176,51 @@ class JellyfinHardeningTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             jellyfin._safe_jellyfin_id("../../etc/passwd")
 
+
+    def test_status_classifies_unreachable_provider_as_retryable_reconnection(self):
+        from urllib.error import URLError
+
+        failure = RuntimeError("Jellyfin connection failed")
+        failure.__cause__ = URLError("offline")
+        with patch.object(jellyfin, "_jellyfin_config", return_value=self.config()), patch.object(
+            jellyfin, "_jellyfin_user_id", side_effect=failure
+        ):
+            payload = jellyfin._jellyfin_status_payload()
+
+        self.assertEqual(payload["connection_state"], "reconnecting")
+        self.assertTrue(payload["retryable"])
+        self.assertEqual(payload["error_code"], "unreachable")
+
+    def test_status_classifies_authentication_failure_without_retry(self):
+        from urllib.error import HTTPError
+
+        cause = HTTPError("https://jellyfin.test", 401, "Unauthorized", {}, None)
+        failure = RuntimeError("Jellyfin HTTP 401")
+        failure.__cause__ = cause
+        with patch.object(jellyfin, "_jellyfin_config", return_value=self.config()), patch.object(
+            jellyfin, "_jellyfin_user_id", side_effect=failure
+        ):
+            payload = jellyfin._jellyfin_status_payload()
+
+        self.assertEqual(payload["connection_state"], "authentication-error")
+        self.assertFalse(payload["retryable"])
+        self.assertEqual(payload["error_code"], "authentication")
+
+    def test_search_payload_exposes_recovery_state_without_secrets(self):
+        from urllib.error import URLError
+
+        failure = RuntimeError("Jellyfin connection failed")
+        failure.__cause__ = URLError("offline")
+        with patch.object(jellyfin, "_jellyfin_config", return_value=self.config()), patch.object(
+            jellyfin, "_jellyfin_scope_params", side_effect=failure
+        ):
+            payload = jellyfin._jellyfin_search_payload()
+
+        self.assertEqual(payload["connection_state"], "reconnecting")
+        self.assertTrue(payload["retryable"])
+        self.assertEqual(payload["items"], [])
+        self.assertNotIn("test-token", str(payload))
+
     def test_audio_proxy_treats_client_disconnect_as_normal_stream_end(self):
         class FakeResponse:
             status = 206
