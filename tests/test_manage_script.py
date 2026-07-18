@@ -25,6 +25,12 @@ class ManageScriptLifecycleTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_update_source_metadata_python_has_valid_syntax(self) -> None:
+        marker = "<<'PY_UPDATE_SOURCE'\n"
+        start = self.text.index(marker) + len(marker)
+        end = self.text.index("\nPY_UPDATE_SOURCE", start)
+        compile(self.text[start:end], "manage.sh:PY_UPDATE_SOURCE", "exec")
+
     def test_service_units_use_single_command_source_and_destination(self) -> None:
         install_canbusd = (
             'install -m 0644 -o "$REAL_USER" -g "$REAL_USER" '
@@ -194,6 +200,38 @@ sudo() {{ printf '%s\\0' "$@"; }}
         self.assertIn(
             'systemctl --user disable --now "$service" >/dev/null 2>&1 || true',
             self.text,
+        )
+
+
+    def test_install_and_update_record_managed_update_source_metadata(self) -> None:
+        install_start = self.text.index("cmd_install() {")
+        update_start = self.text.index("cmd_update() {")
+        uninstall_start = self.text.index("cmd_uninstall() {")
+        install_block = self.text[install_start:update_start]
+        update_block = self.text[update_start:uninstall_start]
+        metadata_start = self.text.index("write_update_source_metadata() {")
+        metadata_end = self.text.index("copy_if_missing() {", metadata_start)
+        metadata_block = self.text[metadata_start:metadata_end]
+
+        self.assertIn('destination="$INSTALL_DIR/.update-source.json"', metadata_block)
+        self.assertIn('"schema_version": 1', metadata_block)
+        self.assertIn('"channel": "development"', metadata_block)
+        self.assertIn('"repository_path": str(Path(sys.argv[2]).resolve())', metadata_block)
+        self.assertIn('"installed_commit": sys.argv[5].lower()', metadata_block)
+        self.assertIn('tempfile.NamedTemporaryFile(', metadata_block)
+        self.assertIn('os.fsync(temporary.fileno())', metadata_block)
+        self.assertIn('os.replace(temporary_name, path)', metadata_block)
+        self.assertIn('os.chmod(temporary_name, 0o644)', metadata_block)
+        self.assertIn("write_update_source_metadata", install_block)
+        self.assertIn("write_update_source_metadata", update_block)
+        self.assertGreater(install_block.index('get_current_version > "$VERSION_FILE"'), 0)
+        self.assertGreater(
+            install_block.index("write_update_source_metadata"),
+            install_block.index('get_current_version > "$VERSION_FILE"'),
+        )
+        self.assertGreater(
+            update_block.index("write_update_source_metadata"),
+            update_block.index("echo '$new_version' > '$VERSION_FILE'"),
         )
 
     def test_group_cleanup_guidance_is_safe(self) -> None:

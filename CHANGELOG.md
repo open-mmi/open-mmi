@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased — V1 update management
+
+### Added
+- Managed `/opt/open-mmi/.update-source.json` metadata recording the managed source checkout, development channel, branch, upstream, installed commit, and installed version.
+- Local-only read-only update status and manual update-check endpoints.
+- Settings → System visibility for installed version, channel, tracked remote version, check state, last check, and repository health.
+- Branch-specific update source, API, UI, execution, rollback, health, and permission design records.
+
+### Security
+- Update checks accept no browser-selected repository, path, remote, branch, ref, timeout, or command.
+- Git credential prompts are disabled, checks use bounded argument-list subprocesses, and raw remote errors are not exposed to the browser.
+- A remote commit mismatch is reported conservatively when update direction cannot be proven without changing the checkout.
+
+### Not yet included
+- No update installation, channel changes, scheduling, unattended updates, readiness enforcement, privileged coordinator, or rollback action.
+
 ## Unreleased — V1 runtime hardening
 
 ### Added

@@ -17,6 +17,7 @@ REQUIRED_PATHS = {
     "ui/web_dashboard/jellyfin.py",
     "ui/web_dashboard/radio.py",
     "ui/web_dashboard/runtime_diagnostics.py",
+    "ui/web_dashboard/update_status.py",
     "ui/web_dashboard/server.py",
     "ui/web_dashboard/versioning.py",
     "ui/web_dashboard/usb.py",

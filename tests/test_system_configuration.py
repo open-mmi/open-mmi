@@ -116,6 +116,65 @@ class SystemConfigurationTests(unittest.TestCase):
         save.assert_not_called()
         self.assertTrue(result["ok"])
 
+
+    def test_update_status_routes_are_local_fixed_and_read_only(self):
+        class Handler:
+            client_address = ("127.0.0.1", 1234)
+            headers = {"Host": "127.0.0.1:8765", "Origin": "http://127.0.0.1:8765"}
+
+            def __init__(self):
+                self.sent = None
+                self.rfile = io.BytesIO()
+
+            def _send_json(self, payload, status=200):
+                self.sent = (payload, status)
+
+        fixture = {"api_version": 1, "read_only": True, "update": {"state": "not-checked"}}
+        handler = Handler()
+        with patch.object(system_settings.update_status, "status_payload", return_value=fixture) as status_payload:
+            self.assertTrue(system_settings._handle_get(handler, "/api/system/update-status"))
+        status_payload.assert_called_once_with()
+        self.assertEqual(handler.sent, (fixture, 200))
+
+        body = b'{"confirm": true}'
+        handler = Handler()
+        handler.headers = {
+            "Host": "127.0.0.1:8765",
+            "Origin": "http://127.0.0.1:8765",
+            "Content-Type": "application/json",
+            "Content-Length": str(len(body)),
+        }
+        handler.rfile = io.BytesIO(body)
+        checked = {"api_version": 1, "read_only": True, "update": {"state": "up-to-date"}}
+        with patch.object(system_settings.update_status, "check_for_updates", return_value=checked) as check:
+            self.assertTrue(system_settings._handle_post(handler, "/api/system/update-check"))
+        check.assert_called_once_with()
+        self.assertEqual(handler.sent, (checked, 200))
+
+    def test_update_check_rejects_caller_supplied_source_fields(self):
+        class Handler:
+            client_address = ("127.0.0.1", 1234)
+
+            def __init__(self, body: bytes):
+                self.headers = {
+                    "Host": "127.0.0.1:8765",
+                    "Origin": "http://127.0.0.1:8765",
+                    "Content-Type": "application/json",
+                    "Content-Length": str(len(body)),
+                }
+                self.rfile = io.BytesIO(body)
+                self.sent = None
+
+            def _send_json(self, payload, status=200):
+                self.sent = (payload, status)
+
+        handler = Handler(b'{"repository": "https://evil.test/repo", "branch": "main"}')
+        with patch.object(system_settings.update_status, "check_for_updates") as check:
+            self.assertTrue(system_settings._handle_post(handler, "/api/system/update-check"))
+        check.assert_not_called()
+        self.assertEqual(handler.sent[1], 400)
+        self.assertIn("Invalid update check request", handler.sent[0]["error"])
+
     def test_cli_setup_writes_credentials_without_printing_secrets(self):
         values = {
             "OPEN_MMI_JELLYFIN_URL": "https://jellyfin.test",

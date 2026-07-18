@@ -10,6 +10,19 @@ class ReleaseReadinessTests(unittest.TestCase):
         for relative in ("CHANGELOG.md", "docs/v1-foundation-migration.md", "docs/release-checklist.md"):
             self.assertTrue((ROOT / relative).is_file(), relative)
 
+    def test_update_management_design_set_exists(self):
+        root = ROOT / "docs" / "design" / "v1-update-management"
+        for name in (
+            "README.md",
+            "update-source-and-channels.md",
+            "update-status-api.md",
+            "update-ui.md",
+            "update-execution.md",
+            "health-checks-and-rollback.md",
+            "security-and-permissions.md",
+        ):
+            self.assertTrue((root / name).is_file(), name)
+
     def test_runtime_dependencies_have_supported_major_bounds(self):
         source = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
         self.assertIn('"python-can>=4.3,<5"', source)

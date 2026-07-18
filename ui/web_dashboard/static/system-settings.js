@@ -21,7 +21,9 @@
     if (!windowRef || !documentRef || !api) throw new Error("System settings require window, document and API client");
 
     let snapshot = null;
+    let updateSnapshot = null;
     let busy = false;
+    let updateBusy = false;
     let message = "";
     let messageKind = "";
     let lastSystemHtml = "";
@@ -77,6 +79,56 @@
       return labels[String(value || "")] || String(value || "unavailable");
     }
 
+    function updateStateLabel(value) {
+      const labels = {
+        "not-checked": "not checked",
+        "up-to-date": "up to date",
+        "update-available": "update available",
+        "remote-different": "remote differs",
+        "local-ahead": "local source ahead",
+        diverged: "source diverged",
+        unavailable: "check unavailable",
+        blocked: "check blocked",
+        "source-unavailable": "source not configured",
+        "source-invalid": "source invalid",
+      };
+      return labels[String(value || "")] || String(value || "unavailable");
+    }
+
+    function repositoryStateLabel(value) {
+      const labels = {
+        ready: "ready",
+        dirty: "local changes",
+        "source-changed": "source differs from installed",
+        detached: "detached HEAD",
+        "branch-mismatch": "different branch",
+        unavailable: "unavailable",
+        unconfigured: "not configured",
+        invalid: "invalid configuration",
+      };
+      return labels[String(value || "")] || String(value || "unavailable");
+    }
+
+    function checkedAtLabel(value) {
+      const text = String(value || "").trim();
+      if (!text) return "never";
+      return text.replace("T", " ").replace("+00:00", " UTC");
+    }
+
+    function updateCheckMessage(payload) {
+      const state = String(payload?.update?.state || "");
+      if (state === "up-to-date") return ["Open MMI is up to date", "success"];
+      if (state === "update-available") return ["An update is available", "warning"];
+      if (["remote-different", "local-ahead", "diverged"].includes(state)) {
+        return ["The tracked remote differs; installation direction is not assumed", "warning"];
+      }
+      if (["blocked", "source-unavailable", "source-invalid"].includes(state)) {
+        return [payload?.update?.error || "Update check is blocked", "warning"];
+      }
+      if (state === "unavailable") return [payload?.update?.error || "Update check is unavailable", "error"];
+      return ["Update status refreshed", "success"];
+    }
+
     function systemTemplate() {
       const launcher = snapshot?.launcher || {};
       const version = frontendVersionSnapshot();
@@ -86,14 +138,38 @@
       const loadedVersion = version.loadedId || "--";
       const serverVersion = version.serverId || "--";
       const versionState = frontendVersionStateLabel(version.state);
+      const installed = updateSnapshot?.installed || {};
+      const update = updateSnapshot?.update || {};
+      const source = updateSnapshot?.source || {};
+      const installedVersion = installed.version || "--";
+      const availableVersion = update.available_version || "--";
+      const channel = updateSnapshot?.channel || "unconfigured";
+      const updateState = updateStateLabel(update.state || "not-checked");
+      const repositoryState = repositoryStateLabel(source.state || "unconfigured");
+      const lastChecked = checkedAtLabel(update.checked_at);
+      const updateError = update.error
+        ? `<p class="openmmi-update-status-note" data-testid="system-update-error">${escapeHtml(update.error)}</p>`
+        : "";
       return `
         <div data-openmmi-system-settings-panel="true" data-openmmi-system-settings-ready="true">
           <div class="openmmi-settings-panel-head"><span>System</span><small>desktop shell and updates</small></div>
           ${statusBanner()}
           <div class="openmmi-settings-metric"><span>Dashboard version</span><strong data-testid="system-frontend-version">${escapeHtml(loadedVersion)}</strong></div>
           <div class="openmmi-settings-metric"><span>Server version</span><strong data-testid="system-server-version">${escapeHtml(serverVersion)}</strong></div>
-          <div class="openmmi-settings-metric"><span>Update status</span><strong data-testid="system-version-state">${escapeHtml(versionState)}</strong></div>
+          <div class="openmmi-settings-metric"><span>Frontend state</span><strong data-testid="system-version-state">${escapeHtml(versionState)}</strong></div>
           <div class="openmmi-settings-metric"><span>Health endpoint</span><strong>${escapeHtml(reachable)}</strong></div>
+          <div class="openmmi-settings-subhead"><span>Software updates</span><small>read-only visibility</small></div>
+          <div data-openmmi-update-status="true">
+            <div class="openmmi-settings-metric"><span>Installed version</span><strong data-testid="system-installed-version">${escapeHtml(installedVersion)}</strong></div>
+            <div class="openmmi-settings-metric"><span>Channel</span><strong data-testid="system-update-channel">${escapeHtml(channel)}</strong></div>
+            <div class="openmmi-settings-metric"><span>Available version</span><strong data-testid="system-available-version">${escapeHtml(availableVersion)}</strong></div>
+            <div class="openmmi-settings-metric"><span>Update status</span><strong data-testid="system-update-state">${escapeHtml(updateState)}</strong></div>
+            <div class="openmmi-settings-metric"><span>Last checked</span><strong data-testid="system-update-checked-at">${escapeHtml(lastChecked)}</strong></div>
+            <div class="openmmi-settings-metric"><span>Repository health</span><strong data-testid="system-update-repository">${escapeHtml(repositoryState)}</strong></div>
+            ${updateError}
+            <p class="openmmi-update-status-note">Checking is read-only. Installing, channel changes, readiness checks, and rollback are not enabled in this slice.</p>
+            <button type="button" class="openmmi-settings-link openmmi-config-refresh" data-openmmi-update-check="true" data-openmmi-requires-dashboard="true" data-testid="system-update-check" ${updateBusy ? "disabled" : ""}>${updateBusy ? "Checking…" : "Check for updates"}</button>
+          </div>
           ${row("Default interface", "Used by the desktop icon and open-mmi-launcher without arguments.",
             pill("Web", defaultUi === "web", 'data-openmmi-launcher-ui="web" data-openmmi-requires-dashboard="true" data-testid="launcher-default-web"')
             + pill("TUI", defaultUi === "tui", 'data-openmmi-launcher-ui="tui" data-openmmi-requires-dashboard="true" data-testid="launcher-default-tui"'))}
@@ -211,6 +287,21 @@
       if (activeSection() === "media") renderJellyfin();
     }
 
+    async function refreshUpdateStatus() {
+      try {
+        updateSnapshot = await api.getJson("/api/system/update-status", { usePayloadError: true });
+      } catch (error) {
+        updateSnapshot = {
+          channel: "unavailable",
+          installed: { version: "--" },
+          source: { state: "unavailable" },
+          update: { state: "unavailable", checked_at: null, error: error?.message || "Could not load update status" },
+        };
+      }
+      renderSystem();
+      return updateSnapshot;
+    }
+
     async function refresh() {
       try {
         snapshot = await api.getJson("/api/system/settings", { usePayloadError: true });
@@ -220,8 +311,26 @@
         message = error?.message || "Could not load local system settings";
         messageKind = "error";
       }
+      await refreshUpdateStatus();
       renderActive();
       return snapshot;
+    }
+
+    async function checkForUpdates() {
+      updateBusy = true;
+      renderSystem();
+      try {
+        updateSnapshot = await api.postJson("/api/system/update-check", { confirm: true }, { usePayloadError: true });
+        const [text, kind] = updateCheckMessage(updateSnapshot);
+        setMessage(text, kind);
+        return updateSnapshot;
+      } catch (error) {
+        setMessage(error?.message || "Update check failed", "error");
+        throw error;
+      } finally {
+        updateBusy = false;
+        renderSystem();
+      }
     }
 
     async function post(path, payload, successMessage, options = {}) {
@@ -286,6 +395,8 @@
         await post("/api/system/launcher", { open_at_login: target.dataset.openmmiLauncherAutostart === "true" }, "Login launch preference saved");
       } else if (target.dataset.openmmiSystemRefresh) {
         await refresh();
+      } else if (target.dataset.openmmiUpdateCheck) {
+        await checkForUpdates();
       } else if (target.dataset.openmmiJellyfinTest) {
         await post("/api/system/jellyfin/test", jellyfinPayload(), "Jellyfin connection succeeded", { refresh: false });
       } else if (target.dataset.openmmiJellyfinSave) {
@@ -341,13 +452,18 @@
       activeSection,
       captureJellyfinDraft,
       jellyfinPayload,
+      checkForUpdates,
       refresh,
+      refreshUpdateStatus,
       renderActive,
       renderJellyfin,
       renderSystem,
       systemTemplate,
       frontendVersionSnapshot,
       frontendVersionStateLabel,
+      updateStateLabel,
+      repositoryStateLabel,
+      checkedAtLabel,
       jellyfinTemplate,
     });
   }

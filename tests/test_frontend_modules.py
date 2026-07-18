@@ -148,6 +148,16 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
 
 
 
+    def test_system_settings_owns_read_only_update_visibility(self):
+        source = SYSTEM_SETTINGS.read_text(encoding="utf-8")
+        self.assertIn('api.getJson("/api/system/update-status"', source)
+        self.assertIn('api.postJson("/api/system/update-check", { confirm: true }', source)
+        self.assertIn('data-testid="system-update-check"', source)
+        self.assertIn('Checking is read-only.', source)
+        self.assertIn('"remote-different": "remote differs"', source)
+        self.assertNotIn("Install update", source)
+        self.assertNotIn("repository_path", source)
+
     def test_runtime_diagnostics_module_owns_visibility_aware_polling(self):
         source = RUNTIME_DIAGNOSTICS.read_text(encoding="utf-8")
         self.assertIn('const ENDPOINT = "/api/system/diagnostics/runtime";', source)

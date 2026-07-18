@@ -96,6 +96,8 @@ Credentials are stored server-side in `~/.config/open-mmi/dashboard.env` with mo
 See [`docs/desktop-shell.md`](docs/desktop-shell.md) for launcher, login-autostart, and advanced service details and [`ui/web_dashboard/README.md`](ui/web_dashboard/README.md) for Jellyfin scope and security guidance.
 
 See [`docs/runtime-hardening.md`](docs/runtime-hardening.md) for update/cache recovery, service reconnection, thermal diagnostics, and runtime-efficiency behaviour. Vehicle installations should also review [`docs/vehicle-tablet-installation.md`](docs/vehicle-tablet-installation.md).
+
+The first `v1-update-management` slice adds read-only software update visibility under **Settings → System**. It can inspect the installer-recorded development source and manually compare its tracked remote without fetching or modifying the installation. Update installation, channel changes, scheduling, readiness enforcement, and rollback are not enabled yet; see [`docs/design/v1-update-management/`](docs/design/v1-update-management/README.md).
 <!-- OPEN_MMI_WEB_DASHBOARD_END -->
 
 ---

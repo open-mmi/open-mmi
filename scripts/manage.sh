@@ -134,6 +134,63 @@ get_repo_upstream() {
     fi
 }
 
+write_update_source_metadata() {
+    local branch upstream commit version destination
+    branch=$(get_repo_branch)
+    upstream=$(get_repo_upstream)
+    commit=$(sudo -u "$REAL_USER" git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || true)
+    version=$(get_current_version)
+    destination="$INSTALL_DIR/.update-source.json"
+
+    if [[ ! "$commit" =~ ^[0-9a-fA-F]{40}$ ]]; then
+        log_warn "Could not record managed update source metadata"
+        return 0
+    fi
+
+    python3 - "$destination" "$REPO_ROOT" "$branch" "$upstream" "$commit" "$version" <<'PY_UPDATE_SOURCE'
+import json
+import os
+import sys
+import tempfile
+from pathlib import Path
+
+path = Path(sys.argv[1])
+payload = {
+    "schema_version": 1,
+    "channel": "development",
+    "repository_path": str(Path(sys.argv[2]).resolve()),
+    "branch": sys.argv[3],
+    "upstream": sys.argv[4],
+    "installed_commit": sys.argv[5].lower(),
+    "installed_version": sys.argv[6],
+}
+temporary_name = ""
+try:
+    with tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        delete=False,
+    ) as temporary:
+        temporary_name = temporary.name
+        json.dump(payload, temporary, indent=2, sort_keys=True)
+        temporary.write("\n")
+        temporary.flush()
+        os.fsync(temporary.fileno())
+    os.chmod(temporary_name, 0o644)
+    os.replace(temporary_name, path)
+except Exception:
+    if temporary_name:
+        try:
+            os.unlink(temporary_name)
+        except OSError:
+            pass
+    raise
+PY_UPDATE_SOURCE
+    log_success "Recorded managed update source"
+}
+
 
 copy_if_missing() {
     local src="$1"
@@ -500,8 +557,9 @@ cmd_install() {
         return 1
     fi
     
-    # Store version
+    # Store version and the managed source descriptor used by read-only checks.
     get_current_version > "$VERSION_FILE"
+    write_update_source_metadata
     
     # Install systemd service
     log_info "Installing systemd user service..."
@@ -653,8 +711,9 @@ cmd_update() {
     sudo -u "$REAL_USER" env HOME="$REAL_HOME" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user daemon-reload
     configure_update_service_defaults
 
-    # Version write (needs sudo because /opt is root-owned)
+    # Version and managed source metadata writes need root because /opt is root-owned.
     sudo bash -c "echo '$new_version' > '$VERSION_FILE'"
+    write_update_source_metadata
 
     # Restart services
     sudo -u "$REAL_USER" env HOME="$REAL_HOME" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user restart canbusd.service open-mmi-dashboard.service

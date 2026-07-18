@@ -187,8 +187,46 @@ async function loadDashboard(page, options = {}) {
     },
   };
 
+  const updateStatusPayload = options.updateStatusPayload || {
+    api_version: 1,
+    read_only: true,
+    installed: { managed: true, version: "v1-runtime-hardening-42-gabc1234", commit: "abc1234def56" },
+    channel: "development",
+    source: {
+      configured: true,
+      state: "ready",
+      clean: true,
+      branch: "v1-update-management",
+      expected_branch: "v1-update-management",
+      upstream: "origin/v1-update-management",
+      commit: "abc1234def56",
+    },
+    update: {
+      state: "not-checked",
+      checked_at: null,
+      available_version: "",
+      available_commit: "",
+      remote_differs: null,
+      update_available: null,
+      error: "",
+    },
+    readiness: { state: "ready", blockers: [] },
+  };
+  const updateCheckPayload = options.updateCheckPayload || {
+    ...updateStatusPayload,
+    update: {
+      state: "update-available",
+      checked_at: "2026-07-18T14:32:00+00:00",
+      available_version: "def5678abc90",
+      available_commit: "def5678abc901234567890123456789012345678",
+      remote_differs: true,
+      update_available: true,
+      error: "",
+    },
+  };
+
   await page.setContent(ASSETS.documentHtml, { waitUntil: "domcontentloaded" });
-  await page.evaluate(({ initialPayload, initialStorage, initialBluetoothPayload, initialSystemPayload, initialVersionPayload, initialJellyfinStatusPayload, initialJellyfinSearchPayload, initialRuntimeDiagnosticsPayload, runtimeDiagnosticsIntervalMs, dashboardRetryDelaysMs }) => {
+  await page.evaluate(({ initialPayload, initialStorage, initialBluetoothPayload, initialSystemPayload, initialUpdateStatusPayload, initialUpdateCheckPayload, initialVersionPayload, initialJellyfinStatusPayload, initialJellyfinSearchPayload, initialRuntimeDiagnosticsPayload, runtimeDiagnosticsIntervalMs, dashboardRetryDelaysMs }) => {
     const values = Object.assign({}, initialStorage);
     const localStorageMock = {
       get length() { return Object.keys(values).length; },
@@ -203,6 +241,8 @@ async function loadDashboard(page, options = {}) {
     window.__openMmiStatusFixture = initialPayload;
     window.__openMmiBluetoothFixture = initialBluetoothPayload;
     window.__openMmiSystemFixture = initialSystemPayload;
+    window.__openMmiUpdateStatusFixture = initialUpdateStatusPayload;
+    window.__openMmiUpdateCheckFixture = initialUpdateCheckPayload;
     window.__openMmiVersionFixture = initialVersionPayload;
     window.__openMmiJellyfinStatusFixture = initialJellyfinStatusPayload;
     window.__openMmiJellyfinSearchFixture = initialJellyfinSearchPayload;
@@ -214,6 +254,8 @@ async function loadDashboard(page, options = {}) {
     window.__openMmiDashboardHealthRequests = 0;
     window.__openMmiDashboardStatusRequests = 0;
     window.__openMmiDashboardVersionRequests = 0;
+    window.__openMmiUpdateStatusRequests = 0;
+    window.__openMmiUpdateCheckRequests = 0;
     window.__openMmiJellyfinStatusRequests = 0;
     window.__openMmiJellyfinSearchRequests = 0;
 
@@ -241,6 +283,15 @@ async function loadDashboard(page, options = {}) {
       if (url.includes("/api/system/diagnostics/runtime")) {
         window.__openMmiRuntimeDiagnosticsRequests += 1;
         return json(window.__openMmiRuntimeDiagnosticsFixture);
+      }
+      if (url.includes("/api/system/update-status")) {
+        window.__openMmiUpdateStatusRequests += 1;
+        return json(window.__openMmiUpdateStatusFixture);
+      }
+      if (url.includes("/api/system/update-check")) {
+        window.__openMmiUpdateCheckRequests += 1;
+        window.__openMmiUpdateStatusFixture = window.__openMmiUpdateCheckFixture;
+        return json(window.__openMmiUpdateCheckFixture);
       }
       if (url.includes("/api/system/settings")) return json(window.__openMmiSystemFixture);
       if (url.includes("/api/system/launcher")) {
@@ -301,6 +352,8 @@ async function loadDashboard(page, options = {}) {
     initialStorage: storage,
     initialBluetoothPayload: bluetoothPayload,
     initialSystemPayload: systemPayload,
+    initialUpdateStatusPayload: updateStatusPayload,
+    initialUpdateCheckPayload: updateCheckPayload,
     initialVersionPayload: versionPayload,
     initialJellyfinStatusPayload: jellyfinStatusPayload,
     initialJellyfinSearchPayload: jellyfinSearchPayload,
@@ -353,6 +406,12 @@ async function loadDashboard(page, options = {}) {
         health: window.__openMmiDashboardHealthRequests,
         status: window.__openMmiDashboardStatusRequests,
         version: window.__openMmiDashboardVersionRequests,
+      }));
+    },
+    async updateRequestCounts() {
+      return page.evaluate(() => ({
+        status: window.__openMmiUpdateStatusRequests,
+        checks: window.__openMmiUpdateCheckRequests,
       }));
     },
     async storage() {
@@ -887,7 +946,7 @@ test("shared clock persists display preferences and survives page navigation", a
 
 test("system settings and Jellyfin setup use the shared local configuration API", async ({ page }) => {
   const failures = captureRuntimeFailures(page);
-  await loadDashboard(page);
+  const dashboard = await loadDashboard(page);
   await openSettings(page);
 
   await page.locator('[data-openmmi-settings-section="system"]').click();
@@ -897,6 +956,24 @@ test("system settings and Jellyfin setup use the shared local configuration API"
   await expect(page.getByTestId("system-frontend-version")).toHaveText("__OPEN_MMI_FRONTEND_ID__");
   await expect(page.getByTestId("system-server-version")).toHaveText("__OPEN_MMI_FRONTEND_ID__");
   await expect(page.getByTestId("system-version-state")).toHaveText("up to date");
+  await expect(page.getByTestId("system-installed-version")).toHaveText("v1-runtime-hardening-42-gabc1234");
+  await expect(page.getByTestId("system-update-channel")).toHaveText("development");
+  await expect(page.getByTestId("system-available-version")).toHaveText("--");
+  await expect(page.getByTestId("system-update-state")).toHaveText("not checked");
+  await expect(page.getByTestId("system-update-checked-at")).toHaveText("never");
+  await expect(page.getByTestId("system-update-repository")).toHaveText("ready");
+  const updateCountsBeforeCheck = await dashboard.updateRequestCounts();
+  expect(updateCountsBeforeCheck.status).toBeGreaterThanOrEqual(1);
+  expect(updateCountsBeforeCheck.checks).toBe(0);
+
+  await page.getByTestId("system-update-check").click();
+  await expect(page.getByTestId("system-update-state")).toHaveText("update available");
+  await expect(page.getByTestId("system-available-version")).toHaveText("def5678abc90");
+  await expect(page.getByTestId("system-update-checked-at")).toHaveText("2026-07-18 14:32:00 UTC");
+  await expect(page.getByRole("status")).toContainText("An update is available");
+  const updateCountsAfterCheck = await dashboard.updateRequestCounts();
+  expect(updateCountsAfterCheck.status).toBe(updateCountsBeforeCheck.status);
+  expect(updateCountsAfterCheck.checks).toBe(1);
 
   await page.evaluate(() => {
     const panel = document.querySelector("#openmmiSettingsPanel");

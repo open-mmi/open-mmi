@@ -25,7 +25,7 @@ try:
         restart_dashboard,
         write_environment_file,
     )
-    from ui.web_dashboard import jellyfin
+    from ui.web_dashboard import jellyfin, update_status
 except ModuleNotFoundError as exc:  # pragma: no cover - direct script fallback
     if exc.name != "ui":
         raise
@@ -40,7 +40,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover - direct script fallback
         restart_dashboard,
         write_environment_file,
     )
-    from ui.web_dashboard import jellyfin
+    from ui.web_dashboard import jellyfin, update_status
 
 SYSTEM_MAX_BODY_BYTES = 16 * 1024
 
@@ -162,12 +162,16 @@ def _restart_after_response(delay: float = 0.25) -> None:
 
 
 def _handle_get(handler: Any, path: str) -> bool:
-    if path != "/api/system/settings":
+    routes = {
+        "/api/system/settings": _settings_status,
+        "/api/system/update-status": update_status.status_payload,
+    }
+    if path not in routes:
         return False
     if not _request_allowed(handler):
         handler._send_json({"ok": False, "error": "Local configuration access required"}, 403)
         return True
-    handler._send_json(_settings_status())
+    handler._send_json(routes[path]())
     return True
 
 
@@ -180,6 +184,7 @@ def _handle_post(handler: Any, path: str) -> bool:
     if path not in routes and path not in {
         "/api/system/jellyfin/clear",
         "/api/system/dashboard/restart",
+        "/api/system/update-check",
     }:
         return False
     if not _request_allowed(handler):
@@ -192,6 +197,11 @@ def _handle_post(handler: Any, path: str) -> bool:
             if payload not in ({}, {"confirm": True}):
                 raise ValueError("Invalid clear request")
             result = _clear_jellyfin()
+        elif path == "/api/system/update-check":
+            payload = _json_body(handler)
+            if payload not in ({}, {"confirm": True}):
+                raise ValueError("Invalid update check request")
+            result = update_status.check_for_updates()
         elif path == "/api/system/dashboard/restart":
             payload = _json_body(handler)
             if payload not in ({}, {"confirm": True}):
@@ -201,7 +211,7 @@ def _handle_post(handler: Any, path: str) -> bool:
         else:
             result = routes[path](_json_body(handler))
         handler._send_json(result)
-    except (ValueError, ConfigurationError, launcher.LauncherError) as exc:
+    except (ValueError, ConfigurationError, launcher.LauncherError, update_status.UpdateStatusError) as exc:
         handler._send_json({"ok": False, "error": str(exc)}, 400)
     except (RuntimeError, TimeoutError, OSError):
         handler._send_json({"ok": False, "error": "Configuration operation failed"}, 502)

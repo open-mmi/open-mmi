@@ -341,7 +341,9 @@ Before adding or replacing icons, confirm the source licence and update `NOTICE.
 The browser loads small platform modules before the main dashboard application:
 
 - `static/api.js` owns same-origin JSON request behaviour.
+- `static/dashboard-connection.js` owns shared dashboard reachability and bounded same-build recovery.
 - `static/frontend-version.js` owns loaded/server build comparison, safe one-shot reloads, visibility-aware checking, and the update-ready notice.
+- `static/system-settings.js` owns local System/Jellyfin configuration rendering and the read-only software-update panel.
 - `static/runtime-diagnostics.js` owns the three-second, Diagnostics-only system-runtime polling lifecycle and conservative clock/thermal state derivation.
 - `static/preferences.js` owns safe JSON persistence and the dashboard settings key.
 - `static/clock.js` owns the persistent header clock, minute-boundary scheduling, and clock-specific Display preferences.
@@ -377,6 +379,16 @@ The release that first introduces this controller needs one reload if an older p
 
 Diagnostics updates its existing value nodes in place. It does not rebuild the full Diagnostics panel for each 200 ms status publication; a structural rebuild is reserved for changes to the decoded-path set.
 
+## Read-only software update visibility
+
+Managed install and update operations record `/opt/open-mmi/.update-source.json` with the original source checkout, development channel, tracked branch/upstream, installed commit, and installed version. The installed runtime does not contain `.git`, so this explicit descriptor prevents unreliable filesystem discovery and prevents the browser from selecting an arbitrary update source.
+
+`GET /api/system/update-status` reads local installation and repository health plus the last process-local check result. It performs no network operation. **Settings → System → Software updates** displays the installed version, channel, available remote version, state, last check, and repository health.
+
+**Check for updates** calls same-origin `POST /api/system/update-check` with a fixed confirmation object. The backend uses the managed recorded remote/ref and bounded `git ls-remote`; it does not fetch, merge, reset, install, restart, or elevate privilege. A differing commit is labelled **remote differs** unless local Git objects prove that the remote is a forward update. Network failure is never presented as up to date.
+
+This first update-management slice is intentionally read-only. It has no install button, channel editor, scheduler, privileged coordinator, readiness enforcement, or rollback action. Design records live in [`docs/design/v1-update-management/`](../../docs/design/v1-update-management/README.md).
+
 `static/styles.css` remains as an import-only compatibility manifest. `tools/verify_css_split.py` locks the module order and verifies that their concatenated bytes remain identical to the pre-split stylesheet, preventing accidental cascade changes during this structural phase.
 
 The platform modules resolve `window.fetch` and `window.localStorage` at call time. This keeps performance instrumentation compatible and lets the dashboard fail safely when browser storage is unavailable or restricted.
@@ -390,7 +402,7 @@ Browser-level coverage lives in `tests/browser/` and runs in Chromium through Pl
 Run these before committing dashboard changes:
 
 ```bash
-python3 -m py_compile ui/web_dashboard/server.py ui/web_dashboard/versioning.py ui/web_dashboard/runtime_diagnostics.py ui/web_dashboard/bluetooth.py ui/web_dashboard/jellyfin.py ui/web_dashboard/radio.py ui/web_dashboard/usb.py
+python3 -m py_compile ui/web_dashboard/server.py ui/web_dashboard/versioning.py ui/web_dashboard/runtime_diagnostics.py ui/web_dashboard/update_status.py ui/web_dashboard/bluetooth.py ui/web_dashboard/jellyfin.py ui/web_dashboard/radio.py ui/web_dashboard/usb.py
 find ui/web_dashboard/static -maxdepth 1 -name '*.js' -print0 \
   | xargs -0 -n1 node --check
 node --test tests/js/*.test.js
