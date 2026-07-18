@@ -389,6 +389,7 @@ verify_console_commands() {
 
 install_open_mmi_package() {
     local python="$INSTALL_DIR/venv/bin/python"
+    local package_source="${1:-$INSTALL_DIR}"
 
     if [ ! -x "$python" ]; then
         log_error "Deployment Python is missing or not executable: $python"
@@ -396,12 +397,17 @@ install_open_mmi_package() {
     fi
 
     log_info "Installing Open MMI package and console commands..."
-    if ! "$python" -m pip install --upgrade --force-reinstall "$INSTALL_DIR"; then
+    local pip_arguments=(install --upgrade --force-reinstall)
+    if [[ "$package_source" == *.whl ]]; then
+        pip_arguments+=(--no-deps)
+    fi
+    if ! env -u PYTHONPATH "$python" -m pip "${pip_arguments[@]}" "$package_source"; then
         log_error "Failed to install Open MMI package"
         return 1
     fi
 
     verify_console_commands
+    env -u PYTHONPATH "$python" -I -c 'import canbusd.core, ui.config_cli, ui.web_dashboard.server'
 }
 
 install_command_links() {
@@ -831,6 +837,9 @@ cmd_deploy_prepared() {
     local version="${OPEN_MMI_PREPARED_VERSION:-}"
     local rollback_root="/var/lib/open-mmi/rollback/$transaction"
     local deployment_stage="backup"
+    local candidate_wheel_dir="$rollback_root/candidate-wheel"
+    local candidate_wheel
+    local -a candidate_wheels=()
     local resolved_stage
 
     [[ $EUID -eq 0 ]] || { log_error "Prepared deployment requires root"; return 1; }
@@ -917,6 +926,16 @@ cmd_deploy_prepared() {
     }
     trap rollback_prepared_deployment ERR
 
+    deployment_stage="package-build"
+    install -d -m 0700 -o root -g root "$candidate_wheel_dir"
+    env -u PYTHONPATH "$INSTALL_DIR/venv/bin/python" -m pip wheel --no-deps \
+        --wheel-dir "$candidate_wheel_dir" "$resolved_stage"
+    mapfile -t candidate_wheels < <(find "$candidate_wheel_dir" -maxdepth 1 -type f -name 'open_mmi-*.whl' -print)
+    [[ ${#candidate_wheels[@]} -eq 1 ]]
+    candidate_wheel="${candidate_wheels[0]}"
+    env -u PYTHONPATH "$INSTALL_DIR/venv/bin/python" -I \
+        "$resolved_stage/tools/verify_wheel.py" "$candidate_wheel"
+
     deployment_stage="repository-head"
     [[ $(sudo -u "$REAL_USER" git -C "$OPEN_MMI_MANAGED_REPOSITORY" rev-parse HEAD) == "$previous_commit" ]]
     deployment_stage="repository-clean"
@@ -944,7 +963,7 @@ cmd_deploy_prepared() {
     CHOOSER_ENTRY_SOURCE="$REPO_ROOT/packaging/linux-desktop/open-mmi-chooser.desktop"
     DESKTOP_ICON_SOURCE="$REPO_ROOT/packaging/linux-desktop/icons"
     deployment_stage="package"
-    install_open_mmi_package
+    install_open_mmi_package "$candidate_wheel"
     install_command_links
     deployment_stage="system-services"
     install_update_coordinator

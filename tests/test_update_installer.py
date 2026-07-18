@@ -112,6 +112,10 @@ class UpdateInstallerTests(unittest.TestCase):
             update_installer._deployment_failure("Prepared deployment failed at stage: repository-fetch"),
             "Prepared deployment failed during repository-fetch; rollback unverified",
         )
+        self.assertEqual(
+            update_installer._deployment_failure("Prepared deployment failed at stage: package-build"),
+            "Prepared deployment failed during package-build; rollback unverified",
+        )
 
     def test_source_change_after_preparation_blocks_installation(self):
         with tempfile.TemporaryDirectory() as temporary:

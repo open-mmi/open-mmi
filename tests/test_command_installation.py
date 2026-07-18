@@ -47,11 +47,13 @@ class CommandInstallationTests(unittest.TestCase):
                     f"""\
                     #!/usr/bin/env bash
                     set -euo pipefail
-                    printf '%s\\n' \"$@\" > {str(pip_arguments)!r}
-                    for command in {commands}; do
-                        printf '#!/usr/bin/env bash\\nexit 0\\n' > \"$(dirname \"$0\")/$command\"
-                        chmod 0755 \"$(dirname \"$0\")/$command\"
-                    done
+                    if [[ \"${{1:-}}\" == -m && \"${{2:-}}\" == pip ]]; then
+                        printf '%s\\n' \"$@\" > {str(pip_arguments)!r}
+                        for command in {commands}; do
+                            printf '#!/usr/bin/env bash\\nexit 0\\n' > \"$(dirname \"$0\")/$command\"
+                            chmod 0755 \"$(dirname \"$0\")/$command\"
+                        done
+                    fi
                     """
                 ),
                 encoding="utf-8",
