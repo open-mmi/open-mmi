@@ -445,6 +445,16 @@ class _Handler(socketserver.StreamRequestHandler):
                 payload = None
             response = response_for_request(payload, self.server.state_path)  # type: ignore[attr-defined]
         self.wfile.write((json.dumps(response, sort_keys=True) + "\n").encode("utf-8"))
+        self.wfile.flush()
+        if isinstance(payload, dict) and payload.get("action") == "install" and response.get("ok") is True:
+            try:
+                subprocess.run(
+                    ["systemctl", "restart", "--no-block", "open-mmi-update-coordinator.service"],
+                    stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    check=False, timeout=3.0,
+                )
+            except (OSError, subprocess.TimeoutExpired):
+                pass
 
 
 class CoordinatorServer(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):

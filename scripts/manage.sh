@@ -514,7 +514,9 @@ install_update_coordinator() {
     install -d -m 0755 -o root -g root "$UPDATE_COORDINATOR_STATE_DIR"
     systemctl daemon-reload
     systemctl enable "$UPDATE_COORDINATOR_UNIT"
-    systemctl restart "$UPDATE_COORDINATOR_UNIT"
+    if [ "${OPEN_MMI_PREPARED_DEPLOYMENT:-0}" != 1 ]; then
+        systemctl restart "$UPDATE_COORDINATOR_UNIT"
+    fi
     if [ "$authorization_added" = true ]; then
         log_warn "Log out and back in before using update actions without sudo."
     fi

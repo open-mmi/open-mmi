@@ -269,6 +269,7 @@ sudo() {{ printf '%s\\0' "$@"; }}
     def test_installer_unit_is_one_shot_and_accepts_no_arguments(self) -> None:
         unit = (ROOT / "systemd/system/open-mmi-update-installer.service").read_text(encoding="utf-8")
         self.assertIn("Type=oneshot", unit)
+        self.assertIn("Environment=OPEN_MMI_PREPARED_DEPLOYMENT=1", unit)
         self.assertIn("ExecStart=/opt/open-mmi/venv/bin/open-mmi-update-installer\n", unit)
         self.assertNotIn("%i", unit)
         self.assertIn("ProtectSystem=strict", unit)
@@ -281,6 +282,7 @@ sudo() {{ printf '%s\\0' "$@"; }}
         end = self.text.index("remove_login_autostart() {", start)
         block = self.text[start:end]
         self.assertIn('systemctl restart "$UPDATE_COORDINATOR_UNIT"', block)
+        self.assertIn('${OPEN_MMI_PREPARED_DEPLOYMENT:-0}', block)
         self.assertIn("Log out and back in", block)
 
 

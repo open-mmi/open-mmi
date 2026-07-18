@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import json
 import os
 import subprocess
@@ -13,6 +14,25 @@ from ui import update_coordinator
 
 
 class UpdateCoordinatorTests(unittest.TestCase):
+    def test_successful_install_response_is_flushed_before_coordinator_restart(self):
+        request = {"api_version": 1, "action": "install", "confirm": True}
+        output = io.BytesIO()
+        handler = SimpleNamespace(
+            rfile=io.BytesIO(json.dumps(request).encode("utf-8") + b"\n"),
+            wfile=output,
+            server=SimpleNamespace(state_path=Path("/unused")),
+        )
+
+        def restarted(command, **kwargs):
+            self.assertTrue(output.getvalue().endswith(b"\n"))
+            self.assertEqual(command, ["systemctl", "restart", "--no-block", "open-mmi-update-coordinator.service"])
+            return subprocess.CompletedProcess(command, 0)
+
+        with patch.object(update_coordinator, "response_for_request", return_value={"ok": True}), patch.object(
+            update_coordinator.subprocess, "run", side_effect=restarted
+        ):
+            update_coordinator._Handler.handle(handler)
+
     def git(self, repository: Path, *arguments: str) -> str:
         result = subprocess.run(
             ["git", "-C", str(repository), *arguments], text=True,
