@@ -33,4 +33,4 @@ Current user and operator instructions belong in normal product documents such a
 
 ## Current design sets
 
-- [`v1-runtime-hardening`](v1-runtime-hardening/README.md) — frontend versioning, service recovery, thermal diagnostics, runtime efficiency, and vehicle-tablet cooling guidance.
+- [`v1-runtime-hardening`](v1-runtime-hardening/README.md) — frontend versioning, service recovery, interface recovery, thermal diagnostics, runtime efficiency, and vehicle-tablet cooling guidance.

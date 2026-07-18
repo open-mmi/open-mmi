@@ -16,6 +16,7 @@ The design set covers:
 
 - stale frontend assets after an Open MMI update;
 - dashboard and Jellyfin recovery without manual browser refreshes;
+- interface selection recovery for touchscreen-only installations;
 - visible thermal, CPU-frequency, battery, and charging diagnostics;
 - removal of background work that has no user-visible benefit;
 - installation guidance for tablets used in hot vehicle environments.
@@ -24,6 +25,7 @@ The design set covers:
 
 - [`frontend-versioning.md`](frontend-versioning.md)
 - [`service-reconnection.md`](service-reconnection.md)
+- [`interface-selection-recovery.md`](interface-selection-recovery.md)
 - [`thermal-diagnostics.md`](thermal-diagnostics.md)
 - [`runtime-performance.md`](runtime-performance.md)
 - [`vehicle-tablet-cooling.md`](vehicle-tablet-cooling.md)
@@ -42,10 +44,11 @@ The design set covers:
 
 1. Frontend version identity and cache-safe reload behaviour. **Implemented and qualified.**
 2. Dashboard and Jellyfin reconnection state machines. **Jellyfin provider recovery implemented; shared dashboard connectivity remains.**
-3. Thermal and power diagnostics.
-4. No-usability-impact runtime efficiency changes.
-5. Qualification on laptop and Surface Pro hardware.
-6. Documentation promotion and branch merge.
+3. Touch-safe interface selection and TUI recovery. **Implemented; pending Surface qualification.**
+4. Thermal and power diagnostics.
+5. No-usability-impact runtime efficiency changes.
+6. Qualification on laptop and Surface Pro hardware.
+7. Documentation promotion and branch merge.
 
 This order ensures that later update-management work can rely on a proven version endpoint and controlled browser reload path.
 
@@ -70,6 +73,7 @@ The branch is ready to merge when:
 - a changed frontend build is loaded without clearing the Chromium profile;
 - a dashboard-server restart results in at most one controlled reload when the build changed;
 - a Jellyfin restart recovers without reloading Open MMI;
+- a touchscreen-only user can return from the TUI to the Web Dashboard without terminal commands;
 - navigation and unsaved configuration input are not destroyed by routine service recovery;
 - thermal and power data are available in Diagnostics when the platform exposes them;
 - unavailable sensors degrade cleanly to `Unavailable` rather than breaking the page;

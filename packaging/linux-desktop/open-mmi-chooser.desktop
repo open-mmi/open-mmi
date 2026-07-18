@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Open MMI Interface Chooser
+Comment=Choose or recover the Open MMI interface
+Exec=/usr/local/bin/open-mmi-launcher --choose --ask-remember
+Path=/opt/open-mmi
+Icon=open-mmi
+Terminal=false
+Categories=System;Utility;
+Keywords=Open MMI;Dashboard;Terminal;Interface;Recovery;
+StartupNotify=true

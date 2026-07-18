@@ -9,6 +9,7 @@ open-mmi-launcher
 open-mmi-launcher web
 open-mmi-launcher tui
 open-mmi-launcher --choose --remember
+open-mmi-launcher --choose --ask-remember
 open-mmi-launcher --enable-autostart
 open-mmi-launcher --disable-autostart
 open-mmi-launcher --status
@@ -16,7 +17,7 @@ open-mmi-config launcher status
 open-mmi-config jellyfin status
 ```
 
-`--choose` opens a Zenity or Yad selector when a graphical session is available. It falls back to the terminal chooser when run interactively without a graphical chooser. `--remember` persists the selected default interface.
+`--choose` opens a Zenity or Yad selector when a graphical session is available. It falls back to the terminal chooser when run interactively without a graphical chooser. `--remember` persists the selected default interface. `--ask-remember` keeps selection and persistence separate by asking whether the chosen interface should become the default.
 
 ## Installed commands
 
@@ -121,6 +122,12 @@ after saving or clearing credentials so the service process loads the new values
 $(xdg-user-dir DESKTOP)/Open MMI.desktop
 ```
 
+They also install an independent recovery entry in the application menu:
+
+```text
+~/.local/share/applications/open-mmi-chooser.desktop
+```
+
 They also install the existing repository icon theme beneath:
 
 ```text
@@ -131,9 +138,13 @@ The application-menu entry is installed read-only, while the desktop shortcut is
 
 The desktop entry launches the remembered default interface. Its desktop actions provide explicit shortcuts for:
 
-- choosing and remembering an interface;
+- choosing an interface and confirming whether to remember it;
 - selecting the web dashboard;
 - selecting the terminal UI.
+
+The separate **Open MMI Interface Chooser** application always opens the chooser and ignores the remembered default. It remains available when the Terminal UI is configured as the normal Open MMI interface.
+
+When a graphical TUI window closes or fails, the launcher opens the chooser. Selecting the Web Dashboard starts the service and managed browser; selecting the TUI starts another guarded terminal session. If the graphical chooser is cancelled or unavailable, the launcher opens the Web Dashboard for the current session rather than leaving a touchscreen-only user stranded.
 
 The full desktop-entry and icon lifecycle is covered in CI without requiring a graphical desktop session.
 

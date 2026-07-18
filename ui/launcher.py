@@ -49,6 +49,7 @@ BROWSER_CANDIDATES = (
 TERMINAL_CANDIDATES = (
     "x-terminal-emulator",
     "gnome-terminal",
+    "mate-terminal",
     "konsole",
     "xfce4-terminal",
     "xterm",
@@ -777,15 +778,19 @@ def _status_command() -> list[str]:
 
 
 def _terminal_command(terminal: str, status_command: Sequence[str]) -> list[str]:
-    name = Path(terminal).name
-    if name == "gnome-terminal":
-        return [terminal, "--"] + list(status_command)
-    if name == "xfce4-terminal":
-        return [terminal, "--command", shlex.join(status_command)]
+    name = Path(os.path.realpath(terminal)).name
+    if name.startswith("gnome-terminal"):
+        return [terminal, "--wait", "--"] + list(status_command)
+    if name.startswith("mate-terminal"):
+        return [terminal, "--disable-factory", "--"] + list(status_command)
+    if name.startswith("xfce4-terminal"):
+        return [terminal, "--disable-server", "--command", shlex.join(status_command)]
+    if name.startswith("konsole"):
+        return [terminal, "--nofork", "-e"] + list(status_command)
     return [terminal, "-e"] + list(status_command)
 
 
-def launch_tui() -> int:
+def _run_tui_once() -> int:
     status_command = _status_command()
 
     if sys.stdin.isatty() and sys.stdout.isatty():
@@ -795,7 +800,7 @@ def launch_tui() -> int:
         terminal = shutil.which(candidate)
         if terminal:
             try:
-                subprocess.Popen(
+                process = subprocess.Popen(
                     _terminal_command(terminal, status_command),
                     stdin=subprocess.DEVNULL,
                     stdout=subprocess.DEVNULL,
@@ -804,7 +809,7 @@ def launch_tui() -> int:
                 )
             except OSError as exc:
                 raise LauncherError(f"could not start terminal: {exc}") from exc
-            return 0
+            return process.wait()
     raise LauncherError("no terminal emulator found for the TUI")
 
 
@@ -831,6 +836,29 @@ def _graphical_chooser_command(executable: str) -> list[str]:
     ]
 
 
+def _graphical_remember_command(executable: str, selected: str) -> list[str]:
+    label = "Web Dashboard" if selected == "web" else "Terminal UI"
+    return [
+        executable,
+        "--question",
+        "--title=Open MMI",
+        f"--text=Remember {label} as the default interface?",
+        "--ok-label=Remember",
+        "--cancel-label=Just this time",
+        "--width=420",
+    ]
+
+
+def _graphical_chooser_executable() -> Optional[str]:
+    if not _graphical_session_available():
+        return None
+    for candidate in GRAPHICAL_CHOOSER_CANDIDATES:
+        executable = shutil.which(candidate)
+        if executable is not None:
+            return executable
+    return None
+
+
 def _selection_from_label(label: str) -> Optional[str]:
     normalized = label.strip().lower()
     if normalized in {"web dashboard", "web", "1", "w"}:
@@ -844,10 +872,8 @@ def choose_ui(
     command_runner: Callable[..., subprocess.CompletedProcess[str]] = run_command,
 ) -> str:
     if _graphical_session_available():
-        for candidate in GRAPHICAL_CHOOSER_CANDIDATES:
-            executable = shutil.which(candidate)
-            if executable is None:
-                continue
+        executable = _graphical_chooser_executable()
+        if executable is not None:
             result = command_runner(
                 _graphical_chooser_command(executable),
                 capture_output=True,
@@ -878,6 +904,102 @@ def choose_ui(
         print("Please choose 1 or 2.", file=sys.stderr)
 
 
+def confirm_remember_choice(
+    selected: str,
+    command_runner: Callable[..., subprocess.CompletedProcess[str]] = run_command,
+) -> bool:
+    executable = _graphical_chooser_executable()
+    if executable is not None:
+        result = command_runner(
+            _graphical_remember_command(executable, selected),
+            capture_output=True,
+        )
+        if result.returncode == 0:
+            return True
+        if result.returncode in {1, 5}:
+            return False
+        detail = (result.stderr or result.stdout or "confirmation failed").strip()
+        raise LauncherError(f"could not confirm the default interface: {detail}")
+
+    if sys.stdin.isatty() and sys.stdout.isatty():
+        answer = input("Remember this interface as the default? [y/N]: ").strip().lower()
+        return answer in {"y", "yes"}
+    return False
+
+
+def _open_web_dashboard(config: Mapping[str, Any]) -> int:
+    ensure_dashboard_ready(config)
+    launch_browser(config)
+    return 0
+
+
+def _recover_after_tui(config: Mapping[str, Any], config_path: Path) -> str:
+    """Choose the next interface after the TUI closes.
+
+    A graphical installation must never strand a touchscreen-only user. If the
+    chooser is unavailable or cancelled, open the web dashboard for this
+    session. When no graphical session exists, return ``exit`` and preserve the
+    normal terminal behaviour.
+    """
+
+    graphical = _graphical_session_available()
+    interactive_terminal = sys.stdin.isatty() and sys.stdout.isatty()
+    if not graphical and not interactive_terminal:
+        return "exit"
+
+    try:
+        selected = choose_ui()
+    except LauncherError as exc:
+        if not graphical:
+            raise
+        print(
+            f"open-mmi-launcher: {exc}; opening the web dashboard instead",
+            file=sys.stderr,
+        )
+        return "web"
+
+    try:
+        remember = confirm_remember_choice(selected)
+    except LauncherError as exc:
+        print(
+            f"open-mmi-launcher: {exc}; using the selection once",
+            file=sys.stderr,
+        )
+        remember = False
+    if remember:
+        save_default_ui(selected, config_path)
+    return selected
+
+
+def launch_tui(
+    config: Optional[Mapping[str, Any]] = None,
+    config_path: Optional[Path] = None,
+) -> int:
+    """Run the TUI and provide a graphical route back when it closes."""
+
+    while True:
+        try:
+            exit_code = _run_tui_once()
+        except LauncherError as exc:
+            if config is None or config_path is None or not _graphical_session_available():
+                raise
+            print(
+                f"open-mmi-launcher: {exc}; opening interface recovery",
+                file=sys.stderr,
+            )
+            exit_code = 1
+        if config is None or config_path is None:
+            return exit_code
+
+        selected = _recover_after_tui(config, config_path)
+        if selected == "exit":
+            return exit_code
+        if selected == "web":
+            return _open_web_dashboard(config)
+        # Selecting the TUI again starts another guarded session. Closing it
+        # returns to the chooser rather than leaving an unusable terminal.
+
+
 def status_payload(config: Mapping[str, Any], config_path: Path) -> dict[str, Any]:
     endpoint = health_url(str(config["web_url"]))
     return {
@@ -899,6 +1021,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("ui", nargs="?", choices=("web", "tui"), help="override the configured interface")
     parser.add_argument("--choose", action="store_true", help="select the interface interactively")
     parser.add_argument("--remember", action="store_true", help="remember an explicit or chosen interface")
+    parser.add_argument(
+        "--ask-remember",
+        action="store_true",
+        help="after --choose, ask whether the selection should become the default",
+    )
     parser.add_argument("--status", action="store_true", help="show launcher and dashboard status")
     parser.add_argument("--stop", action="store_true", help="stop the dashboard service")
     parser.add_argument(
@@ -941,6 +1068,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             raise LauncherError("an explicit interface cannot be combined with an operation flag")
         if args.remember and not (args.choose or args.ui):
             raise LauncherError("--remember requires an explicit interface or --choose")
+        if args.ask_remember and not args.choose:
+            raise LauncherError("--ask-remember requires --choose")
+        if args.ask_remember and args.remember:
+            raise LauncherError("--ask-remember and --remember cannot be combined")
 
         if args.status:
             print(json.dumps(status_payload(config, config_path), indent=2, sort_keys=True))
@@ -963,13 +1094,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         selected = choose_ui() if args.choose else (args.ui or str(config["default_ui"]))
         if args.remember:
             save_default_ui(selected, config_path)
+        elif args.ask_remember and confirm_remember_choice(selected):
+            save_default_ui(selected, config_path)
 
         if selected == "tui":
-            return launch_tui()
+            return launch_tui(config, config_path)
 
-        ensure_dashboard_ready(config)
-        launch_browser(config)
-        return 0
+        return _open_web_dashboard(config)
     except LauncherError as exc:
         print(f"open-mmi-launcher: {exc}", file=sys.stderr)
         return 1

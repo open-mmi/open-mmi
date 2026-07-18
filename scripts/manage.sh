@@ -28,9 +28,11 @@ LOGIN_AUTOSTART_ENTRY="$REAL_HOME/.config/autostart/open-mmi.desktop"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DESKTOP_ENTRY_SOURCE="$REPO_ROOT/packaging/linux-desktop/open-mmi-status.desktop"
+CHOOSER_ENTRY_SOURCE="$REPO_ROOT/packaging/linux-desktop/open-mmi-chooser.desktop"
 DESKTOP_ICON_SOURCE="$REPO_ROOT/packaging/linux-desktop/icons"
 APPLICATIONS_DIR="$REAL_HOME/.local/share/applications"
 APPLICATION_ENTRY="$APPLICATIONS_DIR/open-mmi.desktop"
+CHOOSER_APPLICATION_ENTRY="$APPLICATIONS_DIR/open-mmi-chooser.desktop"
 ICON_THEME_DIR="$REAL_HOME/.local/share/icons"
 DESKTOP_ENTRY_NAME="Open MMI.desktop"
 COMMAND_LINK_DIR="${OPEN_MMI_COMMAND_LINK_DIR:-/usr/local/bin}"
@@ -219,11 +221,16 @@ install_desktop_entry() {
         log_error "Desktop entry source not found: $DESKTOP_ENTRY_SOURCE"
         return 1
     fi
+    if [ ! -f "$CHOOSER_ENTRY_SOURCE" ]; then
+        log_error "Interface chooser entry source not found: $CHOOSER_ENTRY_SOURCE"
+        return 1
+    fi
 
     log_info "Installing desktop launcher and icons..."
     install_desktop_icons
     install -d -m 0755 -o "$REAL_USER" -g "$REAL_USER" "$APPLICATIONS_DIR" "$desktop_dir"
     install -m 0644 -o "$REAL_USER" -g "$REAL_USER" "$DESKTOP_ENTRY_SOURCE" "$APPLICATION_ENTRY"
+    install -m 0644 -o "$REAL_USER" -g "$REAL_USER" "$CHOOSER_ENTRY_SOURCE" "$CHOOSER_APPLICATION_ENTRY"
     install -m 0755 -o "$REAL_USER" -g "$REAL_USER" "$DESKTOP_ENTRY_SOURCE" "$desktop_dir/$DESKTOP_ENTRY_NAME"
 
     if command -v gio > /dev/null 2>&1; then
@@ -238,7 +245,7 @@ remove_desktop_entry() {
     desktop_dir=$(get_desktop_dir)
 
     log_info "Removing desktop launcher and icons..."
-    rm -f "$APPLICATION_ENTRY" "$desktop_dir/$DESKTOP_ENTRY_NAME"
+    rm -f "$APPLICATION_ENTRY" "$CHOOSER_APPLICATION_ENTRY" "$desktop_dir/$DESKTOP_ENTRY_NAME"
     remove_desktop_icons
     refresh_desktop_caches
 }

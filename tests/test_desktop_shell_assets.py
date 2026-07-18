@@ -5,6 +5,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DESKTOP_ENTRY = ROOT / "packaging" / "linux-desktop" / "open-mmi-status.desktop"
+CHOOSER_ENTRY = ROOT / "packaging" / "linux-desktop" / "open-mmi-chooser.desktop"
 DASHBOARD_SERVICE = ROOT / "systemd" / "user" / "open-mmi-dashboard.service"
 ICON_ROOT = ROOT / "packaging" / "linux-desktop" / "icons" / "hicolor"
 
@@ -70,7 +71,7 @@ class DesktopShellAssetTests(unittest.TestCase):
         self.assertEqual([item for item in actions if item], ["Choose", "Web", "TUI"])
         self.assertEqual(
             _single(sections, "Desktop Action Choose", "Exec"),
-            "/usr/local/bin/open-mmi-launcher --choose --remember",
+            "/usr/local/bin/open-mmi-launcher --choose --ask-remember",
         )
         self.assertEqual(
             _single(sections, "Desktop Action Web", "Exec"),
@@ -80,6 +81,21 @@ class DesktopShellAssetTests(unittest.TestCase):
             _single(sections, "Desktop Action TUI", "Exec"),
             "/usr/local/bin/open-mmi-launcher tui --remember",
         )
+
+    def test_standalone_interface_chooser_is_always_visible(self):
+        sections = _parse_unit(CHOOSER_ENTRY)
+
+        self.assertEqual(_single(sections, "Desktop Entry", "Type"), "Application")
+        self.assertEqual(
+            _single(sections, "Desktop Entry", "Name"),
+            "Open MMI Interface Chooser",
+        )
+        self.assertEqual(
+            _single(sections, "Desktop Entry", "Exec"),
+            "/usr/local/bin/open-mmi-launcher --choose --ask-remember",
+        )
+        self.assertEqual(_single(sections, "Desktop Entry", "Terminal").lower(), "false")
+        self.assertEqual(_single(sections, "Desktop Entry", "Icon"), "open-mmi")
 
     def test_repository_contains_named_icon_theme_assets(self):
         png_assets = sorted(ICON_ROOT.glob("*x*/apps/open-mmi.png"))

@@ -278,7 +278,7 @@ The installer provides the universal launcher and desktop integration:
 open-mmi-launcher
 ```
 
-The desktop icon uses the remembered Web/TUI choice. The launcher starts the dashboard service on demand, waits for `/api/health`, and then opens or reuses the managed browser window.
+The desktop icon uses the remembered Web/TUI choice. The independent **Open MMI Interface Chooser** application always opens the selector, so a touchscreen-only installation can recover even when the Terminal UI is remembered. The launcher starts the dashboard service on demand, waits for `/api/health`, and then opens or reuses the managed browser window.
 
 For development away from the car:
 
@@ -392,6 +392,7 @@ open-mmi/
 ├── packaging/
 │   └── linux-desktop/
 │       ├── open-mmi-status.desktop
+│       ├── open-mmi-chooser.desktop
 │       └── icons/
 │           ├── hicolor/
 │           ├── open-mmi-dark/
@@ -878,7 +879,7 @@ User override files under `~/.config/open-mmi` are opt-in only and must be selec
 The main installer manages desktop entries, icons, packaged commands, and the dashboard user service. No separate desktop-helper command is required.
 
 ```bash
-open-mmi-launcher --choose --remember
+open-mmi-launcher --choose --ask-remember
 open-mmi-config launcher autostart enable
 open-mmi-config dashboard status
 ```
@@ -942,11 +943,12 @@ Installed user files include:
 
 ```text
 ~/.local/share/applications/open-mmi.desktop
+~/.local/share/applications/open-mmi-chooser.desktop
 $(xdg-user-dir DESKTOP)/Open MMI.desktop
 ~/.local/share/icons/hicolor/.../apps/open-mmi.*
 ```
 
-The desktop entry launches `/usr/local/bin/open-mmi-launcher`, which opens the remembered interface and reuses the existing managed browser instance. **Settings → System** can create or remove:
+The main desktop entry launches `/usr/local/bin/open-mmi-launcher`, which opens the remembered interface and reuses the existing managed browser instance. The separate chooser entry ignores the remembered default, asks whether a new choice should be saved, and provides a route back after a graphical TUI window closes. **Settings → System** can create or remove:
 
 ```text
 ~/.config/autostart/open-mmi.desktop
@@ -1024,6 +1026,7 @@ python3 -m json.tool bindings/default.json >/dev/null
 
 ```bash
 desktop-file-validate packaging/linux-desktop/open-mmi-status.desktop
+desktop-file-validate packaging/linux-desktop/open-mmi-chooser.desktop
 ```
 
 ## Run tests
