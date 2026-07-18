@@ -11,4 +11,4 @@ UMask=0027
 PrivateTmp=true
 ProtectHome=read-only
 ProtectSystem=strict
-ReadWritePaths=/opt/open-mmi /var/lib/open-mmi /etc/open-mmi /etc/systemd/system /usr/local/bin /home
+ReadWritePaths=/opt/open-mmi /var/lib/open-mmi /run/open-mmi /etc/open-mmi /etc/systemd/system /usr/local/bin /home
