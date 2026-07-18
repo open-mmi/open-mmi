@@ -44,7 +44,9 @@ class UpdateReadinessTests(unittest.TestCase):
             lock = root / "update.lock"
             lock.write_text("active", encoding="utf-8")
             lock.chmod(0o600)
-            transaction = update_readiness._transaction_check(lock)
+            trusted = SimpleNamespace(st_mode=stat.S_IFREG | 0o600, st_uid=0)
+            with patch.object(Path, "lstat", return_value=trusted):
+                transaction = update_readiness._transaction_check(lock)
             self.assertEqual(transaction["state"], "pass")
         self.assertEqual(update_readiness._power_check({"ac_online": False, "capacity_percent": 12})["state"], "block")
         self.assertEqual(update_readiness._thermal_check({"summary": "thermal-limit-active"})["state"], "block")
@@ -54,6 +56,12 @@ class UpdateReadinessTests(unittest.TestCase):
             path = Path(temporary) / "update.lock"
             with update_readiness.update_coordinator.TransactionLock(path):
                 self.assertEqual(update_readiness._transaction_check(path)["state"], "block")
+
+    def test_non_root_owned_transaction_lock_is_untrusted(self):
+        path = Path("/run/open-mmi/update.lock")
+        untrusted = SimpleNamespace(st_mode=stat.S_IFREG | 0o600, st_uid=1000)
+        with patch.object(Path, "lstat", return_value=untrusted):
+            self.assertEqual(update_readiness._transaction_check(path)["state"], "block")
 
     def test_unexposed_power_and_thermal_are_unknown_not_assumed_safe(self):
         self.assertEqual(update_readiness._power_check({"ac_online": None})["state"], "unknown")
