@@ -153,6 +153,8 @@ class UpdateCoordinatorTests(unittest.TestCase):
                 update_coordinator.update_status, "_remote_url", return_value="https://example.invalid/open-mmi.git"
             ), patch.object(update_coordinator.update_status, "_run_git", return_value=SimpleNamespace(returncode=0)), patch.object(
                 update_coordinator.update_status, "_git_success", return_value=True
+            ), patch.object(
+                update_coordinator, "_secure_staging_tree"
             ), patch.object(update_coordinator.uuid, "uuid4", return_value=SimpleNamespace(hex="a" * 32)):
                 prepared = update_coordinator._prepare_candidate(state_path, lock_path, staging_root)
         self.assertEqual(prepared["state"], "prepared")
@@ -189,6 +191,8 @@ class UpdateCoordinatorTests(unittest.TestCase):
                 update_coordinator.update_policy, "read_policy", return_value=({"channel": "development"}, "configured")
             ), patch.object(update_coordinator, "_preparation_readiness"), patch.object(
                 update_coordinator.update_status.os, "geteuid", return_value=1000
+            ), patch.object(
+                update_coordinator, "_secure_staging_tree"
             ):
                 prepared = update_coordinator._prepare_candidate(
                     root / "state.json", root / "update.lock", root / "staging"
