@@ -455,6 +455,9 @@ test("thermal and power diagnostics poll only while visible and identify the Sur
   await expect(runtimePanel.locator('[data-openmmi-runtime-key="thermal.sensor"]')).toHaveText("GEN4 52.5 °C");
   await expect(runtimePanel.locator('[data-openmmi-runtime-key="power.state"]')).toHaveText("AC connected — not charging");
   await expect(runtimePanel.locator('[data-openmmi-runtime-key="system.state"]')).toHaveText("Performance limited by temperature");
+  await expect(runtimePanel.locator('[data-openmmi-runtime-key="frontend.status"]')).toContainText("fetches");
+  await expect(runtimePanel.locator('[data-openmmi-runtime-key="frontend.render"]')).toContainText("renders");
+  await expect(runtimePanel.locator('[data-openmmi-runtime-key="frontend.media"]')).toContainText("layouts");
   const activeCount = await dashboard.runtimeDiagnosticsRequests();
   expect(activeCount).toBeGreaterThanOrEqual(2);
 
@@ -908,6 +911,25 @@ test("system settings and Jellyfin setup use the shared local configuration API"
   await expect(page.getByRole("status")).toContainText("restart the dashboard");
   await expect(page.getByTestId("jellyfin-password")).toHaveValue("");
   await expect(page.locator('[data-openmmi-jellyfin-settings="true"]')).not.toContainText("not-exposed-after-submit");
+
+  await expectNoRuntimeFailures(failures);
+});
+
+test("inactive Media performs no recurring layout work", async ({ page }) => {
+  const failures = captureRuntimeFailures(page);
+  await loadDashboard(page);
+
+  await openMedia(page);
+  await page.waitForTimeout(250);
+  const activeLayouts = await page.evaluate(() => window.openMmiMediaPerformanceMetrics?.layout_runs || 0);
+  expect(activeLayouts).toBeGreaterThan(0);
+
+  await page.evaluate(() => window.setPage(1));
+  await expect(page.locator("#pageHome")).toHaveClass(/active/);
+  const beforeIdle = await page.evaluate(() => window.openMmiMediaPerformanceMetrics?.layout_runs || 0);
+  await page.waitForTimeout(1800);
+  const afterIdle = await page.evaluate(() => window.openMmiMediaPerformanceMetrics?.layout_runs || 0);
+  expect(afterIdle).toBe(beforeIdle);
 
   await expectNoRuntimeFailures(failures);
 });

@@ -79,6 +79,17 @@ Inspect the status payload:
 curl http://127.0.0.1:8765/api/status | python3 -m json.tool
 ```
 
+## Runtime efficiency and activity counters
+
+The dashboard keeps the existing visible vehicle-status cadence, but avoids duplicate work:
+
+- status requests do not overlap and pause while the document is hidden;
+- unchanged vehicle values do not rerun the full DOM render path;
+- Media layout fitting is event-driven and stops outside the active Media page;
+- tell-tale maintenance and media-key installation do not use permanent background probe timers.
+
+Settings → Diagnostics shows lightweight session counters for status fetches, overlap skips, vehicle renders, unchanged render skips, and Media layout activity. The counters are intended for comparison and troubleshooting; they do not change dashboard behaviour.
+
 ## Tell-tale test mode
 
 Tell-tales can be forced in the browser for visual testing. This is frontend-only; it does not modify the backend status snapshot or vehicle state.

@@ -3,7 +3,7 @@
 | Field | Value |
 | --- | --- |
 | Branch | `v1-runtime-hardening` |
-| Status | Proposed |
+| Status | Implemented — first no-usability-impact pass; pending hardware qualification |
 | Owners | Dashboard frontend, dashboard server, CAN daemon |
 
 ## Context
@@ -13,6 +13,25 @@ Hot-condition Surface Pro qualification exposed a thermal feedback loop: sustain
 The cold-condition vehicle test passed, so this design does not assume that the desktop-shell branch introduced a universal performance regression. It establishes rules and measurement so avoidable work can be removed without degrading responsive vehicle information.
 
 The current frontend includes a 200 ms vehicle-status polling path plus several Media timers, animation frames, geometry measurements, and mutation observers. These are candidates for measurement and lifecycle ownership, not automatic proof that every interval is wrong.
+
+## Implemented first pass
+
+The first runtime-efficiency slice keeps the existing 200 ms visible status cadence and removes work that does not change the user experience:
+
+- `/api/status` requests cannot overlap; a slow response is allowed to finish before another request is accepted;
+- status polling pauses while the browser document is hidden and resumes with one immediate refresh;
+- vehicle health remains current, while unchanged vehicle values skip the full non-health render path;
+- text, attributes, tell-tale SVG markup, tachometer CSS properties, coolant state, and voltage markup are written only when their values change;
+- driver-facing cleanup is event-driven rather than rescanning the dashboard on every status response;
+- Jellyfin Media no longer runs an unconditional one-second page/layout loop;
+- Media layout work runs only while Media is active and visible, on navigation, resize/orientation, provider-content change, or initial construction;
+- broad Media mutation observers were removed in favour of explicit layout events;
+- Media-key installation uses bounded startup retries plus page/content events instead of a permanent 1.5-second probe;
+- tell-tale test maintenance is event-driven rather than using permanent 750 ms and one-second timers.
+
+Settings → Diagnostics exposes session counters for status fetches and overlap suppression, vehicle renders and unchanged-state skips, and Media layout requests/runs. These counters are read only while Diagnostics is already polling.
+
+This pass deliberately does not change the visible status interval, animation quality, media progress event handling, or CAN daemon behaviour.
 
 ## Principles
 

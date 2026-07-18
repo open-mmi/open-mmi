@@ -1474,14 +1474,17 @@ openMmiOverlaysController.init();
   window.openMmiApplyTellTaleTest = applyTellTaleTest;
   window.openMmiSyncTellTaleSettingButtons = syncTellTaleSettingButtons;
 
-  document.addEventListener("DOMContentLoaded", () => {
+  function syncTellTaleVisualTest() {
     applyTellTaleTest();
     syncTellTaleSettingButtons();
+  }
+
+  document.addEventListener("DOMContentLoaded", syncTellTaleVisualTest);
+  window.addEventListener("storage", syncTellTaleVisualTest);
+  ["openmmi:settingsrender", "openmmi:pagechange", "openmmi:settingschange"].forEach((name) => {
+    window.addEventListener(name, () => requestAnimationFrame(syncTellTaleVisualTest));
   });
-  setInterval(() => {
-    applyTellTaleTest();
-    syncTellTaleSettingButtons();
-  }, 750);
+  if (document.readyState !== "loading") requestAnimationFrame(syncTellTaleVisualTest);
 })();
 /* end open-mmi dashboard display setting: frontend-only tell-tale visual test */
 
@@ -1629,12 +1632,12 @@ openMmiOverlaysController.init();
     applyTelltaleTestMode();
   });
 
-  // While active, keep any older experimental visual strip out of the DOM and
-  // keep the real footer slots forced through the existing tell-tale API.
-  setInterval(() => {
+  // Settings/page events own cleanup; avoid a permanent timer on every dashboard page.
+  function syncExistingTelltaleTest() {
     if (testActive()) applyTelltaleTestMode();
     else removeLegacyVisualTestStrips();
-  }, 1000);
+  }
+  window.addEventListener("storage", () => requestAnimationFrame(syncExistingTelltaleTest));
 
   ensureSettingsControls();
   applyTelltaleTestMode();

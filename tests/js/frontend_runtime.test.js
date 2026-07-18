@@ -134,6 +134,7 @@ class Document {
 test("dashboard scripts initialise extracted Jellyfin and Bluetooth controllers", async () => {
   const document = new Document();
   const local = new Map();
+  let intervalCount = 0;
   const window = {
     document,
     innerHeight: 480,
@@ -158,7 +159,7 @@ test("dashboard scripts initialise extracted Jellyfin and Bluetooth controllers"
     cancelAnimationFrame() {},
     setTimeout() { return 1; },
     clearTimeout() {},
-    setInterval() { return 1; },
+    setInterval() { intervalCount += 1; return intervalCount; },
     clearInterval() {},
     fetch: async () => ({ ok: true, status: 200, json: async () => ({ health: { status: "ok" }, state: {} }) }),
   };
@@ -215,5 +216,6 @@ test("dashboard scripts initialise extracted Jellyfin and Bluetooth controllers"
   );
   assert.equal(typeof window.ommiMediaLoadLibrary, "function");
   assert.equal(window.openMmiJellyfinPlayer.state, window.openMmiMedia);
+  assert.equal(intervalCount, 1, "only the shared status poller should retain a permanent interval");
   await new Promise((resolve) => setImmediate(resolve));
 });

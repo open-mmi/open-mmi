@@ -218,6 +218,24 @@
     return values;
   }
 
+
+  function frontendActivityValues(windowRef) {
+    const status = windowRef?.openMmiStatusPoller?.getMetrics?.() || {};
+    const vehicle = windowRef?.openMmiVehicleRenderer?.getMetrics?.() || {};
+    const media = windowRef?.openMmiMediaPerformanceMetrics || {};
+    return {
+      "frontend.status": Number.isFinite(Number(status.fetches))
+        ? `${status.fetches} fetches · ${status.overlapping_fetches_skipped || 0} overlap skips`
+        : "--",
+      "frontend.render": Number.isFinite(Number(vehicle.render_calls))
+        ? `${vehicle.vehicle_renders || 0} renders · ${vehicle.unchanged_renders_skipped || 0} unchanged skipped`
+        : "--",
+      "frontend.media": Number.isFinite(Number(media.layout_runs))
+        ? `${media.layout_runs} layouts · ${media.layout_requests || 0} requests`
+        : "--",
+    };
+  }
+
   function createController(options = {}) {
     const windowRef = options.window || root;
     const documentRef = options.document || windowRef?.document;
@@ -271,6 +289,9 @@
           ${detailMetric("Charging state", "power.state")}
           ${detailMetric("Observed clock", "session.clock")}
           ${detailMetric("Observed temperature", "session.temp")}
+          ${detailMetric("Status activity", "frontend.status")}
+          ${detailMetric("Vehicle renders", "frontend.render")}
+          ${detailMetric("Media layouts", "frontend.media")}
         </div>
         <div class="openmmi-runtime-details"></div>
         <p class="openmmi-runtime-note">Reported power values are battery-side driver readings, not charger capacity.</p>
@@ -303,7 +324,7 @@
       const section = ensureHost();
       if (!section) return;
       section.dataset.state = values._state.level;
-      setValues(Object.assign({}, values, detailValues(sample)));
+      setValues(Object.assign({}, values, frontendActivityValues(windowRef), detailValues(sample)));
       const signature = detailsSignature(sample);
       const detailHost = section.querySelector?.(".openmmi-runtime-details");
       if (detailHost && signature !== detailSignature) {
@@ -313,7 +334,7 @@
           if (index < openStates.length) node.open = openStates[index];
         });
         detailSignature = signature;
-        setValues(Object.assign({}, values, detailValues(sample)));
+        setValues(Object.assign({}, values, frontendActivityValues(windowRef), detailValues(sample)));
       }
       windowRef?.dispatchEvent?.(new windowRef.CustomEvent("openmmi:runtimediagnostics", { detail: { sample, state: values._state } }));
     }
@@ -333,6 +354,7 @@
         "power.ac": "--",
         "power.battery": "--",
         "power.state": "Unknown",
+        ...frontendActivityValues(windowRef),
       });
     }
 
@@ -417,6 +439,7 @@
     updateHistory,
     summaryValues,
     detailsSignature,
+    frontendActivityValues,
     createController,
     install,
   };

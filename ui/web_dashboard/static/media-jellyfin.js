@@ -58,6 +58,20 @@
       providerMessage: "",
     };
     let reconnectController = null;
+    const performanceMetrics = { layout_requests: 0, layout_runs: 0, media_key_boots: 0 };
+    window.openMmiMediaPerformanceMetrics = performanceMetrics;
+
+    function ommiMediaIsActive() {
+      return document.visibilityState !== "hidden"
+        && document.querySelector("#pageElectrical.page-media")?.classList.contains("active");
+    }
+
+    function ommiMediaNotifyLayout(reason = "content") {
+      performanceMetrics.layout_requests += 1;
+      if (!ommiMediaIsActive()) return false;
+      window.dispatchEvent(new window.CustomEvent("openmmi:medialayout", { detail: { reason } }));
+      return true;
+    }
 
     function ommiMediaEsc(value) {
       return String(value ?? "")
@@ -198,7 +212,7 @@
       ommiMediaInstallFilters();
       ommiMediaBind();
       if (window.openMmiMediaSources) window.openMmiMediaSources.apply();
-      ommiMediaFitViewport();
+      if (active) ommiMediaFitViewport();
       return page;
     }
 
@@ -493,6 +507,7 @@
 
       if (!openMmiMedia.queue.length) {
         results.innerHTML = `<div class="ommi-empty">No tracks found. Try search, or check <code>/api/jellyfin/search?limit=5</code>.</div>`;
+        ommiMediaNotifyLayout("results-empty");
         return;
       }
 
@@ -502,6 +517,7 @@
           <span class="ommi-track-copy"><strong>${ommiMediaEsc(item.name || "Untitled")}</strong><small>${ommiMediaEsc([item.artist, item.album].filter(Boolean).join(" · ") || "Unknown artist")}</small></span>
           <span class="ommi-track-duration">${ommiMediaTime(item.duration_seconds)}</span>
         </button>`).join("");
+      ommiMediaNotifyLayout("results-rendered");
     }
 
     async function ommiMediaLoadLibrary(query = "", filter = openMmiMedia.filter) {
@@ -694,9 +710,18 @@
     function boot() {
       if (openMmiMedia.booted) return false;
       openMmiMedia.booted = true;
+      const syncActiveMedia = () => {
+        const page = document.querySelector("#pageElectrical");
+        if (!page?.classList.contains("active") || document.visibilityState === "hidden") return;
+        ommiMediaPage();
+        ommiMediaNotifyLayout("page-active");
+      };
       ommiMediaBoot();
       document.addEventListener("DOMContentLoaded", ommiMediaBoot);
-      window.setInterval(() => { ommiMediaPage(); ommiMediaUpdatePagerLabels(); ommiMediaFitViewport(); }, 1000);
+      window.addEventListener("openmmi:pagechange", syncActiveMedia);
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState !== "hidden") syncActiveMedia();
+      });
       return true;
     }
     // --- Open MMI Jellyfin real Bootstrap media v5 end ---
@@ -719,6 +744,8 @@
           if (ommiPreviousMediaFitViewport) ommiPreviousMediaFitViewport();
           return;
         }
+        if (!page.classList.contains("active") || document.visibilityState === "hidden") return;
+        performanceMetrics.layout_runs += 1;
 
         const pageRect = page.getBoundingClientRect();
         let bottom = window.innerHeight;
@@ -819,6 +846,7 @@
       }
 
       function stabilise() {
+        if (!ommiMediaIsActive()) return;
         skeleton();
         fit();
         requestAnimationFrame(fit);
@@ -833,20 +861,8 @@
         results.__openMmiV8bScrollBound = true;
       }
 
-      function observe() {
-        const root = document.querySelector(ROOT_SELECTOR) || document.body;
-        if (root.__openMmiV8bObserverBound) return;
-        const observer = new MutationObserver(() => {
-          bindResultsScroll();
-          requestAnimationFrame(stabilise);
-        });
-        observer.observe(root, { childList: true, subtree: true });
-        root.__openMmiV8bObserverBound = true;
-      }
-
       document.addEventListener("DOMContentLoaded", () => {
         bindResultsScroll();
-        observe();
         stabilise();
         setTimeout(stabilise, 250);
         setTimeout(stabilise, 1000);
@@ -854,11 +870,12 @@
 
       window.addEventListener("resize", () => requestAnimationFrame(stabilise));
       window.addEventListener("orientationchange", () => setTimeout(stabilise, 150));
+      window.addEventListener("openmmi:medialayout", () => requestAnimationFrame(stabilise));
+      window.addEventListener("openmmi:pagechange", () => requestAnimationFrame(stabilise));
 
       // If this script is appended after DOMContentLoaded, run immediately too.
       if (document.readyState !== "loading") {
         bindResultsScroll();
-        observe();
         stabilise();
         setTimeout(stabilise, 250);
         setTimeout(stabilise, 1000);
@@ -908,6 +925,7 @@
       }
 
       function scheduleClamp() {
+        if (!ommiMediaIsActive()) return;
         clampMediaToContentRow();
         requestAnimationFrame(clampMediaToContentRow);
         setTimeout(clampMediaToContentRow, 80);
@@ -917,13 +935,9 @@
       document.addEventListener("DOMContentLoaded", scheduleClamp);
       window.addEventListener("resize", scheduleClamp);
       window.addEventListener("orientationchange", () => setTimeout(scheduleClamp, 150));
-
-      const observer = new MutationObserver(scheduleClamp);
+      window.addEventListener("openmmi:medialayout", scheduleClamp);
+      window.addEventListener("openmmi:pagechange", scheduleClamp);
       if (document.readyState !== "loading") scheduleClamp();
-      document.addEventListener("DOMContentLoaded", () => {
-        const target = document.querySelector("#pageElectrical") || document.body;
-        observer.observe(target, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "style"] });
-      });
     })();
     // --- Open MMI media early footer guard end ---
 
@@ -999,7 +1013,7 @@
       }
 
       function requestClamp() {
-        if (raf) return;
+        if (!ommiMediaIsActive() || raf) return;
         raf = requestAnimationFrame(clampMediaFooter);
       }
 
@@ -1014,25 +1028,9 @@
       document.addEventListener("DOMContentLoaded", scheduleStartupClamps);
       window.addEventListener("resize", requestClamp, { passive: true });
       window.addEventListener("orientationchange", () => setTimeout(requestClamp, 120), { passive: true });
-
-      // Page changes and Jellyfin list loads can alter the active page/content.
-      const observer = new MutationObserver(requestClamp);
-      if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", () => observer.observe(document.body, {
-          childList: true,
-          subtree: true,
-          attributes: true,
-          attributeFilter: ["class", "style"]
-        }));
-      } else if (document.body) {
-        observer.observe(document.body, {
-          childList: true,
-          subtree: true,
-          attributes: true,
-          attributeFilter: ["class", "style"]
-        });
-        scheduleStartupClamps();
-      }
+      window.addEventListener("openmmi:medialayout", requestClamp);
+      window.addEventListener("openmmi:pagechange", requestClamp);
+      if (document.readyState !== "loading") scheduleStartupClamps();
 
       window.openMmiClampMediaFooter = requestClamp;
     })();
@@ -1229,17 +1227,20 @@
       }
 
       function bootMediaKeys() {
+        performanceMetrics.media_key_boots += 1;
         bindKeyboardMediaKeys();
         bindMediaSession();
         bindAudioEvents();
       }
 
       document.addEventListener("DOMContentLoaded", bootMediaKeys);
+      window.addEventListener("openmmi:medialayout", bootMediaKeys);
+      window.addEventListener("openmmi:pagechange", bootMediaKeys);
       if (document.readyState !== "loading") bootMediaKeys();
-
-      // The Media page is created dynamically, so retry lightly until its audio
-      // element exists. This is deliberately cheap and stops rebinding once bound.
-      setInterval(bootMediaKeys, 1500);
+      // Cover delayed initial construction without leaving a permanent timer behind.
+      setTimeout(bootMediaKeys, 100);
+      setTimeout(bootMediaKeys, 500);
+      setTimeout(bootMediaKeys, 1500);
     })();
 
     // Radio, USB and Bluetooth currently adapt the shared player through these

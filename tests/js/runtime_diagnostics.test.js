@@ -73,6 +73,18 @@ test("charging suspension remains distinct from disconnected AC and charger capa
   assert.doesNotMatch(JSON.stringify(values), /charger|53\.9 W/i);
 });
 
+
+test("frontend activity values expose status, render and media suppression counters", () => {
+  const values = runtime.frontendActivityValues({
+    openMmiStatusPoller: { getMetrics() { return { fetches: 20, overlapping_fetches_skipped: 3 }; } },
+    openMmiVehicleRenderer: { getMetrics() { return { render_calls: 20, vehicle_renders: 4, unchanged_renders_skipped: 16 }; } },
+    openMmiMediaPerformanceMetrics: { layout_runs: 2, layout_requests: 5 },
+  });
+  assert.equal(values["frontend.status"], "20 fetches · 3 overlap skips");
+  assert.equal(values["frontend.render"], "4 renders · 16 unchanged skipped");
+  assert.equal(values["frontend.media"], "2 layouts · 5 requests");
+});
+
 test("polling runs only while Diagnostics is selected and visible", async () => {
   let selected = "diagnostics";
   let pageActive = true;

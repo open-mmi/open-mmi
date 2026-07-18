@@ -46,7 +46,7 @@ The design set covers:
 2. Dashboard and Jellyfin reconnection state machines. **Jellyfin provider recovery implemented; shared dashboard connectivity remains.**
 3. Touch-safe interface selection and TUI recovery. **Implemented; pending Surface qualification.**
 4. Thermal and power diagnostics. **Implemented; pending Surface qualification.**
-5. No-usability-impact runtime efficiency changes.
+5. No-usability-impact runtime efficiency changes. **First browser pass implemented; pending laptop/Surface comparison and separate CAN profiling.**
 6. Qualification on laptop and Surface Pro hardware.
 7. Documentation promotion and branch merge.
 
