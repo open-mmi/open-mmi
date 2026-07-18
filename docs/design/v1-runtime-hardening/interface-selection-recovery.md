@@ -120,3 +120,5 @@ Before merge, verify on the target Surface Pro using touch only:
 5. Select Web Dashboard and remember it.
 6. Confirm Chromium opens and the next normal Open MMI launch goes directly to Web Dashboard.
 7. Repeat using **Open MMI Interface Chooser** from the application menu.
+
+- Linux Mint terminal wrappers are resolved to their native `.real` executable before GNOME-specific lifecycle arguments are used.

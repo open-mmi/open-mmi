@@ -47,12 +47,13 @@ BROWSER_CANDIDATES = (
     "firefox",
 )
 TERMINAL_CANDIDATES = (
-    "x-terminal-emulator",
+    "gnome-terminal.real",
     "gnome-terminal",
     "mate-terminal",
     "konsole",
     "xfce4-terminal",
     "xterm",
+    "x-terminal-emulator",
 )
 GRAPHICAL_CHOOSER_CANDIDATES = ("zenity", "yad")
 
@@ -777,13 +778,31 @@ def _status_command() -> list[str]:
     return [sys.executable, "-m", "ui.dashboard.status_cli"]
 
 
+def _unwrap_terminal_executable(terminal: str) -> str:
+    """Return the native terminal executable behind distro compatibility wrappers.
+
+    Linux Mint exposes ``x-terminal-emulator`` through wrappers such as
+    ``gnome-terminal.wrapper``. Those wrappers implement the portable ``-e``
+    interface but do not accept GNOME Terminal's native ``--wait --`` syntax.
+    When the matching ``.real`` binary exists, use it directly so the launcher
+    can both execute the TUI and wait for the terminal lifecycle.
+    """
+
+    resolved = Path(os.path.realpath(terminal))
+    if resolved.name.endswith(".wrapper"):
+        native = resolved.with_name(resolved.name[: -len(".wrapper")] + ".real")
+        if os.access(native, os.X_OK):
+            return str(native)
+    return terminal
+
+
 def _terminal_command(terminal: str, status_command: Sequence[str]) -> list[str]:
-    name = Path(os.path.realpath(terminal)).name
-    if name.startswith("gnome-terminal"):
+    name = Path(terminal).name
+    if name.startswith("gnome-terminal") and not name.endswith(".wrapper"):
         return [terminal, "--wait", "--"] + list(status_command)
-    if name.startswith("mate-terminal"):
+    if name.startswith("mate-terminal") and not name.endswith(".wrapper"):
         return [terminal, "--disable-factory", "--"] + list(status_command)
-    if name.startswith("xfce4-terminal"):
+    if name.startswith("xfce4-terminal") and not name.endswith(".wrapper"):
         return [terminal, "--disable-server", "--command", shlex.join(status_command)]
     if name.startswith("konsole"):
         return [terminal, "--nofork", "-e"] + list(status_command)
@@ -799,6 +818,7 @@ def _run_tui_once() -> int:
     for candidate in TERMINAL_CANDIDATES:
         terminal = shutil.which(candidate)
         if terminal:
+            terminal = _unwrap_terminal_executable(terminal)
             try:
                 process = subprocess.Popen(
                     _terminal_command(terminal, status_command),
