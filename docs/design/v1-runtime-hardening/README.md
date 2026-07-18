@@ -4,7 +4,7 @@
 | --- | --- |
 | Source branch | `v1-runtime-hardening` |
 | Intended target | `main` |
-| Status | Proposed |
+| Status | In progress |
 | Predecessor | `v1-desktop-shell` |
 | Next planned phase | `v1-update-management` |
 
@@ -40,8 +40,8 @@ The design set covers:
 
 ## Implementation order
 
-1. Frontend version identity and cache-safe reload behaviour.
-2. Dashboard and Jellyfin reconnection state machines.
+1. Frontend version identity and cache-safe reload behaviour. **Implemented and qualified.**
+2. Dashboard and Jellyfin reconnection state machines. **Jellyfin provider recovery implemented; shared dashboard connectivity remains.**
 3. Thermal and power diagnostics.
 4. No-usability-impact runtime efficiency changes.
 5. Qualification on laptop and Surface Pro hardware.

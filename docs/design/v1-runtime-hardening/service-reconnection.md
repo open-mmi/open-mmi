@@ -3,7 +3,7 @@
 | Field | Value |
 | --- | --- |
 | Branch | `v1-runtime-hardening` |
-| Status | Proposed |
+| Status | In progress |
 | Owners | Frontend API client, Media/Jellyfin integration, dashboard service |
 
 ## Problem
@@ -32,6 +32,22 @@ A Jellyfin restart should not require refreshing Chromium. A dashboard-server re
 - Guaranteeing uninterrupted media playback across a Jellyfin restart.
 - Restarting external Jellyfin infrastructure from Open MMI.
 - Reloading Open MMI whenever any media request fails.
+
+## Implementation status
+
+The first implementation slice covers Jellyfin provider recovery:
+
+- one page-owned status/retry controller;
+- retry delays of 1, 2, 5, 10, then 15 seconds;
+- paused retries while the Media page or document is inactive;
+- explicit configuration, authentication, reconnecting, server-error, and ready states;
+- last successful library content retained during outages;
+- automatic active-library refresh after recovery;
+- an explicit Retry control;
+- no full-page reload for Jellyfin outages;
+- Python, Node, and Playwright regression coverage.
+
+The shared dashboard-server connectivity controller described later in this document remains deferred to the next reconnection slice. Frontend version reconciliation already owns changed-build reloads.
 
 ## State model
 

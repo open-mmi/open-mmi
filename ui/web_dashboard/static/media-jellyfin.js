@@ -30,8 +30,9 @@
     const window = options.window || root;
     const document = options.document || window?.document;
     const apiClient = options.api || window?.openMmiApi;
-    if (!window || !document || !apiClient) {
-      throw new Error("Jellyfin media controller requires window, document and API client");
+    const reconnectApi = options.reconnect || window?.openMmiJellyfinReconnect;
+    if (!window || !document || !apiClient || !reconnectApi) {
+      throw new Error("Jellyfin media controller requires window, document, API client and reconnection controller");
     }
     if (window.__openMmiJellyfinMediaControllerLoaded && window.openMmiJellyfinPlayer) {
       return window.openMmiJellyfinPlayer;
@@ -53,7 +54,10 @@
       lastQuery: "",
       filter: "recent",
       loading: false,
+      providerStatus: "idle",
+      providerMessage: "",
     };
+    let reconnectController = null;
 
     function ommiMediaEsc(value) {
       return String(value ?? "")
@@ -242,7 +246,11 @@
                 </div>
                 <div class="d-flex justify-content-between align-items-center flex-shrink-0 ommi-list-heading">
                   <span id="ommiMediaListTitle">Recent music</span>
-                  <span class="d-inline-flex align-items-center gap-2"><small id="ommiMediaRemoteState" class="text-secondary ommi-remote-state">--</small><span id="ommiMediaCount" class="badge rounded-pill text-bg-secondary">--</span></span>
+                  <span class="d-inline-flex align-items-center gap-2">
+                    <button type="button" id="ommiMediaRetry" class="btn btn-sm btn-outline-warning" hidden>Retry</button>
+                    <small id="ommiMediaRemoteState" class="text-secondary ommi-remote-state">--</small>
+                    <span id="ommiMediaCount" class="badge rounded-pill text-bg-secondary">--</span>
+                  </span>
                 </div>
                 <div id="ommiMediaResults" class="list-group list-group-flush flex-grow-1 min-h-0 overflow-auto ommi-results" role="list" aria-label="Tracks"></div>
               </div>
@@ -346,6 +354,71 @@
       return apiClient.getJson(path);
     }
 
+    function ommiMediaProviderActive() {
+      const page = document.querySelector("#pageElectrical.page-media");
+      const usesJellyfin = !window.openMmiMediaSources || window.openMmiMediaSources.shouldUseJellyfin();
+      return Boolean(page?.classList.contains("active") && usesJellyfin && !document.hidden);
+    }
+
+    function ommiMediaSyncLiveControls() {
+      const unavailable = ["connecting", "reconnecting", "authentication-error", "configuration-missing", "server-error"]
+        .includes(openMmiMedia.providerStatus);
+      document.querySelectorAll("#ommiMediaSearchBtn, #ommiMediaFilter, [data-open-mmi-track]").forEach((control) => {
+        control.disabled = Boolean(openMmiMedia.loading || unavailable);
+        control.setAttribute("aria-disabled", String(control.disabled));
+      });
+    }
+
+    function ommiMediaApplyProviderState(snapshot = {}) {
+      const status = String(snapshot.status || "idle");
+      const message = String(snapshot.message || "");
+      openMmiMedia.providerStatus = status;
+      openMmiMedia.providerMessage = message;
+      const rootNode = document.querySelector("#openMmiMediaRoot");
+      if (rootNode) rootNode.dataset.jellyfinState = status;
+
+      const remote = document.querySelector("#ommiMediaRemoteState");
+      if (remote) {
+        const labels = {
+          idle: "--",
+          connecting: "CONNECTING",
+          ready: "READY",
+          reconnecting: "RECONNECTING",
+          "configuration-missing": "NOT CONFIGURED",
+          "authentication-error": "AUTH ERROR",
+          "server-error": "SERVER ERROR",
+        };
+        remote.textContent = labels[status] || status.toUpperCase();
+        remote.title = message;
+      }
+
+      const retry = document.querySelector("#ommiMediaRetry");
+      if (retry) retry.hidden = !["reconnecting", "authentication-error", "server-error"].includes(status);
+
+      if (status === "connecting") ommiMediaSetMessage("Connecting to Jellyfin…");
+      else if (status === "reconnecting") ommiMediaSetMessage("Jellyfin reconnecting…", "error");
+      else if (status === "configuration-missing") ommiMediaSetMessage(message || "Jellyfin is not configured.", "error");
+      else if (status === "authentication-error") ommiMediaSetMessage(message || "Jellyfin credentials were rejected.", "error");
+      else if (status === "server-error") ommiMediaSetMessage(message || "Jellyfin returned an error.", "error");
+      ommiMediaSyncLiveControls();
+    }
+
+    function ommiMediaReconnectController() {
+      if (reconnectController) return reconnectController;
+      reconnectController = reconnectApi.createController({
+        window,
+        document,
+        requestStatus: () => ommiMediaFetchJson("/api/jellyfin/status"),
+        isActive: ommiMediaProviderActive,
+        onStateChange: ommiMediaApplyProviderState,
+        onRecovered: () => {
+          ommiMediaSetMessage("Jellyfin is available again.");
+          void ommiMediaLoadLibrary(openMmiMedia.lastQuery, openMmiMedia.filter);
+        },
+      });
+      return reconnectController;
+    }
+
     const OMMI_MEDIA_FILTERS = {
       recent: "Recent music",
       favorites: "Favourites",
@@ -404,8 +477,10 @@
       document
         .querySelectorAll("#ommiMediaSearchBtn, #ommiMediaFilter")
         .forEach((control) => {
-          control.disabled = openMmiMedia.loading;
+          control.disabled = Boolean(openMmiMedia.loading || openMmiMedia.providerStatus !== "ready");
+          control.setAttribute("aria-disabled", String(control.disabled));
         });
+      ommiMediaSyncLiveControls();
     }
 
     function ommiMediaRenderResults(items) {
@@ -461,13 +536,19 @@
         });
         const payload = await ommiMediaFetchJson(`/api/jellyfin/search?${params}`);
         if (requestSerial !== openMmiMedia.requestSerial) return;
-        if (payload.error) ommiMediaSetMessage(payload.error, "error");
-        else ommiMediaSetMessage("Tap any track to play locally.");
-        ommiMediaRenderResults(payload.items || []);
+        ommiMediaReconnectController().reportPayload(payload);
+        if (payload.error) {
+          ommiMediaSetMessage(payload.error, "error");
+          if (!openMmiMedia.queue.length) ommiMediaRenderResults([]);
+        } else {
+          ommiMediaSetMessage("Tap any track to play locally.");
+          ommiMediaRenderResults(payload.items || []);
+        }
       } catch (err) {
         if (requestSerial !== openMmiMedia.requestSerial) return;
+        ommiMediaReconnectController().reportFailure(err);
         ommiMediaSetMessage(`Could not load library: ${err.message}`, "error");
-        ommiMediaRenderResults([]);
+        if (!openMmiMedia.queue.length) ommiMediaRenderResults([]);
       } finally {
         if (requestSerial === openMmiMedia.requestSerial) ommiMediaSetLoading(false);
       }
@@ -476,21 +557,11 @@
 
     async function ommiMediaRefreshStatus() {
       ommiMediaPage();
-      if (window.openMmiMediaSources && !window.openMmiMediaSources.shouldUseJellyfin()) { window.openMmiMediaSources.renderPlaceholder(); return; }
-      try {
-        const status = await ommiMediaFetchJson("/api/jellyfin/status");
-        const remote = document.querySelector("#ommiMediaRemoteState");
-        if (remote) {
-          const label = status?.configured ? (status?.state_label || status?.status || "ready") : "not configured";
-          remote.textContent = String(label).toUpperCase();
-          remote.title = status?.subtitle || "";
-        }
-        if (!status?.configured) ommiMediaSetMessage(status.subtitle || "Jellyfin is not configured", "error");
-      } catch (err) {
-        const remote = document.querySelector("#ommiMediaRemoteState");
-        if (remote) remote.textContent = "ERROR";
-        ommiMediaSetMessage(`Jellyfin status failed: ${err.message}`, "error");
+      if (window.openMmiMediaSources && !window.openMmiMediaSources.shouldUseJellyfin()) {
+        window.openMmiMediaSources.renderPlaceholder();
+        return null;
       }
+      return ommiMediaReconnectController().refreshNow("media-status");
     }
 
     async function ommiMediaPlayIndex(index) {
@@ -545,6 +616,10 @@
           event.preventDefault();
           await ommiMediaPlayIndex(trackButton.dataset.openMmiTrack);
           return;
+        }
+        if (event.target.closest?.("#ommiMediaRetry")) {
+          ommiMediaSetMessage("Retrying Jellyfin…");
+          return ommiMediaReconnectController().retryNow();
         }
         if (event.target.closest?.("#ommiMediaSearchBtn")) {
           return ommiMediaRunSearchNow(
@@ -612,7 +687,7 @@
       ommiMediaPage();
       if (window.openMmiMediaSources && !window.openMmiMediaSources.shouldUseJellyfin()) { window.openMmiMediaSources.renderPlaceholder(); return; }
       ommiMediaSetNowPlaying(openMmiMedia.current);
-      ommiMediaRefreshStatus();
+      ommiMediaReconnectController().start();
       if (!openMmiMedia.queue.length) ommiMediaLoadLibrary("");
     }
 
@@ -622,7 +697,6 @@
       ommiMediaBoot();
       document.addEventListener("DOMContentLoaded", ommiMediaBoot);
       window.setInterval(() => { ommiMediaPage(); ommiMediaUpdatePagerLabels(); ommiMediaFitViewport(); }, 1000);
-      window.setInterval(ommiMediaRefreshStatus, 7000);
       return true;
     }
     // --- Open MMI Jellyfin real Bootstrap media v5 end ---
@@ -1213,6 +1287,7 @@
       refreshStatus: (...args) => ommiMediaRefreshStatus(...args),
       playIndex: (...args) => ommiMediaPlayIndex(...args),
       setMessage: (...args) => ommiMediaSetMessage(...args),
+      reconnection: ommiMediaReconnectController(),
       formatTime,
       escapeHtml,
     };

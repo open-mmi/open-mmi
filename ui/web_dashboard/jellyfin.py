@@ -289,6 +289,40 @@ def _jellyfin_request_json(config: Dict[str, Any], path: str) -> Any:
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise RuntimeError("Jellyfin returned invalid JSON") from exc
 
+def _jellyfin_error_details(exc: Exception) -> Dict[str, Any]:
+    """Classify provider failures without exposing credentials or raw responses."""
+
+    from urllib.error import HTTPError, URLError
+
+    current: BaseException | None = exc
+    while current is not None:
+        if isinstance(current, HTTPError):
+            if current.code in {401, 403}:
+                return {
+                    "connection_state": "authentication-error",
+                    "retryable": False,
+                    "error_code": "authentication",
+                }
+            return {
+                "connection_state": "server-error",
+                "retryable": current.code >= 500,
+                "error_code": f"http-{current.code}",
+            }
+        if isinstance(current, (URLError, TimeoutError, ConnectionError, OSError)):
+            return {
+                "connection_state": "reconnecting",
+                "retryable": True,
+                "error_code": "unreachable",
+            }
+        current = current.__cause__
+
+    return {
+        "connection_state": "server-error",
+        "retryable": False,
+        "error_code": "provider-error",
+    }
+
+
 def _jellyfin_test_connection(config: Dict[str, Any]) -> Dict[str, Any]:
     if not config.get("configured"):
         raise RuntimeError("Jellyfin is not fully configured")
@@ -531,6 +565,8 @@ def _jellyfin_status_payload(demo_mode: bool = False) -> Dict[str, Any]:
         return {
             "configured": False,
             "status": "unconfigured",
+            "connection_state": "configuration-missing",
+            "retryable": False,
             "state_label": "not configured",
             "title": "Jellyfin not configured",
             "subtitle": "Set Jellyfin URL with token or username/password",
@@ -547,6 +583,8 @@ def _jellyfin_status_payload(demo_mode: bool = False) -> Dict[str, Any]:
             return {
                 "configured": True,
                 "status": "ready",
+                "connection_state": "ready",
+                "retryable": False,
                 "state_label": "local player ready",
                 "title": "Jellyfin ready",
                 "subtitle": "Pick a track below to play locally",
@@ -564,6 +602,8 @@ def _jellyfin_status_payload(demo_mode: bool = False) -> Dict[str, Any]:
             return {
                 "configured": True,
                 "status": "ready",
+                "connection_state": "ready",
+                "retryable": False,
                 "state_label": "local player ready",
                 "title": "Jellyfin ready",
                 "subtitle": "No matching remote session; local playback is available",
@@ -583,6 +623,8 @@ def _jellyfin_status_payload(demo_mode: bool = False) -> Dict[str, Any]:
         return {
             "configured": True,
             "status": status,
+            "connection_state": "ready",
+            "retryable": False,
             "state_label": status,
             "title": formatted.get("name") or "Jellyfin ready",
             "subtitle": " · ".join(
@@ -598,10 +640,16 @@ def _jellyfin_status_payload(demo_mode: bool = False) -> Dict[str, Any]:
             "scope": scope,
         }
     except Exception as exc:
+        details = _jellyfin_error_details(exc)
         return {
             "configured": True,
             "status": "error",
-            "state_label": "error",
+            **details,
+            "state_label": "credentials rejected"
+            if details["connection_state"] == "authentication-error"
+            else "reconnecting"
+            if details["connection_state"] == "reconnecting"
+            else "server error",
             "title": "Jellyfin unavailable",
             "subtitle": str(exc),
         }
@@ -618,7 +666,13 @@ def _jellyfin_search_payload(
             payload = _jellyfin_demo_tracks()
             payload["filter"] = _jellyfin_media_filter(media_filter)
             return payload
-        return {"configured": False, "items": [], "error": "Jellyfin is not configured"}
+        return {
+            "configured": False,
+            "connection_state": "configuration-missing",
+            "retryable": False,
+            "items": [],
+            "error": "Jellyfin is not configured",
+        }
 
     try:
         from urllib.parse import urlencode
@@ -653,6 +707,8 @@ def _jellyfin_search_payload(
         items = data.get("Items", []) if isinstance(data, dict) else []
         return {
             "configured": True,
+            "connection_state": "ready",
+            "retryable": False,
             "filter": selected_filter,
             "items": [
                 _format_jellyfin_item(item)
@@ -663,7 +719,12 @@ def _jellyfin_search_payload(
             ],
         }
     except Exception as exc:
-        return {"configured": True, "items": [], "error": str(exc)}
+        return {
+            "configured": True,
+            **_jellyfin_error_details(exc),
+            "items": [],
+            "error": str(exc),
+        }
 
 def _jellyfin_proxy_audio(handler: Any, item_id: str) -> None:
     from urllib.error import HTTPError, URLError

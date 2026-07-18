@@ -204,6 +204,8 @@ Search test:
 curl 'http://127.0.0.1:8765/api/jellyfin/search?limit=5' | python3 -m json.tool
 ```
 
+The Media page reconnects to Jellyfin without refreshing Chromium. During a provider outage it keeps the existing page and last successful library visible, marks the controls as reconnecting, and retries with bounded backoff. Authentication and missing-configuration states stop continuous retries until the user saves configuration or selects **Retry**. When Jellyfin returns, the active library view refreshes automatically.
+
 <!-- open-mmi-items-4-6:start -->
 ### Security and library scope
 

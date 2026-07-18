@@ -110,6 +110,21 @@ async function loadDashboard(page, options = {}) {
     frontend_id: "__OPEN_MMI_FRONTEND_ID__",
     reload_supported: true,
   };
+  const jellyfinStatusPayload = options.jellyfinStatusPayload || {
+    configured: false,
+    status: "unconfigured",
+    connection_state: "configuration-missing",
+    retryable: false,
+    state_label: "not configured",
+    subtitle: "Jellyfin is not configured",
+  };
+  const jellyfinSearchPayload = options.jellyfinSearchPayload || {
+    configured: false,
+    connection_state: "configuration-missing",
+    retryable: false,
+    items: [],
+    error: "Jellyfin is not configured",
+  };
   const systemPayload = options.systemPayload || {
     local_only: true,
     launcher: {
@@ -136,7 +151,7 @@ async function loadDashboard(page, options = {}) {
   };
 
   await page.setContent(ASSETS.documentHtml, { waitUntil: "domcontentloaded" });
-  await page.evaluate(({ initialPayload, initialStorage, initialBluetoothPayload, initialSystemPayload, initialVersionPayload }) => {
+  await page.evaluate(({ initialPayload, initialStorage, initialBluetoothPayload, initialSystemPayload, initialVersionPayload, initialJellyfinStatusPayload, initialJellyfinSearchPayload }) => {
     const values = Object.assign({}, initialStorage);
     const localStorageMock = {
       get length() { return Object.keys(values).length; },
@@ -152,6 +167,10 @@ async function loadDashboard(page, options = {}) {
     window.__openMmiBluetoothFixture = initialBluetoothPayload;
     window.__openMmiSystemFixture = initialSystemPayload;
     window.__openMmiVersionFixture = initialVersionPayload;
+    window.__openMmiJellyfinStatusFixture = initialJellyfinStatusPayload;
+    window.__openMmiJellyfinSearchFixture = initialJellyfinSearchPayload;
+    window.__openMmiJellyfinStatusRequests = 0;
+    window.__openMmiJellyfinSearchRequests = 0;
 
     const json = (body, status = 200) => new Response(JSON.stringify(body), {
       status,
@@ -190,8 +209,15 @@ async function loadDashboard(page, options = {}) {
         window.__openMmiSystemFixture.jellyfin.restart_required = false;
         return json({ ok: true, restarting: true });
       }
-      if (url.includes("/api/jellyfin/status")) return json({ configured: false, available: false, libraries: [] });
-      if (url.includes("/api/jellyfin/")) return json({ configured: false, available: false, items: [] });
+      if (url.includes("/api/jellyfin/status")) {
+        window.__openMmiJellyfinStatusRequests += 1;
+        return json(window.__openMmiJellyfinStatusFixture);
+      }
+      if (url.includes("/api/jellyfin/search")) {
+        window.__openMmiJellyfinSearchRequests += 1;
+        return json(window.__openMmiJellyfinSearchFixture);
+      }
+      if (url.includes("/api/jellyfin/")) return json({ configured: false, connection_state: "configuration-missing", retryable: false, items: [] });
       if (url.includes("/api/bluetooth/status")) return json(window.__openMmiBluetoothFixture);
       if (url.includes("/api/bluetooth/control")) return json({ ok: false, error: "Unavailable" }, 409);
       if (url.includes("/api/usb/status")) return json({ available: false, roots: [] });
@@ -215,6 +241,8 @@ async function loadDashboard(page, options = {}) {
     initialBluetoothPayload: bluetoothPayload,
     initialSystemPayload: systemPayload,
     initialVersionPayload: versionPayload,
+    initialJellyfinStatusPayload: jellyfinStatusPayload,
+    initialJellyfinSearchPayload: jellyfinSearchPayload,
   });
 
   if (options.focusBeforeReady) {
@@ -240,6 +268,12 @@ async function loadDashboard(page, options = {}) {
     },
     async setBluetoothPayload(nextPayload) {
       await page.evaluate((next) => { window.__openMmiBluetoothFixture = next; }, nextPayload);
+    },
+    async setJellyfinStatus(nextPayload) {
+      await page.evaluate((next) => { window.__openMmiJellyfinStatusFixture = next; }, nextPayload);
+    },
+    async setJellyfinSearch(nextPayload) {
+      await page.evaluate((next) => { window.__openMmiJellyfinSearchFixture = next; }, nextPayload);
     },
     async storage() {
       return page.evaluate(() => Object.assign({}, window.__openMmiBrowserStorage));
@@ -782,5 +816,68 @@ test("system settings and Jellyfin setup use the shared local configuration API"
   await expect(page.getByTestId("jellyfin-password")).toHaveValue("");
   await expect(page.locator('[data-openmmi-jellyfin-settings="true"]')).not.toContainText("not-exposed-after-submit");
 
+  await expectNoRuntimeFailures(failures);
+});
+
+test("Jellyfin restart recovers without reloading Chromium or rebuilding Media", async ({ page }) => {
+  const failures = captureRuntimeFailures(page);
+  const dashboard = await loadDashboard(page, {
+    jellyfinStatusPayload: {
+      configured: true,
+      status: "ready",
+      connection_state: "ready",
+      retryable: false,
+      state_label: "local player ready",
+      subtitle: "Jellyfin ready",
+    },
+    jellyfinSearchPayload: {
+      configured: true,
+      connection_state: "ready",
+      retryable: false,
+      filter: "recent",
+      items: [{ id: "track-1", name: "Before restart", artist: "Artist", album: "Album", duration_seconds: 60 }],
+    },
+  });
+
+  await openMedia(page);
+  await expect(page.locator("#ommiMediaRemoteState")).toHaveText("READY");
+  await expect(page.locator("#ommiMediaResults")).toContainText("Before restart");
+  await page.evaluate(() => { document.querySelector("#openMmiMediaRoot").__reconnectIdentity = "preserved"; });
+
+  await dashboard.setJellyfinStatus({
+    configured: true,
+    status: "error",
+    connection_state: "reconnecting",
+    retryable: true,
+    state_label: "reconnecting",
+    subtitle: "Jellyfin connection failed",
+  });
+  await page.evaluate(() => window.openMmiJellyfinPlayer.reconnection.refreshNow("browser-test-offline"));
+
+  await expect(page.locator("#ommiMediaRemoteState")).toHaveText("RECONNECTING");
+  await expect(page.locator("#ommiMediaResults")).toContainText("Before restart");
+  await expect(page.locator("#ommiMediaRetry")).toBeVisible();
+  expect(await page.evaluate(() => document.querySelector("#openMmiMediaRoot").__reconnectIdentity)).toBe("preserved");
+
+  await dashboard.setJellyfinSearch({
+    configured: true,
+    connection_state: "ready",
+    retryable: false,
+    filter: "recent",
+    items: [{ id: "track-2", name: "After restart", artist: "Artist", album: "Album", duration_seconds: 61 }],
+  });
+  await dashboard.setJellyfinStatus({
+    configured: true,
+    status: "ready",
+    connection_state: "ready",
+    retryable: false,
+    state_label: "local player ready",
+    subtitle: "Jellyfin ready",
+  });
+  await expect(page.locator("#ommiMediaRemoteState")).toHaveText("READY", { timeout: 4000 });
+  await expect(page.locator("#ommiMediaResults")).toContainText("After restart");
+  await expect(page.locator("#pageElectrical")).toHaveClass(/active/);
+  await expect(page.locator("#pageTitle")).toHaveText("Media");
+  expect(await page.evaluate(() => document.querySelector("#openMmiMediaRoot").__reconnectIdentity)).toBe("preserved");
   await expectNoRuntimeFailures(failures);
 });

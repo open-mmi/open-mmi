@@ -17,6 +17,7 @@ NAVIGATION = STATIC / "navigation.js"
 OVERLAYS = STATIC / "overlays.js"
 VEHICLE = STATIC / "vehicle.js"
 MEDIA = STATIC / "media.js"
+JELLYFIN_RECONNECTION = STATIC / "jellyfin-reconnection.js"
 MEDIA_JELLYFIN = STATIC / "media-jellyfin.js"
 MEDIA_RADIO = STATIC / "media-radio.js"
 MEDIA_USB = STATIC / "media-usb.js"
@@ -35,6 +36,7 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
         overlays_index = html.index('<script src="/overlays.js"></script>')
         vehicle_index = html.index('<script src="/vehicle.js"></script>')
         media_index = html.index('<script src="/media.js"></script>')
+        jellyfin_reconnection_index = html.index('<script src="/jellyfin-reconnection.js"></script>')
         jellyfin_index = html.index('<script src="/media-jellyfin.js"></script>')
         radio_index = html.index('<script src="/media-radio.js"></script>')
         usb_index = html.index('<script src="/media-usb.js"></script>')
@@ -48,7 +50,8 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
         self.assertLess(navigation_index, overlays_index)
         self.assertLess(overlays_index, vehicle_index)
         self.assertLess(vehicle_index, media_index)
-        self.assertLess(media_index, jellyfin_index)
+        self.assertLess(media_index, jellyfin_reconnection_index)
+        self.assertLess(jellyfin_reconnection_index, jellyfin_index)
         self.assertLess(jellyfin_index, radio_index)
         self.assertLess(radio_index, usb_index)
         self.assertLess(usb_index, bluetooth_index)
@@ -94,6 +97,7 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
         overlays = OVERLAYS.read_text(encoding="utf-8")
         vehicle = VEHICLE.read_text(encoding="utf-8")
         media = MEDIA.read_text(encoding="utf-8")
+        jellyfin_reconnection = JELLYFIN_RECONNECTION.read_text(encoding="utf-8")
         media_jellyfin = MEDIA_JELLYFIN.read_text(encoding="utf-8")
         media_radio = MEDIA_RADIO.read_text(encoding="utf-8")
         media_usb = MEDIA_USB.read_text(encoding="utf-8")
@@ -108,6 +112,7 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
             (overlays, "openMmiOverlays"),
             (vehicle, "openMmiVehicle"),
             (media, "openMmiMediaShell"),
+            (jellyfin_reconnection, "openMmiJellyfinReconnect"),
             (media_jellyfin, "openMmiJellyfinMedia"),
             (media_radio, "openMmiRadioMedia"),
             (media_usb, "openMmiUsbMediaController"),
@@ -118,6 +123,7 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
             if global_name not in {
                 "openMmiFrontendVersion",
                 "openMmiMediaShell",
+                "openMmiJellyfinReconnect",
                 "openMmiJellyfinMedia",
                 "openMmiRadioMedia",
                 "openMmiUsbMediaController",
@@ -185,17 +191,20 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
     def test_media_modules_own_all_frontend_controllers(self):
         app = APP.read_text(encoding="utf-8")
         media = MEDIA.read_text(encoding="utf-8")
+        reconnect = JELLYFIN_RECONNECTION.read_text(encoding="utf-8")
         jellyfin = MEDIA_JELLYFIN.read_text(encoding="utf-8")
         radio = MEDIA_RADIO.read_text(encoding="utf-8")
         usb = MEDIA_USB.read_text(encoding="utf-8")
         bluetooth = MEDIA_BLUETOOTH.read_text(encoding="utf-8")
         self.assertIn("function createController(options = {})", media)
         self.assertIn("function activeSourceFromPreferences(prefs)", media)
+        self.assertIn("function createController(options = {})", reconnect)
         self.assertIn("function installController(options = {})", jellyfin)
         self.assertIn("function installPrivacy(options = {})", radio)
         self.assertIn("function installController(options = {})", radio)
         self.assertIn("function installController(options = {})", usb)
         self.assertIn("function installController(options = {})", bluetooth)
+        self.assertIn("DEFAULT_RETRY_DELAYS_MS", reconnect)
         self.assertIn('/api/jellyfin/status', jellyfin)
         self.assertIn('/api/bluetooth/status', bluetooth)
         self.assertIn('id: "radio"', radio)

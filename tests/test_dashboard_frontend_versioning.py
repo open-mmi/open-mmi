@@ -102,6 +102,7 @@ class DashboardVersionHttpTests(unittest.TestCase):
             self.assertEqual(headers.get("Cache-Control"), "no-store")
             self.assertIn('content="test-build-42"', html)
             self.assertIn('/navigation.js?v=test-build-42', html)
+            self.assertIn('/jellyfin-reconnection.js?v=test-build-42', html)
             self.assertIn('/styles-runtime-hardening.css?v=test-build-42', html)
 
     def test_static_cache_policy_distinguishes_versioned_and_compatibility_urls(self):

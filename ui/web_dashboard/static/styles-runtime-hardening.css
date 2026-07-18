@@ -28,3 +28,13 @@
   color: inherit;
   font: inherit;
 }
+
+/* Jellyfin provider recovery keeps the Media DOM mounted while live actions pause. */
+#openMmiMediaRoot[data-jellyfin-state="reconnecting"] .ommi-media-card,
+#openMmiMediaRoot[data-jellyfin-state="server-error"] .ommi-media-card {
+  border-color: color-mix(in srgb, var(--warning, #f0ad4e) 55%, transparent);
+}
+
+#ommiMediaRetry[hidden] {
+  display: none !important;
+}

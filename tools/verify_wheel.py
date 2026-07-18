@@ -28,6 +28,7 @@ REQUIRED_PATHS = {
     "ui/web_dashboard/static/overlays.js",
     "ui/web_dashboard/static/vehicle.js",
     "ui/web_dashboard/static/media.js",
+    "ui/web_dashboard/static/jellyfin-reconnection.js",
     "ui/web_dashboard/static/media-jellyfin.js",
     "ui/web_dashboard/static/media-radio.js",
     "ui/web_dashboard/static/media-usb.js",
