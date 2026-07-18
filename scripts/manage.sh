@@ -496,10 +496,14 @@ configure_update_service_defaults() {
 }
 
 install_update_coordinator() {
+    local authorization_added=false
     if ! getent group "$UPDATE_COORDINATOR_GROUP" >/dev/null 2>&1; then
         groupadd --system "$UPDATE_COORDINATOR_GROUP"
     fi
-    usermod -aG "$UPDATE_COORDINATOR_GROUP" "$REAL_USER"
+    if ! id -nG "$REAL_USER" | tr ' ' '\n' | grep -Fqx "$UPDATE_COORDINATOR_GROUP"; then
+        usermod -aG "$UPDATE_COORDINATOR_GROUP" "$REAL_USER"
+        authorization_added=true
+    fi
     install -d -m 0755 -o root -g root /etc/systemd/system
     install -m 0644 -o root -g root \
         "$REPO_ROOT/systemd/system/$UPDATE_COORDINATOR_UNIT" \
@@ -509,7 +513,11 @@ install_update_coordinator() {
         "/etc/systemd/system/$UPDATE_INSTALLER_UNIT"
     install -d -m 0755 -o root -g root "$UPDATE_COORDINATOR_STATE_DIR"
     systemctl daemon-reload
-    systemctl enable --now "$UPDATE_COORDINATOR_UNIT"
+    systemctl enable "$UPDATE_COORDINATOR_UNIT"
+    systemctl restart "$UPDATE_COORDINATOR_UNIT"
+    if [ "$authorization_added" = true ]; then
+        log_warn "Log out and back in before using update actions without sudo."
+    fi
 }
 
 remove_login_autostart() {

@@ -273,6 +273,16 @@ sudo() {{ printf '%s\\0' "$@"; }}
         self.assertNotIn("%i", unit)
         self.assertIn("ProtectSystem=strict", unit)
 
+    def test_coordinator_can_read_the_managed_checkout_and_is_restarted(self) -> None:
+        unit = (ROOT / "systemd/system/open-mmi-update-coordinator.service").read_text(encoding="utf-8")
+        self.assertIn("ProtectHome=read-only", unit)
+        self.assertNotIn("ProtectHome=true", unit)
+        start = self.text.index("install_update_coordinator() {")
+        end = self.text.index("remove_login_autostart() {", start)
+        block = self.text[start:end]
+        self.assertIn('systemctl restart "$UPDATE_COORDINATOR_UNIT"', block)
+        self.assertIn("Log out and back in", block)
+
 
     def test_install_and_update_record_managed_update_source_metadata(self) -> None:
         install_start = self.text.index("cmd_install() {")

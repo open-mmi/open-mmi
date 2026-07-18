@@ -24,10 +24,11 @@ class UpdateInstallerTests(unittest.TestCase):
         subprocess.run(["git", "-C", str(stage), "config", "user.email", "test@example.invalid"], check=True)
         (stage / "README.md").write_text("one\n", encoding="utf-8")
         subprocess.run(["git", "-C", str(stage), "add", "README.md"], check=True)
-        subprocess.run(["git", "-C", str(stage), "commit", "-m", "one"], check=True, stdout=subprocess.DEVNULL)
+        git_identity = ["-c", "user.name=Open MMI Test", "-c", "user.email=test@open-mmi.invalid"]
+        subprocess.run(["git", *git_identity, "-C", str(stage), "commit", "-m", "one"], check=True, stdout=subprocess.DEVNULL)
         installed = subprocess.run(["git", "-C", str(stage), "rev-parse", "HEAD"], check=True, text=True, stdout=subprocess.PIPE).stdout.strip()
         (stage / "README.md").write_text("two\n", encoding="utf-8")
-        subprocess.run(["git", "-C", str(stage), "commit", "-am", "two"], check=True, stdout=subprocess.DEVNULL)
+        subprocess.run(["git", *git_identity, "-C", str(stage), "commit", "-am", "two"], check=True, stdout=subprocess.DEVNULL)
         candidate = subprocess.run(["git", "-C", str(stage), "rev-parse", "HEAD"], check=True, text=True, stdout=subprocess.PIPE).stdout.strip()
         state = update_coordinator.initial_state()
         state.update({
