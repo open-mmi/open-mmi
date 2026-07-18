@@ -174,7 +174,7 @@
             <div class="openmmi-settings-metric"><span>Last checked</span><strong data-testid="system-update-checked-at">${escapeHtml(lastChecked)}</strong></div>
             <div class="openmmi-settings-metric"><span>Repository health</span><strong data-testid="system-update-repository">${escapeHtml(repositoryState)}</strong></div>
             ${updateError}
-            <p class="openmmi-update-status-note">Checking is read-only. Channel selection is administrative CLI policy; installing, readiness enforcement, and rollback are not enabled in this slice.</p>
+            <p class="openmmi-update-status-note">Checking is read-only. Channel selection is administrative CLI policy; prepared nightly installation is also CLI-only, with no browser install or rollback action.</p>
             <button type="button" class="openmmi-settings-link openmmi-config-refresh" data-openmmi-update-check="true" data-openmmi-requires-dashboard="true" data-testid="system-update-check" ${updateBusy ? "disabled" : ""}>${updateBusy ? "Checking…" : "Check for updates"}</button>
           </div>
           ${row("Default interface", "Used by the desktop icon and open-mmi-launcher without arguments.",

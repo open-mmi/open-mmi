@@ -3,7 +3,7 @@
 | Field | Value |
 | --- | --- |
 | Branch | `v1-update-management` |
-| Status | Pre-update inspection implemented; post-update health and rollback remain proposed |
+| Status | Pre-update inspection plus initial nightly health validation and automatic restoration implemented |
 | Owners | Update coordinator, runtime services, release engineering |
 
 ## Pre-update readiness
@@ -27,24 +27,21 @@ The read-only readiness slice exposes `GET /api/system/update-readiness` and
 `open-mmi-config updates readiness`. Both inspect a fixed set of local checks;
 neither accepts paths, commands, service names, thresholds, or policy overrides.
 Unknown power, thermal, or service state is reported as `indeterminate`, never
-silently treated as ready. Until the separately privileged coordinator exists,
-`privileged-coordinator` intentionally remains a blocker and
-`install_allowed` remains false.
+silently treated as ready. `install_allowed` becomes true only when the trusted
+coordinator reports nightly execution authorization and every blocker clears.
 
 ## Post-update health
 
-Success requires more than file copying. Checks include:
+The initial CLI installer requires:
 
 - dashboard service active;
 - `/api/health` responds;
 - `/api/version` equals the target build;
-- required static assets exist;
-- installed console commands resolve;
-- desktop/menu assets exist;
-- configuration is readable;
-- CAN service state matches policy;
-- no affected service is restarting repeatedly;
-- frontend version reconciliation completes or is explicitly pending active editing.
+- package and console wrapper installation succeeds;
+- managed service units and desktop assets install successfully.
+
+Broader runtime diagnostics and frontend reconciliation remain later
+qualification work; they do not weaken the fixed health gate above.
 
 ## Rollback metadata
 
@@ -60,6 +57,10 @@ Record at least:
 
 ## Initial rollback boundary
 
-Rollback may initially be CLI-only while its mechanism is qualified. A browser rollback action must not ship merely because backup files exist.
+Failed deployment or health validation automatically restores the previous
+installed tree and affected system/user units, reinstalls its package wrappers,
+reloads service managers, and restarts the restored services. The rollback
+target is derived from the active transaction and cannot be selected by a
+caller. Manual and browser rollback actions remain unavailable.
 
 Rollback must preserve user configuration and must not silently downgrade across incompatible data/configuration formats.

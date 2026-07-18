@@ -282,6 +282,15 @@ class SystemConfigurationTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             config_cli.build_parser().parse_args(["updates", "channel", "development"])
 
+    def test_cli_install_sends_only_the_fixed_coordinator_action(self):
+        output = io.StringIO()
+        fixture = {"ok": True, "state": {"state": "complete"}}
+        with patch.object(config_cli.update_coordinator, "client_install", return_value=fixture) as install, contextlib.redirect_stdout(output):
+            result = config_cli.main(["updates", "install"])
+        self.assertEqual(result, 0)
+        install.assert_called_once_with()
+        self.assertIn('"state": "complete"', output.getvalue())
+
     def test_cli_dashboard_enable_remains_advanced_service_control(self):
         output = io.StringIO()
         with patch.object(config_cli.launcher, "configure_dashboard_service") as configure, contextlib.redirect_stdout(output):

@@ -102,6 +102,9 @@ The first `v1-update-management` slices add read-only software update visibility
 ```bash
 open-mmi-config updates status
 open-mmi-config updates check
+open-mmi-config updates coordinator
+open-mmi-config updates prepare
+open-mmi-config updates install
 ```
 
 Select one approved channel administratively:
@@ -112,7 +115,7 @@ sudo open-mmi-config updates channel beta
 sudo open-mmi-config updates channel stable
 ```
 
-Nightly remains bound to the installer-recorded branch. Beta and stable require the official Open MMI repository, `main`, and fixed semantic release-tag forms; downgrade and rewritten-tag states fail closed. Existing `development` policy files migrate automatically to `nightly`. A restricted privileged coordinator may download and validate a candidate in root-owned staging, but installation, scheduling, live service changes, and rollback are not enabled; see [`docs/design/v1-update-management/`](docs/design/v1-update-management/README.md).
+Nightly remains bound to the installer-recorded branch. Beta and stable require the official Open MMI repository, `main`, and fixed semantic release-tag forms; downgrade and rewritten-tag states fail closed. Existing `development` policy files migrate automatically to `nightly`. A restricted privileged coordinator may prepare a nightly candidate and invoke a separate no-arguments one-shot installer from the administrative CLI. Browser installation, scheduling, unattended updates, and stable/beta installation remain disabled; see [`docs/design/v1-update-management/`](docs/design/v1-update-management/README.md).
 <!-- OPEN_MMI_WEB_DASHBOARD_END -->
 
 ---

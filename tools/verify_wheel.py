@@ -16,6 +16,7 @@ REQUIRED_PATHS = {
     "ui/update_policy.py",
     "ui/update_readiness.py",
     "ui/update_coordinator.py",
+    "ui/update_installer.py",
     "ui/web_dashboard/bluetooth.py",
     "ui/web_dashboard/jellyfin.py",
     "ui/web_dashboard/radio.py",

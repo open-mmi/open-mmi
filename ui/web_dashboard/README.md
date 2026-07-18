@@ -399,12 +399,15 @@ Settings has no channel editor. Administrators use:
 ```bash
 open-mmi-config updates status
 open-mmi-config updates check
+open-mmi-config updates coordinator
+open-mmi-config updates prepare
+open-mmi-config updates install
 sudo open-mmi-config updates channel nightly
 sudo open-mmi-config updates channel beta
 sudo open-mmi-config updates channel stable
 ```
 
-Update management remains read-only. It has no install button, scheduler, privileged coordinator, readiness enforcement, or rollback action. Design records live in [`docs/design/v1-update-management/`](../../docs/design/v1-update-management/README.md).
+The dashboard remains read-only and has no install button, scheduler, or rollback action. A root-owned coordinator supports fixed preparation and CLI-only nightly installation through a separate one-shot installer. Design records live in [`docs/design/v1-update-management/`](../../docs/design/v1-update-management/README.md).
 
 `static/styles.css` remains as an import-only compatibility manifest. `tools/verify_css_split.py` locks the module order and verifies that their concatenated bytes remain identical to the pre-split stylesheet, preventing accidental cascade changes during this structural phase.
 

@@ -68,7 +68,10 @@ class UpdateReadinessTests(unittest.TestCase):
         self.assertEqual(update_readiness._thermal_check({"summary": "unavailable"})["state"], "unknown")
 
     def test_fixed_command_and_service_lists_do_not_accept_caller_input(self):
-        self.assertEqual(update_readiness.REQUIRED_COMMANDS, ("git", "systemctl"))
+        self.assertEqual(
+            update_readiness.REQUIRED_COMMANDS,
+            ("git", "systemctl", "curl", "python3", "sudo", "realpath"),
+        )
         self.assertEqual(update_readiness.REQUIRED_SERVICES, ("canbusd.service", "open-mmi-dashboard.service"))
         with patch.object(update_readiness.subprocess, "run", return_value=SimpleNamespace(returncode=0, stdout="0\nactive\nrunning\n2\n")) as run:
             result = update_readiness._service_check()

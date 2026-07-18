@@ -26,7 +26,7 @@ MAX_SERVICE_RESTARTS = 3
 SYSTEMCTL_TIMEOUT_SECONDS = 3.0
 COORDINATOR_SOCKET = Path("/run/open-mmi/update-coordinator.sock")
 UPDATE_LOCK = Path("/run/open-mmi/update.lock")
-REQUIRED_COMMANDS = ("git", "systemctl")
+REQUIRED_COMMANDS = ("git", "systemctl", "curl", "python3", "sudo", "realpath")
 REQUIRED_SERVICES = ("canbusd.service", "open-mmi-dashboard.service")
 BLOCKED_THERMAL_STATES = {"thermal-limit-active", "hot", "critical"}
 

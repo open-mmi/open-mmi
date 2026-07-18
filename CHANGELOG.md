@@ -13,6 +13,7 @@
 - Fail-closed disk, command, coordinator, transaction-lock, configuration-preservation, power, thermal, and service restart-loop checks.
 - Root-owned update coordinator service with atomic persistent state, crash recovery, exclusive transaction locking, and a status-only Unix-socket protocol.
 - Restricted candidate preparation with fixed confirmation, root-owned staging, forward-ancestry proof, release-tag identity validation, and persistent preparation state.
+- CLI-only nightly candidate installation through a no-arguments one-shot root service, with identity/ancestry revalidation, deployment backup, fixed health checks, and automatic restoration on failure.
 - Stable/beta semantic release-tag filtering, official-repository enforcement, downgrade refusal, and rewritten-tag detection.
 
 ### Security
@@ -23,7 +24,7 @@
 - Git inspection invoked through `sudo open-mmi-config` drops back to the original user before reading the user-owned checkout.
 
 ### Not yet included
-- No update installation, browser channel editor, scheduling, unattended updates, execution authorization, or rollback action.
+- No browser installation control, browser channel editor, scheduling, unattended updates, stable/beta installation, or caller-selected rollback target.
 - The coordinator still does not enable installation, live deployment, service mutation, or rollback actions.
 
 ## Unreleased — V1 runtime hardening

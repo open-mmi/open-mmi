@@ -3,7 +3,7 @@
 | Field | Value |
 | --- | --- |
 | Branch | `v1-update-management` |
-| Status | Status-only privileged boundary implemented; execution authorization pending |
+| Status | Fixed preparation and CLI-only nightly execution boundary implemented |
 | Owners | Dashboard API, future privileged coordinator, installer |
 
 ## Threat boundary
@@ -31,7 +31,7 @@ The manual check endpoint accepts only an empty confirmation object. All Git inp
 
 Git runs with credential prompting disabled and bounded timeouts. Raw stderr and remote URLs are not returned to the UI. Stable and beta accept only fixed semantic tag forms from the hard-coded official repository identity; nightly remains bound to the installer-recorded branch.
 
-## Future privileged component
+## Privileged components
 
 A privileged component must use root-owned source/channel policy or independently trusted release manifests and should expose only fixed operations and validated identifiers, for example:
 
@@ -43,11 +43,13 @@ A privileged component must use root-owned source/channel policy or independentl
 
 Authorization should be explicit and auditable. The dashboard process should remain unprivileged.
 
-The coordinator implements `status` and fixed, confirmed `prepare`. It has no
-generic dispatch table and rejects every extra request field. Candidate source,
+The coordinator implements `status` plus fixed, confirmed `prepare` and
+nightly-only `install`. It has no generic dispatch table and rejects every extra request field. Candidate source,
 identity, channel, staging location, and Git arguments come only from managed
 records and coordinator constants. Its root-owned state cannot inject commands
-or execution parameters. Installation and rollback remain disabled.
+or execution parameters. Installation starts only the fixed no-arguments
+`open-mmi-update-installer.service`; the browser has no install route. Stable,
+beta, caller-selected rollback, and manual rollback remain disabled.
 
 ## Additional controls
 

@@ -1,7 +1,8 @@
 """Persistent, fixed-protocol boundary for privileged update coordination.
 
-This slice deliberately enables status only.  It does not execute Git,
-installers, service actions, rollback, or any caller-selected operation.
+The boundary exposes only fixed status, preparation, and confirmed nightly
+installation actions. Deployment runs in a separate no-arguments one-shot
+service; no caller-selected path, ref, repository, command, or service exists.
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ import grp
 import json
 import os
 import pwd
+import re
 import socket
 import socketserver
 import stat
@@ -39,6 +41,7 @@ ACTIVE_STATES = {"preparing", "downloading", "validating", "installing", "restar
 TERMINAL_STATES = {"idle", "prepared", "complete", "failed"}
 ALLOWED_STATES = ACTIVE_STATES | TERMINAL_STATES
 MAX_REQUEST_BYTES = 4096
+_VERSION_RE = re.compile(r"^[A-Za-z0-9._+:-]{1,128}$")
 
 
 class CoordinatorError(RuntimeError):
@@ -78,6 +81,9 @@ def _validate_state(payload: object) -> Dict[str, Any]:
     for key in ("stage", "target_version", "previous_version", "candidate_commit", "error"):
         if not isinstance(payload.get(key), str):
             raise CoordinatorError("Coordinator state value is invalid")
+    for key in ("target_version", "previous_version"):
+        if payload[key] and not _VERSION_RE.fullmatch(payload[key]):
+            raise CoordinatorError("Coordinator version value is invalid")
     if not isinstance(payload.get("recovered"), bool):
         raise CoordinatorError("Coordinator recovery state is invalid")
     transaction_id = payload.get("transaction_id")
@@ -191,12 +197,14 @@ class TransactionLock(AbstractContextManager["TransactionLock"]):
 
 
 def _public_response(state: Mapping[str, Any]) -> Dict[str, Any]:
+    policy, _ = update_policy.read_policy()
+    installation_enabled = bool(policy and policy.get("channel") == "nightly")
     return {
         "ok": True,
         "api_version": API_VERSION,
         "preparation_enabled": True,
-        "execution_enabled": False,
-        "installation_enabled": False,
+        "execution_enabled": installation_enabled,
+        "installation_enabled": installation_enabled,
         "state": dict(state),
     }
 
@@ -361,10 +369,12 @@ def _prepare_candidate(
                     raise CoordinatorError("Release tag identity changed during preparation")
             if not update_status._git_success(stage, "checkout", "--detach", candidate_commit):
                 raise CoordinatorError("Candidate checkout could not be staged")
+            if channel == "nightly":
+                target_version = update_status._git_output(stage, "describe", "--tags", "--always") or target_version
             _secure_staging_tree(stage)
             state.update({
                 "state": "prepared", "stage": "prepared", "updated_at": _timestamp(),
-                "completed_at": _timestamp(), "error": "",
+                "completed_at": _timestamp(), "target_version": target_version, "error": "",
             })
             return write_state(state, state_path)
         except Exception as exc:
@@ -391,12 +401,33 @@ def response_for_request(
         return {"ok": False, "error": "Invalid coordinator request schema"}
     if payload.get("api_version") != API_VERSION:
         return {"ok": False, "error": "Unsupported coordinator API version"}
-    if action not in {"status", "prepare"}:
+    if action not in {"status", "prepare", "install"}:
         return {"ok": False, "error": "Coordinator action is not enabled"}
-    if action == "prepare" and payload.get("confirm") is not True:
-        return {"ok": False, "error": "Candidate preparation requires confirmation"}
+    if action in {"prepare", "install"} and payload.get("confirm") is not True:
+        return {"ok": False, "error": f"Candidate {action} requires confirmation"}
     try:
-        state = read_state(state_path) if action == "status" else _prepare_candidate(state_path, lock_path, staging_root)
+        if action == "status":
+            state = read_state(state_path)
+        elif action == "prepare":
+            state = _prepare_candidate(state_path, lock_path, staging_root)
+        else:
+            state = read_state(state_path)
+            if state["state"] != "prepared":
+                raise CoordinatorError("No prepared candidate is available")
+            policy, _ = update_policy.read_policy()
+            if not policy or policy.get("channel") != "nightly":
+                raise CoordinatorError("Prepared installation is enabled only for nightly updates")
+            try:
+                result = subprocess.run(
+                    ["systemctl", "start", "--wait", "open-mmi-update-installer.service"],
+                    stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    check=False, timeout=330.0,
+                )
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                raise CoordinatorError("Prepared installer service is unavailable") from exc
+            state = read_state(state_path)
+            if result.returncode != 0 or state["state"] != "complete":
+                raise CoordinatorError(state.get("error") or "Prepared installation failed")
     except CoordinatorError as exc:
         return {"ok": False, "error": str(exc)}
     return _public_response(state)
@@ -455,6 +486,10 @@ def client_status(socket_path: Path = DEFAULT_SOCKET) -> Dict[str, Any]:
 
 def client_prepare(socket_path: Path = DEFAULT_SOCKET) -> Dict[str, Any]:
     return _client_request({"api_version": API_VERSION, "action": "prepare", "confirm": True}, socket_path, timeout=90.0)
+
+
+def client_install(socket_path: Path = DEFAULT_SOCKET) -> Dict[str, Any]:
+    return _client_request({"api_version": API_VERSION, "action": "install", "confirm": True}, socket_path, timeout=360.0)
 
 
 def _client_request(payload: Mapping[str, Any], socket_path: Path, timeout: float = 3.0) -> Dict[str, Any]:

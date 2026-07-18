@@ -24,7 +24,7 @@ class UpdateCoordinatorTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         return result.stdout.strip()
 
-    def test_status_and_confirmed_prepare_are_the_only_enabled_fixed_requests(self):
+    def test_status_prepare_and_install_are_fixed_requests(self):
         with tempfile.TemporaryDirectory() as temporary:
             state_path = Path(temporary) / "state.json"
             update_coordinator.write_state(update_coordinator.initial_state(), state_path)
@@ -32,12 +32,11 @@ class UpdateCoordinatorTests(unittest.TestCase):
                 {"api_version": 1, "action": "status"}, state_path
             )
         self.assertTrue(response["ok"])
-        self.assertFalse(response["execution_enabled"])
+        self.assertTrue(response["execution_enabled"])
         self.assertTrue(response["preparation_enabled"])
-        self.assertFalse(response["installation_enabled"])
+        self.assertTrue(response["installation_enabled"])
         self.assertEqual(response["state"]["state"], "idle")
         for request in (
-            {"api_version": 1, "action": "install"},
             {"api_version": 1, "action": "rollback"},
             {"api_version": 1, "action": "status", "path": "/tmp/evil"},
             {"action": "status"},
@@ -61,6 +60,27 @@ class UpdateCoordinatorTests(unittest.TestCase):
         ):
             self.assertFalse(update_coordinator.response_for_request(request, state_path)["ok"])
 
+        installable = dict(
+            update_coordinator.initial_state(), state="prepared", stage="prepared",
+            transaction_id="prepare-" + "a" * 32, candidate_commit="b" * 40,
+        )
+        update_coordinator.write_state(installable, state_path)
+        with patch.object(update_coordinator.update_policy, "read_policy", return_value=({"channel": "nightly"}, "configured")), patch.object(
+            update_coordinator.subprocess, "run", return_value=subprocess.CompletedProcess(["systemctl"], 0)
+        ), patch.object(update_coordinator, "read_state", side_effect=[installable, dict(installable, state="complete", stage="complete")]):
+            installed = update_coordinator.response_for_request(
+                {"api_version": 1, "action": "install", "confirm": True}, state_path
+            )
+        self.assertTrue(installed["ok"])
+        self.assertEqual(installed["state"]["state"], "complete")
+
+        for request in (
+            {"api_version": 1, "action": "install"},
+            {"api_version": 1, "action": "install", "confirm": False},
+            {"api_version": 1, "action": "install", "confirm": True, "path": "/tmp/evil"},
+        ):
+            self.assertFalse(update_coordinator.response_for_request(request, state_path)["ok"])
+
     def test_state_is_atomic_strict_and_mode_0644(self):
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "state.json"
@@ -71,6 +91,19 @@ class UpdateCoordinatorTests(unittest.TestCase):
             malformed = dict(state, command="sh")
             with self.assertRaises(update_coordinator.CoordinatorError):
                 update_coordinator.write_state(malformed, path)
+            with self.assertRaises(update_coordinator.CoordinatorError):
+                update_coordinator.write_state(dict(state, target_version="bad\nvalue"), path)
+
+    def test_stable_and_beta_never_report_installation_enabled(self):
+        state = update_coordinator.initial_state()
+        for channel in ("stable", "beta"):
+            with self.subTest(channel=channel), patch.object(
+                update_coordinator.update_policy, "read_policy",
+                return_value=({"channel": channel}, "configured"),
+            ):
+                response = update_coordinator._public_response(state)
+            self.assertFalse(response["execution_enabled"])
+            self.assertFalse(response["installation_enabled"])
 
     def test_schema_one_state_migrates_without_losing_transaction_history(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -153,6 +186,7 @@ class UpdateCoordinatorTests(unittest.TestCase):
                 update_coordinator.update_status, "_remote_url", return_value="https://example.invalid/open-mmi.git"
             ), patch.object(update_coordinator.update_status, "_run_git", return_value=SimpleNamespace(returncode=0)), patch.object(
                 update_coordinator.update_status, "_git_success", return_value=True
+            ), patch.object(update_coordinator.update_status, "_git_output", return_value=candidate[:12]
             ), patch.object(
                 update_coordinator, "_secure_staging_tree"
             ), patch.object(update_coordinator.uuid, "uuid4", return_value=SimpleNamespace(hex="a" * 32)):

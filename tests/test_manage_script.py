@@ -108,11 +108,7 @@ class ManageScriptLifecycleTests(unittest.TestCase):
 
     def test_update_systemctl_commands_are_complete_single_lines(self) -> None:
         start = self.text.index("cmd_update() {")
-        end = self.text.index(
-            "# =============================================================================\n"
-            "# UNINSTALL",
-            start,
-        )
+        end = self.text.index("cmd_deploy_prepared() {", start)
         update_block = self.text[start:end]
         commands = [
             line.strip()
@@ -231,6 +227,7 @@ sudo() {{ printf '%s\\0' "$@"; }}
             "open-mmi-launcher",
             "open-mmi-status",
             "open-mmi-update-coordinator",
+            "open-mmi-update-installer",
         ):
             self.assertIn(command, self.text)
         self.assertIn(
@@ -255,6 +252,26 @@ sudo() {{ printf '%s\\0' "$@"; }}
             'systemctl --user disable --now "$service" >/dev/null 2>&1 || true',
             self.text,
         )
+        self.assertIn('systemctl stop "$UPDATE_INSTALLER_UNIT"', self.text)
+        self.assertIn('"/etc/systemd/system/$UPDATE_INSTALLER_UNIT"', self.text)
+
+    def test_prepared_deployment_is_fixed_root_only_and_rolls_back_on_error(self) -> None:
+        start = self.text.index("cmd_deploy_prepared() {")
+        end = self.text.index("# UNINSTALL", start)
+        block = self.text[start:end]
+        self.assertIn('^prepare-[0-9a-f]{32}$', block)
+        self.assertIn('/var/lib/open-mmi/staging/$transaction', block)
+        self.assertIn('trap rollback_prepared_deployment ERR', block)
+        self.assertIn('curl --fail --silent --max-time 15 http://127.0.0.1:8765/api/health', block)
+        self.assertIn('payload.get("build_id") == expected', block)
+        self.assertNotIn("eval ", block)
+
+    def test_installer_unit_is_one_shot_and_accepts_no_arguments(self) -> None:
+        unit = (ROOT / "systemd/system/open-mmi-update-installer.service").read_text(encoding="utf-8")
+        self.assertIn("Type=oneshot", unit)
+        self.assertIn("ExecStart=/opt/open-mmi/venv/bin/open-mmi-update-installer\n", unit)
+        self.assertNotIn("%i", unit)
+        self.assertIn("ProtectSystem=strict", unit)
 
 
     def test_install_and_update_record_managed_update_source_metadata(self) -> None:

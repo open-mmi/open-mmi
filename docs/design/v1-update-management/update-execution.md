@@ -3,7 +3,7 @@
 | Field | Value |
 | --- | --- |
 | Branch | `v1-update-management` |
-| Status | Restricted candidate preparation implemented; installation remains disabled |
+| Status | CLI-only nightly preparation and installation implemented; browser execution remains disabled |
 | Owners | Future update coordinator, installer, systemd integration |
 
 ## Required architecture
@@ -24,19 +24,19 @@ The dashboard process must not execute browser-supplied shell commands and must 
 dedicated `open-mmi-update` group. State is atomically persisted at
 `/var/lib/open-mmi/update-state.json` with a fixed schema.
 
-The only enabled protocol request is exactly
-`{"api_version": 1, "action": "status"}`. Extra fields and all prepare,
-install, rollback, path, command, repository, ref, and service inputs are
-rejected. The response explicitly reports `execution_enabled: false`.
+The protocol accepts only exact fixed-shape `status`, confirmed `prepare`, and
+confirmed `install` requests. Extra fields and all rollback, path, command,
+repository, ref, and service inputs are rejected. Installation is enabled only
+while root-owned policy selects `nightly`.
 
 An active state found at daemon startup is conservatively recovered to
 `failed` rather than resumed or called successful. The transaction lock uses a
 non-blocking exclusive filesystem lock and rejects overlap. Execution code does
 not yet acquire it because execution remains outside this slice.
 
-Readiness reports the boundary itself as available, but retains the separate
-`execution-authorization` blocker while `execution_enabled` is false. Installing
-this service therefore cannot accidentally expose an update action.
+Readiness reports execution authorization only when the coordinator is trusted,
+responsive, and nightly installation is enabled. Stable and beta retain the
+authorization blocker.
 
 ## Candidate preparation
 
@@ -55,8 +55,23 @@ still identifies the same commit after download.
 
 State advances through `preparing`, `downloading`, and `validating`, ending in
 `prepared` or `failed`. The prepared tree becomes root-owned and is not copied
-into `/opt/open-mmi`. `execution_enabled` and `installation_enabled` remain
-false; install and rollback requests are still rejected.
+into `/opt/open-mmi` until a separate confirmed install request is made.
+
+## CLI-only installation
+
+`open-mmi-config updates install` sends exactly
+`{"api_version": 1, "action": "install", "confirm": true}`. The coordinator
+starts the fixed `open-mmi-update-installer.service`; no unit name or argument
+comes from the caller. The one-shot service accepts no arguments, re-reads
+root-owned state and policy, requires nightly, validates staging containment and
+ownership, and re-proves candidate identity and forward ancestry.
+
+The deployment helper backs up the installed tree and affected service units,
+deploys the staged application, reinstalls package wrappers and managed assets,
+restarts only Open MMI user services, and requires active services plus matching
+`/api/health` and `/api/version`. An error trap restores the previous tree and
+units and restarts the restored services. Raw command output is not persisted or
+returned through the coordinator protocol.
 
 ## Transaction stages
 

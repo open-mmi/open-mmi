@@ -39,11 +39,11 @@ Later slices may add readiness checks, a restricted update coordinator, health v
 1. Managed installed-source descriptor and read-only status model. **Implemented in the first branch slice.**
 2. Settings → System update panel and manual read-only check. **Implemented in the first branch slice.**
 3. Stable/beta/nightly channel policy. **Implemented with root-owned fixed-name policy, legacy-label migration, and CLI-only selection.**
-4. Pre-update readiness checks. **Implemented as a read-only fail-closed gate; installation remains unavailable.**
-5. Persistent coordinator state and fixed-action privileged boundary. **Implemented with status and restricted preparation; installation remains disabled.**
-6. User-triggered update execution. **Candidate preparation implemented; installation remains disabled.**
-7. Post-update health validation.
-8. Rollback mechanism, initially CLI-owned.
+4. Pre-update readiness checks. **Implemented as a fail-closed gate.**
+5. Persistent coordinator state and fixed-action privileged boundary. **Implemented with status, preparation, and a separate no-arguments installer service.**
+6. User-triggered update execution. **Implemented for confirmed CLI-only nightly candidates; browser execution remains disabled.**
+7. Post-update health validation. **Implemented for service state, `/api/health`, and target build identity.**
+8. Rollback mechanism. **Automatic restoration is implemented for failed CLI installation; manual rollback remains unavailable.**
 9. Diagnostics/log integration.
 10. Full laptop, tablet, suspend/resume, failure, and recovery qualification.
 
@@ -57,7 +57,7 @@ The first slice:
 - uses bounded `git ls-remote` against the recorded remote/ref;
 - never fetches, merges, resets, copies, installs, restarts, or elevates privilege;
 - labels an unproven commit mismatch as **remote differs** rather than promising an update direction;
-- adds no install, rollback, browser channel-change, scheduling, or unattended-update action. Administrative channel selection is available only through `sudo open-mmi-config updates channel ...`.
+- adds no browser install, browser rollback, browser channel-change, scheduling, or unattended-update action. Administrative channel selection and nightly installation are CLI-only.
 
 ## Non-goals for this branch start
 

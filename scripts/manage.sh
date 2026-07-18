@@ -14,6 +14,7 @@ VERSION_FILE="$INSTALL_DIR/.version"
 UPDATE_POLICY_FILE="/etc/open-mmi/update-policy.json"
 UPDATE_COORDINATOR_GROUP="open-mmi-update"
 UPDATE_COORDINATOR_UNIT="open-mmi-update-coordinator.service"
+UPDATE_INSTALLER_UNIT="open-mmi-update-installer.service"
 UPDATE_COORDINATOR_STATE_DIR="/var/lib/open-mmi"
 UPDATE_COORDINATOR_RUNTIME_DIR="/run/open-mmi"
 
@@ -25,7 +26,7 @@ BLUE=$'\033[0;34m'
 NC=$'\033[0m' # No Color
 
 # Get real user (accounting for sudo)
-REAL_USER="${SUDO_USER:-$USER}"
+REAL_USER="${OPEN_MMI_REAL_USER:-${SUDO_USER:-${USER:-root}}}"
 REAL_HOME=$(getent passwd "$REAL_USER" | cut -d: -f6)
 USER_ID=$(id -u "$REAL_USER")
 USER_CONFIG_DIR="$REAL_HOME/.config/open-mmi"
@@ -48,6 +49,7 @@ OPEN_MMI_COMMANDS=(
     open-mmi-launcher
     open-mmi-status
     open-mmi-update-coordinator
+    open-mmi-update-installer
 )
 
 # =============================================================================
@@ -142,10 +144,10 @@ get_repo_upstream() {
 
 write_update_source_metadata() {
     local branch upstream commit version destination
-    branch=$(get_repo_branch)
-    upstream=$(get_repo_upstream)
-    commit=$(sudo -u "$REAL_USER" git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || true)
-    version=$(get_current_version)
+    branch="${OPEN_MMI_MANAGED_BRANCH:-$(get_repo_branch)}"
+    upstream="${OPEN_MMI_MANAGED_UPSTREAM:-$(get_repo_upstream)}"
+    commit="${OPEN_MMI_PREPARED_COMMIT:-$(sudo -u "$REAL_USER" git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || true)}"
+    version="${OPEN_MMI_PREPARED_VERSION:-$(get_current_version)}"
     destination="$INSTALL_DIR/.update-source.json"
 
     if [[ ! "$commit" =~ ^[0-9a-fA-F]{40}$ ]]; then
@@ -153,7 +155,7 @@ write_update_source_metadata() {
         return 0
     fi
 
-    python3 - "$destination" "$REPO_ROOT" "$branch" "$upstream" "$commit" "$version" "$UPDATE_POLICY_FILE" <<'PY_UPDATE_SOURCE'
+    python3 - "$destination" "${OPEN_MMI_MANAGED_REPOSITORY:-$REPO_ROOT}" "$branch" "$upstream" "$commit" "$version" "$UPDATE_POLICY_FILE" <<'PY_UPDATE_SOURCE'
 import json
 import os
 import stat
@@ -502,6 +504,9 @@ install_update_coordinator() {
     install -m 0644 -o root -g root \
         "$REPO_ROOT/systemd/system/$UPDATE_COORDINATOR_UNIT" \
         "/etc/systemd/system/$UPDATE_COORDINATOR_UNIT"
+    install -m 0644 -o root -g root \
+        "$REPO_ROOT/systemd/system/$UPDATE_INSTALLER_UNIT" \
+        "/etc/systemd/system/$UPDATE_INSTALLER_UNIT"
     install -d -m 0755 -o root -g root "$UPDATE_COORDINATOR_STATE_DIR"
     systemctl daemon-reload
     systemctl enable --now "$UPDATE_COORDINATOR_UNIT"
@@ -805,7 +810,139 @@ cmd_update() {
     log_info "Fixing repository ownership..."
     sudo chown -R "$REAL_USER:$REAL_USER" "$REPO_ROOT"
 }
- 
+
+# Fixed internal entry point used only by the root-owned one-shot update
+# installer. All values are derived by that service from trusted state.
+cmd_deploy_prepared() {
+    local stage="${OPEN_MMI_PREPARED_STAGE:-}"
+    local transaction="${OPEN_MMI_PREPARED_TRANSACTION:-}"
+    local commit="${OPEN_MMI_PREPARED_COMMIT:-}"
+    local previous_commit="${OPEN_MMI_PREVIOUS_COMMIT:-}"
+    local version="${OPEN_MMI_PREPARED_VERSION:-}"
+    local rollback_root="/var/lib/open-mmi/rollback/$transaction"
+    local resolved_stage
+
+    [[ $EUID -eq 0 ]] || { log_error "Prepared deployment requires root"; return 1; }
+    [[ "$transaction" =~ ^prepare-[0-9a-f]{32}$ ]] || { log_error "Invalid prepared transaction"; return 1; }
+    [[ "$commit" =~ ^[0-9a-fA-F]{40}$ ]] || { log_error "Invalid prepared commit"; return 1; }
+    [[ "$previous_commit" =~ ^[0-9a-fA-F]{40}$ ]] || { log_error "Invalid previous commit"; return 1; }
+    [[ -n "$version" && -n "${OPEN_MMI_MANAGED_REPOSITORY:-}" && -n "${OPEN_MMI_MANAGED_BRANCH:-}" && -n "${OPEN_MMI_MANAGED_UPSTREAM:-}" ]] || {
+        log_error "Prepared deployment metadata is incomplete"; return 1;
+    }
+    resolved_stage=$(realpath -e -- "$stage") || { log_error "Prepared stage is unavailable"; return 1; }
+    [[ "$resolved_stage" == "/var/lib/open-mmi/staging/$transaction" ]] || {
+        log_error "Prepared stage is outside managed staging"; return 1;
+    }
+    [[ ! -L "$resolved_stage" && $(stat -c '%u' "$resolved_stage") -eq 0 ]] || {
+        log_error "Prepared stage is untrusted"; return 1;
+    }
+    [[ $(git -c safe.directory="$resolved_stage" -C "$resolved_stage" rev-parse HEAD) == "$commit" ]] || {
+        log_error "Prepared commit identity changed"; return 1;
+    }
+
+    install -d -m 0700 -o root -g root "$rollback_root"
+    if [ -e "$INSTALL_DIR" ]; then
+        cp -a -- "$INSTALL_DIR" "$rollback_root/installation"
+    fi
+    install -d -m 0700 -o root -g root "$rollback_root/system-units" "$rollback_root/user-units"
+    for unit in "$UPDATE_COORDINATOR_UNIT" "$UPDATE_INSTALLER_UNIT"; do
+        if [ -e "/etc/systemd/system/$unit" ]; then
+            cp -a -- "/etc/systemd/system/$unit" "$rollback_root/system-units/$unit"
+        else
+            : > "$rollback_root/system-units/$unit.absent"
+        fi
+    done
+    for unit in canbusd.service open-mmi-dashboard.service; do
+        if [ -e "$REAL_HOME/.config/systemd/user/$unit" ]; then
+            cp -a -- "$REAL_HOME/.config/systemd/user/$unit" "$rollback_root/user-units/$unit"
+        else
+            : > "$rollback_root/user-units/$unit.absent"
+        fi
+    done
+
+    rollback_prepared_deployment() {
+        trap - ERR
+        log_error "Prepared deployment failed; restoring previous installation"
+        if [ -d "$rollback_root/installation" ]; then
+            find "$INSTALL_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+            cp -a -- "$rollback_root/installation/." "$INSTALL_DIR/"
+            "$INSTALL_DIR/venv/bin/python" -m pip install --upgrade --force-reinstall "$INSTALL_DIR" >/dev/null 2>&1 || true
+        fi
+        if [ -d "${OPEN_MMI_MANAGED_REPOSITORY:-}/.git" ]; then
+            sudo -u "$REAL_USER" git -C "$OPEN_MMI_MANAGED_REPOSITORY" reset --hard "$previous_commit" >/dev/null 2>&1 || true
+        fi
+        for unit in "$UPDATE_COORDINATOR_UNIT" "$UPDATE_INSTALLER_UNIT"; do
+            if [ -e "$rollback_root/system-units/$unit" ]; then
+                cp -a -- "$rollback_root/system-units/$unit" "/etc/systemd/system/$unit"
+            elif [ -e "$rollback_root/system-units/$unit.absent" ]; then
+                rm -f -- "/etc/systemd/system/$unit"
+            fi
+        done
+        for unit in canbusd.service open-mmi-dashboard.service; do
+            if [ -e "$rollback_root/user-units/$unit" ]; then
+                cp -a -- "$rollback_root/user-units/$unit" "$REAL_HOME/.config/systemd/user/$unit"
+                chown "$REAL_USER:$REAL_USER" "$REAL_HOME/.config/systemd/user/$unit"
+            elif [ -e "$rollback_root/user-units/$unit.absent" ]; then
+                rm -f -- "$REAL_HOME/.config/systemd/user/$unit"
+            fi
+        done
+        systemctl daemon-reload >/dev/null 2>&1 || true
+        export XDG_RUNTIME_DIR="/run/user/$USER_ID"
+        sudo -u "$REAL_USER" env HOME="$REAL_HOME" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
+            systemctl --user daemon-reload >/dev/null 2>&1 || true
+        sudo -u "$REAL_USER" env HOME="$REAL_HOME" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
+            systemctl --user restart canbusd.service open-mmi-dashboard.service >/dev/null 2>&1 || true
+    }
+    trap rollback_prepared_deployment ERR
+
+    [[ $(sudo -u "$REAL_USER" git -C "$OPEN_MMI_MANAGED_REPOSITORY" rev-parse HEAD) == "$previous_commit" ]]
+    sudo -u "$REAL_USER" git -C "$OPEN_MMI_MANAGED_REPOSITORY" diff --quiet
+    sudo -u "$REAL_USER" git -C "$OPEN_MMI_MANAGED_REPOSITORY" diff --cached --quiet
+    sudo -u "$REAL_USER" git -C "$OPEN_MMI_MANAGED_REPOSITORY" fetch -- "${OPEN_MMI_MANAGED_UPSTREAM%%/*}"
+    sudo -u "$REAL_USER" git -C "$OPEN_MMI_MANAGED_REPOSITORY" merge --ff-only "$commit"
+
+    log_info "Deploying prepared candidate $version..."
+    find "$INSTALL_DIR" -mindepth 1 -maxdepth 1 \
+        \( -name venv -o -name .version -o -name .update-source.json \) -prune \
+        -o -exec rm -rf -- {} +
+    for item in canbusd vehicles bindings actions ui scripts packaging systemd; do
+        [ ! -e "$resolved_stage/$item" ] || cp -a -- "$resolved_stage/$item" "$INSTALL_DIR/"
+    done
+    for item in pyproject.toml README.md LICENSE; do
+        cp -a -- "$resolved_stage/$item" "$INSTALL_DIR/"
+    done
+
+    REPO_ROOT="$resolved_stage"
+    DESKTOP_ENTRY_SOURCE="$REPO_ROOT/packaging/linux-desktop/open-mmi-status.desktop"
+    CHOOSER_ENTRY_SOURCE="$REPO_ROOT/packaging/linux-desktop/open-mmi-chooser.desktop"
+    DESKTOP_ICON_SOURCE="$REPO_ROOT/packaging/linux-desktop/icons"
+    install_open_mmi_package
+    install_command_links
+    install_update_coordinator
+
+    local user_systemd_dir="$REAL_HOME/.config/systemd/user"
+    install -d -m 0755 -o "$REAL_USER" -g "$REAL_USER" "$user_systemd_dir"
+    install -m 0644 -o "$REAL_USER" -g "$REAL_USER" "$REPO_ROOT/systemd/user/canbusd.service" "$user_systemd_dir/canbusd.service"
+    install -m 0644 -o "$REAL_USER" -g "$REAL_USER" "$REPO_ROOT/systemd/user/open-mmi-dashboard.service" "$user_systemd_dir/open-mmi-dashboard.service"
+    install_desktop_entry
+
+    printf '%s\n' "$version" > "$VERSION_FILE"
+    write_update_source_metadata
+    export XDG_RUNTIME_DIR="/run/user/$USER_ID"
+    sudo -u "$REAL_USER" env HOME="$REAL_HOME" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user daemon-reload
+    configure_update_service_defaults
+    sudo -u "$REAL_USER" env HOME="$REAL_HOME" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
+        systemctl --user restart canbusd.service open-mmi-dashboard.service
+
+    sudo -u "$REAL_USER" env HOME="$REAL_HOME" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
+        systemctl --user is-active --quiet canbusd.service open-mmi-dashboard.service
+    curl --fail --silent --max-time 15 http://127.0.0.1:8765/api/health >/dev/null
+    curl --fail --silent --max-time 15 http://127.0.0.1:8765/api/version | \
+        python3 -c 'import json,sys; expected=sys.argv[1]; payload=json.load(sys.stdin); raise SystemExit(0 if payload.get("build_id") == expected else 1)' "$version"
+    trap - ERR
+    log_success "Prepared update complete → $version"
+}
+
 # =============================================================================
 # UNINSTALL
 # =============================================================================
@@ -844,7 +981,8 @@ cmd_uninstall() {
         sudo -u "$REAL_USER" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user disable --now "$service" >/dev/null 2>&1 || true
     done
     systemctl disable --now "$UPDATE_COORDINATOR_UNIT" >/dev/null 2>&1 || true
-    rm -f "/etc/systemd/system/$UPDATE_COORDINATOR_UNIT"
+    systemctl stop "$UPDATE_INSTALLER_UNIT" >/dev/null 2>&1 || true
+    rm -f "/etc/systemd/system/$UPDATE_COORDINATOR_UNIT" "/etc/systemd/system/$UPDATE_INSTALLER_UNIT"
     systemctl daemon-reload
     rm -rf "$UPDATE_COORDINATOR_RUNTIME_DIR" "$UPDATE_COORDINATOR_STATE_DIR"
 
@@ -1232,6 +1370,10 @@ main() {
         update)
             check_root
             cmd_update
+            ;;
+        _deploy-prepared)
+            check_root
+            cmd_deploy_prepared
             ;;
         uninstall)
             check_root
