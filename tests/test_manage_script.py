@@ -51,8 +51,19 @@ class ManageScriptLifecycleTests(unittest.TestCase):
             ]
             first = subprocess.run(arguments, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
             self.assertEqual(first.returncode, 0, first.stderr)
-            self.assertEqual(json.loads(policy.read_text(encoding="utf-8"))["channel"], "development")
-            self.assertEqual(json.loads(metadata.read_text(encoding="utf-8"))["channel"], "development")
+            self.assertEqual(json.loads(policy.read_text(encoding="utf-8"))["channel"], "nightly")
+            self.assertEqual(json.loads(metadata.read_text(encoding="utf-8"))["channel"], "nightly")
+
+            policy.write_text(json.dumps({
+                "schema_version": 1,
+                "channel": "development",
+                "updated_at": "2026-07-18T12:00:00+00:00",
+            }), encoding="utf-8")
+            policy.chmod(0o644)
+            migrated = subprocess.run(arguments, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+            self.assertEqual(migrated.returncode, 0, migrated.stderr)
+            self.assertEqual(json.loads(policy.read_text(encoding="utf-8"))["channel"], "nightly")
+            self.assertEqual(json.loads(metadata.read_text(encoding="utf-8"))["channel"], "nightly")
 
             policy.write_text(json.dumps({
                 "schema_version": 1,
@@ -259,9 +270,9 @@ sudo() {{ printf '%s\\0' "$@"; }}
         self.assertIn('destination="$INSTALL_DIR/.update-source.json"', metadata_block)
         self.assertIn('UPDATE_POLICY_FILE="/etc/open-mmi/update-policy.json"', self.text)
         self.assertIn('"schema_version": 1', metadata_block)
-        self.assertIn('"channel": "development"', metadata_block)
+        self.assertIn('"channel": "nightly"', metadata_block)
         self.assertIn('"channel": policy["channel"]', metadata_block)
-        self.assertIn('approved_channels = {"stable", "beta", "development"}', metadata_block)
+        self.assertIn('approved_channels = {"stable", "beta", "nightly"}', metadata_block)
         self.assertIn('"repository_path": str(Path(sys.argv[2]).resolve())', metadata_block)
         self.assertIn('"installed_commit": sys.argv[5].lower()', metadata_block)
         self.assertIn('tempfile.NamedTemporaryFile(', metadata_block)

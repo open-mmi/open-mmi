@@ -19,7 +19,7 @@ Managed install and update operations write `/opt/open-mmi/.update-source.json` 
 ```json
 {
   "schema_version": 1,
-  "channel": "development",
+  "channel": "nightly",
   "repository_path": "/home/user/src/open-mmi",
   "branch": "v1-update-management",
   "upstream": "origin/v1-update-management",
@@ -45,7 +45,7 @@ The fixed schema is:
 ```json
 {
   "schema_version": 1,
-  "channel": "development",
+  "channel": "nightly",
   "updated_at": "2026-07-18T12:00:00+00:00"
 }
 ```
@@ -54,7 +54,7 @@ Only these keys and channel values are accepted:
 
 - `stable`
 - `beta`
-- `development`
+- `nightly`
 
 The policy contains no repository URL, path, remote, branch, tag pattern, commit, command, service, or environment setting. Production policy must be a root-owned regular file and must not be group- or world-writable. Symlinks, extra fields, unsupported schemas, and unsupported channels fail closed.
 
@@ -62,17 +62,17 @@ Writes use a randomly named temporary file, `fsync`, mode `0644`, atomic replace
 
 ## Migration from the first slice
 
-The first read-only slice installed only `.update-source.json` with `channel: development`.
+Earlier slices recorded `channel: development`. That label is now the legacy spelling of `nightly`.
 
-A missing policy file is interpreted temporarily as **implicit development** so existing installations retain their qualified read-only behaviour. The next managed install or update creates the root-owned policy atomically with `development` unless a valid policy already exists.
+A missing policy file is interpreted temporarily as **implicit nightly** so existing installations retain their qualified read-only behaviour. A valid legacy `development` policy is read as `nightly`; the next managed install or update rewrites it atomically with the new label.
 
-An invalid policy never falls back silently to development.
+An invalid policy never falls back silently to nightly.
 
 ## Channel policy
 
-### Development
+### Nightly
 
-Development follows the exact installer-recorded checkout, branch, remote name, and upstream branch.
+Nightly follows the exact installer-recorded checkout, branch, remote name, and upstream branch.
 
 Requirements:
 
@@ -85,7 +85,7 @@ Requirements:
 
 The manual check uses the fixed recorded branch ref with `git ls-remote --refs`. It does not fetch. A commit difference is called **update available** only when local Git objects prove forward ancestry; otherwise it remains **remote differs**, **local source ahead**, or **source diverged**.
 
-Development may intentionally use a contributor fork or local remote. It is not a release-trust channel.
+Nightly may intentionally use a contributor fork or local remote. It is not a release-trust channel and does not imply that builds are produced on a clock-based schedule.
 
 ### Beta
 
@@ -139,7 +139,7 @@ open-mmi-config updates check
 Channel selection is an administrative operation:
 
 ```bash
-sudo open-mmi-config updates channel development
+sudo open-mmi-config updates channel nightly
 sudo open-mmi-config updates channel beta
 sudo open-mmi-config updates channel stable
 ```

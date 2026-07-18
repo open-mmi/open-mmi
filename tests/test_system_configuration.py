@@ -256,15 +256,15 @@ class SystemConfigurationTests(unittest.TestCase):
 
     def test_cli_updates_status_and_check_use_fixed_backend_actions(self):
         output = io.StringIO()
-        fixture = {"channel": "development", "update": {"state": "not-checked"}}
+        fixture = {"channel": "nightly", "update": {"state": "not-checked"}}
         with patch.object(config_cli.update_status, "status_payload", return_value=fixture) as status, contextlib.redirect_stdout(output):
             result = config_cli.main(["updates", "status"])
         self.assertEqual(result, 0)
         status.assert_called_once_with()
-        self.assertIn('"channel": "development"', output.getvalue())
+        self.assertIn('"channel": "nightly"', output.getvalue())
 
         output = io.StringIO()
-        checked = {"channel": "development", "update": {"state": "up-to-date"}}
+        checked = {"channel": "nightly", "update": {"state": "up-to-date"}}
         with patch.object(config_cli.update_status, "check_for_updates", return_value=checked) as check, contextlib.redirect_stdout(output):
             result = config_cli.main(["updates", "check"])
         self.assertEqual(result, 0)
@@ -280,7 +280,7 @@ class SystemConfigurationTests(unittest.TestCase):
         configure.assert_called_once_with("beta")
         self.assertIn('"channel": "beta"', output.getvalue())
         with self.assertRaises(SystemExit):
-            config_cli.build_parser().parse_args(["updates", "channel", "nightly"])
+            config_cli.build_parser().parse_args(["updates", "channel", "development"])
 
     def test_cli_dashboard_enable_remains_advanced_service_control(self):
         output = io.StringIO()

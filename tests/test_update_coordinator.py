@@ -143,10 +143,10 @@ class UpdateCoordinatorTests(unittest.TestCase):
             source = {
                 "repository_path": str(repository), "installed_commit": installed,
                 "installed_version": "old", "branch": "main", "upstream": "origin/main",
-                "remote": "origin", "remote_branch": "main", "recorded_channel": "development",
+                "remote": "origin", "remote_branch": "main", "recorded_channel": "nightly",
             }
             with patch.object(update_coordinator.update_status, "_read_source_descriptor", return_value=(source, "configured")), patch.object(
-                update_coordinator.update_policy, "read_policy", return_value=({"channel": "development"}, "configured")
+                update_coordinator.update_policy, "read_policy", return_value=({"channel": "nightly"}, "configured")
             ), patch.object(update_coordinator.update_status, "_repository_snapshot", return_value={"state": "ready"}), patch.object(
                 update_coordinator, "_preparation_readiness"
             ), patch.object(update_coordinator, "_candidate", return_value=(candidate[:12], candidate, "")), patch.object(
@@ -162,7 +162,7 @@ class UpdateCoordinatorTests(unittest.TestCase):
         self.assertEqual(prepared["previous_version"], "old")
         self.assertFalse(prepared["error"])
 
-    def test_development_candidate_is_cloned_and_forward_ancestry_is_proved(self):
+    def test_nightly_candidate_is_cloned_and_forward_ancestry_is_proved(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             remote = root / "remote.git"
@@ -185,10 +185,10 @@ class UpdateCoordinatorTests(unittest.TestCase):
             descriptor = {
                 "repository_path": str(source), "installed_commit": installed,
                 "installed_version": "old", "branch": "main", "upstream": "origin/main",
-                "remote": "origin", "remote_branch": "main", "recorded_channel": "development",
+                "remote": "origin", "remote_branch": "main", "recorded_channel": "nightly",
             }
             with patch.object(update_coordinator.update_status, "_read_source_descriptor", return_value=(descriptor, "configured")), patch.object(
-                update_coordinator.update_policy, "read_policy", return_value=({"channel": "development"}, "configured")
+                update_coordinator.update_policy, "read_policy", return_value=({"channel": "nightly"}, "configured")
             ), patch.object(update_coordinator, "_preparation_readiness"), patch.object(
                 update_coordinator.update_status.os, "geteuid", return_value=1000
             ), patch.object(

@@ -28,7 +28,7 @@ Opening Settings loads only local/cached status. The network check runs only aft
 ## Wording rules
 
 - `up to date` is shown only when the installed commit exactly equals the tracked remote commit;
-- development shows `update available` only when ancestry is locally provable; stable/beta require a newer approved semantic release;
+- nightly shows `update available` only when ancestry is locally provable; stable/beta require a newer approved semantic release;
 - `remote differs` is used when direction is unknown;
 - `downgrade blocked` is shown when a release channel would move backwards;
 - `release tag changed` is shown when an approved version tag identifies a different commit;
@@ -47,7 +47,7 @@ Opening Settings loads only local/cached status. The network check runs only aft
 
 ## Administrative channel selection
 
-Settings displays the selected channel but does not change it. Administrators use `sudo open-mmi-config updates channel stable|beta|development`. This keeps repository and channel policy outside the browser mutation surface.
+Settings displays the selected channel but does not change it. Administrators use `sudo open-mmi-config updates channel stable|beta|nightly`. This keeps repository and channel policy outside the browser mutation surface.
 
 ## Future execution UI
 

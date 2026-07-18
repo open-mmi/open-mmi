@@ -383,7 +383,7 @@ Diagnostics updates its existing value nodes in place. It does not rebuild the f
 
 Managed install and update operations record `/opt/open-mmi/.update-source.json` with the original source checkout, tracked branch/upstream, installed commit, installed version, and the channel active at install time. The installed runtime does not contain `.git`, so this explicit descriptor prevents unreliable filesystem discovery and prevents the browser from selecting an arbitrary update source.
 
-The selected channel is separate root-owned policy in `/etc/open-mmi/update-policy.json`. Its fixed schema contains only `stable`, `beta`, or `development`; it contains no path, URL, branch, ref, tag pattern, or command. Existing first-slice installations without this file operate as implicit development until the next managed update creates it.
+The selected channel is separate root-owned policy in `/etc/open-mmi/update-policy.json`. Its fixed schema contains only `stable`, `beta`, or `nightly`; it contains no path, URL, branch, ref, tag pattern, or command. Existing first-slice installations without this file operate as implicit nightly, and legacy `development` policies migrate automatically.
 
 `GET /api/system/update-status` reads local installation, policy, repository health, and the last process-local check result. It performs no network operation. **Settings → System → Software updates** displays the installed version, selected channel, available version, state, last check, and repository health.
 
@@ -392,14 +392,14 @@ restricted coordinator to download and validate the policy-selected candidate
 in root-owned staging. It accepts no source, ref, path, command, or service
 input and does not install or restart anything.
 
-**Check for updates** calls same-origin `POST /api/system/update-check` with a fixed confirmation object. Development uses the recorded branch with bounded `git ls-remote`; beta and stable use only fixed semantic tag queries against the official Open MMI repository. The checker does not fetch, merge, reset, install, restart, or elevate privilege. Unknown ancestry, untrusted remotes, downgrades, and rewritten tags are reported conservatively. Network failure is never presented as up to date.
+**Check for updates** calls same-origin `POST /api/system/update-check` with a fixed confirmation object. Nightly uses the recorded branch with bounded `git ls-remote`; beta and stable use only fixed semantic tag queries against the official Open MMI repository. The checker does not fetch, merge, reset, install, restart, or elevate privilege. Unknown ancestry, untrusted remotes, downgrades, and rewritten tags are reported conservatively. Network failure is never presented as up to date.
 
 Settings has no channel editor. Administrators use:
 
 ```bash
 open-mmi-config updates status
 open-mmi-config updates check
-sudo open-mmi-config updates channel development
+sudo open-mmi-config updates channel nightly
 sudo open-mmi-config updates channel beta
 sudo open-mmi-config updates channel stable
 ```

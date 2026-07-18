@@ -164,7 +164,7 @@ from pathlib import Path
 
 metadata_path = Path(sys.argv[1])
 policy_path = Path(sys.argv[7])
-approved_channels = {"stable", "beta", "development"}
+approved_channels = {"stable", "beta", "nightly"}
 
 
 def timestamp():
@@ -225,12 +225,18 @@ if policy_path.exists():
     policy = json.loads(policy_path.read_text(encoding="utf-8"))
     if not isinstance(policy, dict) or set(policy) - {"schema_version", "channel", "updated_at"}:
         raise RuntimeError("update policy contains unsupported fields")
-    if policy.get("schema_version") != 1 or policy.get("channel") not in approved_channels:
+    if policy.get("schema_version") != 1:
+        raise RuntimeError("update policy is invalid")
+    if policy.get("channel") == "development":
+        policy["channel"] = "nightly"
+        policy["updated_at"] = timestamp()
+        atomic_json(policy_path, policy, 0o644)
+    elif policy.get("channel") not in approved_channels:
         raise RuntimeError("update policy is invalid")
 else:
     policy = {
         "schema_version": 1,
-        "channel": "development",
+        "channel": "nightly",
         "updated_at": timestamp(),
     }
     if production_policy:

@@ -283,7 +283,7 @@ def _preparation_readiness(source: Mapping[str, str]) -> None:
 
 
 def _candidate(source: Mapping[str, str], channel: str) -> tuple[str, str, str]:
-    if channel == "development":
+    if channel == "nightly":
         commit = update_status._remote_commit(source)
         if commit == source["installed_commit"]:
             raise CoordinatorError("No update candidate is available")

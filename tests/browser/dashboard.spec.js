@@ -191,7 +191,7 @@ async function loadDashboard(page, options = {}) {
     api_version: 1,
     read_only: true,
     installed: { managed: true, version: "v1-runtime-hardening-42-gabc1234", commit: "abc1234def56" },
-    channel: "development",
+    channel: "nightly",
     policy: { state: "configured", implicit: false, updated_at: "2026-07-18T12:00:00+00:00" },
     source: {
       configured: true,
@@ -959,7 +959,7 @@ test("system settings and Jellyfin setup use the shared local configuration API"
   await expect(page.getByTestId("system-server-version")).toHaveText("__OPEN_MMI_FRONTEND_ID__");
   await expect(page.getByTestId("system-version-state")).toHaveText("up to date");
   await expect(page.getByTestId("system-installed-version")).toHaveText("v1-runtime-hardening-42-gabc1234");
-  await expect(page.getByTestId("system-update-channel")).toHaveText("development");
+  await expect(page.getByTestId("system-update-channel")).toHaveText("nightly");
   await expect(page.getByTestId("system-available-version")).toHaveText("--");
   await expect(page.getByTestId("system-update-state")).toHaveText("not checked");
   await expect(page.getByTestId("system-update-checked-at")).toHaveText("never");

@@ -3,11 +3,11 @@
 ## Unreleased — V1 update management
 
 ### Added
-- Managed `/opt/open-mmi/.update-source.json` metadata recording the managed source checkout, development channel, branch, upstream, installed commit, and installed version.
+- Managed `/opt/open-mmi/.update-source.json` metadata recording the managed source checkout, nightly channel, branch, upstream, installed commit, and installed version.
 - Local-only read-only update status and manual update-check endpoints.
 - Settings → System visibility for installed version, channel, tracked remote version, check state, last check, and repository health.
 - Branch-specific update source, API, UI, execution, rollback, health, and permission design records.
-- Root-owned `/etc/open-mmi/update-policy.json` with fixed `stable`, `beta`, and `development` channel selection.
+- Root-owned `/etc/open-mmi/update-policy.json` with fixed `stable`, `beta`, and `nightly` channel selection plus automatic migration from the legacy `development` label.
 - Administrative `open-mmi-config updates status`, `updates check`, and `updates channel` commands.
 - Read-only pre-update readiness inspection through `GET /api/system/update-readiness` and `open-mmi-config updates readiness`.
 - Fail-closed disk, command, coordinator, transaction-lock, configuration-preservation, power, thermal, and service restart-loop checks.

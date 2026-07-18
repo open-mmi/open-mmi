@@ -29,7 +29,7 @@ The browser must never supply:
 
 The manual check endpoint accepts only an empty confirmation object. All Git inputs come from managed install metadata and pass strict validation before argument-list execution. No shell is involved. This descriptor is adequate for unprivileged read-only inspection; it is not sufficient authority for a future privileged installer. Channel selection is stored separately in root-owned `/etc/open-mmi/update-policy.json` and can be changed only through the administrative CLI.
 
-Git runs with credential prompting disabled and bounded timeouts. Raw stderr and remote URLs are not returned to the UI. Stable and beta accept only fixed semantic tag forms from the hard-coded official repository identity; development remains bound to the installer-recorded branch.
+Git runs with credential prompting disabled and bounded timeouts. Raw stderr and remote URLs are not returned to the UI. Stable and beta accept only fixed semantic tag forms from the hard-coded official repository identity; nightly remains bound to the installer-recorded branch.
 
 ## Future privileged component
 

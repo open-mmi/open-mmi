@@ -55,7 +55,7 @@ class UpdateStatusTests(unittest.TestCase):
     def write_descriptor(self, path: Path, source: Path, commit: str, **overrides: object) -> None:
         payload = {
             "schema_version": 1,
-            "channel": "development",
+            "channel": "nightly",
             "repository_path": str(source),
             "branch": "main",
             "upstream": "origin/main",
@@ -280,7 +280,7 @@ class UpdateStatusTests(unittest.TestCase):
             version_file.write_text("test-build\n", encoding="utf-8")
             source_file.write_text(json.dumps({
                 "schema_version": 1,
-                "channel": "development",
+                "channel": "nightly",
                 "repository_path": str(root),
                 "branch": "--upload-pack=bad",
                 "upstream": "origin/main",
@@ -298,7 +298,7 @@ class UpdateStatusTests(unittest.TestCase):
         finally:
             update_status._CHECK_LOCK.release()
 
-    def test_missing_policy_migrates_as_implicit_development(self):
+    def test_missing_policy_migrates_as_implicit_nightly(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             source, _, commit = self.create_repository(root)
@@ -308,8 +308,8 @@ class UpdateStatusTests(unittest.TestCase):
             self.write_descriptor(source_file, source, commit)
             with self.environment(version_file, source_file):
                 payload = update_status.status_payload()
-        self.assertEqual(payload["channel"], "development")
-        self.assertEqual(payload["policy"]["state"], "legacy-development")
+        self.assertEqual(payload["channel"], "nightly")
+        self.assertEqual(payload["policy"]["state"], "legacy-nightly")
         self.assertTrue(payload["policy"]["implicit"])
         self.assertEqual(payload["readiness"]["state"], "ready")
 
@@ -322,7 +322,7 @@ class UpdateStatusTests(unittest.TestCase):
             policy_file = root / "update-policy.json"
             version_file.write_text("test-build\n", encoding="utf-8")
             self.write_descriptor(source_file, source, commit)
-            self.write_policy(policy_file, "development", repository="https://evil.test/repo")
+            self.write_policy(policy_file, "nightly", repository="https://evil.test/repo")
             with self.environment(version_file, source_file, policy_file):
                 payload = update_status.check_for_updates()
         self.assertEqual(payload["channel"], "invalid")

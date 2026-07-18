@@ -115,6 +115,8 @@ def _read_source_descriptor(path: Optional[Path] = None) -> Tuple[Optional[Dict[
     installed_commit = str(payload.get("installed_commit") or "").strip().lower()
     installed_version = str(payload.get("installed_version") or "").strip()
     recorded_channel = str(payload.get("channel") or "").strip().lower()
+    if recorded_channel == update_policy.LEGACY_CHANNEL:
+        recorded_channel = "nightly"
     if (
         not repository_text
         or not repository.is_absolute()
@@ -222,7 +224,7 @@ def _remote_url(source: Mapping[str, str]) -> str:
 def _repository_snapshot(
     source: Optional[Mapping[str, str]],
     source_state: str,
-    channel: str = "development",
+    channel: str = "nightly",
 ) -> Dict[str, Any]:
     if not source:
         return {
@@ -576,7 +578,7 @@ def check_for_updates() -> Dict[str, Any]:
             return _blocked_check(signature, checked_at, blocked_states[repository["state"]])
 
         try:
-            if channel == "development":
+            if channel == "nightly":
                 remote_commit = _remote_commit(source)
                 state, update_available = _comparison_state(
                     Path(source["repository_path"]), source["installed_commit"], remote_commit

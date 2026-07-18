@@ -47,7 +47,7 @@ function fixture(options = {}) {
     api_version: 1,
     read_only: true,
     installed: { managed: true, version: "v1-runtime-42-gabc1234", commit: "abc1234def56" },
-    channel: "development",
+    channel: "nightly",
     policy: { state: "configured", implicit: false, updated_at: "2026-07-18T12:00:00+00:00" },
     source: { configured: true, state: "ready", clean: true, branch: "main", upstream: "origin/main", trusted: true },
     update: {
@@ -104,7 +104,7 @@ test("system and Jellyfin templates expose read-only update state without stored
   assert.match(systemHtml, /reload ready/);
   assert.match(systemHtml, /Software updates/);
   assert.match(systemHtml, /v1-runtime-42-gabc1234/);
-  assert.match(systemHtml, /development/);
+  assert.match(systemHtml, /nightly/);
   assert.match(systemHtml, /not checked/);
   assert.match(systemHtml, /Repository health/);
   assert.match(systemHtml, /Check for updates/);

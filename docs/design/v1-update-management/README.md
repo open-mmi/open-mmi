@@ -38,7 +38,7 @@ Later slices may add readiness checks, a restricted update coordinator, health v
 
 1. Managed installed-source descriptor and read-only status model. **Implemented in the first branch slice.**
 2. Settings → System update panel and manual read-only check. **Implemented in the first branch slice.**
-3. Stable/beta/development channel policy. **Implemented with root-owned fixed-name policy and CLI-only selection.**
+3. Stable/beta/nightly channel policy. **Implemented with root-owned fixed-name policy, legacy-label migration, and CLI-only selection.**
 4. Pre-update readiness checks. **Implemented as a read-only fail-closed gate; installation remains unavailable.**
 5. Persistent coordinator state and fixed-action privileged boundary. **Implemented with status and restricted preparation; installation remains disabled.**
 6. User-triggered update execution. **Candidate preparation implemented; installation remains disabled.**

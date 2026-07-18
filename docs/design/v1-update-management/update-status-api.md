@@ -48,7 +48,7 @@ The endpoint:
     "version": "v1-runtime-hardening-42-gabc1234",
     "commit": "abc1234def56"
   },
-  "channel": "development",
+  "channel": "nightly",
   "policy": {
     "state": "configured",
     "implicit": false,
@@ -91,7 +91,7 @@ The first slice retains the last result in dashboard-process memory. Restarting 
 - missing checkout or Git: repository unavailable;
 - detached, wrong branch, channel/source mismatch, or untrusted release remote: check blocked;
 - network/remote failure: check unavailable;
-- development commit with unknown ancestry: remote differs;
+- nightly commit with unknown ancestry: remote differs;
 - lower release candidate: downgrade blocked;
 - a version tag that moved to another commit: release tag changed;
 - malformed or untrusted root policy: check blocked.
@@ -101,7 +101,7 @@ No failure is converted to `up-to-date`.
 
 ## Channel-specific queries
 
-- `development` queries only the recorded `refs/heads/<branch>`.
+- `nightly` queries only the recorded `refs/heads/<branch>`.
 - `beta` queries only fixed `refs/tags/v*` candidates and filters approved alpha/beta/rc/final version forms.
 - `stable` queries the same fixed tag namespace but accepts final `vMAJOR.MINOR.PATCH` tags only.
 

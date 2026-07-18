@@ -88,7 +88,7 @@ def build_parser() -> argparse.ArgumentParser:
     updates_commands.add_parser("coordinator")
     updates_commands.add_parser("prepare")
     channel = updates_commands.add_parser("channel")
-    channel.add_argument("channel", choices=("stable", "beta", "development"))
+    channel.add_argument("channel", choices=("stable", "beta", "nightly"))
     return parser
 
 

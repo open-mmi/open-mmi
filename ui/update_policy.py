@@ -17,7 +17,8 @@ from typing import Any, Dict, Optional, Tuple
 
 
 POLICY_SCHEMA_VERSION = 1
-APPROVED_CHANNELS = ("stable", "beta", "development")
+APPROVED_CHANNELS = ("stable", "beta", "nightly")
+LEGACY_CHANNEL = "development"
 DEFAULT_POLICY_FILE = Path("/etc/open-mmi/update-policy.json")
 OFFICIAL_REPOSITORY_SLUG = "github.com/open-mmi/open-mmi"
 
@@ -39,7 +40,7 @@ def _timestamp() -> str:
 def validate_channel(value: object) -> str:
     channel = str(value or "").strip().lower()
     if channel not in APPROVED_CHANNELS:
-        raise UpdatePolicyError("Update channel must be stable, beta, or development")
+        raise UpdatePolicyError("Update channel must be stable, beta, or nightly")
     return channel
 
 
@@ -87,7 +88,7 @@ def read_policy(path: Optional[Path] = None) -> Tuple[Optional[Dict[str, Any]], 
     """Read channel policy.
 
     A missing policy is a deliberate compatibility migration for descriptors
-    produced by the first read-only slice: it means implicit development mode.
+    produced by the first read-only slice: it means implicit nightly mode.
     Invalid or untrusted files never fall back silently.
     """
 
@@ -99,10 +100,10 @@ def read_policy(path: Optional[Path] = None) -> Tuple[Optional[Dict[str, Any]], 
     except FileNotFoundError:
         return {
             "schema_version": POLICY_SCHEMA_VERSION,
-            "channel": "development",
+            "channel": "nightly",
             "implicit": True,
             "updated_at": None,
-        }, "legacy-development"
+        }, "legacy-nightly"
     except OSError:
         return None, "invalid"
     if not _trusted_existing_file(destination):
@@ -117,8 +118,10 @@ def read_policy(path: Optional[Path] = None) -> Tuple[Optional[Dict[str, Any]], 
         return None, "invalid"
     if payload.get("schema_version") != POLICY_SCHEMA_VERSION:
         return None, "invalid"
+    raw_channel = str(payload.get("channel") or "").strip().lower()
+    migrated = raw_channel == LEGACY_CHANNEL
     try:
-        channel = validate_channel(payload.get("channel"))
+        channel = "nightly" if migrated else validate_channel(raw_channel)
     except UpdatePolicyError:
         return None, "invalid"
     updated_at = payload.get("updated_at")
@@ -129,7 +132,7 @@ def read_policy(path: Optional[Path] = None) -> Tuple[Optional[Dict[str, Any]], 
         "channel": channel,
         "implicit": False,
         "updated_at": updated_at,
-    }, "configured"
+    }, "migrated-development" if migrated else "configured"
 
 
 def write_policy(channel: object, path: Optional[Path] = None) -> Dict[str, Any]:

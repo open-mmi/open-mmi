@@ -16,11 +16,11 @@ class UpdatePolicyTests(unittest.TestCase):
         with patch.dict(os.environ, {"OPEN_MMI_UPDATE_POLICY_FILE": "/tmp/attacker-policy.json"}, clear=False):
             self.assertEqual(update_policy.policy_file(), update_policy.DEFAULT_POLICY_FILE)
 
-    def test_missing_policy_is_legacy_development(self):
+    def test_missing_policy_is_legacy_nightly(self):
         with tempfile.TemporaryDirectory() as temporary:
             policy, state = update_policy.read_policy(Path(temporary) / "missing.json")
-        self.assertEqual(state, "legacy-development")
-        self.assertEqual(policy["channel"], "development")
+        self.assertEqual(state, "legacy-nightly")
+        self.assertEqual(policy["channel"], "nightly")
         self.assertTrue(policy["implicit"])
 
     def test_atomic_writer_uses_fixed_schema_and_private_mutation_surface(self):
@@ -36,10 +36,24 @@ class UpdatePolicyTests(unittest.TestCase):
 
     def test_invalid_channel_and_non_root_production_write_are_rejected(self):
         with self.assertRaises(update_policy.UpdatePolicyError):
-            update_policy.validate_channel("nightly")
+            update_policy.validate_channel("development")
         with patch.object(os, "geteuid", return_value=1000):
             with self.assertRaisesRegex(update_policy.UpdatePolicyError, "root privileges"):
                 update_policy.write_policy("stable", update_policy.DEFAULT_POLICY_FILE)
+
+    def test_legacy_development_policy_is_read_as_nightly(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "policy.json"
+            path.write_text(json.dumps({
+                "schema_version": 1,
+                "channel": "development",
+                "updated_at": "2026-07-18T12:00:00+00:00",
+            }), encoding="utf-8")
+            path.chmod(0o644)
+            policy, state = update_policy.read_policy(path)
+        self.assertEqual(state, "migrated-development")
+        self.assertEqual(policy["channel"], "nightly")
+        self.assertFalse(policy["implicit"])
 
     def test_invalid_extra_fields_symlinks_and_writable_files_fail_closed(self):
         with tempfile.TemporaryDirectory() as temporary:
