@@ -9,6 +9,6 @@ Environment=OPEN_MMI_PREPARED_DEPLOYMENT=1
 ExecStart=/opt/open-mmi/venv/bin/open-mmi-update-installer
 UMask=0027
 PrivateTmp=true
-ProtectHome=read-only
+ProtectHome=false
 ProtectSystem=strict
 ReadWritePaths=/opt/open-mmi /var/lib/open-mmi /run/open-mmi /etc/open-mmi /etc/systemd/system /usr/local/bin /home

@@ -916,11 +916,14 @@ cmd_deploy_prepared() {
     }
     trap rollback_prepared_deployment ERR
 
-    deployment_stage="repository"
+    deployment_stage="repository-head"
     [[ $(sudo -u "$REAL_USER" git -C "$OPEN_MMI_MANAGED_REPOSITORY" rev-parse HEAD) == "$previous_commit" ]]
+    deployment_stage="repository-clean"
     sudo -u "$REAL_USER" git -C "$OPEN_MMI_MANAGED_REPOSITORY" diff --quiet
     sudo -u "$REAL_USER" git -C "$OPEN_MMI_MANAGED_REPOSITORY" diff --cached --quiet
+    deployment_stage="repository-fetch"
     sudo -u "$REAL_USER" git -C "$OPEN_MMI_MANAGED_REPOSITORY" fetch -- "${OPEN_MMI_MANAGED_UPSTREAM%%/*}"
+    deployment_stage="repository-merge"
     sudo -u "$REAL_USER" git -C "$OPEN_MMI_MANAGED_REPOSITORY" merge --ff-only "$commit"
 
     deployment_stage="files"

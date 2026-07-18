@@ -276,6 +276,8 @@ sudo() {{ printf '%s\\0' "$@"; }}
         self.assertIn("Environment=OPEN_MMI_PREPARED_DEPLOYMENT=1", unit)
         self.assertIn("ExecStart=/opt/open-mmi/venv/bin/open-mmi-update-installer\n", unit)
         self.assertIn("/run/open-mmi", unit)
+        self.assertIn("ProtectHome=false", unit)
+        self.assertNotIn("ProtectHome=read-only", unit)
         self.assertNotIn("%i", unit)
         self.assertIn("ProtectSystem=strict", unit)
 
