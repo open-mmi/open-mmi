@@ -11,8 +11,9 @@ const openMmiUsbMediaClient = window.openMmiUsbMediaController;
 const openMmiJellyfinMediaClient = window.openMmiJellyfinMedia;
 const openMmiBluetoothMediaClient = window.openMmiBluetoothMediaController;
 const openMmiSystemSettingsClient = window.openMmiSystemSettings;
+const openMmiVehicleSetupSettingsClient = window.openMmiVehicleSetupSettings;
 const openMmiRuntimeDiagnosticsClient = window.openMmiRuntimeDiagnostics;
-if (!openMmiApiClient || !openMmiDashboardConnectionClient || !openMmiPrefs || !openMmiStatusClient || !openMmiNavigationClient || !openMmiOverlaysClient || !openMmiVehicleClient || !openMmiMediaClient || !openMmiRadioMediaClient || !openMmiUsbMediaClient || !openMmiJellyfinMediaClient || !openMmiBluetoothMediaClient || !openMmiSystemSettingsClient || !openMmiRuntimeDiagnosticsClient) {
+if (!openMmiApiClient || !openMmiDashboardConnectionClient || !openMmiPrefs || !openMmiStatusClient || !openMmiNavigationClient || !openMmiOverlaysClient || !openMmiVehicleClient || !openMmiMediaClient || !openMmiRadioMediaClient || !openMmiUsbMediaClient || !openMmiJellyfinMediaClient || !openMmiBluetoothMediaClient || !openMmiSystemSettingsClient || !openMmiVehicleSetupSettingsClient || !openMmiRuntimeDiagnosticsClient) {
   throw new Error("Open MMI frontend modules did not load");
 }
 
@@ -23,6 +24,7 @@ const openMmiOverlaysController = openMmiOverlaysClient.createController();
 const openMmiVehicleRenderer = openMmiVehicleClient.createRenderer({ preferences: openMmiPrefs });
 const openMmiMediaSourcesController = openMmiMediaClient.createController({ preferences: openMmiPrefs });
 const openMmiSystemSettingsController = openMmiSystemSettingsClient.install({ api: openMmiApiClient });
+const openMmiVehicleSetupSettingsController = openMmiVehicleSetupSettingsClient.install({ api: openMmiApiClient });
 const openMmiRuntimeDiagnosticsController = openMmiRuntimeDiagnosticsClient.install({ api: openMmiApiClient });
 openMmiRadioMediaClient.installPrivacy({ preferences: openMmiPrefs });
 window.openMmiStatusStore = openMmiStatusStore;
@@ -32,6 +34,7 @@ window.openMmiOverlaysController = openMmiOverlaysController;
 window.openMmiVehicleRenderer = openMmiVehicleRenderer;
 window.openMmiMediaSources = openMmiMediaSourcesController;
 window.openMmiSystemSettingsController = openMmiSystemSettingsController;
+window.openMmiVehicleSetupSettingsController = openMmiVehicleSetupSettingsController;
 window.openMmiRuntimeDiagnosticsController = openMmiRuntimeDiagnosticsController;
 window.openMmiApplyInlineDataTelltales = openMmiVehicleRenderer.applyInlineDataTelltales;
 window.openMmiApplyCoolantAndVoltageFixes = openMmiVehicleRenderer.applyCoolantAndVoltageFixes;
@@ -836,6 +839,14 @@ openMmiNavigationController.init();
       `;
     }
 
+    if (section === "vehicle-setup") {
+      return `
+        <div data-openmmi-vehicle-setup-panel="true">
+          <div class="openmmi-settings-panel-head"><span>Vehicle setup</span><small>loading catalogue</small></div>
+        </div>
+      `;
+    }
+
     if (section === "display") {
       return `
         <div class="openmmi-settings-panel-head"><span>Display</span><small>visual preferences</small></div>
@@ -958,6 +969,7 @@ openMmiNavigationController.init();
           <p>Preferences and diagnostics live here so Drive and Media stay clean.</p>
           <nav class="openmmi-settings-tree" aria-label="Settings tree">
             <button type="button" data-openmmi-settings-section="system">System <small>launcher and startup</small></button>
+            <button type="button" data-openmmi-settings-section="vehicle-setup">Vehicle setup <small>profile, bindings and CAN</small></button>
             <button type="button" data-openmmi-settings-section="units">Units <small>mph, °C, raw values</small></button>
             <button type="button" data-openmmi-settings-section="display">Display <small>dim mode, animation</small></button>
             <button type="button" data-openmmi-settings-section="diagnostics">Diagnostics <small>live decoded state</small></button>

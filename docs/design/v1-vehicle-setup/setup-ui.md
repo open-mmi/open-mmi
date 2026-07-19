@@ -8,6 +8,15 @@ to the existing System page.
 The category owns local runtime configuration. It does not expose CAN transmit or
 vehicle-control actions.
 
+## Current contained slice
+
+The first contained implementation is intentionally read-only. It displays the active
+configuration, maintained/custom catalogue, selected bus and detected-adapter state.
+Changing the profile or bindings selector creates an in-memory draft and shows
+`Changes not applied`; it does not persist, provision hardware or restart the CAN
+service. **Review and apply** remains disabled until the preview and privileged apply
+contracts are implemented and qualified.
+
 ## Main panel
 
 The collapsed overview contains:

@@ -344,6 +344,7 @@ The browser loads small platform modules before the main dashboard application:
 - `static/dashboard-connection.js` owns shared dashboard reachability and bounded same-build recovery.
 - `static/frontend-version.js` owns loaded/server build comparison, safe one-shot reloads, visibility-aware checking, and the update-ready notice.
 - `static/system-settings.js` owns local System/Jellyfin configuration rendering and the read-only software-update panel.
+- `static/vehicle-setup-settings.js` owns the read-only Vehicle setup overview and its unapplied, in-memory profile and bindings draft.
 - `static/runtime-diagnostics.js` owns the three-second, Diagnostics-only system-runtime polling lifecycle and conservative clock/thermal state derivation.
 - `static/preferences.js` owns safe JSON persistence and the dashboard settings key.
 - `static/clock.js` owns the persistent header clock, minute-boundary scheduling, and clock-specific Display preferences.
@@ -368,6 +369,7 @@ The dashboard CSS keeps its six cascade-preserving legacy modules and loads the 
 - `static/styles-media-final.css` contains USB, Bluetooth, final media-control and vehicle-correction rules.
 - `static/styles-clock.css` contains the shared header clock and responsive clock layout without changing the checksum-protected legacy CSS split.
 - `static/styles-runtime-hardening.css` contains the controlled frontend-update notice without changing the checksum-protected legacy CSS split.
+- `static/styles-vehicle-setup.css` contains the responsive Vehicle setup overview, selectors and technical-detail layout without changing the checksum-protected legacy CSS split.
 
 ## Frontend build identity and cache recovery
 
@@ -432,9 +434,13 @@ The dashboard offers **Check for updates**, **Prepare update**, and **Install up
 active maintained/custom identities, validation and compatibility results, selected
 single-bus runtime and discovered SocketCAN interfaces. The fixed route is loopback
 and same-origin only, accepts no caller-selected filesystem path or source, and does
-not apply or restart vehicle configuration. Profile selection, preview and activation
-remain unavailable until their separate coordinator boundary is implemented and
-qualified.
+not apply or restart vehicle configuration.
+
+**Settings → Vehicle setup** displays the active configuration and catalogue. Profile
+and bindings selectors create a page-local draft so the next workflow can be reviewed,
+but the draft is not persisted and **Review and apply** remains disabled. Preview and
+activation remain unavailable until their separate coordinator boundary is implemented
+and qualified.
 
 `static/styles.css` remains as an import-only compatibility manifest. `tools/verify_css_split.py` locks the module order and verifies that their concatenated bytes remain identical to the pre-split stylesheet, preventing accidental cascade changes during this structural phase.
 

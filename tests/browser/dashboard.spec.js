@@ -17,6 +17,7 @@ const CSS_FILES = [
   "styles-media-final.css",
   "styles-clock.css",
   "styles-system-settings.css",
+  "styles-vehicle-setup.css",
   "styles-runtime-hardening.css",
 ];
 
@@ -187,6 +188,58 @@ async function loadDashboard(page, options = {}) {
     },
   };
 
+  const vehicleSetupPayload = options.vehicleSetupPayload || {
+    api_version: 1,
+    read_only: true,
+    runtime_mode: "single",
+    active: {
+      state: "ready",
+      errors: [],
+      vehicle: { source: "maintained", id: "seat_1p", revision: "sha256:profile" },
+      bindings: { source: "maintained", id: "default", revision: "sha256:bindings" },
+      active_bus: "comfort",
+      interface: "can0",
+      interface_present: false,
+      configuration_revision: "sha256:configuration",
+      loaded: null,
+    },
+    catalogue: {
+      development_mode: false,
+      issues: [],
+      profiles: [
+        {
+          source: "maintained", id: "seat_1p", display_name: "Seat 1P", valid: true,
+          revision: "sha256:profile", default_bus: "comfort",
+          buses: [{ name: "comfort", interface: "can0", bitrate: 100000, provisioning: "udev" }],
+          validation: { valid: true, errors: [], warnings: [] },
+        },
+        {
+          source: "custom", id: "my-seat", display_name: "My Seat", valid: true,
+          revision: "sha256:custom-profile", default_bus: "comfort",
+          buses: [{ name: "comfort", interface: "can1", bitrate: 100000, provisioning: "manual" }],
+          validation: { valid: true, errors: [], warnings: [] },
+        },
+      ],
+      bindings: [
+        {
+          source: "maintained", id: "default", display_name: "Default", valid: true,
+          revision: "sha256:bindings", binding_count: 12,
+          validation: { valid: true, errors: [], warnings: [{ code: "legacy-action-schema" }] },
+        },
+        {
+          source: "custom", id: "my-controls", display_name: "My controls", valid: true,
+          revision: "sha256:custom-bindings", binding_count: 11,
+          validation: { valid: true, errors: [], warnings: [] },
+        },
+      ],
+    },
+    compatibility: {
+      emitted_and_bound: ["play_pause", "volume_up"], emitted_unbound: [],
+      bound_unemitted: ["stop_playback"], duplicate_emitted: [],
+    },
+    interfaces: [],
+  };
+
   const updateStatusPayload = options.updateStatusPayload || {
     api_version: 1,
     read_only: true,
@@ -246,7 +299,7 @@ async function loadDashboard(page, options = {}) {
   };
 
   await page.setContent(ASSETS.documentHtml, { waitUntil: "domcontentloaded" });
-  await page.evaluate(({ initialPayload, initialStorage, initialBluetoothPayload, initialSystemPayload, initialUpdateStatusPayload, initialUpdateCheckPayload, initialUpdateReadinessPayload, initialUpdateCoordinatorPayload, initialVersionPayload, initialJellyfinStatusPayload, initialJellyfinSearchPayload, initialRuntimeDiagnosticsPayload, runtimeDiagnosticsIntervalMs, dashboardRetryDelaysMs }) => {
+  await page.evaluate(({ initialPayload, initialStorage, initialBluetoothPayload, initialSystemPayload, initialVehicleSetupPayload, initialUpdateStatusPayload, initialUpdateCheckPayload, initialUpdateReadinessPayload, initialUpdateCoordinatorPayload, initialVersionPayload, initialJellyfinStatusPayload, initialJellyfinSearchPayload, initialRuntimeDiagnosticsPayload, runtimeDiagnosticsIntervalMs, dashboardRetryDelaysMs }) => {
     const values = Object.assign({}, initialStorage);
     const localStorageMock = {
       get length() { return Object.keys(values).length; },
@@ -261,6 +314,7 @@ async function loadDashboard(page, options = {}) {
     window.__openMmiStatusFixture = initialPayload;
     window.__openMmiBluetoothFixture = initialBluetoothPayload;
     window.__openMmiSystemFixture = initialSystemPayload;
+    window.__openMmiVehicleSetupFixture = initialVehicleSetupPayload;
     window.__openMmiUpdateStatusFixture = initialUpdateStatusPayload;
     window.__openMmiUpdateCheckFixture = initialUpdateCheckPayload;
     window.__openMmiUpdateReadinessFixture = initialUpdateReadinessPayload;
@@ -276,6 +330,7 @@ async function loadDashboard(page, options = {}) {
     window.__openMmiDashboardHealthRequests = 0;
     window.__openMmiDashboardStatusRequests = 0;
     window.__openMmiDashboardVersionRequests = 0;
+    window.__openMmiVehicleSetupRequests = 0;
     window.__openMmiUpdateStatusRequests = 0;
     window.__openMmiUpdateCheckRequests = 0;
     window.__openMmiUpdateCoordinatorRequests = 0;
@@ -308,6 +363,10 @@ async function loadDashboard(page, options = {}) {
       if (url.includes("/api/system/diagnostics/runtime")) {
         window.__openMmiRuntimeDiagnosticsRequests += 1;
         return json(window.__openMmiRuntimeDiagnosticsFixture);
+      }
+      if (url.includes("/api/system/vehicle-setup")) {
+        window.__openMmiVehicleSetupRequests += 1;
+        return json(window.__openMmiVehicleSetupFixture);
       }
       if (url.includes("/api/system/update-status")) {
         window.__openMmiUpdateStatusRequests += 1;
@@ -423,6 +482,7 @@ async function loadDashboard(page, options = {}) {
     initialStorage: storage,
     initialBluetoothPayload: bluetoothPayload,
     initialSystemPayload: systemPayload,
+    initialVehicleSetupPayload: vehicleSetupPayload,
     initialUpdateStatusPayload: updateStatusPayload,
     initialUpdateCheckPayload: updateCheckPayload,
     initialUpdateReadinessPayload: updateReadinessPayload,
@@ -470,6 +530,9 @@ async function loadDashboard(page, options = {}) {
     },
     async runtimeDiagnosticsRequests() {
       return page.evaluate(() => window.__openMmiRuntimeDiagnosticsRequests);
+    },
+    async vehicleSetupRequests() {
+      return page.evaluate(() => window.__openMmiVehicleSetupRequests);
     },
     async setDashboardOnline(online) {
       await page.evaluate((value) => { window.__openMmiDashboardOnline = Boolean(value); }, online);
@@ -1017,6 +1080,39 @@ test("shared clock persists display preferences and survives page navigation", a
   await expectNoRuntimeFailures(failures);
   await expectNoRuntimeFailures(rebuiltFailures);
   await rebuilt.close();
+});
+
+
+test("vehicle setup shows active configuration and keeps profile choices as an unapplied draft", async ({ page }) => {
+  const failures = captureRuntimeFailures(page);
+  const dashboard = await loadDashboard(page);
+  await openSettings(page);
+
+  await page.locator('[data-openmmi-settings-section="vehicle-setup"]').click();
+  await expect(page.locator('[data-openmmi-vehicle-setup-ready="true"]')).toBeVisible();
+  await expect(page.getByTestId("vehicle-setup-active-profile")).toHaveText("Seat 1P · Maintained");
+  await expect(page.getByTestId("vehicle-setup-active-bindings")).toHaveText("Default · Maintained");
+  await expect(page.getByTestId("vehicle-setup-profile")).toHaveValue("maintained:seat_1p");
+  await expect(page.getByTestId("vehicle-setup-bindings")).toHaveValue("maintained:default");
+  await expect(page.getByTestId("vehicle-setup-interface")).toHaveText("can0 · not detected");
+  await expect(page.getByTestId("vehicle-setup-bitrate")).toHaveText("100 kbit/s");
+  await expect(page.getByTestId("vehicle-setup-review")).toBeDisabled();
+  await expect(page.getByTestId("vehicle-setup-technical")).not.toHaveAttribute("open", "");
+  expect(await dashboard.vehicleSetupRequests()).toBe(1);
+
+  await page.getByTestId("vehicle-setup-profile").selectOption("custom:my-seat");
+  await page.getByTestId("vehicle-setup-bindings").selectOption("custom:my-controls");
+  await expect(page.getByTestId("vehicle-setup-status")).toContainText("Changes not applied");
+  await expect(page.getByTestId("vehicle-setup-profile")).toHaveValue("custom:my-seat");
+  await expect(page.getByTestId("vehicle-setup-bindings")).toHaveValue("custom:my-controls");
+  await expect(page.getByTestId("vehicle-setup-interface")).toHaveText("can1 · not detected");
+  await expect(page.getByTestId("vehicle-setup-review")).toBeDisabled();
+  expect(await dashboard.vehicleSetupRequests()).toBe(1);
+
+  await page.getByTestId("vehicle-setup-refresh").click();
+  await expect.poll(() => dashboard.vehicleSetupRequests()).toBe(2);
+  await expect(page.getByTestId("vehicle-setup-profile")).toHaveValue("custom:my-seat");
+  await expectNoRuntimeFailures(failures);
 });
 
 

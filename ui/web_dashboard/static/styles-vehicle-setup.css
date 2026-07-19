@@ -1,0 +1,96 @@
+.openmmi-vehicle-setup-panel {
+  display: grid;
+  gap: .55rem;
+}
+
+.openmmi-vehicle-setup-active,
+.openmmi-vehicle-setup-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .5rem;
+}
+
+.openmmi-vehicle-setup-selectors {
+  display: grid;
+  gap: .55rem;
+}
+
+.openmmi-vehicle-setup-selectors label {
+  display: grid;
+  grid-template-columns: minmax(150px, .8fr) minmax(190px, 1.2fr);
+  align-items: center;
+  gap: .8rem;
+  padding: .66rem .72rem;
+  border: 1px solid rgba(176, 215, 245, .14);
+  border-radius: 8px;
+  background: rgba(5, 21, 35, .42);
+}
+
+.openmmi-vehicle-setup-selectors label > span {
+  display: grid;
+  gap: .18rem;
+}
+
+.openmmi-vehicle-setup-selectors small,
+.openmmi-vehicle-setup-note {
+  color: var(--muted);
+  font-size: .72rem;
+  line-height: 1.35;
+}
+
+.openmmi-vehicle-setup-selectors select {
+  width: 100%;
+  min-height: 42px;
+  min-width: 0;
+  padding: .5rem .58rem;
+  border: 1px solid rgba(176, 215, 245, .28);
+  border-radius: 7px;
+  color: inherit;
+  background: rgba(4, 18, 30, .92);
+}
+
+.openmmi-vehicle-setup-actions {
+  align-items: center;
+  margin-top: .2rem;
+}
+
+.openmmi-vehicle-setup-actions .openmmi-setting-pill:disabled {
+  cursor: not-allowed;
+  opacity: .45;
+}
+
+.openmmi-vehicle-setup-note {
+  margin: -.1rem .15rem .15rem;
+}
+
+.openmmi-vehicle-setup-technical {
+  padding-top: .55rem;
+  border-top: 1px solid rgba(255, 255, 255, .09);
+}
+
+.openmmi-vehicle-setup-technical summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: .76rem;
+  font-weight: 650;
+}
+
+.openmmi-vehicle-setup-technical[open] summary {
+  margin-bottom: .42rem;
+}
+
+.openmmi-vehicle-setup-technical .openmmi-settings-metric {
+  margin-top: .42rem;
+}
+
+@media (max-width: 620px) {
+  .openmmi-vehicle-setup-active,
+  .openmmi-vehicle-setup-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .openmmi-vehicle-setup-selectors label {
+    grid-template-columns: 1fr;
+    gap: .4rem;
+  }
+}
