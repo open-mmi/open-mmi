@@ -9,7 +9,7 @@ import os
 import sys
 from typing import Any, Mapping, Optional, Sequence
 
-from ui import launcher, update_coordinator, update_readiness
+from ui import launcher, update_coordinator, update_readiness, vehicle_setup
 from ui.configuration import (
     ConfigurationError,
     JELLYFIN_ENV_KEYS,
@@ -90,6 +90,17 @@ def build_parser() -> argparse.ArgumentParser:
     updates_commands.add_parser("install")
     channel = updates_commands.add_parser("channel")
     channel.add_argument("channel", choices=("stable", "beta", "nightly"))
+
+    vehicle_setup_parser = groups.add_parser(
+        "vehicle-setup",
+        help="inspect vehicle profiles, bindings and CAN runtime selection",
+    )
+    vehicle_setup_commands = vehicle_setup_parser.add_subparsers(
+        dest="command",
+        required=True,
+    )
+    vehicle_setup_commands.add_parser("status")
+    vehicle_setup_commands.add_parser("catalogue")
     return parser
 
 
@@ -148,6 +159,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 _print({"ok": True, **update_status.configure_channel(args.channel)})
             return 0
 
+        if args.group == "vehicle-setup":
+            if args.command == "catalogue":
+                _print(vehicle_setup.catalogue_payload())
+            else:
+                _print(vehicle_setup.status_payload())
+            return 0
+
         if args.command == "status":
             _print(jellyfin_environment_status())
             return 0
@@ -174,7 +192,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         result = _jellyfin_test(values)
         _print({"ok": True, **result})
         return 0
-    except (ConfigurationError, launcher.LauncherError, update_coordinator.CoordinatorError, update_status.UpdateStatusError, RuntimeError, ValueError) as exc:
+    except (ConfigurationError, launcher.LauncherError, update_coordinator.CoordinatorError, update_status.UpdateStatusError, vehicle_setup.VehicleSetupError, RuntimeError, ValueError) as exc:
         print(f"open-mmi-config: {exc}", file=sys.stderr)
         return 1
 
