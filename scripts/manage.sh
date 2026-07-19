@@ -11,6 +11,12 @@ APP_NAME="open-mmi"
 INSTALL_DIR="/opt/open-mmi"
 BACKUP_DIR="/opt/open-mmi-backups"
 VERSION_FILE="$INSTALL_DIR/.version"
+UPDATE_POLICY_FILE="/etc/open-mmi/update-policy.json"
+UPDATE_COORDINATOR_GROUP="open-mmi-update"
+UPDATE_COORDINATOR_UNIT="open-mmi-update-coordinator.service"
+UPDATE_INSTALLER_UNIT="open-mmi-update-installer.service"
+UPDATE_COORDINATOR_STATE_DIR="/var/lib/open-mmi"
+UPDATE_COORDINATOR_RUNTIME_DIR="/run/open-mmi"
 
 # Color output
 RED=$'\033[0;31m'
@@ -20,7 +26,7 @@ BLUE=$'\033[0;34m'
 NC=$'\033[0m' # No Color
 
 # Get real user (accounting for sudo)
-REAL_USER="${SUDO_USER:-$USER}"
+REAL_USER="${OPEN_MMI_REAL_USER:-${SUDO_USER:-${USER:-root}}}"
 REAL_HOME=$(getent passwd "$REAL_USER" | cut -d: -f6)
 USER_ID=$(id -u "$REAL_USER")
 USER_CONFIG_DIR="$REAL_HOME/.config/open-mmi"
@@ -42,6 +48,8 @@ OPEN_MMI_COMMANDS=(
     open-mmi-dashboard
     open-mmi-launcher
     open-mmi-status
+    open-mmi-update-coordinator
+    open-mmi-update-installer
 )
 
 # =============================================================================
@@ -134,6 +142,123 @@ get_repo_upstream() {
     fi
 }
 
+write_update_source_metadata() {
+    local branch upstream commit version destination
+    branch="${OPEN_MMI_MANAGED_BRANCH:-$(get_repo_branch)}"
+    upstream="${OPEN_MMI_MANAGED_UPSTREAM:-$(get_repo_upstream)}"
+    commit="${OPEN_MMI_PREPARED_COMMIT:-$(sudo -u "$REAL_USER" git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || true)}"
+    version="${OPEN_MMI_PREPARED_VERSION:-$(get_current_version)}"
+    destination="$INSTALL_DIR/.update-source.json"
+
+    if [[ ! "$commit" =~ ^[0-9a-fA-F]{40}$ ]]; then
+        log_warn "Could not record managed update source metadata"
+        return 0
+    fi
+
+    python3 - "$destination" "${OPEN_MMI_MANAGED_REPOSITORY:-$REPO_ROOT}" "$branch" "$upstream" "$commit" "$version" "$UPDATE_POLICY_FILE" <<'PY_UPDATE_SOURCE'
+import json
+import os
+import stat
+import sys
+import tempfile
+from datetime import datetime, timezone
+from pathlib import Path
+
+metadata_path = Path(sys.argv[1])
+policy_path = Path(sys.argv[7])
+approved_channels = {"stable", "beta", "nightly"}
+
+
+def timestamp():
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+def atomic_json(path, payload, mode):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_name = ""
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            delete=False,
+        ) as temporary:
+            temporary_name = temporary.name
+            json.dump(payload, temporary, indent=2, sort_keys=True)
+            temporary.write("\n")
+            temporary.flush()
+            os.fsync(temporary.fileno())
+        os.chmod(temporary_name, mode)
+        os.replace(temporary_name, path)
+        directory_fd = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+    except Exception:
+        if temporary_name:
+            try:
+                os.unlink(temporary_name)
+            except OSError:
+                pass
+        raise
+
+
+production_policy = policy_path == Path("/etc/open-mmi/update-policy.json")
+if policy_path.is_symlink():
+    raise RuntimeError("update policy must not be a symlink")
+if production_policy and policy_path.parent.is_symlink():
+    raise RuntimeError("update policy directory must not be a symlink")
+if production_policy and policy_path.parent.exists():
+    parent_metadata = policy_path.parent.lstat()
+    if not stat.S_ISDIR(parent_metadata.st_mode) or parent_metadata.st_uid != 0:
+        raise RuntimeError("production update policy directory must be root owned")
+    if parent_metadata.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+        raise RuntimeError("production update policy directory must not be group/world writable")
+if policy_path.exists():
+    metadata = policy_path.lstat()
+    if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
+        raise RuntimeError("update policy must be a regular file")
+    if metadata.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+        raise RuntimeError("update policy must not be group/world writable")
+    if policy_path == Path("/etc/open-mmi/update-policy.json") and metadata.st_uid != 0:
+        raise RuntimeError("production update policy must be root owned")
+    policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    if not isinstance(policy, dict) or set(policy) - {"schema_version", "channel", "updated_at"}:
+        raise RuntimeError("update policy contains unsupported fields")
+    if policy.get("schema_version") != 1:
+        raise RuntimeError("update policy is invalid")
+    if policy.get("channel") == "development":
+        policy["channel"] = "nightly"
+        policy["updated_at"] = timestamp()
+        atomic_json(policy_path, policy, 0o644)
+    elif policy.get("channel") not in approved_channels:
+        raise RuntimeError("update policy is invalid")
+else:
+    policy = {
+        "schema_version": 1,
+        "channel": "nightly",
+        "updated_at": timestamp(),
+    }
+    if production_policy:
+        policy_path.parent.mkdir(parents=True, exist_ok=True)
+        os.chmod(policy_path.parent, 0o755)
+    atomic_json(policy_path, policy, 0o644)
+
+payload = {
+    "schema_version": 1,
+    "channel": policy["channel"],
+    "repository_path": str(Path(sys.argv[2]).resolve()),
+    "branch": sys.argv[3],
+    "upstream": sys.argv[4],
+    "installed_commit": sys.argv[5].lower(),
+    "installed_version": sys.argv[6],
+}
+atomic_json(metadata_path, payload, 0o644)
+PY_UPDATE_SOURCE
+    log_success "Recorded managed update source and channel policy"
+}
 
 copy_if_missing() {
     local src="$1"
@@ -264,6 +389,7 @@ verify_console_commands() {
 
 install_open_mmi_package() {
     local python="$INSTALL_DIR/venv/bin/python"
+    local package_source="${1:-$INSTALL_DIR}"
 
     if [ ! -x "$python" ]; then
         log_error "Deployment Python is missing or not executable: $python"
@@ -271,12 +397,21 @@ install_open_mmi_package() {
     fi
 
     log_info "Installing Open MMI package and console commands..."
-    if ! "$python" -m pip install --upgrade --force-reinstall "$INSTALL_DIR"; then
+    local pip_arguments=(install --upgrade --force-reinstall)
+    if [[ "$package_source" == *.whl ]]; then
+        pip_arguments+=(--no-deps)
+    fi
+    if ! ( umask 0022; env -u PYTHONPATH "$python" -m pip "${pip_arguments[@]}" "$package_source" ); then
         log_error "Failed to install Open MMI package"
         return 1
     fi
 
     verify_console_commands
+    env -u PYTHONPATH "$python" -I -c 'import canbusd.core, ui.config_cli, ui.web_dashboard.server'
+    if [[ $EUID -eq 0 && "$REAL_USER" != root ]]; then
+        sudo -u "$REAL_USER" env -u PYTHONPATH "$python" -I \
+            -c 'import canbusd.core, ui.config_cli, ui.web_dashboard.server'
+    fi
 }
 
 install_command_links() {
@@ -368,6 +503,33 @@ configure_update_service_defaults() {
     export XDG_RUNTIME_DIR="/run/user/$USER_ID"
     sudo -u "$REAL_USER" env HOME="$REAL_HOME" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user enable canbusd.service
     migrate_legacy_dashboard_startup
+}
+
+install_update_coordinator() {
+    local authorization_added=false
+    if ! getent group "$UPDATE_COORDINATOR_GROUP" >/dev/null 2>&1; then
+        groupadd --system "$UPDATE_COORDINATOR_GROUP"
+    fi
+    if ! id -nG "$REAL_USER" | tr ' ' '\n' | grep -Fqx "$UPDATE_COORDINATOR_GROUP"; then
+        usermod -aG "$UPDATE_COORDINATOR_GROUP" "$REAL_USER"
+        authorization_added=true
+    fi
+    install -d -m 0755 -o root -g root /etc/systemd/system
+    install -m 0644 -o root -g root \
+        "$REPO_ROOT/systemd/system/$UPDATE_COORDINATOR_UNIT" \
+        "/etc/systemd/system/$UPDATE_COORDINATOR_UNIT"
+    install -m 0644 -o root -g root \
+        "$REPO_ROOT/systemd/system/$UPDATE_INSTALLER_UNIT" \
+        "/etc/systemd/system/$UPDATE_INSTALLER_UNIT"
+    install -d -m 0755 -o root -g root "$UPDATE_COORDINATOR_STATE_DIR"
+    systemctl daemon-reload
+    systemctl enable "$UPDATE_COORDINATOR_UNIT"
+    if [ "${OPEN_MMI_PREPARED_DEPLOYMENT:-0}" != 1 ]; then
+        systemctl restart "$UPDATE_COORDINATOR_UNIT"
+    fi
+    if [ "$authorization_added" = true ]; then
+        log_warn "Log out and back in before using update actions without sudo."
+    fi
 }
 
 remove_login_autostart() {
@@ -499,9 +661,11 @@ cmd_install() {
     if ! install_command_links; then
         return 1
     fi
+    install_update_coordinator
     
-    # Store version
+    # Store version and the managed source descriptor used by read-only checks.
     get_current_version > "$VERSION_FILE"
+    write_update_source_metadata
     
     # Install systemd service
     log_info "Installing systemd user service..."
@@ -641,6 +805,7 @@ cmd_update() {
     if ! install_command_links; then
         return 1
     fi
+    install_update_coordinator
 
     local user_systemd_dir="$REAL_HOME/.config/systemd/user"
     sudo install -d -m 0755 -o "$REAL_USER" -g "$REAL_USER" "$user_systemd_dir"
@@ -653,8 +818,9 @@ cmd_update() {
     sudo -u "$REAL_USER" env HOME="$REAL_HOME" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user daemon-reload
     configure_update_service_defaults
 
-    # Version write (needs sudo because /opt is root-owned)
+    # Version and managed source metadata writes need root because /opt is root-owned.
     sudo bash -c "echo '$new_version' > '$VERSION_FILE'"
+    write_update_source_metadata
 
     # Restart services
     sudo -u "$REAL_USER" env HOME="$REAL_HOME" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user restart canbusd.service open-mmi-dashboard.service
@@ -664,7 +830,191 @@ cmd_update() {
     log_info "Fixing repository ownership..."
     sudo chown -R "$REAL_USER:$REAL_USER" "$REPO_ROOT"
 }
- 
+
+# Fixed internal entry point used only by the root-owned one-shot update
+# installer. All values are derived by that service from trusted state.
+cmd_deploy_prepared() {
+    local stage="${OPEN_MMI_PREPARED_STAGE:-}"
+    local transaction="${OPEN_MMI_PREPARED_TRANSACTION:-}"
+    local commit="${OPEN_MMI_PREPARED_COMMIT:-}"
+    local previous_commit="${OPEN_MMI_PREVIOUS_COMMIT:-}"
+    local version="${OPEN_MMI_PREPARED_VERSION:-}"
+    local rollback_root="/var/lib/open-mmi/rollback/$transaction"
+    local deployment_stage="backup"
+    local candidate_wheel_dir="$rollback_root/candidate-wheel"
+    local candidate_wheel
+    local -a candidate_wheels=()
+    local resolved_stage
+
+    [[ $EUID -eq 0 ]] || { log_error "Prepared deployment requires root"; return 1; }
+    [[ "$transaction" =~ ^prepare-[0-9a-f]{32}$ ]] || { log_error "Invalid prepared transaction"; return 1; }
+    [[ "$commit" =~ ^[0-9a-fA-F]{40}$ ]] || { log_error "Invalid prepared commit"; return 1; }
+    [[ "$previous_commit" =~ ^[0-9a-fA-F]{40}$ ]] || { log_error "Invalid previous commit"; return 1; }
+    [[ -n "$version" && -n "${OPEN_MMI_MANAGED_REPOSITORY:-}" && -n "${OPEN_MMI_MANAGED_BRANCH:-}" && -n "${OPEN_MMI_MANAGED_UPSTREAM:-}" ]] || {
+        log_error "Prepared deployment metadata is incomplete"; return 1;
+    }
+    resolved_stage=$(realpath -e -- "$stage") || { log_error "Prepared stage is unavailable"; return 1; }
+    [[ "$resolved_stage" == "/var/lib/open-mmi/staging/$transaction" ]] || {
+        log_error "Prepared stage is outside managed staging"; return 1;
+    }
+    [[ ! -L "$resolved_stage" && $(stat -c '%u' "$resolved_stage") -eq 0 ]] || {
+        log_error "Prepared stage is untrusted"; return 1;
+    }
+    [[ $(git -c safe.directory="$resolved_stage" -C "$resolved_stage" rev-parse HEAD) == "$commit" ]] || {
+        log_error "Prepared commit identity changed"; return 1;
+    }
+
+    install -d -m 0700 -o root -g root "$rollback_root"
+    if [ -e "$INSTALL_DIR" ]; then
+        cp -a -- "$INSTALL_DIR" "$rollback_root/installation"
+        env -u PYTHONPATH "$rollback_root/installation/venv/bin/python" -I -c 'import ui.config_cli'
+    fi
+    install -d -m 0700 -o root -g root "$rollback_root/system-units" "$rollback_root/user-units"
+    for unit in "$UPDATE_COORDINATOR_UNIT" "$UPDATE_INSTALLER_UNIT"; do
+        if [ -e "/etc/systemd/system/$unit" ]; then
+            cp -a -- "/etc/systemd/system/$unit" "$rollback_root/system-units/$unit"
+        else
+            : > "$rollback_root/system-units/$unit.absent"
+        fi
+    done
+    for unit in canbusd.service open-mmi-dashboard.service; do
+        if [ -e "$REAL_HOME/.config/systemd/user/$unit" ]; then
+            cp -a -- "$REAL_HOME/.config/systemd/user/$unit" "$rollback_root/user-units/$unit"
+        else
+            : > "$rollback_root/user-units/$unit.absent"
+        fi
+    done
+
+    rollback_prepared_deployment() {
+        trap - ERR
+        log_error "Prepared deployment failed at stage: $deployment_stage"
+        log_error "Restoring previous installation"
+        if [ -d "$rollback_root/installation" ]; then
+            local failed_install="$INSTALL_DIR.failed-$transaction"
+            local restored_install="$INSTALL_DIR.restore-$transaction"
+            rm -rf -- "$failed_install" "$restored_install"
+            cp -a -- "$rollback_root/installation" "$restored_install"
+            mv -- "$INSTALL_DIR" "$failed_install"
+            mv -- "$restored_install" "$INSTALL_DIR"
+            if env -u PYTHONPATH "$INSTALL_DIR/venv/bin/python" -I -c 'import ui.config_cli' >/dev/null 2>&1; then
+                log_success "Prepared rollback verified"
+                rm -rf -- "$failed_install"
+            else
+                log_error "Previous Python installation could not be verified after restoration"
+            fi
+        fi
+        if [ -d "${OPEN_MMI_MANAGED_REPOSITORY:-}/.git" ]; then
+            sudo -u "$REAL_USER" git -C "$OPEN_MMI_MANAGED_REPOSITORY" reset --hard "$previous_commit" >/dev/null 2>&1 || true
+        fi
+        for unit in "$UPDATE_COORDINATOR_UNIT" "$UPDATE_INSTALLER_UNIT"; do
+            if [ -e "$rollback_root/system-units/$unit" ]; then
+                cp -a -- "$rollback_root/system-units/$unit" "/etc/systemd/system/$unit"
+            elif [ -e "$rollback_root/system-units/$unit.absent" ]; then
+                rm -f -- "/etc/systemd/system/$unit"
+            fi
+        done
+        for unit in canbusd.service open-mmi-dashboard.service; do
+            if [ -e "$rollback_root/user-units/$unit" ]; then
+                cp -a -- "$rollback_root/user-units/$unit" "$REAL_HOME/.config/systemd/user/$unit"
+                chown "$REAL_USER:$REAL_USER" "$REAL_HOME/.config/systemd/user/$unit"
+            elif [ -e "$rollback_root/user-units/$unit.absent" ]; then
+                rm -f -- "$REAL_HOME/.config/systemd/user/$unit"
+            fi
+        done
+        systemctl daemon-reload >/dev/null 2>&1 || true
+        export XDG_RUNTIME_DIR="/run/user/$USER_ID"
+        sudo -u "$REAL_USER" env HOME="$REAL_HOME" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
+            systemctl --user daemon-reload >/dev/null 2>&1 || true
+        sudo -u "$REAL_USER" env HOME="$REAL_HOME" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
+            systemctl --user restart canbusd.service open-mmi-dashboard.service >/dev/null 2>&1 || true
+    }
+    trap rollback_prepared_deployment ERR
+
+    deployment_stage="package-build"
+    install -d -m 0700 -o root -g root "$candidate_wheel_dir"
+    env -u PYTHONPATH "$INSTALL_DIR/venv/bin/python" -m pip wheel --no-deps \
+        --wheel-dir "$candidate_wheel_dir" "$resolved_stage"
+    mapfile -t candidate_wheels < <(find "$candidate_wheel_dir" -maxdepth 1 -type f -name 'open_mmi-*.whl' -print)
+    [[ ${#candidate_wheels[@]} -eq 1 ]]
+    candidate_wheel="${candidate_wheels[0]}"
+    env -u PYTHONPATH "$INSTALL_DIR/venv/bin/python" -I \
+        "$resolved_stage/tools/verify_wheel.py" "$candidate_wheel"
+
+    deployment_stage="repository-head"
+    [[ $(sudo -u "$REAL_USER" git -C "$OPEN_MMI_MANAGED_REPOSITORY" rev-parse HEAD) == "$previous_commit" ]]
+    deployment_stage="repository-clean"
+    sudo -u "$REAL_USER" git -C "$OPEN_MMI_MANAGED_REPOSITORY" diff --quiet
+    sudo -u "$REAL_USER" git -C "$OPEN_MMI_MANAGED_REPOSITORY" diff --cached --quiet
+    deployment_stage="repository-fetch"
+    sudo -u "$REAL_USER" git -C "$OPEN_MMI_MANAGED_REPOSITORY" fetch -- "${OPEN_MMI_MANAGED_UPSTREAM%%/*}"
+    deployment_stage="repository-merge"
+    sudo -u "$REAL_USER" git -C "$OPEN_MMI_MANAGED_REPOSITORY" merge --ff-only "$commit"
+
+    deployment_stage="files"
+    log_info "Deploying prepared candidate $version..."
+    find "$INSTALL_DIR" -mindepth 1 -maxdepth 1 \
+        \( -name venv -o -name .version -o -name .update-source.json \) -prune \
+        -o -exec rm -rf -- {} +
+    for item in canbusd vehicles bindings actions ui scripts packaging systemd; do
+        [ ! -e "$resolved_stage/$item" ] || cp -a -- "$resolved_stage/$item" "$INSTALL_DIR/"
+    done
+    for item in pyproject.toml README.md LICENSE; do
+        cp -a -- "$resolved_stage/$item" "$INSTALL_DIR/"
+    done
+
+    REPO_ROOT="$resolved_stage"
+    DESKTOP_ENTRY_SOURCE="$REPO_ROOT/packaging/linux-desktop/open-mmi-status.desktop"
+    CHOOSER_ENTRY_SOURCE="$REPO_ROOT/packaging/linux-desktop/open-mmi-chooser.desktop"
+    DESKTOP_ICON_SOURCE="$REPO_ROOT/packaging/linux-desktop/icons"
+    deployment_stage="package"
+    install_open_mmi_package "$candidate_wheel"
+    install_command_links
+    deployment_stage="system-services"
+    install_update_coordinator
+
+    deployment_stage="user-services"
+    local user_systemd_dir="$REAL_HOME/.config/systemd/user"
+    install -d -m 0755 -o "$REAL_USER" -g "$REAL_USER" "$user_systemd_dir"
+    install -m 0644 -o "$REAL_USER" -g "$REAL_USER" "$REPO_ROOT/systemd/user/canbusd.service" "$user_systemd_dir/canbusd.service"
+    install -m 0644 -o "$REAL_USER" -g "$REAL_USER" "$REPO_ROOT/systemd/user/open-mmi-dashboard.service" "$user_systemd_dir/open-mmi-dashboard.service"
+    install_desktop_entry
+
+    printf '%s\n' "$version" > "$VERSION_FILE"
+    write_update_source_metadata
+    export XDG_RUNTIME_DIR="/run/user/$USER_ID"
+    sudo -u "$REAL_USER" env HOME="$REAL_HOME" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user daemon-reload
+    configure_update_service_defaults
+    sudo -u "$REAL_USER" env HOME="$REAL_HOME" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
+        systemctl --user restart canbusd.service open-mmi-dashboard.service
+
+    deployment_stage="service-health"
+    sudo -u "$REAL_USER" env HOME="$REAL_HOME" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
+        systemctl --user is-active --quiet canbusd.service open-mmi-dashboard.service
+    deployment_stage="api-health"
+    local api_ready=false
+    for _attempt in {1..15}; do
+        if curl --fail --silent --max-time 2 http://127.0.0.1:8765/api/health >/dev/null; then
+            api_ready=true
+            break
+        fi
+        sleep 1
+    done
+    [[ "$api_ready" == true ]]
+    deployment_stage="version-health"
+    local version_ready=false
+    for _attempt in {1..15}; do
+        if curl --fail --silent --max-time 2 http://127.0.0.1:8765/api/version | \
+            python3 -c 'import json,sys; expected=sys.argv[1]; payload=json.load(sys.stdin); raise SystemExit(0 if payload.get("build_id") == expected else 1)' "$version"; then
+            version_ready=true
+            break
+        fi
+        sleep 1
+    done
+    [[ "$version_ready" == true ]]
+    trap - ERR
+    log_success "Prepared update complete → $version"
+}
+
 # =============================================================================
 # UNINSTALL
 # =============================================================================
@@ -702,6 +1052,11 @@ cmd_uninstall() {
     for service in canbusd.service open-mmi-dashboard.service; do
         sudo -u "$REAL_USER" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user disable --now "$service" >/dev/null 2>&1 || true
     done
+    systemctl disable --now "$UPDATE_COORDINATOR_UNIT" >/dev/null 2>&1 || true
+    systemctl stop "$UPDATE_INSTALLER_UNIT" >/dev/null 2>&1 || true
+    rm -f "/etc/systemd/system/$UPDATE_COORDINATOR_UNIT" "/etc/systemd/system/$UPDATE_INSTALLER_UNIT"
+    systemctl daemon-reload
+    rm -rf "$UPDATE_COORDINATOR_RUNTIME_DIR" "$UPDATE_COORDINATOR_STATE_DIR"
 
     # Remove service file
     log_info "Removing systemd service..."
@@ -716,9 +1071,11 @@ cmd_uninstall() {
     remove_login_autostart
     remove_command_links
     
-    # Remove application directory
+    # Remove application directory and root-owned update policy.
     log_info "Removing application files..."
     sudo rm -rf "$INSTALL_DIR"
+    sudo rm -f "$UPDATE_POLICY_FILE"
+    sudo rmdir "$(dirname "$UPDATE_POLICY_FILE")" >/dev/null 2>&1 || true
     
     # Remove udev rules
     if [ -f /etc/udev/rules.d/80-canbus.rules ]; then
@@ -1085,6 +1442,10 @@ main() {
         update)
             check_root
             cmd_update
+            ;;
+        _deploy-prepared)
+            check_root
+            cmd_deploy_prepared
             ;;
         uninstall)
             check_root

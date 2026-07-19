@@ -1,0 +1,23 @@
+[Unit]
+Description=Open MMI Update Coordinator
+Documentation=https://github.com/open-mmi/open-mmi
+After=local-fs.target
+
+[Service]
+Type=simple
+ExecStart=/opt/open-mmi/venv/bin/open-mmi-update-coordinator serve
+Restart=on-failure
+RestartSec=2
+RuntimeDirectory=open-mmi
+RuntimeDirectoryMode=0755
+StateDirectory=open-mmi
+StateDirectoryMode=0755
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=read-only
+ProtectSystem=strict
+ReadWritePaths=/var/lib/open-mmi /run/open-mmi
+
+[Install]
+WantedBy=multi-user.target

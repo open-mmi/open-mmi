@@ -6,7 +6,7 @@ import sys
 import unittest
 from pathlib import Path
 
-from ui.web_dashboard import bluetooth, jellyfin, radio, runtime_diagnostics, server, system_settings, usb
+from ui.web_dashboard import bluetooth, jellyfin, radio, runtime_diagnostics, server, system_settings, update_status, usb
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -137,6 +137,15 @@ class DashboardModuleBoundaryTests(unittest.TestCase):
         self.assertIn("system_settings_backend._handle_get(self, parsed.path)", get_source)
         self.assertIn("system_settings_backend._handle_post(self, parsed.path)", post_source)
         self.assertFalse(hasattr(system_settings, "DashboardHandler"))
+
+    def test_update_status_provider_is_server_independent_and_uses_argument_lists(self):
+        self.assertFalse(hasattr(update_status, "DashboardHandler"))
+        source = inspect.getsource(update_status)
+        self.assertNotIn("from ui.web_dashboard.server", source)
+        self.assertNotIn("shell=True", source)
+        self.assertIn('["git", "-C", str(repository), *arguments]', source)
+        self.assertIn('GIT_TERMINAL_PROMPT', source)
+        self.assertIn('ls-remote', source)
 
     def test_server_routes_delegate_to_runtime_diagnostics_provider(self):
         get_source = inspect.getsource(server.DashboardHandler.do_GET)

@@ -21,12 +21,18 @@
     if (!windowRef || !documentRef || !api) throw new Error("System settings require window, document and API client");
 
     let snapshot = null;
+    let updateSnapshot = null;
+    let updateReadinessSnapshot = null;
+    let updateCoordinatorSnapshot = null;
     let busy = false;
+    let updateBusy = "";
     let message = "";
     let messageKind = "";
     let lastSystemHtml = "";
     let lastJellyfinHtml = "";
     let jellyfinDraft = null;
+    let transactionPollTimer = null;
+    let transactionPollDeadline = 0;
 
     function activeSection() {
       return documentRef.querySelector("[data-openmmi-settings-section].active")?.dataset?.openmmiSettingsSection || "";
@@ -39,14 +45,23 @@
       if (banner) {
         banner.textContent = message;
         banner.hidden = !message;
-        banner.className = `openmmi-config-message ${messageKind}`.trim();
+        if (banner.classList) {
+          banner.classList.remove("error", "warning", "success");
+          if (messageKind) banner.classList.add(messageKind);
+        } else {
+          banner.className = `openmmi-config-message ${messageKind}`.trim();
+        }
         return;
       }
       renderActive();
     }
 
-    function statusBanner() {
-      return `<div class="openmmi-config-message ${escapeHtml(messageKind)}" role="status"${message ? "" : " hidden"}>${escapeHtml(message)}</div>`;
+    function statusBanner(extraClass = "") {
+      const classes = ["openmmi-config-message", extraClass, messageKind]
+        .filter(Boolean)
+        .map(escapeHtml)
+        .join(" ");
+      return `<div class="${classes}" role="status"${message ? "" : " hidden"}>${escapeHtml(message)}</div>`;
     }
 
     function pill(label, selected, attributes) {
@@ -77,6 +92,159 @@
       return labels[String(value || "")] || String(value || "unavailable");
     }
 
+    function updateStateLabel(value) {
+      const labels = {
+        "not-checked": "not checked",
+        "up-to-date": "up to date",
+        "update-available": "update available",
+        "remote-different": "remote differs",
+        "local-ahead": "local source ahead",
+        diverged: "source diverged",
+        "downgrade-blocked": "downgrade blocked",
+        "release-rewritten": "release tag changed",
+        unavailable: "check unavailable",
+        blocked: "check blocked",
+        "source-unavailable": "source not configured",
+        "source-invalid": "source invalid",
+      };
+      return labels[String(value || "")] || String(value || "unavailable");
+    }
+
+    function repositoryStateLabel(value) {
+      const labels = {
+        ready: "ready",
+        dirty: "local changes",
+        "source-changed": "source differs from installed",
+        detached: "detached HEAD",
+        "branch-mismatch": "different branch",
+        "channel-source-mismatch": "channel/source mismatch",
+        "untrusted-remote": "untrusted remote",
+        unavailable: "unavailable",
+        unconfigured: "not configured",
+        invalid: "invalid configuration",
+      };
+      return labels[String(value || "")] || String(value || "unavailable");
+    }
+
+    function transactionStateLabel(value) {
+      const labels = {
+        idle: "idle",
+        preparing: "preparing…",
+        downloading: "downloading…",
+        validating: "validating…",
+        prepared: "ready to install",
+        installing: "installing…",
+        complete: "complete",
+        failed: "failed",
+        unavailable: "coordinator unavailable",
+      };
+      return labels[String(value || "")] || String(value || "unavailable");
+    }
+
+    function readinessBlockerLabel(value) {
+      const key = String(value || "").trim();
+      const labels = {
+        "repository-source-changed": "update source is not ready",
+        "managed-source": "update source is not ready",
+        "active-transaction": "another update is active",
+        "disk-space": "not enough disk space",
+        "required-commands": "required system tools are unavailable",
+        "privileged-coordinator": "update service is unavailable",
+        "execution-authorization": "update installation is not authorised",
+        "configuration-preservation": "configuration cannot be preserved",
+        power: "power requirements are not met",
+        thermal: "thermal limits prevent installation",
+        "service-health": "required services are unhealthy",
+        "readiness-unavailable": "readiness is unavailable",
+      };
+      return labels[key] || key.replaceAll("-", " ");
+    }
+
+    function updateControlState() {
+      const transaction = updateCoordinatorSnapshot?.state || {};
+      const transactionState = String(transaction.state || "unavailable");
+      const transactionActive = ["preparing", "downloading", "validating", "installing"].includes(transactionState);
+      const connectionState = String(documentRef.body?.dataset?.openmmiDashboardConnection || "");
+      const dashboardReady = !connectionState || connectionState === "ready";
+      const readinessReady = updateReadinessSnapshot?.state === "ready"
+        && updateReadinessSnapshot?.install_allowed === true;
+      const managedSourceReady = updateSnapshot?.readiness?.state === "ready"
+        && updateSnapshot?.source?.state === "ready";
+      const coordinatorReady = updateCoordinatorSnapshot?.ok === true;
+      const installationEnabled = coordinatorReady
+        && updateCoordinatorSnapshot?.installation_enabled === true;
+      return Object.freeze({
+        transactionActive,
+        transactionState,
+        readinessReady,
+        managedSourceReady,
+        canCheck: dashboardReady && !updateBusy && !transactionActive,
+        canPrepare: dashboardReady
+          && !updateBusy
+          && !transactionActive
+          && readinessReady
+          && managedSourceReady
+          && installationEnabled
+          && updateCoordinatorSnapshot?.preparation_enabled === true
+          && updateSnapshot?.update?.update_available === true,
+        canInstall: dashboardReady
+          && !updateBusy
+          && readinessReady
+          && managedSourceReady
+          && installationEnabled
+          && transactionState === "prepared",
+      });
+    }
+
+    function scheduleTransactionPoll() {
+      const state = String(updateCoordinatorSnapshot?.state?.state || "unavailable");
+      const active = ["preparing", "downloading", "validating", "installing"].includes(state);
+      const timeoutMs = Math.max(1000, Number(options.updateActionTimeoutMs || 370000));
+      if (active && !transactionPollDeadline) transactionPollDeadline = Date.now() + timeoutMs;
+      if (["prepared", "complete", "failed", "idle"].includes(state)) transactionPollDeadline = 0;
+      const recovering = state === "unavailable" && transactionPollDeadline > Date.now();
+      if (documentRef.hidden || transactionPollTimer || updateBusy || (!active && !recovering)) return;
+      const pollIntervalMs = Math.max(25, Number(options.updatePollIntervalMs || 500));
+      transactionPollTimer = windowRef.setTimeout(async () => {
+        transactionPollTimer = null;
+        if (documentRef.hidden) return;
+        await refreshUpdateTransaction(false);
+        const nextState = String(updateCoordinatorSnapshot?.state?.state || "unavailable");
+        const nextError = transactionError();
+        if (nextState === "complete" || nextState === "failed") {
+          await refreshUpdateStatus();
+          if (nextState === "complete") setMessage("Update installed successfully", "success");
+          else setMessage(nextError || "Update transaction failed", "error");
+        } else {
+          renderSystem();
+        }
+        scheduleTransactionPoll();
+      }, pollIntervalMs);
+    }
+
+    function checkedAtLabel(value) {
+      const text = String(value || "").trim();
+      if (!text) return "never";
+      return text.replace("T", " ").replace("+00:00", " UTC");
+    }
+
+    function updateCheckMessage(payload) {
+      const state = String(payload?.update?.state || "");
+      if (state === "up-to-date") return ["Open MMI is up to date", "success"];
+      if (state === "update-available") return ["An update is available", "warning"];
+      if (["remote-different", "local-ahead", "diverged", "release-rewritten"].includes(state)) {
+        return [payload?.update?.error || "The tracked source differs; installation direction is not assumed", "warning"];
+      }
+      if (state === "downgrade-blocked") {
+        return [payload?.update?.error || "The selected channel would require a downgrade", "warning"];
+      }
+      if (["blocked", "source-unavailable", "source-invalid"].includes(state)) {
+        return [payload?.update?.error || "Update check is blocked", "warning"];
+      }
+      if (state === "unavailable") return [payload?.update?.error || "Update check is unavailable", "error"];
+      return ["Update status refreshed", "success"];
+    }
+
     function systemTemplate() {
       const launcher = snapshot?.launcher || {};
       const version = frontendVersionSnapshot();
@@ -86,14 +254,78 @@
       const loadedVersion = version.loadedId || "--";
       const serverVersion = version.serverId || "--";
       const versionState = frontendVersionStateLabel(version.state);
+      const installed = updateSnapshot?.installed || {};
+      const update = updateSnapshot?.update || {};
+      const source = updateSnapshot?.source || {};
+      const installedVersion = installed.version || "--";
+      const availableVersion = update.available_version || "--";
+      const channel = updateSnapshot?.channel || "unconfigured";
+      const updateState = updateStateLabel(update.state || "not-checked");
+      const repositoryState = repositoryStateLabel(source.state || "unconfigured");
+      const lastChecked = checkedAtLabel(update.checked_at);
+      const readiness = updateReadinessSnapshot || {};
+      const coordinator = updateCoordinatorSnapshot || {};
+      const transaction = coordinator.state || {};
+      const controls = updateControlState();
+      const readinessBlockers = Array.from(new Set([
+        ...(Array.isArray(updateSnapshot?.readiness?.blockers) ? updateSnapshot.readiness.blockers : []),
+        ...(Array.isArray(readiness.blockers) ? readiness.blockers : []),
+      ].map(readinessBlockerLabel).filter(Boolean)));
+      const readinessLabel = controls.readinessReady && controls.managedSourceReady
+        ? "ready"
+        : readinessBlockers.length
+          ? `blocked: ${readinessBlockers.join(", ")}`
+          : controls.managedSourceReady
+            ? "unavailable"
+            : "blocked: update source is not ready";
+      const transactionLabel = transactionStateLabel(controls.transactionState);
+      const transactionIsHistory = ["complete", "failed"].includes(controls.transactionState);
+      const transactionTitle = transactionIsHistory ? "Last update" : "Update progress";
+      const targetTitle = transactionIsHistory ? "Last update version" : "Update version";
+      const targetVersion = String(transaction.target_version || "").trim();
+      const targetHtml = targetVersion
+        ? `<div class="openmmi-settings-metric"><span data-testid="system-update-target-label">${escapeHtml(targetTitle)}</span><strong data-testid="system-update-target">${escapeHtml(targetVersion)}</strong></div>`
+        : "";
+      const visibleMessage = String(message || "").trim();
+      const updateErrorText = String(update.error || "").trim();
+      const updateError = updateErrorText && updateErrorText !== visibleMessage
+        ? `<p class="openmmi-update-status-note" data-testid="system-update-error">${escapeHtml(updateErrorText)}</p>`
+        : "";
+      const transactionError = String(transaction.error || coordinator.error || "").trim();
+      const transactionErrorHtml = transactionError && transactionError !== visibleMessage
+        ? `<p class="openmmi-update-status-note" data-testid="system-update-transaction-error">${escapeHtml(transactionError)}</p>`
+        : "";
       return `
         <div data-openmmi-system-settings-panel="true" data-openmmi-system-settings-ready="true">
           <div class="openmmi-settings-panel-head"><span>System</span><small>desktop shell and updates</small></div>
-          ${statusBanner()}
           <div class="openmmi-settings-metric"><span>Dashboard version</span><strong data-testid="system-frontend-version">${escapeHtml(loadedVersion)}</strong></div>
           <div class="openmmi-settings-metric"><span>Server version</span><strong data-testid="system-server-version">${escapeHtml(serverVersion)}</strong></div>
-          <div class="openmmi-settings-metric"><span>Update status</span><strong data-testid="system-version-state">${escapeHtml(versionState)}</strong></div>
+          <div class="openmmi-settings-metric"><span>Frontend state</span><strong data-testid="system-version-state">${escapeHtml(versionState)}</strong></div>
           <div class="openmmi-settings-metric"><span>Health endpoint</span><strong>${escapeHtml(reachable)}</strong></div>
+          <div class="openmmi-settings-subhead"><span>Software updates</span><small>managed installation</small></div>
+          <div data-openmmi-update-status="true" aria-live="polite">
+            <div class="openmmi-settings-metric"><span>Installed version</span><strong data-testid="system-installed-version">${escapeHtml(installedVersion)}</strong></div>
+            <div class="openmmi-settings-metric"><span>Channel</span><strong data-testid="system-update-channel">${escapeHtml(channel)}</strong></div>
+            <div class="openmmi-settings-metric"><span>Available version</span><strong data-testid="system-available-version">${escapeHtml(availableVersion)}</strong></div>
+            <div class="openmmi-settings-metric"><span>Update status</span><strong data-testid="system-update-state">${escapeHtml(updateState)}</strong></div>
+            <div class="openmmi-settings-metric"><span>Last checked</span><strong data-testid="system-update-checked-at">${escapeHtml(lastChecked)}</strong></div>
+            <div class="openmmi-settings-metric"><span data-testid="system-update-transaction-label">${escapeHtml(transactionTitle)}</span><strong data-testid="system-update-transaction">${escapeHtml(transactionLabel)}</strong></div>
+            ${targetHtml}
+            ${updateError}
+            ${transactionErrorHtml}
+            <div class="openmmi-config-actions openmmi-update-actions">
+              <button type="button" class="openmmi-setting-pill" data-openmmi-update-check="true" data-testid="system-update-check" ${controls.canCheck ? "" : "disabled"}>${updateBusy === "checking" ? "Checking…" : "Check for updates"}</button>
+              <button type="button" class="openmmi-setting-pill" data-openmmi-update-prepare="true" data-testid="system-update-prepare" ${controls.canPrepare ? "" : "disabled"}>${updateBusy === "preparing" ? "Preparing…" : "Prepare update"}</button>
+              <button type="button" class="openmmi-setting-pill is-selected" data-openmmi-update-install="true" data-testid="system-update-install" ${controls.canInstall ? "" : "disabled"}>${updateBusy === "installing" ? "Installing…" : "Install update"}</button>
+            </div>
+            ${statusBanner("openmmi-update-feedback")}
+            <p class="openmmi-update-status-note">Nightly follows the newest available Open MMI build. Updates start only when you choose them and roll back automatically if validation fails.</p>
+            <details class="openmmi-update-technical" data-testid="system-update-technical">
+              <summary>Technical details</summary>
+              <div class="openmmi-settings-metric"><span>Repository health</span><strong data-testid="system-update-repository">${escapeHtml(repositoryState)}</strong></div>
+              <div class="openmmi-settings-metric"><span>Installation readiness</span><strong data-testid="system-update-readiness">${escapeHtml(readinessLabel)}</strong></div>
+            </details>
+          </div>
           ${row("Default interface", "Used by the desktop icon and open-mmi-launcher without arguments.",
             pill("Web", defaultUi === "web", 'data-openmmi-launcher-ui="web" data-openmmi-requires-dashboard="true" data-testid="launcher-default-web"')
             + pill("TUI", defaultUi === "tui", 'data-openmmi-launcher-ui="tui" data-openmmi-requires-dashboard="true" data-testid="launcher-default-tui"'))}
@@ -211,6 +443,54 @@
       if (activeSection() === "media") renderJellyfin();
     }
 
+    async function refreshUpdateStatus() {
+      try {
+        updateSnapshot = await api.getJson("/api/system/update-status", { usePayloadError: true });
+      } catch (error) {
+        updateSnapshot = {
+          channel: "unavailable",
+          installed: { version: "--" },
+          source: { state: "unavailable" },
+          update: { state: "unavailable", checked_at: null, error: error?.message || "Could not load update status" },
+        };
+      }
+      await Promise.all([refreshUpdateReadiness(false), refreshUpdateTransaction(false)]);
+      renderSystem();
+      scheduleTransactionPoll();
+      return updateSnapshot;
+    }
+
+    async function refreshUpdateReadiness(render = true) {
+      try {
+        updateReadinessSnapshot = await api.getJson("/api/system/update-readiness", { usePayloadError: true });
+      } catch (error) {
+        updateReadinessSnapshot = {
+          state: "blocked",
+          install_allowed: false,
+          blockers: ["readiness-unavailable"],
+          error: error?.message || "Could not inspect update readiness",
+        };
+      }
+      if (render) renderSystem();
+      return updateReadinessSnapshot;
+    }
+
+    async function refreshUpdateTransaction(render = true) {
+      try {
+        updateCoordinatorSnapshot = await api.getJson("/api/system/update-coordinator", { usePayloadError: true });
+      } catch (error) {
+        updateCoordinatorSnapshot = {
+          ok: false,
+          preparation_enabled: false,
+          installation_enabled: false,
+          error: error?.message || "Could not reach the update coordinator",
+          state: { state: "unavailable", target_version: "", error: "" },
+        };
+      }
+      if (render) renderSystem();
+      return updateCoordinatorSnapshot;
+    }
+
     async function refresh() {
       try {
         snapshot = await api.getJson("/api/system/settings", { usePayloadError: true });
@@ -220,8 +500,125 @@
         message = error?.message || "Could not load local system settings";
         messageKind = "error";
       }
+      await refreshUpdateStatus();
       renderActive();
       return snapshot;
+    }
+
+    async function checkForUpdates() {
+      updateBusy = "checking";
+      renderSystem();
+      try {
+        updateSnapshot = await api.postJson("/api/system/update-check", { confirm: true }, { usePayloadError: true });
+        await Promise.all([refreshUpdateReadiness(false), refreshUpdateTransaction(false)]);
+        const [text, kind] = updateCheckMessage(updateSnapshot);
+        setMessage(text, kind);
+        return updateSnapshot;
+      } catch (error) {
+        setMessage(error?.message || "Update check failed", "error");
+        throw error;
+      } finally {
+        updateBusy = "";
+        renderSystem();
+      }
+    }
+
+    function confirmed(messageText) {
+      return typeof windowRef.confirm === "function" && windowRef.confirm(messageText) === true;
+    }
+
+    function transactionError() {
+      return String(updateCoordinatorSnapshot?.state?.error || updateCoordinatorSnapshot?.error || "").trim();
+    }
+
+    async function runUpdateAction(path, successStates) {
+      const pollIntervalMs = Math.max(25, Number(options.updatePollIntervalMs || 500));
+      const timeoutMs = Math.max(1000, Number(options.updateActionTimeoutMs || 370000));
+      const deadline = Date.now() + timeoutMs;
+      let requestDone = false;
+      let requestResult = null;
+      let requestError = null;
+      const request = api.postJson(path, { confirm: true }, { usePayloadError: true })
+        .then((result) => {
+          requestResult = result;
+          if (result?.state) updateCoordinatorSnapshot = result;
+          return result;
+        })
+        .catch((error) => {
+          requestError = error;
+          return null;
+        })
+        .finally(() => { requestDone = true; });
+
+      while (Date.now() < deadline) {
+        await Promise.resolve();
+        const responseState = String(requestResult?.state?.state || "");
+        if (successStates.includes(responseState)) return requestResult;
+        if (responseState === "failed") throw new Error(requestResult?.state?.error || "Update transaction failed");
+
+        if (!requestDone) {
+          await Promise.race([
+            request,
+            new Promise((resolve) => windowRef.setTimeout(resolve, pollIntervalMs)),
+          ]);
+        } else if (requestError?.connection_unreachable) {
+          await new Promise((resolve) => windowRef.setTimeout(resolve, pollIntervalMs));
+        } else {
+          await new Promise((resolve) => windowRef.setTimeout(resolve, pollIntervalMs));
+        }
+
+        await refreshUpdateTransaction(false);
+        renderSystem();
+        const state = String(updateCoordinatorSnapshot?.state?.state || "");
+        if (successStates.includes(state)) return updateCoordinatorSnapshot;
+        if (state === "failed") throw new Error(transactionError() || "Update transaction failed");
+        if (requestDone && requestError && !requestError.connection_unreachable) throw requestError;
+      }
+      throw new Error("Timed out waiting for the update transaction");
+    }
+
+    async function prepareUpdate() {
+      const controls = updateControlState();
+      if (!controls.canPrepare) throw new Error("No installable managed update is ready to prepare");
+      const available = updateSnapshot?.update?.available_version || "the available update";
+      if (!confirmed(`Download and verify ${available} for installation?`)) return null;
+      updateBusy = "preparing";
+      setMessage("Downloading and verifying the update…", "warning");
+      renderSystem();
+      try {
+        const result = await runUpdateAction("/api/system/update-prepare", ["prepared"]);
+        await refreshUpdateStatus();
+        setMessage(`Update ${result?.state?.target_version || available} is verified and ready to install`, "success");
+        return result;
+      } catch (error) {
+        setMessage(error?.message || "Update preparation failed", "error");
+        throw error;
+      } finally {
+        updateBusy = "";
+        renderSystem();
+      }
+    }
+
+    async function installUpdate() {
+      const controls = updateControlState();
+      if (!controls.canInstall) throw new Error("No verified update is ready to install");
+      const target = updateCoordinatorSnapshot?.state?.target_version || "the prepared update";
+      if (!confirmed(`Install ${target} now? Open MMI services will restart automatically.`)) return null;
+      updateBusy = "installing";
+      setMessage("Installing the verified update; Open MMI will reconnect automatically…", "warning");
+      renderSystem();
+      try {
+        const result = await runUpdateAction("/api/system/update-install", ["complete"]);
+        await refresh();
+        setMessage(`Update ${result?.state?.target_version || target} installed successfully`, "success");
+        return result;
+      } catch (error) {
+        setMessage(error?.message || "Update installation failed", "error");
+        throw error;
+      } finally {
+        updateBusy = "";
+        renderSystem();
+      }
     }
 
     async function post(path, payload, successMessage, options = {}) {
@@ -286,6 +683,12 @@
         await post("/api/system/launcher", { open_at_login: target.dataset.openmmiLauncherAutostart === "true" }, "Login launch preference saved");
       } else if (target.dataset.openmmiSystemRefresh) {
         await refresh();
+      } else if (target.dataset.openmmiUpdateCheck) {
+        await checkForUpdates();
+      } else if (target.dataset.openmmiUpdatePrepare) {
+        await prepareUpdate();
+      } else if (target.dataset.openmmiUpdateInstall) {
+        await installUpdate();
       } else if (target.dataset.openmmiJellyfinTest) {
         await post("/api/system/jellyfin/test", jellyfinPayload(), "Jellyfin connection succeeded", { refresh: false });
       } else if (target.dataset.openmmiJellyfinSave) {
@@ -325,8 +728,10 @@
     documentRef.addEventListener("submit", (event) => { submitHandler(event).catch(() => {}); });
     documentRef.addEventListener("input", inputHandler);
     documentRef.addEventListener("change", changeHandler);
+    documentRef.addEventListener("visibilitychange", scheduleTransactionPoll);
     windowRef.addEventListener("openmmi:settingsrender", () => windowRef.requestAnimationFrame(renderActive));
     windowRef.addEventListener("openmmi:frontendversion", () => windowRef.requestAnimationFrame(renderSystem));
+    windowRef.addEventListener("openmmi:dashboardconnection", () => windowRef.requestAnimationFrame(renderSystem));
     documentRef.addEventListener("DOMContentLoaded", () => refresh());
 
     const Observer = windowRef.MutationObserver;
@@ -341,13 +746,25 @@
       activeSection,
       captureJellyfinDraft,
       jellyfinPayload,
+      checkForUpdates,
+      prepareUpdate,
+      installUpdate,
       refresh,
+      refreshUpdateReadiness,
+      refreshUpdateStatus,
+      refreshUpdateTransaction,
       renderActive,
       renderJellyfin,
       renderSystem,
       systemTemplate,
       frontendVersionSnapshot,
       frontendVersionStateLabel,
+      updateStateLabel,
+      repositoryStateLabel,
+      transactionStateLabel,
+      updateControlState,
+      scheduleTransactionPoll,
+      checkedAtLabel,
       jellyfinTemplate,
     });
   }

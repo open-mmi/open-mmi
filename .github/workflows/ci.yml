@@ -149,6 +149,8 @@ jobs:
               "open-mmi-dashboard": "ui.web_dashboard.server:main",
               "open-mmi-launcher": "ui.launcher:main",
               "open-mmi-status": "ui.dashboard.status_cli:main",
+              "open-mmi-update-coordinator": "ui.update_coordinator:main",
+              "open-mmi-update-installer": "ui.update_installer:main",
           }
           installed = {
               entry.name: entry.value

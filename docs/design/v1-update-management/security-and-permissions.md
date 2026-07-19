@@ -1,0 +1,88 @@
+# Update security and permissions
+
+| Field | Value |
+| --- | --- |
+| Branch | `v1-update-management` |
+| Status | Fixed preparation and confirmed same-origin nightly execution implemented |
+| Owners | Dashboard API, privileged update coordinator, installer |
+
+## Threat boundary
+
+The dashboard is local-only, but local browser content and API requests still must not become a general command interface. Same-origin and loopback restrictions are necessary but not sufficient for privileged update execution.
+
+The system-settings bridge also requires a literal loopback or `localhost`
+`Host` value. Matching attacker-controlled `Host` and `Origin` names are rejected
+to keep DNS rebinding outside the privileged update boundary.
+
+## Prohibited browser inputs
+
+The browser must never supply:
+
+- executable names or shell fragments;
+- `sudo` arguments;
+- repository URLs;
+- filesystem paths;
+- remote names;
+- branches, tags, refs, or commit expressions;
+- service names;
+- package-manager arguments;
+- rollback archive names;
+- environment-variable names or values.
+
+## First-slice enforcement
+
+The manual check endpoint accepts only an empty confirmation object. All Git inputs come from managed install metadata and pass strict validation before argument-list execution. No shell is involved. The descriptor supports unprivileged inspection but is never sufficient privileged authority on its own. The installer re-reads it alongside root-owned `/etc/open-mmi/update-policy.json`, revalidates the checkout and staged candidate, and accepts only the coordinator-owned transaction. Channel policy can be changed only through the administrative CLI.
+
+Git runs with credential prompting disabled and bounded timeouts. Raw stderr and remote URLs are not returned to the UI. Stable and beta accept only fixed semantic tag forms from the hard-coded official repository identity; nightly remains bound to the installer-recorded branch.
+
+## Privileged components
+
+The privileged component uses root-owned channel policy plus independently
+revalidated managed source data and exposes only fixed operations:
+
+- status
+- prepare approved candidate
+- install prepared candidate
+- report transaction status
+- automatically restore the transaction-owned previous installation on failure
+
+Authorization should be explicit and auditable. The dashboard process should remain unprivileged.
+
+The coordinator implements `status` plus fixed, confirmed `prepare` and
+nightly-only `install`. It has no generic dispatch table and rejects every extra request field. Candidate source,
+identity, channel, staging location, and Git arguments come only from managed
+records and coordinator constants. Its root-owned state cannot inject commands
+or execution parameters. Installation starts only the fixed no-arguments
+`open-mmi-update-installer.service`. The loopback same-origin browser bridge has
+fixed status, prepare, and install routes; both mutation routes accept exactly a
+confirmation boolean and add no execution inputs. Stable, beta, caller-selected
+rollback, and manual rollback remain disabled.
+
+## Additional controls
+
+- single active transaction lock;
+- atomic state and metadata writes;
+- strict ownership and file modes;
+- path containment checks for staging/rollback files;
+- bounded logs with secret redaction;
+- signed manifest or release authenticity verification before stable/beta installation;
+- explicit downgrade policy;
+- no success state before health validation;
+- no automatic update solely because a check found a different commit.
+- artifact cleanup accepts only exact coordinator transaction directory names,
+  proves root/child containment, refuses symlinks, and never removes unrelated
+  entries;
+- terminal staging is removed and rollback retention is fixed at two archives,
+  with cleanup retried after coordinator restart.
+
+
+## Implemented policy-file controls
+
+- fixed schema and fixed channel enum only;
+- root ownership required at the production path;
+- group/world-writable files rejected;
+- symlinks and non-regular files rejected;
+- unknown fields rejected, including repository/ref injection attempts;
+- atomic replacement with file and directory `fsync`;
+- invalid policy fails closed rather than defaulting;
+- uninstall removes the root-owned policy.

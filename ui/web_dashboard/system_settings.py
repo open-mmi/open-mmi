@@ -7,6 +7,7 @@ clients or cross-origin browser requests.
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import sys
 import threading
@@ -15,7 +16,7 @@ from typing import Any, Dict, Mapping
 from urllib.parse import urlparse
 
 try:
-    from ui import launcher
+    from ui import launcher, update_coordinator, update_readiness
     from ui.configuration import (
         ConfigurationError,
         client_is_loopback,
@@ -25,12 +26,12 @@ try:
         restart_dashboard,
         write_environment_file,
     )
-    from ui.web_dashboard import jellyfin
+    from ui.web_dashboard import jellyfin, update_status
 except ModuleNotFoundError as exc:  # pragma: no cover - direct script fallback
     if exc.name != "ui":
         raise
     sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[2]))
-    from ui import launcher
+    from ui import launcher, update_coordinator, update_readiness
     from ui.configuration import (
         ConfigurationError,
         client_is_loopback,
@@ -40,7 +41,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover - direct script fallback
         restart_dashboard,
         write_environment_file,
     )
-    from ui.web_dashboard import jellyfin
+    from ui.web_dashboard import jellyfin, update_status
 
 SYSTEM_MAX_BODY_BYTES = 16 * 1024
 
@@ -57,8 +58,23 @@ def _same_origin(handler: Any) -> bool:
     return parsed.scheme in {"http", "https"} and parsed.netloc.casefold() == host
 
 
+def _loopback_host(handler: Any) -> bool:
+    host = str(handler.headers.get("Host") or "").strip()
+    try:
+        hostname = urlparse(f"//{host}").hostname or ""
+        if hostname.casefold() == "localhost":
+            return True
+        return ipaddress.ip_address(hostname).is_loopback
+    except ValueError:
+        return False
+
+
 def _request_allowed(handler: Any) -> bool:
-    return client_is_loopback(getattr(handler, "client_address", None)) and _same_origin(handler)
+    return (
+        client_is_loopback(getattr(handler, "client_address", None))
+        and _loopback_host(handler)
+        and _same_origin(handler)
+    )
 
 
 def _json_body(handler: Any) -> Dict[str, Any]:
@@ -162,12 +178,23 @@ def _restart_after_response(delay: float = 0.25) -> None:
 
 
 def _handle_get(handler: Any, path: str) -> bool:
-    if path != "/api/system/settings":
+    routes = {
+        "/api/system/settings": _settings_status,
+        "/api/system/update-status": update_status.status_payload,
+        "/api/system/update-readiness": lambda: update_readiness.readiness_payload(update_status.status_payload()),
+        "/api/system/update-coordinator": update_coordinator.client_status,
+    }
+    if path not in routes:
         return False
     if not _request_allowed(handler):
         handler._send_json({"ok": False, "error": "Local configuration access required"}, 403)
         return True
-    handler._send_json(_settings_status())
+    try:
+        handler._send_json(routes[path]())
+    except update_coordinator.CoordinatorError as exc:
+        handler._send_json({"ok": False, "error": str(exc)}, 502)
+    except (RuntimeError, TimeoutError, OSError):
+        handler._send_json({"ok": False, "error": "System status operation failed"}, 502)
     return True
 
 
@@ -180,6 +207,9 @@ def _handle_post(handler: Any, path: str) -> bool:
     if path not in routes and path not in {
         "/api/system/jellyfin/clear",
         "/api/system/dashboard/restart",
+        "/api/system/update-check",
+        "/api/system/update-prepare",
+        "/api/system/update-install",
     }:
         return False
     if not _request_allowed(handler):
@@ -192,6 +222,21 @@ def _handle_post(handler: Any, path: str) -> bool:
             if payload not in ({}, {"confirm": True}):
                 raise ValueError("Invalid clear request")
             result = _clear_jellyfin()
+        elif path == "/api/system/update-check":
+            payload = _json_body(handler)
+            if payload not in ({}, {"confirm": True}):
+                raise ValueError("Invalid update check request")
+            result = update_status.check_for_updates()
+        elif path == "/api/system/update-prepare":
+            payload = _json_body(handler)
+            if payload != {"confirm": True}:
+                raise ValueError("Invalid update preparation request")
+            result = update_coordinator.client_prepare()
+        elif path == "/api/system/update-install":
+            payload = _json_body(handler)
+            if payload != {"confirm": True}:
+                raise ValueError("Invalid update installation request")
+            result = update_coordinator.client_install()
         elif path == "/api/system/dashboard/restart":
             payload = _json_body(handler)
             if payload not in ({}, {"confirm": True}):
@@ -201,7 +246,7 @@ def _handle_post(handler: Any, path: str) -> bool:
         else:
             result = routes[path](_json_body(handler))
         handler._send_json(result)
-    except (ValueError, ConfigurationError, launcher.LauncherError) as exc:
+    except (ValueError, ConfigurationError, launcher.LauncherError, update_coordinator.CoordinatorError, update_status.UpdateStatusError) as exc:
         handler._send_json({"ok": False, "error": str(exc)}, 400)
     except (RuntimeError, TimeoutError, OSError):
         handler._send_json({"ok": False, "error": "Configuration operation failed"}, 502)

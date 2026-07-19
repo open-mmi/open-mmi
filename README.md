@@ -96,6 +96,29 @@ Credentials are stored server-side in `~/.config/open-mmi/dashboard.env` with mo
 See [`docs/desktop-shell.md`](docs/desktop-shell.md) for launcher, login-autostart, and advanced service details and [`ui/web_dashboard/README.md`](ui/web_dashboard/README.md) for Jellyfin scope and security guidance.
 
 See [`docs/runtime-hardening.md`](docs/runtime-hardening.md) for update/cache recovery, service reconnection, thermal diagnostics, and runtime-efficiency behaviour. Vehicle installations should also review [`docs/vehicle-tablet-installation.md`](docs/vehicle-tablet-installation.md).
+
+The `v1-update-management` branch adds confirmed manual nightly updates under **Settings → System** plus trusted administrative channel policy. The dashboard never selects a repository, ref, or channel. Inspect or operate the same fixed flow from the CLI with:
+
+```bash
+open-mmi-config updates status
+open-mmi-config updates check
+open-mmi-config updates readiness
+open-mmi-config updates coordinator
+open-mmi-config updates prepare
+open-mmi-config updates install
+```
+
+Select one approved channel administratively:
+
+```bash
+sudo open-mmi-config updates channel nightly
+sudo open-mmi-config updates channel beta
+sudo open-mmi-config updates channel stable
+```
+
+Nightly remains bound to the installer-recorded branch. Beta and stable require the official Open MMI repository, `main`, and fixed semantic release-tag forms; downgrade and rewritten-tag states fail closed. Existing `development` policy files migrate automatically to `nightly`. A restricted privileged coordinator prepares a nightly candidate and invokes a separate no-arguments one-shot installer from either the fixed CLI or same-origin browser flow. Browser channel selection, scheduling, unattended updates, manual rollback, and stable/beta installation remain disabled.
+
+A first managed install may add the account to the dedicated `open-mmi-update` group. Log out and back in once when the installer requests it; an already-running desktop session cannot inherit new supplementary group membership, so browser update actions remain unavailable until the next login. See the [update-management design set](docs/design/v1-update-management/README.md) and [qualification record](docs/design/v1-update-management/qualification.md).
 <!-- OPEN_MMI_WEB_DASHBOARD_END -->
 
 ---

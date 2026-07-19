@@ -1,0 +1,14 @@
+[Unit]
+Description=Open MMI Prepared Update Installer
+Documentation=https://github.com/open-mmi/open-mmi
+After=local-fs.target
+
+[Service]
+Type=oneshot
+Environment=OPEN_MMI_PREPARED_DEPLOYMENT=1
+ExecStart=/opt/open-mmi/venv/bin/open-mmi-update-installer
+UMask=0027
+PrivateTmp=true
+ProtectHome=false
+ProtectSystem=strict
+ReadWritePaths=/opt /var/lib/open-mmi /run/open-mmi /etc/open-mmi /etc/systemd/system /usr/local/bin /home

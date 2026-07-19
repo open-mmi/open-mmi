@@ -148,6 +148,34 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
 
 
 
+    def test_system_settings_owns_fixed_managed_update_flow(self):
+        source = SYSTEM_SETTINGS.read_text(encoding="utf-8")
+        self.assertIn('api.getJson("/api/system/update-status"', source)
+        self.assertIn('api.getJson("/api/system/update-readiness"', source)
+        self.assertIn('api.getJson("/api/system/update-coordinator"', source)
+        self.assertIn('api.postJson("/api/system/update-check", { confirm: true }', source)
+        self.assertIn('runUpdateAction("/api/system/update-prepare", ["prepared"]', source)
+        self.assertIn('runUpdateAction("/api/system/update-install", ["complete"]', source)
+        self.assertIn("function scheduleTransactionPoll()", source)
+        self.assertIn('documentRef.addEventListener("visibilitychange", scheduleTransactionPoll)', source)
+        self.assertIn('data-testid="system-update-check"', source)
+        self.assertIn('data-testid="system-update-prepare"', source)
+        self.assertIn('data-testid="system-update-install"', source)
+        self.assertIn('"remote-different": "remote differs"', source)
+        self.assertIn('"downgrade-blocked": "downgrade blocked"', source)
+        self.assertIn('Nightly follows the newest available Open MMI build', source)
+        self.assertIn("Install update", source)
+        self.assertIn("roll back automatically if validation fails", source)
+        self.assertNotIn('data-openmmi-update-channel', source)
+        self.assertNotIn("repository_path", source)
+
+    def test_application_does_not_override_module_owned_control_state(self):
+        source = APP.read_text(encoding="utf-8")
+        self.assertNotIn(
+            'panel?.querySelectorAll?.(".openmmi-setting-pill").forEach((pill) => { pill.disabled = false; });',
+            source,
+        )
+
     def test_runtime_diagnostics_module_owns_visibility_aware_polling(self):
         source = RUNTIME_DIAGNOSTICS.read_text(encoding="utf-8")
         self.assertIn('const ENDPOINT = "/api/system/diagnostics/runtime";', source)

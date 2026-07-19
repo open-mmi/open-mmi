@@ -1,5 +1,43 @@
 # Changelog
 
+## Unreleased — V1 update management
+
+### Added
+- Managed `/opt/open-mmi/.update-source.json` metadata recording the managed source checkout, nightly channel, branch, upstream, installed commit, and installed version.
+- Local-only update status, readiness, coordinator status, manual check, candidate preparation, and confirmed installation endpoints.
+- Settings → System visibility and fixed controls for checking, preparing, and installing a managed nightly candidate with live transaction state.
+- Branch-specific update source, API, UI, execution, rollback, health, and permission design records.
+- Root-owned `/etc/open-mmi/update-policy.json` with fixed `stable`, `beta`, and `nightly` channel selection plus automatic migration from the legacy `development` label.
+- Administrative `open-mmi-config updates status`, `updates check`, and `updates channel` commands.
+- Read-only pre-update readiness inspection through `GET /api/system/update-readiness` and `open-mmi-config updates readiness`.
+- Fail-closed disk, command, coordinator, transaction-lock, configuration-preservation, power, thermal, and service restart-loop checks.
+- Root-owned update coordinator service with atomic persistent state, crash recovery, exclusive transaction locking, and fixed status/prepare/install Unix-socket actions.
+- Restricted candidate preparation with fixed confirmation, root-owned staging, forward-ancestry proof, release-tag identity validation, and persistent preparation state.
+- Confirmed CLI and same-origin browser nightly candidate installation through a no-arguments one-shot root service, with identity/ancestry revalidation, deployment backup, fixed health checks, and automatic restoration on failure.
+- Automatic transaction-artifact cleanup with one active/prepared staging tree and two retained rollback archives.
+- Stable/beta semantic release-tag filtering, official-repository enforcement, downgrade refusal, and rewritten-tag detection.
+
+### Changed
+- Settings → System keeps the everyday nightly update state in the main panel and moves repository/readiness diagnostics into expandable technical details.
+- Update transaction labels now use the user-facing **Update progress**, **Last update**, and **Last update version** wording.
+
+### Fixed
+- Source mismatch feedback is no longer duplicated between the update notice and raw error text, and equivalent source-readiness blockers collapse into one reason.
+- Update notices now sit directly below their action controls with consistent spacing.
+
+### Security
+- Update checks accept no browser-selected repository, path, remote, branch, ref, timeout, or command.
+- Git credential prompts are disabled, checks use bounded argument-list subprocesses, and raw remote errors are not exposed to the browser.
+- A remote commit mismatch is reported conservatively when update direction cannot be proven without changing the checkout.
+- Channel policy rejects symlinks, writable files, unknown fields, unsupported channels, non-root production ownership, untrusted release remotes, and browser-selected source data.
+- Git inspection invoked through `sudo open-mmi-config` drops back to the original user before reading the user-owned checkout.
+- Browser execution accepts only exact confirmation objects over literal-loopback, same-origin JSON routes and delegates to the fixed coordinator protocol; it cannot select update inputs or pass DNS-rebinding hostnames.
+- Coordinator handoff completes even when the dashboard connection closes during its expected self-restart.
+- Artifact pruning accepts only contained, non-symlinked coordinator transaction directories and leaves unrelated entries untouched.
+
+### Not yet included
+- No browser channel editor, scheduling, unattended updates, stable/beta installation, or caller-selected/manual rollback target.
+
 ## Unreleased — V1 runtime hardening
 
 ### Added
@@ -26,7 +64,7 @@
 ### Known limitations
 - The first update from a frontend that predates the version controller may require one manual reload.
 - Hot, passively cooled tablets may still throttle and suspend charging; firmware protections are not bypassed.
-- CAN-daemon profiling, cooling hardware, and update download/rollback management remain later work.
+- CAN-daemon profiling and cooling hardware remain later work; stable/beta installation and caller-selected rollback remain outside the manual-nightly update scope.
 
 ## Unreleased — V1 foundation hardening
 
