@@ -1052,7 +1052,7 @@ test("system settings and Jellyfin setup use the shared local configuration API"
   await expect(page.getByTestId("system-update-state")).toHaveText("update available");
   await expect(page.getByTestId("system-available-version")).toHaveText("def5678abc90");
   await expect(page.getByTestId("system-update-checked-at")).toHaveText("2026-07-18 14:32:00 UTC");
-  await expect(page.getByRole("status")).toContainText("An update is available");
+  await expect(page.locator('[data-openmmi-update-status="true"]').getByRole("status")).toContainText("An update is available");
   await expect(page.getByTestId("system-update-prepare")).toBeEnabled();
   const updateCountsAfterCheck = await dashboard.updateRequestCounts();
   expect(updateCountsAfterCheck.status).toBe(updateCountsBeforeCheck.status);

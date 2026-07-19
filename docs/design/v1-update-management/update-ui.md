@@ -51,12 +51,14 @@ mistaken for a pending UI update.
 - active controls are disabled and labelled with the current operation;
 - preparation and installation require separate browser confirmations;
 - preparation is enabled only for a reported forward candidate when readiness passes;
+- source mismatch or local changes block the check and keep preparation disabled even if an earlier readiness snapshot was ready;
 - installation is enabled only for persistent `prepared` state when the coordinator authorizes nightly execution;
 - coordinator state is polled during the operation and survives dashboard restart;
 - server-side values are HTML-escaped;
 - no repository path or remote URL is displayed;
 - no channel-change, caller-selected rollback, or scheduling control appears in Settings;
 - the existing dashboard-connection controller may temporarily disable the action while the local server is offline;
+- update-action feedback is rendered inside the Software updates section beside the controls that produced it;
 - existing launcher and Jellyfin settings remain independent.
 
 ## Administrative channel selection

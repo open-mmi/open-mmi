@@ -140,6 +140,8 @@
       const dashboardReady = !connectionState || connectionState === "ready";
       const readinessReady = updateReadinessSnapshot?.state === "ready"
         && updateReadinessSnapshot?.install_allowed === true;
+      const managedSourceReady = updateSnapshot?.readiness?.state === "ready"
+        && updateSnapshot?.source?.state === "ready";
       const coordinatorReady = updateCoordinatorSnapshot?.ok === true;
       const installationEnabled = coordinatorReady
         && updateCoordinatorSnapshot?.installation_enabled === true;
@@ -147,17 +149,20 @@
         transactionActive,
         transactionState,
         readinessReady,
+        managedSourceReady,
         canCheck: dashboardReady && !updateBusy && !transactionActive,
         canPrepare: dashboardReady
           && !updateBusy
           && !transactionActive
           && readinessReady
+          && managedSourceReady
           && installationEnabled
           && updateCoordinatorSnapshot?.preparation_enabled === true
           && updateSnapshot?.update?.update_available === true,
         canInstall: dashboardReady
           && !updateBusy
           && readinessReady
+          && managedSourceReady
           && installationEnabled
           && transactionState === "prepared",
       });
@@ -234,10 +239,14 @@
       const coordinator = updateCoordinatorSnapshot || {};
       const transaction = coordinator.state || {};
       const controls = updateControlState();
-      const readinessLabel = readiness.state === "ready"
+      const readinessBlockers = Array.from(new Set([
+        ...(Array.isArray(updateSnapshot?.readiness?.blockers) ? updateSnapshot.readiness.blockers : []),
+        ...(Array.isArray(readiness.blockers) ? readiness.blockers : []),
+      ]));
+      const readinessLabel = controls.readinessReady && controls.managedSourceReady
         ? "ready"
-        : readiness.blockers?.length
-          ? `blocked: ${readiness.blockers.join(", ")}`
+        : readinessBlockers.length
+          ? `blocked: ${readinessBlockers.join(", ")}`
           : "unavailable";
       const transactionLabel = transactionStateLabel(controls.transactionState);
       const transactionIsHistory = ["complete", "failed"].includes(controls.transactionState);
@@ -254,7 +263,6 @@
       return `
         <div data-openmmi-system-settings-panel="true" data-openmmi-system-settings-ready="true">
           <div class="openmmi-settings-panel-head"><span>System</span><small>desktop shell and updates</small></div>
-          ${statusBanner()}
           <div class="openmmi-settings-metric"><span>Dashboard version</span><strong data-testid="system-frontend-version">${escapeHtml(loadedVersion)}</strong></div>
           <div class="openmmi-settings-metric"><span>Server version</span><strong data-testid="system-server-version">${escapeHtml(serverVersion)}</strong></div>
           <div class="openmmi-settings-metric"><span>Frontend state</span><strong data-testid="system-version-state">${escapeHtml(versionState)}</strong></div>
@@ -272,6 +280,7 @@
             <div class="openmmi-settings-metric"><span data-testid="system-update-target-label">${escapeHtml(targetTitle)}</span><strong data-testid="system-update-target">${escapeHtml(targetVersion)}</strong></div>
             ${updateError}
             ${transactionErrorHtml}
+            ${statusBanner()}
             <p class="openmmi-update-status-note">Channel selection remains administrative CLI policy. The browser can only check, prepare, and install the fixed managed candidate; failed health checks trigger automatic rollback.</p>
             <div class="openmmi-config-actions openmmi-update-actions">
               <button type="button" class="openmmi-setting-pill" data-openmmi-update-check="true" data-testid="system-update-check" ${controls.canCheck ? "" : "disabled"}>${updateBusy === "checking" ? "Checking…" : "Check for updates"}</button>
@@ -463,6 +472,7 @@
       renderSystem();
       try {
         updateSnapshot = await api.postJson("/api/system/update-check", { confirm: true }, { usePayloadError: true });
+        await Promise.all([refreshUpdateReadiness(false), refreshUpdateTransaction(false)]);
         const [text, kind] = updateCheckMessage(updateSnapshot);
         setMessage(text, kind);
         return updateSnapshot;

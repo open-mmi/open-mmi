@@ -178,6 +178,8 @@ test("system and Jellyfin templates expose the fixed managed update flow without
   assert.match(systemHtml, /Prepare update/);
   assert.match(systemHtml, /Install update/);
   assert.match(systemHtml, /Channel selection remains administrative CLI policy/);
+  assert.ok(systemHtml.indexOf('data-openmmi-update-status="true"') < systemHtml.indexOf('role="status"'));
+  assert.ok(systemHtml.indexOf('role="status"') < systemHtml.indexOf('data-openmmi-update-prepare="true"'));
   assert.doesNotMatch(systemHtml, /repository_path|https:\/\/github/);
   assert.deepEqual(state.calls.slice(0, 4), [
     ["GET", "/api/system/settings"],
@@ -199,12 +201,36 @@ test("manual update check sends only fixed confirmation and refreshes the panel"
   await controller.refresh();
   const payload = await controller.checkForUpdates();
   assert.equal(payload.update.state, "update-available");
-  assert.deepEqual(state.calls.at(-1), ["POST", "/api/system/update-check", { confirm: true }]);
+  assert.deepEqual(
+    state.calls.find((call) => call[0] === "POST" && call[1] === "/api/system/update-check"),
+    ["POST", "/api/system/update-check", { confirm: true }],
+  );
+  assert.deepEqual(state.calls.slice(-2), [
+    ["GET", "/api/system/update-readiness"],
+    ["GET", "/api/system/update-coordinator"],
+  ]);
   const html = controller.systemTemplate();
   assert.match(html, /update available/);
   assert.match(html, /def5678abc90/);
   assert.match(html, /2026-07-18 14:32:00 UTC/);
   assert.equal(controller.updateControlState().canPrepare, true);
+});
+
+test("source mismatch blocks prepare even when detailed readiness is stale", async () => {
+  const state = fixture();
+  const controller = settings.createController(state);
+  await controller.refresh();
+  state.updatePayload.source.state = "source-changed";
+  state.updatePayload.readiness = {
+    state: "blocked",
+    blockers: ["repository-source-changed"],
+  };
+  await controller.checkForUpdates();
+  const controls = controller.updateControlState();
+  assert.equal(controls.readinessReady, true);
+  assert.equal(controls.managedSourceReady, false);
+  assert.equal(controls.canPrepare, false);
+  assert.match(controller.systemTemplate(), /blocked: repository-source-changed/);
 });
 
 test("dashboard connection state cannot re-enable managed update controls", async () => {

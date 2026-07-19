@@ -227,7 +227,7 @@ class UpdateStatusTests(unittest.TestCase):
         self.assertTrue(payload["update"]["remote_differs"])
         self.assertEqual(payload["update"]["available_commit"], remote_commit)
 
-    def test_missing_installed_commit_object_is_remote_different(self):
+    def test_missing_installed_commit_object_blocks_check(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             source, _, current_commit = self.create_repository(root)
@@ -239,8 +239,10 @@ class UpdateStatusTests(unittest.TestCase):
             self.write_descriptor(source_file, source, missing_commit)
             with self.environment(version_file, source_file):
                 payload = update_status.check_for_updates()
-        self.assertEqual(payload["update"]["state"], "remote-different")
+        self.assertEqual(payload["source"]["state"], "source-changed")
+        self.assertEqual(payload["update"]["state"], "blocked")
         self.assertIsNone(payload["update"]["update_available"])
+        self.assertIn("does not match", payload["update"]["error"])
 
     def test_dirty_and_detached_sources_are_explicit(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -253,7 +255,10 @@ class UpdateStatusTests(unittest.TestCase):
             (source / "local.txt").write_text("dirty\n", encoding="utf-8")
             with self.environment(version_file, source_file):
                 dirty = update_status.status_payload()
+                dirty_check = update_status.check_for_updates()
             self.assertEqual(dirty["source"]["state"], "dirty")
+            self.assertEqual(dirty_check["update"]["state"], "blocked")
+            self.assertIn("local changes", dirty_check["update"]["error"])
             self.git(source, "clean", "-fd")
             self.git(source, "checkout", "--detach", commit)
             update_status.clear_cached_status()
@@ -262,6 +267,26 @@ class UpdateStatusTests(unittest.TestCase):
         self.assertEqual(detached["source"]["state"], "detached")
         self.assertEqual(detached["update"]["state"], "blocked")
         self.assertIn("detached HEAD", detached["update"]["error"])
+
+    def test_source_change_blocks_check_before_remote_inspection(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source, _, installed_commit = self.create_repository(root)
+            (source / "README.md").write_text("local candidate\n", encoding="utf-8")
+            self.git(source, "commit", "-am", "local candidate")
+            version_file = root / ".version"
+            source_file = root / ".update-source.json"
+            version_file.write_text("test-build\n", encoding="utf-8")
+            self.write_descriptor(source_file, source, installed_commit)
+            with self.environment(version_file, source_file), patch.object(
+                update_status, "_remote_commit"
+            ) as remote_commit:
+                payload = update_status.check_for_updates()
+        self.assertEqual(payload["source"]["state"], "source-changed")
+        self.assertEqual(payload["update"]["state"], "blocked")
+        self.assertFalse(payload["update"]["update_available"])
+        self.assertIn("does not match", payload["update"]["error"])
+        remote_commit.assert_not_called()
 
     def test_unreachable_remote_is_unavailable_not_up_to_date(self):
         with tempfile.TemporaryDirectory() as temporary:

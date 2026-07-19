@@ -573,6 +573,8 @@ def check_for_updates() -> Dict[str, Any]:
             "branch-mismatch": "Managed update repository is on a different branch",
             "channel-source-mismatch": "Selected release channel requires the main branch and its tracked main upstream",
             "untrusted-remote": "Selected update source is not trusted for this channel",
+            "source-changed": "Managed update source does not match the installed commit",
+            "dirty": "Managed update repository has local changes",
         }
         if repository["state"] in blocked_states:
             return _blocked_check(signature, checked_at, blocked_states[repository["state"]])
