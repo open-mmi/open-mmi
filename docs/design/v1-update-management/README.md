@@ -4,15 +4,13 @@
 | --- | --- |
 | Source branch | `v1-update-management` |
 | Intended target | `main` |
-| Status | Read-only status, trusted policy/readiness, and restricted candidate preparation implemented |
+| Status | Confirmed managed nightly update flow implemented and under qualification |
 | Predecessor | `v1-runtime-hardening` |
 | Initial delivery | Read-only update visibility |
 
 ## Purpose
 
-This branch turns the existing administrator-run `manage.sh update` path into a deliberately staged update-management system. The first delivery is informational only: show the installed build, managed source, repository health, last check, and remote version without changing the installation or adding an install button.
-
-Later slices may add readiness checks, a restricted update coordinator, health validation, and rollback. Those capabilities remain blocked until their security and failure semantics are implemented and tested.
+This branch turns the existing administrator-run `manage.sh update` path into a deliberately staged update-management system. It now covers informational status, fail-closed readiness, restricted preparation, confirmed nightly installation, health validation, and automatic restoration. The feature remains on its branch while the full device qualification matrix is completed.
 
 ## Design documents
 
@@ -41,7 +39,7 @@ Later slices may add readiness checks, a restricted update coordinator, health v
 3. Stable/beta/nightly channel policy. **Implemented with root-owned fixed-name policy, legacy-label migration, and CLI-only selection.**
 4. Pre-update readiness checks. **Implemented as a fail-closed gate.**
 5. Persistent coordinator state and fixed-action privileged boundary. **Implemented with status, preparation, and a separate no-arguments installer service.**
-6. User-triggered update execution. **Implemented for confirmed CLI-only nightly candidates; browser execution remains disabled.**
+6. User-triggered update execution. **Implemented for confirmed CLI and same-origin browser nightly candidates.**
 7. Post-update health validation. **Implemented for service state, `/api/health`, and target build identity.**
 8. Rollback mechanism. **Automatic restoration is implemented for failed CLI installation; manual rollback remains unavailable.**
 9. Diagnostics/log integration.

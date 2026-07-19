@@ -34,6 +34,31 @@ class UpdateCoordinatorTests(unittest.TestCase):
         ):
             update_coordinator._Handler.handle(handler)
 
+    def test_dashboard_disconnect_does_not_skip_successful_coordinator_handoff(self):
+        request = {"api_version": 1, "action": "install", "confirm": True}
+
+        class DisconnectedWriter:
+            def write(self, _payload):
+                raise BrokenPipeError("dashboard restarted")
+
+            def flush(self):
+                raise AssertionError("flush should not follow a failed write")
+
+        handler = SimpleNamespace(
+            rfile=io.BytesIO(json.dumps(request).encode("utf-8") + b"\n"),
+            wfile=DisconnectedWriter(),
+            server=SimpleNamespace(state_path=Path("/unused")),
+        )
+        with patch.object(update_coordinator, "response_for_request", return_value={"ok": True}), patch.object(
+            update_coordinator.subprocess, "run", return_value=subprocess.CompletedProcess(["systemctl"], 0)
+        ) as restart:
+            update_coordinator._Handler.handle(handler)
+        restart.assert_called_once()
+        self.assertEqual(
+            restart.call_args.args[0],
+            ["systemctl", "restart", "--no-block", "open-mmi-update-coordinator.service"],
+        )
+
     def git(self, repository: Path, *arguments: str) -> str:
         result = subprocess.run(
             ["git", "-C", str(repository), *arguments], text=True,

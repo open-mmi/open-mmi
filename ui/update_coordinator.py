@@ -437,6 +437,7 @@ def response_for_request(
 
 class _Handler(socketserver.StreamRequestHandler):
     def handle(self) -> None:
+        payload: object = None
         raw = self.rfile.readline(MAX_REQUEST_BYTES + 1)
         if not raw or len(raw) > MAX_REQUEST_BYTES:
             response = {"ok": False, "error": "Invalid coordinator request size"}
@@ -446,8 +447,14 @@ class _Handler(socketserver.StreamRequestHandler):
             except (UnicodeError, json.JSONDecodeError):
                 payload = None
             response = response_for_request(payload, self.server.state_path)  # type: ignore[attr-defined]
-        self.wfile.write((json.dumps(response, sort_keys=True) + "\n").encode("utf-8"))
-        self.wfile.flush()
+        try:
+            self.wfile.write((json.dumps(response, sort_keys=True) + "\n").encode("utf-8"))
+            self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            # A dashboard request is expected to disconnect when the installer
+            # restarts that dashboard. The privileged transaction has already
+            # completed, so the coordinator handoff must still run.
+            pass
         if isinstance(payload, dict) and payload.get("action") == "install" and response.get("ok") is True:
             try:
                 subprocess.run(

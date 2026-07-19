@@ -1152,9 +1152,6 @@ openMmiNavigationController.init();
       }
     }
 
-    // Make every visible settings pill interactive and selected without relying
-    // on the page being rebuilt.
-    panel?.querySelectorAll?.(".openmmi-setting-pill").forEach((pill) => { pill.disabled = false; });
     panel?.querySelectorAll?.(".openmmi-setting-row").forEach((row) => {
       const title = rowTitle(row);
       if (title.includes("speed")) setPills(row, prefs.speedUnit === "kmh" ? "km/h" : "mph");

@@ -97,6 +97,10 @@ class SystemConfigurationTests(unittest.TestCase):
         self.assertTrue(system_settings._request_allowed(Handler()))
         Handler.headers = {"Host": "127.0.0.1:8765", "Origin": "https://evil.test"}
         self.assertFalse(system_settings._request_allowed(Handler()))
+        Handler.headers = {"Host": "rebound.evil.test:8765", "Origin": "http://rebound.evil.test:8765"}
+        self.assertFalse(system_settings._request_allowed(Handler()))
+        Handler.headers = {"Host": "localhost:8765", "Origin": "http://localhost:8765"}
+        self.assertTrue(system_settings._request_allowed(Handler()))
 
     def test_launcher_update_uses_shared_launcher_configuration(self):
         with patch.object(system_settings.launcher, "save_preferences") as save, patch.object(
@@ -169,6 +173,22 @@ class SystemConfigurationTests(unittest.TestCase):
         inspect.assert_called_once_with(status)
         self.assertEqual(handler.sent, (readiness, 200))
 
+    def test_update_coordinator_status_route_uses_the_fixed_local_socket_client(self):
+        class Handler:
+            client_address = ("127.0.0.1", 1234)
+            headers = {"Host": "127.0.0.1:8765", "Origin": "http://127.0.0.1:8765"}
+            sent = None
+
+            def _send_json(self, payload, status=200):
+                self.sent = (payload, status)
+
+        handler = Handler()
+        coordinator = {"ok": True, "installation_enabled": True, "state": {"state": "idle"}}
+        with patch.object(system_settings.update_coordinator, "client_status", return_value=coordinator) as status:
+            self.assertTrue(system_settings._handle_get(handler, "/api/system/update-coordinator"))
+        status.assert_called_once_with()
+        self.assertEqual(handler.sent, (coordinator, 200))
+
     def test_update_prepare_accepts_only_fixed_confirmation(self):
         class Handler:
             client_address = ("127.0.0.1", 1234)
@@ -193,6 +213,34 @@ class SystemConfigurationTests(unittest.TestCase):
         with patch.object(system_settings.update_coordinator, "client_prepare") as prepare:
             self.assertTrue(system_settings._handle_post(handler, "/api/system/update-prepare"))
         prepare.assert_not_called()
+        self.assertEqual(handler.sent[1], 400)
+
+    def test_update_install_accepts_only_fixed_confirmation(self):
+        class Handler:
+            client_address = ("127.0.0.1", 1234)
+
+            def __init__(self, body):
+                self.headers = {
+                    "Host": "127.0.0.1:8765", "Origin": "http://127.0.0.1:8765",
+                    "Content-Type": "application/json", "Content-Length": str(len(body)),
+                }
+                self.rfile = io.BytesIO(body)
+                self.sent = None
+
+            def _send_json(self, payload, status=200):
+                self.sent = (payload, status)
+
+        complete = {"ok": True, "installation_enabled": True, "state": {"state": "complete"}}
+        handler = Handler(b'{"confirm": true}')
+        with patch.object(system_settings.update_coordinator, "client_install", return_value=complete) as install:
+            self.assertTrue(system_settings._handle_post(handler, "/api/system/update-install"))
+        install.assert_called_once_with()
+        self.assertEqual(handler.sent, (complete, 200))
+
+        handler = Handler(b'{"confirm": true, "command": "sh"}')
+        with patch.object(system_settings.update_coordinator, "client_install") as install:
+            self.assertTrue(system_settings._handle_post(handler, "/api/system/update-install"))
+        install.assert_not_called()
         self.assertEqual(handler.sent[1], 400)
 
     def test_update_check_rejects_caller_supplied_source_fields(self):

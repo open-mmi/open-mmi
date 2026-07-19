@@ -4,16 +4,16 @@
 
 ### Added
 - Managed `/opt/open-mmi/.update-source.json` metadata recording the managed source checkout, nightly channel, branch, upstream, installed commit, and installed version.
-- Local-only read-only update status and manual update-check endpoints.
-- Settings → System visibility for installed version, channel, tracked remote version, check state, last check, and repository health.
+- Local-only update status, readiness, coordinator status, manual check, candidate preparation, and confirmed installation endpoints.
+- Settings → System visibility and fixed controls for checking, preparing, and installing a managed nightly candidate with live transaction state.
 - Branch-specific update source, API, UI, execution, rollback, health, and permission design records.
 - Root-owned `/etc/open-mmi/update-policy.json` with fixed `stable`, `beta`, and `nightly` channel selection plus automatic migration from the legacy `development` label.
 - Administrative `open-mmi-config updates status`, `updates check`, and `updates channel` commands.
 - Read-only pre-update readiness inspection through `GET /api/system/update-readiness` and `open-mmi-config updates readiness`.
 - Fail-closed disk, command, coordinator, transaction-lock, configuration-preservation, power, thermal, and service restart-loop checks.
-- Root-owned update coordinator service with atomic persistent state, crash recovery, exclusive transaction locking, and a status-only Unix-socket protocol.
+- Root-owned update coordinator service with atomic persistent state, crash recovery, exclusive transaction locking, and fixed status/prepare/install Unix-socket actions.
 - Restricted candidate preparation with fixed confirmation, root-owned staging, forward-ancestry proof, release-tag identity validation, and persistent preparation state.
-- CLI-only nightly candidate installation through a no-arguments one-shot root service, with identity/ancestry revalidation, deployment backup, fixed health checks, and automatic restoration on failure.
+- Confirmed CLI and same-origin browser nightly candidate installation through a no-arguments one-shot root service, with identity/ancestry revalidation, deployment backup, fixed health checks, and automatic restoration on failure.
 - Stable/beta semantic release-tag filtering, official-repository enforcement, downgrade refusal, and rewritten-tag detection.
 
 ### Security
@@ -22,10 +22,11 @@
 - A remote commit mismatch is reported conservatively when update direction cannot be proven without changing the checkout.
 - Channel policy rejects symlinks, writable files, unknown fields, unsupported channels, non-root production ownership, untrusted release remotes, and browser-selected source data.
 - Git inspection invoked through `sudo open-mmi-config` drops back to the original user before reading the user-owned checkout.
+- Browser execution accepts only exact confirmation objects over literal-loopback, same-origin JSON routes and delegates to the fixed coordinator protocol; it cannot select update inputs or pass DNS-rebinding hostnames.
+- Coordinator handoff completes even when the dashboard connection closes during its expected self-restart.
 
 ### Not yet included
-- No browser installation control, browser channel editor, scheduling, unattended updates, stable/beta installation, or caller-selected rollback target.
-- The coordinator still does not enable installation, live deployment, service mutation, or rollback actions.
+- No browser channel editor, scheduling, unattended updates, stable/beta installation, or caller-selected/manual rollback target.
 
 ## Unreleased — V1 runtime hardening
 

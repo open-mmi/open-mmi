@@ -379,7 +379,7 @@ The release that first introduces this controller needs one reload if an older p
 
 Diagnostics updates its existing value nodes in place. It does not rebuild the full Diagnostics panel for each 200 ms status publication; a structural rebuild is reserved for changes to the decoded-path set.
 
-## Read-only software update visibility
+## Managed software updates
 
 Managed install and update operations record `/opt/open-mmi/.update-source.json` with the original source checkout, tracked branch/upstream, installed commit, installed version, and the channel active at install time. The installed runtime does not contain `.git`, so this explicit descriptor prevents unreliable filesystem discovery and prevents the browser from selecting an arbitrary update source.
 
@@ -387,10 +387,22 @@ The selected channel is separate root-owned policy in `/etc/open-mmi/update-poli
 
 `GET /api/system/update-status` reads local installation, policy, repository health, and the last process-local check result. It performs no network operation. **Settings → System → Software updates** displays the installed version, selected channel, available version, state, last check, and repository health.
 
+`GET /api/system/update-readiness` exposes the fail-closed installation checks,
+and `GET /api/system/update-coordinator` exposes only the coordinator's fixed
+public transaction state. Both are loopback-only and contain no staging path or
+caller-selectable execution data.
+
 `POST /api/system/update-prepare` accepts only `{"confirm": true}` and asks the
 restricted coordinator to download and validate the policy-selected candidate
 in root-owned staging. It accepts no source, ref, path, command, or service
 input and does not install or restart anything.
+
+`POST /api/system/update-install` also accepts only `{"confirm": true}`. It
+asks the coordinator to install an already verified nightly candidate through
+the fixed no-arguments installer service. The dashboard polls persistent
+coordinator state while its own service restarts. A dropped HTTP connection
+during that restart is not treated as transaction state; the restored dashboard
+reports `complete` or the recorded failure and verified rollback result.
 
 **Check for updates** calls same-origin `POST /api/system/update-check` with a fixed confirmation object. Nightly uses the recorded branch with bounded `git ls-remote`; beta and stable use only fixed semantic tag queries against the official Open MMI repository. The checker does not fetch, merge, reset, install, restart, or elevate privilege. Unknown ancestry, untrusted remotes, downgrades, and rewritten tags are reported conservatively. Network failure is never presented as up to date.
 
@@ -407,7 +419,7 @@ sudo open-mmi-config updates channel beta
 sudo open-mmi-config updates channel stable
 ```
 
-The dashboard remains read-only and has no install button, scheduler, or rollback action. A root-owned coordinator supports fixed preparation and CLI-only nightly installation through a separate one-shot installer. Design records live in [`docs/design/v1-update-management/`](../../docs/design/v1-update-management/README.md).
+The dashboard offers **Check for updates**, **Prepare update**, and **Install update** only when readiness and coordinator policy permit them. Preparation and installation each require explicit confirmation. There is no browser channel editor, scheduler, unattended update, or caller-selected rollback action; failed deployment health checks use the installer's automatic restoration path. Design records live in [`docs/design/v1-update-management/`](../../docs/design/v1-update-management/README.md).
 
 `static/styles.css` remains as an import-only compatibility manifest. `tools/verify_css_split.py` locks the module order and verifies that their concatenated bytes remain identical to the pre-split stylesheet, preventing accidental cascade changes during this structural phase.
 

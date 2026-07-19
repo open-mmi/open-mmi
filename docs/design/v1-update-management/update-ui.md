@@ -3,14 +3,14 @@
 | Field | Value |
 | --- | --- |
 | Branch | `v1-update-management` |
-| Status | Read-only panel implemented; channel selection remains CLI-only |
+| Status | Confirmed managed nightly execution implemented; channel selection remains CLI-only |
 | Owners | Settings → System frontend |
 
 ## Location
 
 Update management belongs in **Settings → System**, below frontend/server version and desktop-shell health.
 
-## First-slice fields
+## Fields
 
 - Installed version
 - Channel
@@ -18,10 +18,15 @@ Update management belongs in **Settings → System**, below frontend/server vers
 - Update status
 - Last checked
 - Repository health
+- Installation readiness
+- Persistent transaction state
+- Prepared target version
 
-The panel includes one action:
+The panel includes three fixed actions:
 
 - **Check for updates**
+- **Prepare update**
+- **Install update**
 
 Opening Settings loads only local/cached status. The network check runs only after explicit user action.
 
@@ -37,11 +42,15 @@ Opening Settings loads only local/cached status. The network check runs only aft
 
 ## Interaction rules
 
-- only one check may run at a time;
-- the button is disabled and labelled **Checking…** while active;
+- only one check or update transaction may run at a time;
+- active controls are disabled and labelled with the current operation;
+- preparation and installation require separate browser confirmations;
+- preparation is enabled only for a reported forward candidate when readiness passes;
+- installation is enabled only for persistent `prepared` state when the coordinator authorizes nightly execution;
+- coordinator state is polled during the operation and survives dashboard restart;
 - server-side values are HTML-escaped;
 - no repository path or remote URL is displayed;
-- no install, channel-change, rollback, or scheduling control appears in Settings;
+- no channel-change, caller-selected rollback, or scheduling control appears in Settings;
 - the existing dashboard-connection controller may temporarily disable the action while the local server is offline;
 - existing launcher and Jellyfin settings remain independent.
 
@@ -49,13 +58,10 @@ Opening Settings loads only local/cached status. The network check runs only aft
 
 Settings displays the selected channel but does not change it. Administrators use `sudo open-mmi-config updates channel stable|beta|nightly`. This keeps repository and channel policy outside the browser mutation surface.
 
-## Future execution UI
+## Execution ownership
 
-Only after readiness and coordinator slices exist may the UI add:
-
-- View changes
-- Install update
-- Update progress stages
-- Retry or rollback guidance
-
-The browser will display coordinator state; it will not own the update transaction.
+The browser displays coordinator state; it does not own the transaction. A
+dashboard disconnect during installation is expected because the installed
+service restarts. The browser reconnects and reads root-owned persistent state
+instead of inferring success from the HTTP request. Automatic rollback remains
+installer-owned and there is no browser-selected rollback target.

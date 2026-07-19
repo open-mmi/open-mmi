@@ -3,12 +3,16 @@
 | Field | Value |
 | --- | --- |
 | Branch | `v1-update-management` |
-| Status | Fixed preparation and CLI-only nightly execution boundary implemented |
+| Status | Fixed preparation and confirmed same-origin nightly execution implemented |
 | Owners | Dashboard API, future privileged coordinator, installer |
 
 ## Threat boundary
 
 The dashboard is local-only, but local browser content and API requests still must not become a general command interface. Same-origin and loopback restrictions are necessary but not sufficient for privileged update execution.
+
+The system-settings bridge also requires a literal loopback or `localhost`
+`Host` value. Matching attacker-controlled `Host` and `Origin` names are rejected
+to keep DNS rebinding outside the privileged update boundary.
 
 ## Prohibited browser inputs
 
@@ -48,8 +52,10 @@ nightly-only `install`. It has no generic dispatch table and rejects every extra
 identity, channel, staging location, and Git arguments come only from managed
 records and coordinator constants. Its root-owned state cannot inject commands
 or execution parameters. Installation starts only the fixed no-arguments
-`open-mmi-update-installer.service`; the browser has no install route. Stable,
-beta, caller-selected rollback, and manual rollback remain disabled.
+`open-mmi-update-installer.service`. The loopback same-origin browser bridge has
+fixed status, prepare, and install routes; both mutation routes accept exactly a
+confirmation boolean and add no execution inputs. Stable, beta, caller-selected
+rollback, and manual rollback remain disabled.
 
 ## Additional controls
 

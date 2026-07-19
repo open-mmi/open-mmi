@@ -28,7 +28,13 @@ class UpdateStatusTests(unittest.TestCase):
 
     def git(self, repository: Path, *arguments: str) -> str:
         result = subprocess.run(
-            ["git", "-C", str(repository), *arguments],
+            [
+                "git",
+                "-c", "commit.gpgSign=false",
+                "-c", "tag.gpgSign=false",
+                "-C", str(repository),
+                *arguments,
+            ],
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,

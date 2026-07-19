@@ -1,9 +1,9 @@
-# Read-only update status API
+# Update management API
 
 | Field | Value |
 | --- | --- |
 | Branch | `v1-update-management` |
-| Status | Read-only status plus trusted channel policy implemented |
+| Status | Read-only inspection plus fixed confirmed execution bridge implemented |
 | Owners | Dashboard backend, Settings → System |
 
 ## Endpoints
@@ -82,7 +82,7 @@ The endpoint:
 
 ## Cache semantics
 
-The first slice retains the last result in dashboard-process memory. Restarting the dashboard resets `last checked` to `never`. Persistent update state belongs to the future coordinator and must not be introduced implicitly through browser storage.
+The remote-check result remains in dashboard-process memory, so restarting the dashboard resets `last checked` to `never`. Transaction state is separately persisted by the root-owned coordinator and is never stored or inferred in browser storage.
 
 ## Error semantics
 
@@ -114,3 +114,20 @@ forwards a fixed prepare request to the local coordinator. It returns persistent
 coordinator state but exposes no staging path or remote URL. This operation may
 download and validate a candidate in root-owned staging; it does not install,
 restart services, or modify the live checkout or installation.
+
+## Coordinator and installation
+
+`GET /api/system/update-coordinator` returns the fixed public coordinator
+capabilities and persistent transaction state. It exposes no source URL, staging
+path, command, service choice, or rollback archive.
+
+`POST /api/system/update-install` accepts exactly `{"confirm": true}` and
+forwards the fixed install action. The coordinator accepts it only for a
+previously verified `prepared` candidate while root-owned policy enables nightly
+execution. The browser polls coordinator state across the expected dashboard
+restart; HTTP connection loss alone never means success.
+
+All system update routes require a loopback client and a literal loopback or
+`localhost` host, preventing matching attacker-controlled DNS-rebinding origins.
+Mutating routes additionally require a same-origin JSON request, and unknown
+request fields are rejected.

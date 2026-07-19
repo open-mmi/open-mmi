@@ -24,6 +24,11 @@
 .openmmi-config-checks label { display: flex; gap: 6px; align-items: center; }
 .openmmi-config-secret-note { margin: 2px 0; font-size: 0.72rem; opacity: 0.78; }
 .openmmi-config-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+.openmmi-update-actions { margin-top: 10px; }
+.openmmi-update-actions .openmmi-setting-pill:disabled {
+  cursor: not-allowed;
+  opacity: .45;
+}
 .openmmi-config-refresh { margin-top: 10px; }
 @media (max-width: 620px) {
   .openmmi-config-form > label { grid-template-columns: 1fr; gap: 4px; }

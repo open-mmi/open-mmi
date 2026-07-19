@@ -3,7 +3,7 @@
 | Field | Value |
 | --- | --- |
 | Branch | `v1-update-management` |
-| Status | CLI-only nightly preparation and installation implemented; browser execution remains disabled |
+| Status | Confirmed CLI and same-origin browser nightly installation implemented |
 | Owners | Future update coordinator, installer, systemd integration |
 
 ## Required architecture
@@ -31,8 +31,8 @@ while root-owned policy selects `nightly`.
 
 An active state found at daemon startup is conservatively recovered to
 `failed` rather than resumed or called successful. The transaction lock uses a
-non-blocking exclusive filesystem lock and rejects overlap. Execution code does
-not yet acquire it because execution remains outside this slice.
+non-blocking exclusive filesystem lock and rejects overlap. The installer
+acquires the same lock before changing the live installation.
 
 Readiness reports execution authorization only when the coordinator is trusted,
 responsive, and nightly installation is enabled. Stable and beta retain the
@@ -57,9 +57,9 @@ State advances through `preparing`, `downloading`, and `validating`, ending in
 `prepared` or `failed`. The prepared tree becomes root-owned and is not copied
 into `/opt/open-mmi` until a separate confirmed install request is made.
 
-## CLI-only installation
+## Confirmed installation
 
-`open-mmi-config updates install` sends exactly
+`open-mmi-config updates install` and the loopback same-origin dashboard route both send exactly
 `{"api_version": 1, "action": "install", "confirm": true}`. The coordinator
 starts the fixed `open-mmi-update-installer.service`; no unit name or argument
 comes from the caller. The one-shot service accepts no arguments, re-reads
@@ -72,6 +72,12 @@ restarts only Open MMI user services, and requires active services plus matching
 `/api/health` and `/api/version`. An error trap restores the previous tree and
 units and restarts the restored services. Raw command output is not persisted or
 returned through the coordinator protocol.
+
+The browser route accepts only `{"confirm": true}` and cannot select a source,
+candidate, path, unit, command, or rollback archive. It polls the coordinator's
+persistent public state while the dashboard restarts. The coordinator completes
+its post-install handoff even if that dashboard HTTP connection has already
+closed.
 
 ## Transaction stages
 

@@ -226,9 +226,27 @@ async function loadDashboard(page, options = {}) {
       error: "",
     },
   };
+  const updateReadinessPayload = options.updateReadinessPayload || {
+    api_version: 1,
+    state: "ready",
+    install_allowed: true,
+    blockers: [],
+    checks: [],
+  };
+  const updateCoordinatorPayload = options.updateCoordinatorPayload || {
+    api_version: 1,
+    ok: true,
+    preparation_enabled: true,
+    execution_enabled: true,
+    installation_enabled: true,
+    state: {
+      state: "idle", stage: "idle", target_version: "", candidate_commit: "",
+      transaction_id: null, error: "",
+    },
+  };
 
   await page.setContent(ASSETS.documentHtml, { waitUntil: "domcontentloaded" });
-  await page.evaluate(({ initialPayload, initialStorage, initialBluetoothPayload, initialSystemPayload, initialUpdateStatusPayload, initialUpdateCheckPayload, initialVersionPayload, initialJellyfinStatusPayload, initialJellyfinSearchPayload, initialRuntimeDiagnosticsPayload, runtimeDiagnosticsIntervalMs, dashboardRetryDelaysMs }) => {
+  await page.evaluate(({ initialPayload, initialStorage, initialBluetoothPayload, initialSystemPayload, initialUpdateStatusPayload, initialUpdateCheckPayload, initialUpdateReadinessPayload, initialUpdateCoordinatorPayload, initialVersionPayload, initialJellyfinStatusPayload, initialJellyfinSearchPayload, initialRuntimeDiagnosticsPayload, runtimeDiagnosticsIntervalMs, dashboardRetryDelaysMs }) => {
     const values = Object.assign({}, initialStorage);
     const localStorageMock = {
       get length() { return Object.keys(values).length; },
@@ -245,6 +263,8 @@ async function loadDashboard(page, options = {}) {
     window.__openMmiSystemFixture = initialSystemPayload;
     window.__openMmiUpdateStatusFixture = initialUpdateStatusPayload;
     window.__openMmiUpdateCheckFixture = initialUpdateCheckPayload;
+    window.__openMmiUpdateReadinessFixture = initialUpdateReadinessPayload;
+    window.__openMmiUpdateCoordinatorFixture = initialUpdateCoordinatorPayload;
     window.__openMmiVersionFixture = initialVersionPayload;
     window.__openMmiJellyfinStatusFixture = initialJellyfinStatusPayload;
     window.__openMmiJellyfinSearchFixture = initialJellyfinSearchPayload;
@@ -258,6 +278,9 @@ async function loadDashboard(page, options = {}) {
     window.__openMmiDashboardVersionRequests = 0;
     window.__openMmiUpdateStatusRequests = 0;
     window.__openMmiUpdateCheckRequests = 0;
+    window.__openMmiUpdateCoordinatorRequests = 0;
+    window.__openMmiUpdatePrepareRequests = 0;
+    window.__openMmiUpdateInstallRequests = 0;
     window.__openMmiJellyfinStatusRequests = 0;
     window.__openMmiJellyfinSearchRequests = 0;
 
@@ -294,6 +317,52 @@ async function loadDashboard(page, options = {}) {
         window.__openMmiUpdateCheckRequests += 1;
         window.__openMmiUpdateStatusFixture = window.__openMmiUpdateCheckFixture;
         return json(window.__openMmiUpdateCheckFixture);
+      }
+      if (url.includes("/api/system/update-readiness")) {
+        return json(window.__openMmiUpdateReadinessFixture);
+      }
+      if (url.includes("/api/system/update-coordinator")) {
+        window.__openMmiUpdateCoordinatorRequests += 1;
+        return json(window.__openMmiUpdateCoordinatorFixture);
+      }
+      if (url.includes("/api/system/update-prepare")) {
+        const body = JSON.parse(init.body || "{}");
+        if (JSON.stringify(body) !== JSON.stringify({ confirm: true })) return json({ ok: false, error: "Invalid preparation request" }, 400);
+        window.__openMmiUpdatePrepareRequests += 1;
+        window.__openMmiUpdateCoordinatorFixture = {
+          ...window.__openMmiUpdateCoordinatorFixture,
+          state: {
+            ...window.__openMmiUpdateCoordinatorFixture.state,
+            state: "prepared",
+            stage: "prepared",
+            target_version: "v1-runtime-hardening-43-gdef5678",
+            candidate_commit: "def5678abc901234567890123456789012345678",
+            transaction_id: "prepare-0123456789abcdef0123456789abcdef",
+          },
+        };
+        return json(window.__openMmiUpdateCoordinatorFixture);
+      }
+      if (url.includes("/api/system/update-install")) {
+        const body = JSON.parse(init.body || "{}");
+        if (JSON.stringify(body) !== JSON.stringify({ confirm: true })) return json({ ok: false, error: "Invalid installation request" }, 400);
+        window.__openMmiUpdateInstallRequests += 1;
+        window.__openMmiUpdateCoordinatorFixture = {
+          ...window.__openMmiUpdateCoordinatorFixture,
+          state: { ...window.__openMmiUpdateCoordinatorFixture.state, state: "complete", stage: "complete" },
+        };
+        window.__openMmiUpdateStatusFixture = {
+          ...window.__openMmiUpdateStatusFixture,
+          installed: {
+            managed: true,
+            version: "v1-runtime-hardening-43-gdef5678",
+            commit: "def5678abc90",
+          },
+          update: {
+            state: "not-checked", checked_at: null, available_version: "", available_commit: "",
+            remote_differs: null, update_available: null, error: "",
+          },
+        };
+        return json(window.__openMmiUpdateCoordinatorFixture);
       }
       if (url.includes("/api/system/settings")) return json(window.__openMmiSystemFixture);
       if (url.includes("/api/system/launcher")) {
@@ -356,6 +425,8 @@ async function loadDashboard(page, options = {}) {
     initialSystemPayload: systemPayload,
     initialUpdateStatusPayload: updateStatusPayload,
     initialUpdateCheckPayload: updateCheckPayload,
+    initialUpdateReadinessPayload: updateReadinessPayload,
+    initialUpdateCoordinatorPayload: updateCoordinatorPayload,
     initialVersionPayload: versionPayload,
     initialJellyfinStatusPayload: jellyfinStatusPayload,
     initialJellyfinSearchPayload: jellyfinSearchPayload,
@@ -414,6 +485,9 @@ async function loadDashboard(page, options = {}) {
       return page.evaluate(() => ({
         status: window.__openMmiUpdateStatusRequests,
         checks: window.__openMmiUpdateCheckRequests,
+        coordinator: window.__openMmiUpdateCoordinatorRequests,
+        prepares: window.__openMmiUpdatePrepareRequests,
+        installs: window.__openMmiUpdateInstallRequests,
       }));
     },
     async storage() {
@@ -964,6 +1038,10 @@ test("system settings and Jellyfin setup use the shared local configuration API"
   await expect(page.getByTestId("system-update-state")).toHaveText("not checked");
   await expect(page.getByTestId("system-update-checked-at")).toHaveText("never");
   await expect(page.getByTestId("system-update-repository")).toHaveText("ready");
+  await expect(page.getByTestId("system-update-readiness")).toHaveText("ready");
+  await expect(page.getByTestId("system-update-transaction")).toHaveText("idle");
+  await expect(page.getByTestId("system-update-prepare")).toBeDisabled();
+  await expect(page.getByTestId("system-update-install")).toBeDisabled();
   const updateCountsBeforeCheck = await dashboard.updateRequestCounts();
   expect(updateCountsBeforeCheck.status).toBeGreaterThanOrEqual(1);
   expect(updateCountsBeforeCheck.checks).toBe(0);
@@ -973,9 +1051,26 @@ test("system settings and Jellyfin setup use the shared local configuration API"
   await expect(page.getByTestId("system-available-version")).toHaveText("def5678abc90");
   await expect(page.getByTestId("system-update-checked-at")).toHaveText("2026-07-18 14:32:00 UTC");
   await expect(page.getByRole("status")).toContainText("An update is available");
+  await expect(page.getByTestId("system-update-prepare")).toBeEnabled();
   const updateCountsAfterCheck = await dashboard.updateRequestCounts();
   expect(updateCountsAfterCheck.status).toBe(updateCountsBeforeCheck.status);
   expect(updateCountsAfterCheck.checks).toBe(1);
+
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByTestId("system-update-prepare").click();
+  await expect(page.getByTestId("system-update-transaction")).toHaveText("ready to install");
+  await expect(page.getByTestId("system-update-target")).toHaveText("v1-runtime-hardening-43-gdef5678");
+  await expect(page.getByTestId("system-update-install")).toBeEnabled();
+  const updateCountsAfterPrepare = await dashboard.updateRequestCounts();
+  expect(updateCountsAfterPrepare.prepares).toBe(1);
+
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByTestId("system-update-install").click();
+  await expect(page.getByTestId("system-update-transaction")).toHaveText("complete");
+  await expect(page.getByTestId("system-installed-version")).toHaveText("v1-runtime-hardening-43-gdef5678");
+  await expect(page.getByRole("status")).toContainText("installed successfully");
+  const updateCountsAfterInstall = await dashboard.updateRequestCounts();
+  expect(updateCountsAfterInstall.installs).toBe(1);
 
   await page.evaluate(() => {
     const panel = document.querySelector("#openmmiSettingsPanel");
