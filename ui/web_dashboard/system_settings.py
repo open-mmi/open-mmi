@@ -17,6 +17,7 @@ from urllib.parse import urlparse
 
 try:
     from ui import launcher, update_coordinator, update_readiness
+    from ui import vehicle_setup
     from ui.configuration import (
         ConfigurationError,
         client_is_loopback,
@@ -32,6 +33,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover - direct script fallback
         raise
     sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[2]))
     from ui import launcher, update_coordinator, update_readiness
+    from ui import vehicle_setup
     from ui.configuration import (
         ConfigurationError,
         client_is_loopback,
@@ -180,6 +182,7 @@ def _restart_after_response(delay: float = 0.25) -> None:
 def _handle_get(handler: Any, path: str) -> bool:
     routes = {
         "/api/system/settings": _settings_status,
+        "/api/system/vehicle-setup": vehicle_setup.status_payload,
         "/api/system/update-status": update_status.status_payload,
         "/api/system/update-readiness": lambda: update_readiness.readiness_payload(update_status.status_payload()),
         "/api/system/update-coordinator": update_coordinator.client_status,

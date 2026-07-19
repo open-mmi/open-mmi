@@ -159,38 +159,48 @@ setup UI.
 
 ## Read-only status API
 
-Proposed fixed route:
+The foundation slice exposes this fixed, loopback-only route:
 
 ```text
 GET /api/system/vehicle-setup
 ```
 
-Suggested response shape:
+Current response shape:
 
 ```json
 {
   "api_version": 1,
+  "read_only": true,
   "runtime_mode": "single",
   "catalogue": {
     "profiles": [],
-    "bindings": []
+    "bindings": [],
+    "issues": []
   },
   "active": {
+    "state": "ready",
+    "errors": [],
     "vehicle": {"source": "maintained", "id": "seat_1p"},
     "bindings": {"source": "maintained", "id": "default"},
     "active_bus": "comfort",
     "interface": "can0",
+    "interface_present": true,
     "configuration_revision": "sha256:…",
-    "loaded": true
+    "loaded": null
   },
   "interfaces": [],
-  "coordinator": {
-    "available": true,
-    "apply_enabled": true,
-    "transaction": {"state": "idle"}
+  "compatibility": {
+    "emitted_and_bound": [],
+    "emitted_unbound": [],
+    "bound_unemitted": [],
+    "duplicate_emitted": []
   }
 }
 ```
+
+This first endpoint performs no mutation, accepts no query-selected path or source and
+does not imply that activation is available. Coordinator capability and transaction
+state are added only with the separately qualified apply boundary.
 
 Interface entries distinguish configuration from live health:
 

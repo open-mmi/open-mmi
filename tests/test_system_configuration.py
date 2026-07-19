@@ -120,6 +120,52 @@ class SystemConfigurationTests(unittest.TestCase):
         save.assert_not_called()
         self.assertTrue(result["ok"])
 
+    def test_vehicle_setup_route_is_local_fixed_and_read_only(self):
+        class Handler:
+            client_address = ("127.0.0.1", 1234)
+            headers = {
+                "Host": "127.0.0.1:8765",
+                "Origin": "http://127.0.0.1:8765",
+            }
+
+            def __init__(self):
+                self.sent = None
+
+            def _send_json(self, payload, status=200):
+                self.sent = (payload, status)
+
+        fixture = {
+            "api_version": 1,
+            "read_only": True,
+            "runtime_mode": "single",
+            "catalogue": {"profiles": [], "bindings": []},
+            "active": {"state": "ready"},
+            "interfaces": [],
+        }
+        handler = Handler()
+        with patch.object(
+            system_settings.vehicle_setup,
+            "status_payload",
+            return_value=fixture,
+        ) as status_payload:
+            self.assertTrue(
+                system_settings._handle_get(handler, "/api/system/vehicle-setup")
+            )
+        status_payload.assert_called_once_with()
+        self.assertEqual(handler.sent, (fixture, 200))
+
+        handler = Handler()
+        handler.client_address = ("192.0.2.10", 1234)
+        with patch.object(
+            system_settings.vehicle_setup,
+            "status_payload",
+        ) as status_payload:
+            self.assertTrue(
+                system_settings._handle_get(handler, "/api/system/vehicle-setup")
+            )
+        status_payload.assert_not_called()
+        self.assertEqual(handler.sent[1], 403)
+
 
     def test_update_status_routes_are_local_fixed_and_read_only(self):
         class Handler:

@@ -426,6 +426,16 @@ existing desktop session cannot acquire newly assigned supplementary groups.
 
 The dashboard offers **Check for updates**, **Prepare update**, and **Install update** only when readiness and coordinator policy permit them. Preparation and installation each require explicit confirmation. There is no browser channel editor, scheduler, unattended update, or caller-selected rollback action; failed deployment health checks use the installer's automatic restoration path. Design records live in [`docs/design/v1-update-management/`](../../docs/design/v1-update-management/README.md).
 
+## Vehicle setup status
+
+`GET /api/system/vehicle-setup` exposes the shared read-only vehicle catalogue,
+active maintained/custom identities, validation and compatibility results, selected
+single-bus runtime and discovered SocketCAN interfaces. The fixed route is loopback
+and same-origin only, accepts no caller-selected filesystem path or source, and does
+not apply or restart vehicle configuration. Profile selection, preview and activation
+remain unavailable until their separate coordinator boundary is implemented and
+qualified.
+
 `static/styles.css` remains as an import-only compatibility manifest. `tools/verify_css_split.py` locks the module order and verifies that their concatenated bytes remain identical to the pre-split stylesheet, preventing accidental cascade changes during this structural phase.
 
 The platform modules resolve `window.fetch` and `window.localStorage` at call time. This keeps performance instrumentation compatible and lets the dashboard fail safely when browser storage is unavailable or restricted.
