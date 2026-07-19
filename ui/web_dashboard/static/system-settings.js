@@ -45,14 +45,23 @@
       if (banner) {
         banner.textContent = message;
         banner.hidden = !message;
-        banner.className = `openmmi-config-message ${messageKind}`.trim();
+        if (banner.classList) {
+          banner.classList.remove("error", "warning", "success");
+          if (messageKind) banner.classList.add(messageKind);
+        } else {
+          banner.className = `openmmi-config-message ${messageKind}`.trim();
+        }
         return;
       }
       renderActive();
     }
 
-    function statusBanner() {
-      return `<div class="openmmi-config-message ${escapeHtml(messageKind)}" role="status"${message ? "" : " hidden"}>${escapeHtml(message)}</div>`;
+    function statusBanner(extraClass = "") {
+      const classes = ["openmmi-config-message", extraClass, messageKind]
+        .filter(Boolean)
+        .map(escapeHtml)
+        .join(" ");
+      return `<div class="${classes}" role="status"${message ? "" : " hidden"}>${escapeHtml(message)}</div>`;
     }
 
     function pill(label, selected, attributes) {
@@ -130,6 +139,25 @@
         unavailable: "coordinator unavailable",
       };
       return labels[String(value || "")] || String(value || "unavailable");
+    }
+
+    function readinessBlockerLabel(value) {
+      const key = String(value || "").trim();
+      const labels = {
+        "repository-source-changed": "update source is not ready",
+        "managed-source": "update source is not ready",
+        "active-transaction": "another update is active",
+        "disk-space": "not enough disk space",
+        "required-commands": "required system tools are unavailable",
+        "privileged-coordinator": "update service is unavailable",
+        "execution-authorization": "update installation is not authorised",
+        "configuration-preservation": "configuration cannot be preserved",
+        power: "power requirements are not met",
+        thermal: "thermal limits prevent installation",
+        "service-health": "required services are unhealthy",
+        "readiness-unavailable": "readiness is unavailable",
+      };
+      return labels[key] || key.replaceAll("-", " ");
     }
 
     function updateControlState() {
@@ -242,22 +270,29 @@
       const readinessBlockers = Array.from(new Set([
         ...(Array.isArray(updateSnapshot?.readiness?.blockers) ? updateSnapshot.readiness.blockers : []),
         ...(Array.isArray(readiness.blockers) ? readiness.blockers : []),
-      ]));
+      ].map(readinessBlockerLabel).filter(Boolean)));
       const readinessLabel = controls.readinessReady && controls.managedSourceReady
         ? "ready"
         : readinessBlockers.length
           ? `blocked: ${readinessBlockers.join(", ")}`
-          : "unavailable";
+          : controls.managedSourceReady
+            ? "unavailable"
+            : "blocked: update source is not ready";
       const transactionLabel = transactionStateLabel(controls.transactionState);
       const transactionIsHistory = ["complete", "failed"].includes(controls.transactionState);
-      const transactionTitle = transactionIsHistory ? "Last transaction" : "Transaction";
-      const targetTitle = transactionIsHistory ? "Last transaction target" : "Target version";
-      const targetVersion = transaction.target_version || update.available_version || "--";
-      const updateError = update.error
-        ? `<p class="openmmi-update-status-note" data-testid="system-update-error">${escapeHtml(update.error)}</p>`
+      const transactionTitle = transactionIsHistory ? "Last update" : "Update progress";
+      const targetTitle = transactionIsHistory ? "Last update version" : "Update version";
+      const targetVersion = String(transaction.target_version || "").trim();
+      const targetHtml = targetVersion
+        ? `<div class="openmmi-settings-metric"><span data-testid="system-update-target-label">${escapeHtml(targetTitle)}</span><strong data-testid="system-update-target">${escapeHtml(targetVersion)}</strong></div>`
         : "";
-      const transactionError = transaction.error || coordinator.error || "";
-      const transactionErrorHtml = transactionError
+      const visibleMessage = String(message || "").trim();
+      const updateErrorText = String(update.error || "").trim();
+      const updateError = updateErrorText && updateErrorText !== visibleMessage
+        ? `<p class="openmmi-update-status-note" data-testid="system-update-error">${escapeHtml(updateErrorText)}</p>`
+        : "";
+      const transactionError = String(transaction.error || coordinator.error || "").trim();
+      const transactionErrorHtml = transactionError && transactionError !== visibleMessage
         ? `<p class="openmmi-update-status-note" data-testid="system-update-transaction-error">${escapeHtml(transactionError)}</p>`
         : "";
       return `
@@ -274,19 +309,22 @@
             <div class="openmmi-settings-metric"><span>Available version</span><strong data-testid="system-available-version">${escapeHtml(availableVersion)}</strong></div>
             <div class="openmmi-settings-metric"><span>Update status</span><strong data-testid="system-update-state">${escapeHtml(updateState)}</strong></div>
             <div class="openmmi-settings-metric"><span>Last checked</span><strong data-testid="system-update-checked-at">${escapeHtml(lastChecked)}</strong></div>
-            <div class="openmmi-settings-metric"><span>Repository health</span><strong data-testid="system-update-repository">${escapeHtml(repositoryState)}</strong></div>
-            <div class="openmmi-settings-metric"><span>Installation readiness</span><strong data-testid="system-update-readiness">${escapeHtml(readinessLabel)}</strong></div>
             <div class="openmmi-settings-metric"><span data-testid="system-update-transaction-label">${escapeHtml(transactionTitle)}</span><strong data-testid="system-update-transaction">${escapeHtml(transactionLabel)}</strong></div>
-            <div class="openmmi-settings-metric"><span data-testid="system-update-target-label">${escapeHtml(targetTitle)}</span><strong data-testid="system-update-target">${escapeHtml(targetVersion)}</strong></div>
+            ${targetHtml}
             ${updateError}
             ${transactionErrorHtml}
-            ${statusBanner()}
-            <p class="openmmi-update-status-note">Channel selection remains administrative CLI policy. The browser can only check, prepare, and install the fixed managed candidate; failed health checks trigger automatic rollback.</p>
             <div class="openmmi-config-actions openmmi-update-actions">
               <button type="button" class="openmmi-setting-pill" data-openmmi-update-check="true" data-testid="system-update-check" ${controls.canCheck ? "" : "disabled"}>${updateBusy === "checking" ? "Checking…" : "Check for updates"}</button>
               <button type="button" class="openmmi-setting-pill" data-openmmi-update-prepare="true" data-testid="system-update-prepare" ${controls.canPrepare ? "" : "disabled"}>${updateBusy === "preparing" ? "Preparing…" : "Prepare update"}</button>
               <button type="button" class="openmmi-setting-pill is-selected" data-openmmi-update-install="true" data-testid="system-update-install" ${controls.canInstall ? "" : "disabled"}>${updateBusy === "installing" ? "Installing…" : "Install update"}</button>
             </div>
+            ${statusBanner("openmmi-update-feedback")}
+            <p class="openmmi-update-status-note">Nightly follows the newest available Open MMI build. Updates start only when you choose them and roll back automatically if validation fails.</p>
+            <details class="openmmi-update-technical" data-testid="system-update-technical">
+              <summary>Technical details</summary>
+              <div class="openmmi-settings-metric"><span>Repository health</span><strong data-testid="system-update-repository">${escapeHtml(repositoryState)}</strong></div>
+              <div class="openmmi-settings-metric"><span>Installation readiness</span><strong data-testid="system-update-readiness">${escapeHtml(readinessLabel)}</strong></div>
+            </details>
           </div>
           ${row("Default interface", "Used by the desktop icon and open-mmi-launcher without arguments.",
             pill("Web", defaultUi === "web", 'data-openmmi-launcher-ui="web" data-openmmi-requires-dashboard="true" data-testid="launcher-default-web"')

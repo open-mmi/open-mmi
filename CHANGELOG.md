@@ -17,6 +17,14 @@
 - Automatic transaction-artifact cleanup with one active/prepared staging tree and two retained rollback archives.
 - Stable/beta semantic release-tag filtering, official-repository enforcement, downgrade refusal, and rewritten-tag detection.
 
+### Changed
+- Settings → System keeps the everyday nightly update state in the main panel and moves repository/readiness diagnostics into expandable technical details.
+- Update transaction labels now use the user-facing **Update progress**, **Last update**, and **Last update version** wording.
+
+### Fixed
+- Source mismatch feedback is no longer duplicated between the update notice and raw error text, and equivalent source-readiness blockers collapse into one reason.
+- Update notices now sit directly below their action controls with consistent spacing.
+
 ### Security
 - Update checks accept no browser-selected repository, path, remote, branch, ref, timeout, or command.
 - Git credential prompts are disabled, checks use bounded argument-list subprocesses, and raw remote errors are not exposed to the browser.

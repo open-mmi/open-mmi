@@ -57,3 +57,27 @@
   font-size: .76rem;
   line-height: 1.35;
 }
+.openmmi-update-feedback {
+  margin: .48rem .18rem 0;
+}
+.openmmi-update-feedback + .openmmi-update-status-note {
+  margin-top: .42rem;
+}
+.openmmi-update-technical {
+  margin: .65rem .18rem 0;
+  padding-top: .6rem;
+  border-top: 1px solid rgba(255,255,255,.09);
+}
+.openmmi-update-technical summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: .76rem;
+  font-weight: 650;
+}
+.openmmi-update-technical[open] summary {
+  margin-bottom: .42rem;
+}
+.openmmi-update-technical .openmmi-settings-metric {
+  margin-top: .42rem;
+  padding: .58rem .68rem;
+}

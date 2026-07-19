@@ -163,9 +163,9 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
         self.assertIn('data-testid="system-update-install"', source)
         self.assertIn('"remote-different": "remote differs"', source)
         self.assertIn('"downgrade-blocked": "downgrade blocked"', source)
-        self.assertIn('Channel selection remains administrative CLI policy', source)
+        self.assertIn('Nightly follows the newest available Open MMI build', source)
         self.assertIn("Install update", source)
-        self.assertIn("failed health checks trigger automatic rollback", source)
+        self.assertIn("roll back automatically if validation fails", source)
         self.assertNotIn('data-openmmi-update-channel', source)
         self.assertNotIn("repository_path", source)
 

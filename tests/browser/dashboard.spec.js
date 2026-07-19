@@ -1039,9 +1039,10 @@ test("system settings and Jellyfin setup use the shared local configuration API"
   await expect(page.getByTestId("system-update-checked-at")).toHaveText("never");
   await expect(page.getByTestId("system-update-repository")).toHaveText("ready");
   await expect(page.getByTestId("system-update-readiness")).toHaveText("ready");
-  await expect(page.getByTestId("system-update-transaction-label")).toHaveText("Transaction");
+  await expect(page.getByTestId("system-update-technical")).not.toHaveAttribute("open", "");
+  await expect(page.getByTestId("system-update-transaction-label")).toHaveText("Update progress");
   await expect(page.getByTestId("system-update-transaction")).toHaveText("idle");
-  await expect(page.getByTestId("system-update-target-label")).toHaveText("Target version");
+  await expect(page.getByTestId("system-update-target-label")).toHaveCount(0);
   await expect(page.getByTestId("system-update-prepare")).toBeDisabled();
   await expect(page.getByTestId("system-update-install")).toBeDisabled();
   const updateCountsBeforeCheck = await dashboard.updateRequestCounts();
@@ -1068,9 +1069,9 @@ test("system settings and Jellyfin setup use the shared local configuration API"
 
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByTestId("system-update-install").click();
-  await expect(page.getByTestId("system-update-transaction-label")).toHaveText("Last transaction");
+  await expect(page.getByTestId("system-update-transaction-label")).toHaveText("Last update");
   await expect(page.getByTestId("system-update-transaction")).toHaveText("complete");
-  await expect(page.getByTestId("system-update-target-label")).toHaveText("Last transaction target");
+  await expect(page.getByTestId("system-update-target-label")).toHaveText("Last update version");
   await expect(page.getByTestId("system-installed-version")).toHaveText("v1-runtime-hardening-43-gdef5678");
   await expect(page.getByRole("status")).toContainText("installed successfully");
   const updateCountsAfterInstall = await dashboard.updateRequestCounts();

@@ -107,17 +107,21 @@ function fixture(options = {}) {
     async postJson(path, body) {
       calls.push(["POST", path, body]);
       if (path === "/api/system/update-check") {
+        const checkedUpdate = {
+          state: "update-available",
+          checked_at: "2026-07-18T14:32:00+00:00",
+          available_version: "def5678abc90",
+          available_commit: "def5678abc901234567890123456789012345678",
+          remote_differs: true,
+          update_available: true,
+          error: "",
+          ...(options.checkUpdate || {}),
+        };
         return {
           ...updatePayload,
-          update: {
-            state: "update-available",
-            checked_at: "2026-07-18T14:32:00+00:00",
-            available_version: "def5678abc90",
-            available_commit: "def5678abc901234567890123456789012345678",
-            remote_differs: true,
-            update_available: true,
-            error: "",
-          },
+          source: { ...updatePayload.source, ...(options.checkSource || {}) },
+          update: checkedUpdate,
+          readiness: { ...updatePayload.readiness, ...(options.checkReadiness || {}) },
         };
       }
       if (path === "/api/system/update-prepare") {
@@ -171,15 +175,19 @@ test("system and Jellyfin templates expose the fixed managed update flow without
   assert.match(systemHtml, /v1-runtime-42-gabc1234/);
   assert.match(systemHtml, /nightly/);
   assert.match(systemHtml, /not checked/);
+  assert.match(systemHtml, /Technical details/);
+  assert.match(systemHtml, /data-testid="system-update-technical"/);
   assert.match(systemHtml, /Repository health/);
   assert.match(systemHtml, /Installation readiness/);
-  assert.match(systemHtml, /Transaction/);
+  assert.match(systemHtml, /Update progress/);
   assert.match(systemHtml, /Check for updates/);
   assert.match(systemHtml, /Prepare update/);
   assert.match(systemHtml, /Install update/);
-  assert.match(systemHtml, /Channel selection remains administrative CLI policy/);
+  assert.match(systemHtml, /Nightly follows the newest available Open MMI build/);
+  assert.match(systemHtml, /roll back automatically if validation fails/);
+  assert.doesNotMatch(systemHtml, /data-testid="system-update-target"/);
   assert.ok(systemHtml.indexOf('data-openmmi-update-status="true"') < systemHtml.indexOf('role="status"'));
-  assert.ok(systemHtml.indexOf('role="status"') < systemHtml.indexOf('data-openmmi-update-prepare="true"'));
+  assert.ok(systemHtml.indexOf('data-openmmi-update-prepare="true"') < systemHtml.indexOf('role="status"'));
   assert.doesNotMatch(systemHtml, /repository_path|https:\/\/github/);
   assert.deepEqual(state.calls.slice(0, 4), [
     ["GET", "/api/system/settings"],
@@ -230,7 +238,31 @@ test("source mismatch blocks prepare even when detailed readiness is stale", asy
   assert.equal(controls.readinessReady, true);
   assert.equal(controls.managedSourceReady, false);
   assert.equal(controls.canPrepare, false);
-  assert.match(controller.systemTemplate(), /blocked: repository-source-changed/);
+  assert.match(controller.systemTemplate(), /blocked: update source is not ready/);
+});
+
+test("source feedback and equivalent readiness blockers are shown only once", async () => {
+  const sourceError = "Managed update source is not ready";
+  const state = fixture({
+    checkSource: { state: "source-changed" },
+    checkReadiness: {
+      state: "blocked",
+      blockers: ["repository-source-changed", "managed-source"],
+    },
+    checkUpdate: {
+      state: "blocked",
+      update_available: false,
+      error: sourceError,
+    },
+  });
+  const controller = settings.createController(state);
+  await controller.refresh();
+  await controller.checkForUpdates();
+  const html = controller.systemTemplate();
+  assert.equal((html.match(new RegExp(sourceError, "g")) || []).length, 1);
+  assert.equal((html.match(/blocked: update source is not ready/g) || []).length, 1);
+  assert.doesNotMatch(html, /data-testid="system-update-error"/);
+  assert.match(html, /openmmi-update-feedback warning/);
 });
 
 test("dashboard connection state cannot re-enable managed update controls", async () => {
@@ -262,8 +294,8 @@ test("completed and failed coordinator states are labelled as transaction histor
     const controller = settings.createController(state);
     await controller.refresh();
     const html = controller.systemTemplate();
-    assert.match(html, /data-testid="system-update-transaction-label">Last transaction/);
-    assert.match(html, /data-testid="system-update-target-label">Last transaction target/);
+    assert.match(html, /data-testid="system-update-transaction-label">Last update/);
+    assert.match(html, /data-testid="system-update-target-label">Last update version/);
     assert.match(html, /v1-runtime-41-gold1234/);
   }
 });
