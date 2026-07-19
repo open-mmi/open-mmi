@@ -264,6 +264,17 @@ sudo() {{ printf '%s\\0' "$@"; }}
         self.assertIn('sudo cp "$REPO_ROOT/README.md" "$INSTALL_DIR/"', update_block)
         self.assertIn('sudo cp "$REPO_ROOT/LICENSE" "$INSTALL_DIR/"', update_block)
 
+    def test_installed_maintained_catalogue_is_root_owned_and_world_readable(self) -> None:
+        self.assertIn("configure_maintained_catalogue_permissions()", self.text)
+        self.assertEqual(
+            self.text.count("    configure_maintained_catalogue_permissions\n"),
+            3,
+        )
+        self.assertIn('for catalogue_root in "$INSTALL_DIR/vehicles" "$INSTALL_DIR/bindings"', self.text)
+        self.assertIn('-exec chown root:root {} +', self.text)
+        self.assertIn('-exec chmod 0755 {} +', self.text)
+        self.assertIn('-exec chmod 0644 {} +', self.text)
+
     def test_expected_console_commands_are_declared(self) -> None:
         for command in (
             "open-mmi-canbusd",

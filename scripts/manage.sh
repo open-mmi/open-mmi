@@ -432,6 +432,24 @@ install_open_mmi_package() {
     fi
 }
 
+configure_maintained_catalogue_permissions() {
+    local catalogue_root
+
+    for catalogue_root in "$INSTALL_DIR/vehicles" "$INSTALL_DIR/bindings"; do
+        [ -d "$catalogue_root" ] || continue
+
+        # Prepared updates run with UMask=0027 and preserve staged modes.  The
+        # maintained catalogue is non-secret installed product data and must be
+        # readable by the unprivileged dashboard and canbusd services.
+        find "$catalogue_root" -type d \
+            -exec chown root:root {} + \
+            -exec chmod 0755 {} +
+        find "$catalogue_root" -type f \
+            -exec chown root:root {} + \
+            -exec chmod 0644 {} +
+    done
+}
+
 install_command_links() {
     local command wrapper link current_target
 
@@ -673,6 +691,8 @@ cmd_install() {
     cp "$REPO_ROOT/README.md" "$INSTALL_DIR/"
     cp "$REPO_ROOT/LICENSE" "$INSTALL_DIR/"
 
+    configure_maintained_catalogue_permissions
+
     if ! install_open_mmi_package; then
         return 1
     fi
@@ -816,6 +836,8 @@ cmd_update() {
     sudo cp "$REPO_ROOT/pyproject.toml" "$INSTALL_DIR/"
     sudo cp "$REPO_ROOT/README.md" "$INSTALL_DIR/"
     sudo cp "$REPO_ROOT/LICENSE" "$INSTALL_DIR/"
+
+    configure_maintained_catalogue_permissions
 
     if ! install_open_mmi_package; then
         return 1
@@ -979,6 +1001,8 @@ cmd_deploy_prepared() {
     for item in pyproject.toml README.md LICENSE; do
         cp -a -- "$resolved_stage/$item" "$INSTALL_DIR/"
     done
+
+    configure_maintained_catalogue_permissions
 
     REPO_ROOT="$resolved_stage"
     DESKTOP_ENTRY_SOURCE="$REPO_ROOT/packaging/linux-desktop/open-mmi-status.desktop"
