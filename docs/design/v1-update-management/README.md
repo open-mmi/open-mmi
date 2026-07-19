@@ -2,15 +2,20 @@
 
 | Field | Value |
 | --- | --- |
-| Source branch | `v1-update-management` |
-| Intended target | `main` |
-| Status | Confirmed managed nightly update flow implemented and under qualification |
+| Source branch | `v1-update-management` (merged) |
+| Target | `main` |
+| Status | Implemented on `main`; continued real-device qualification in progress |
 | Predecessor | `v1-runtime-hardening` |
 | Initial delivery | Read-only update visibility |
 
 ## Purpose
 
-This branch turns the existing administrator-run `manage.sh update` path into a deliberately staged update-management system. It now covers informational status, fail-closed readiness, restricted preparation, confirmed nightly installation, health validation, and automatic restoration. The feature remains on its branch while the full device qualification matrix is completed.
+This design set records how the former `v1-update-management` branch turned the
+administrator-run `manage.sh update` path into a deliberately staged
+update-management system. The implementation is now merged into `main`. It
+covers informational status, fail-closed readiness, restricted preparation,
+confirmed nightly installation, health validation, and automatic restoration.
+Qualification continues on real devices after the merge.
 
 ## Design documents
 
@@ -47,7 +52,8 @@ This branch turns the existing administrator-run `manage.sh update` path into a 
    raw system journals remain an administrator diagnostic rather than browser
    content.**
 10. Full laptop, tablet, suspend/resume, failure, and recovery qualification.
-    **In progress and recorded in [`qualification.md`](qualification.md).**
+    **Continuing on `main` and recorded in
+    [`qualification.md`](qualification.md).**
 
 ## Historical first-slice boundaries
 

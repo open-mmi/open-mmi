@@ -2,7 +2,7 @@
 
 | Field | Value |
 | --- | --- |
-| Branch | `v1-update-management` |
+| Originating branch | `v1-update-management` (merged into `main`) |
 | Status | Read-only inspection plus fixed confirmed execution bridge implemented |
 | Owners | Dashboard backend, Settings → System |
 

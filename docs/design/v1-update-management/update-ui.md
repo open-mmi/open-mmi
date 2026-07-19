@@ -2,7 +2,7 @@
 
 | Field | Value |
 | --- | --- |
-| Branch | `v1-update-management` |
+| Originating branch | `v1-update-management` (merged into `main`) |
 | Status | Confirmed managed nightly execution implemented; channel selection remains CLI-only |
 | Owners | Settings → System frontend |
 
@@ -69,6 +69,19 @@ mistaken for a pending UI update.
 ## Administrative channel selection
 
 Settings displays the selected channel but does not change it. Administrators use `sudo open-mmi-config updates channel stable|beta|nightly`. This keeps repository and channel policy outside the browser mutation surface.
+
+## Managed branch changes
+
+Settings follows only the branch recorded by the managed installation. A
+manual `git switch` intentionally produces a branch mismatch and disables
+browser update actions. To adopt a different development branch, an
+administrator deploys that branch once with `sudo ./scripts/manage.sh update`;
+future forward commits on that recorded nightly branch may then use the browser
+flow. Returning to `main` requires the same one-time administrative deployment.
+
+There is no browser branch selector. Listing branches from a live remote would
+not by itself make them trusted; any future selector needs a separately
+reviewed allowlist and source-authorization design.
 
 ## Execution ownership
 

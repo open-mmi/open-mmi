@@ -89,6 +89,35 @@ Avoid:
 
 Runtime behaviour changes, udev changes, install changes, and CAN interface setup changes should usually be developed in their own beta branches.
 
+### Managed updater behaviour on development branches
+
+The managed updater is intentionally bound to the branch that produced the
+installed runtime. Switching branches without deploying the new branch makes
+Settings report a branch mismatch and disables browser update actions.
+
+After a development branch contains the build to test, authorize and deploy it
+once from the terminal. For example:
+
+```bash
+git switch beta/status-dashboard
+git pull --ff-only origin beta/status-dashboard
+sudo ./scripts/manage.sh update
+```
+
+Later forward commits on that recorded nightly branch can use **Check**,
+**Prepare**, and **Install** in Settings. To return the managed installation to
+`main`:
+
+```bash
+git switch main
+git pull --ff-only origin main
+sudo ./scripts/manage.sh update
+```
+
+The terminal update records the newly deployed branch and upstream. The
+browser does not offer a branch selector and must not be used to authorize an
+arbitrary repository or ref.
+
 ---
 
 ## Issue templates

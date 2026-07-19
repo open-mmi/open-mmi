@@ -2,7 +2,7 @@
 
 | Field | Value |
 | --- | --- |
-| Branch | `v1-update-management` |
+| Originating branch | `v1-update-management` (merged into `main`) |
 | Status | Fixed preparation and confirmed same-origin nightly execution implemented |
 | Owners | Dashboard API, privileged update coordinator, installer |
 

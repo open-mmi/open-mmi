@@ -2,15 +2,16 @@
 
 | Field | Value |
 | --- | --- |
-| Source branch | `v1-update-management` |
-| Intended target | `main` |
+| Source branch | `v1-update-management` (merged) |
+| Target | `main` |
 | Implementation status | Complete for confirmed manual nightly updates |
-| Merge status | Held on branch for continued device qualification |
-| Recorded device baseline | `v1-foundation-alpha-78-ga2690db` |
+| Merge status | Merged; continued device qualification on `main` |
+| Recorded device baseline | `v1-foundation-alpha-82-gd7c571a` |
 
-This record separates implemented behaviour from the evidence still required
-before merging. Qualify the exact SHA that will be merged; a later commit needs
-its own final automated and installed-device pass.
+This record separates implemented behaviour from qualification evidence. The
+original feature branch has merged; later update-management changes still need
+their own automated and installed-device pass before being treated as
+qualified.
 
 ## Locked scope
 
@@ -49,8 +50,22 @@ its own final automated and installed-device pass.
   the two newest rollback archives after repeated updates.
 - [x] Python, Node, Playwright, package, and live-dashboard CI gates have passed
   on the branch commits used for installed-device qualification.
+- [x] The feature branch merged into `main`, and a primary device completed the
+  one-time managed-source transition to `main` at
+  `v1-foundation-alpha-80-g5f6fd38`.
+- [x] A stale-source regression fix was merged and the tablet completed its
+  one-time transition from `v1-update-management` to `main` at
+  `v1-foundation-alpha-82-gd7c571a`.
+- [x] After the tablet transition, the installed descriptor, checkout, and
+  `origin/main` all reported `d7c571ab39b9`; dashboard and CAN services were
+  active. Installation readiness then failed closed only because the
+  disconnected battery was below the configured 30% threshold.
 
-## Final merge-candidate gates
+## Continuing qualification gates
+
+Complete the remaining applicable checks on the exact `main` candidate being
+promoted or released. Historical checked evidence above is not a substitute
+for requalification after a relevant implementation change.
 
 ### Automated
 
