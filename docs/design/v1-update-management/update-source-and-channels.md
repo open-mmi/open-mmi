@@ -3,14 +3,18 @@
 | Field | Value |
 | --- | --- |
 | Branch | `v1-update-management` |
-| Status | Implemented for read-only checks and administrative channel selection |
-| Owners | Installer, update-status backend, `open-mmi-config`, future update coordinator |
+| Status | Implemented for fixed nightly execution and read-only release-channel discovery |
+| Owners | Installer, update-status backend, `open-mmi-config`, update coordinator |
 
 ## Problem
 
 The installed runtime under `/opt/open-mmi` intentionally does not contain `.git`. A dashboard process running from that directory cannot safely infer the original checkout, branch, upstream, or commit. Searching the filesystem would be unreliable, and accepting those values from the browser would create an arbitrary-command and arbitrary-source boundary.
 
-Channel choice is also different from source discovery. A writable installation descriptor is useful for read-only inspection but must not authorize a future privileged update. Channel selection therefore lives in a separate root-owned policy file containing only a fixed channel name.
+Channel choice is also different from source discovery. The installation
+descriptor is useful for inspection and locating the managed checkout, but it
+does not independently authorize privileged work. Channel selection therefore
+lives in a separate root-owned policy file containing only a fixed channel
+name, and the coordinator revalidates both records before each fixed action.
 
 ## Managed source descriptor
 
@@ -162,6 +166,14 @@ The read-only checker never treats a lower release or rewritten tag as an instal
 
 ## Current security boundary
 
-This slice establishes source and channel policy for read-only visibility. It does not yet prove release authenticity with signatures or authorize installation.
+The privileged coordinator authorizes only fixed, confirmed nightly
+preparation and installation. It independently re-reads root-owned channel
+policy, revalidates the managed source, requires a clean checkout at the
+installed commit, and proves forward ancestry again from root-owned staging.
+The writable installation descriptor is never sufficient authority by itself.
 
-The future privileged coordinator must independently re-read root-owned policy, validate the official source or an approved signed manifest, enforce downgrade rules, and never treat the writable installation descriptor alone as authority.
+Stable and beta remain discovery-only because semantic tag selection and an
+official repository URL do not by themselves provide release authenticity.
+Enabling release-channel installation requires a separately reviewed signed
+manifest or equivalent authenticity policy; it is not implied by the nightly
+qualification on this branch.

@@ -4,7 +4,7 @@
 | --- | --- |
 | Branch | `v1-update-management` |
 | Status | Confirmed CLI and same-origin browser nightly installation implemented |
-| Owners | Future update coordinator, installer, systemd integration |
+| Owners | Update coordinator, installer, systemd integration |
 
 ## Required architecture
 
@@ -111,7 +111,10 @@ active/prepared staging tree is preserved, terminal staging is deleted, and
 rollback archives are pruned to the fixed retention bound while protecting the
 recorded transaction.
 
-States should include idle, preparing, downloading, validating, installing, restarting, checking health, complete, failed, and rolling back.
+The public state uses `idle`, `preparing`, `downloading`, `validating`,
+`prepared`, `installing`, `complete`, and `failed`. The installer records the
+failing deployment stage and whether automatic rollback was verified rather
+than exposing caller-selectable restart, health, or rollback states.
 
 ## Locking
 
@@ -119,4 +122,8 @@ A second update request must fail safely while any transaction is active. Locks 
 
 ## Existing `manage.sh update`
 
-The current command remains an administrator path while the coordinator is designed. It is not exposed directly to the browser. Refactoring should preserve install/update/reinstall/uninstall coverage and should avoid maintaining two unrelated deployment implementations.
+The administrator command remains available for recovery and development, but
+it is never exposed directly to the browser. Prepared installation invokes the
+fixed internal `_deploy-prepared` operation from the staged candidate, keeping
+package deployment, managed assets, service restart, health validation, and
+rollback in one implementation instead of a second browser-owned updater.

@@ -20,6 +20,7 @@ This branch turns the existing administrator-run `manage.sh update` path into a 
 - [`update-execution.md`](update-execution.md)
 - [`health-checks-and-rollback.md`](health-checks-and-rollback.md)
 - [`security-and-permissions.md`](security-and-permissions.md)
+- [`qualification.md`](qualification.md)
 
 ## Decision principles
 
@@ -42,12 +43,15 @@ This branch turns the existing administrator-run `manage.sh update` path into a 
 6. User-triggered update execution. **Implemented for confirmed CLI and same-origin browser nightly candidates.**
 7. Post-update health validation. **Implemented for service state, `/api/health`, and target build identity.**
 8. Rollback mechanism. **Automatic restoration and bounded transaction-artifact retention are implemented; manual rollback remains unavailable.**
-9. Diagnostics/log integration.
+9. Diagnostics/log integration. **Deferred: the API exposes bounded safe state;
+   raw system journals remain an administrator diagnostic rather than browser
+   content.**
 10. Full laptop, tablet, suspend/resume, failure, and recovery qualification.
+    **In progress and recorded in [`qualification.md`](qualification.md).**
 
-## First-slice boundaries
+## Historical first-slice boundaries
 
-The first slice:
+The first read-only slice, before the later coordinator and execution slices:
 
 - records the source checkout, branch, upstream, installed commit, and version during managed install/update;
 - exposes local-only `GET /api/system/update-status`;
@@ -55,7 +59,9 @@ The first slice:
 - uses bounded `git ls-remote` against the recorded remote/ref;
 - never fetches, merges, resets, copies, installs, restarts, or elevates privilege;
 - labels an unproven commit mismatch as **remote differs** rather than promising an update direction;
-- adds no browser install, browser rollback, browser channel-change, scheduling, or unattended-update action. Administrative channel selection and nightly installation are CLI-only.
+- added no browser install, rollback, channel-change, scheduling, or
+  unattended-update action. Later slices added fixed confirmed browser nightly
+  installation only; the other boundaries remain.
 
 ## Non-goals for this branch start
 
@@ -68,7 +74,7 @@ The first slice:
 - treating the source checkout as the installed runtime;
 - hiding thermal, power, disk, or service-health blockers.
 
-## Qualification gates
+## Initial qualification gates
 
 Before the first slice is accepted:
 
@@ -80,3 +86,7 @@ Before the first slice is accepted:
 - opening Settings performs no network update check;
 - the current Settings panel remains usable when update status is unavailable;
 - Python, Node, Playwright, installer-contract, and wheel-content tests pass.
+
+The current implementation and device evidence are tracked in
+[`qualification.md`](qualification.md). That record, rather than this
+historical first-slice checklist, owns the final merge decision.

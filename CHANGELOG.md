@@ -64,7 +64,7 @@
 ### Known limitations
 - The first update from a frontend that predates the version controller may require one manual reload.
 - Hot, passively cooled tablets may still throttle and suspend charging; firmware protections are not bypassed.
-- CAN-daemon profiling, cooling hardware, and update download/rollback management remain later work.
+- CAN-daemon profiling and cooling hardware remain later work; stable/beta installation and caller-selected rollback remain outside the manual-nightly update scope.
 
 ## Unreleased — V1 foundation hardening
 

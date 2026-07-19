@@ -385,7 +385,7 @@ Managed install and update operations record `/opt/open-mmi/.update-source.json`
 
 The selected channel is separate root-owned policy in `/etc/open-mmi/update-policy.json`. Its fixed schema contains only `stable`, `beta`, or `nightly`; it contains no path, URL, branch, ref, tag pattern, or command. Existing first-slice installations without this file operate as implicit nightly, and legacy `development` policies migrate automatically.
 
-`GET /api/system/update-status` reads local installation, policy, repository health, and the last process-local check result. It performs no network operation. **Settings → System → Software updates** displays the installed version, selected channel, available version, state, last check, and repository health.
+`GET /api/system/update-status` reads local installation, policy, repository health, and the last process-local check result. It performs no network operation. **Settings → System → Software updates** displays the installed version, selected channel, available version, state, last check, and update progress. Repository health and installation readiness remain available under the collapsed **Technical details** disclosure.
 
 `GET /api/system/update-readiness` exposes the fail-closed installation checks,
 and `GET /api/system/update-coordinator` exposes only the coordinator's fixed
@@ -411,6 +411,7 @@ Settings has no channel editor. Administrators use:
 ```bash
 open-mmi-config updates status
 open-mmi-config updates check
+open-mmi-config updates readiness
 open-mmi-config updates coordinator
 open-mmi-config updates prepare
 open-mmi-config updates install
@@ -418,6 +419,10 @@ sudo open-mmi-config updates channel nightly
 sudo open-mmi-config updates channel beta
 sudo open-mmi-config updates channel stable
 ```
+
+When installation first adds the account to `open-mmi-update`, log out and back
+in once before expecting browser update actions to reach the coordinator. The
+existing desktop session cannot acquire newly assigned supplementary groups.
 
 The dashboard offers **Check for updates**, **Prepare update**, and **Install update** only when readiness and coordinator policy permit them. Preparation and installation each require explicit confirmation. There is no browser channel editor, scheduler, unattended update, or caller-selected rollback action; failed deployment health checks use the installer's automatic restoration path. Design records live in [`docs/design/v1-update-management/`](../../docs/design/v1-update-management/README.md).
 

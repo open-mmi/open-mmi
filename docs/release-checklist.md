@@ -41,3 +41,22 @@ Use [`runtime-hardening-qualification.md`](runtime-hardening-qualification.md) f
 - [ ] Thermal/power Diagnostics stops polling outside its visible panel.
 - [ ] Runtime counters confirm unchanged vehicle renders and inactive Media layout are suppressed.
 - [ ] Repeat the cold-condition vehicle qualification on the exact merge candidate.
+
+## Update-management checkpoint
+
+Use
+[`design/v1-update-management/qualification.md`](design/v1-update-management/qualification.md)
+for the branch-specific evidence and exact-SHA merge gate. At minimum:
+
+- [ ] Manual nightly Check → Prepare → Install completes from Settings.
+- [ ] Installed metadata, checkout HEAD, tracked remote, and `/api/version`
+  identify the same target commit after installation.
+- [ ] Coordinator readiness is available to the desktop account after the
+  first-install logout/login group refresh.
+- [ ] One controlled health failure automatically restores the previous build
+  and reports verified rollback.
+- [ ] Terminal staging is removed and only two rollback archives are retained.
+- [ ] A cold reboot and a prepared-state suspend/resume pass on the exact merge
+  candidate.
+- [ ] Stable/beta installation, scheduling, unattended updates, browser channel
+  selection, and caller-selected rollback remain unavailable.

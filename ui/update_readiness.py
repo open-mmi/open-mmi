@@ -1,4 +1,4 @@
-"""Read-only pre-update readiness checks for the future update coordinator.
+"""Read-only pre-update readiness checks for the managed update coordinator.
 
 All inspected paths, commands, services, and thresholds are fixed locally.  The
 browser cannot turn this module into a filesystem or process-inspection API.

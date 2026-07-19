@@ -3,7 +3,7 @@
 | Field | Value |
 | --- | --- |
 | Branch | `v1-update-management` |
-| Status | Pre-update inspection plus initial nightly health validation and automatic restoration implemented |
+| Status | Pre-update inspection, nightly health validation, automatic restoration, and bounded retention qualified |
 | Owners | Update coordinator, runtime services, release engineering |
 
 ## Pre-update readiness
