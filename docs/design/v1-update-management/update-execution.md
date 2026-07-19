@@ -2,7 +2,7 @@
 
 | Field | Value |
 | --- | --- |
-| Branch | `v1-update-management` |
+| Originating branch | `v1-update-management` (merged into `main`) |
 | Status | Confirmed CLI and same-origin browser nightly installation implemented |
 | Owners | Update coordinator, installer, systemd integration |
 

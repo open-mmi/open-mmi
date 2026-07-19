@@ -2,7 +2,7 @@
 
 | Field | Value |
 | --- | --- |
-| Branch | `v1-update-management` |
+| Originating branch | `v1-update-management` (merged into `main`) |
 | Status | Pre-update inspection, nightly health validation, automatic restoration, and bounded retention qualified |
 | Owners | Update coordinator, runtime services, release engineering |
 

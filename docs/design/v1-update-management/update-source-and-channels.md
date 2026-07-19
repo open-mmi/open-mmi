@@ -2,7 +2,7 @@
 
 | Field | Value |
 | --- | --- |
-| Branch | `v1-update-management` |
+| Originating branch | `v1-update-management` (merged into `main`) |
 | Status | Implemented for fixed nightly execution and read-only release-channel discovery |
 | Owners | Installer, update-status backend, `open-mmi-config`, update coordinator |
 
@@ -151,6 +151,34 @@ sudo open-mmi-config updates channel stable
 Selection is refused unless the managed source is clean, attached, on the recorded branch, and at the installed commit. Stable and beta additionally require recorded `main` tracking and the official repository.
 
 There is no HTTP channel-change route and no Settings channel selector.
+
+## Changing a managed development branch
+
+The managed descriptor binds an installed runtime to the checkout, branch,
+upstream, commit, and version that produced it. Running `git switch` alone does
+not authorize a new update source. A different checkout branch therefore
+reports `branch-mismatch`, and browser check, preparation, and installation
+remain blocked.
+
+An administrator may deliberately adopt a development branch after it contains
+the build to deploy:
+
+1. switch to the branch and update its tracked remote with Git;
+2. inspect the checkout and ensure it is clean;
+3. run `sudo ./scripts/manage.sh update` from that checkout;
+4. verify that update status records the new branch, upstream, commit, and
+   version.
+
+That terminal deployment is the authorization step. Later forward commits on
+the same recorded nightly branch may use **Check**, **Prepare**, and **Install**
+in Settings. Returning to `main` uses the same one-time terminal deployment to
+record `main` and `origin/main` again.
+
+Merely appearing in a remote branch list is not a trust decision. A future
+browser branch selector would require a separate design covering an
+administrator-controlled allowlist, trusted remote identity, forward ancestry,
+confirmation, and fail-closed handling. The current browser accepts no branch,
+repository, remote, path, ref, or command from the caller.
 
 ## Release comparison and downgrade boundary
 
