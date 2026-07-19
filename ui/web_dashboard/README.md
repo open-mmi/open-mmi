@@ -518,9 +518,12 @@ Current Settings areas:
 
 These preferences are stored in browser local storage under the dashboard settings key. They change presentation only; backend decoding and vehicle state remain unchanged.
 
-## Read-only operation
+## Read-only vehicle operation
 
-The web dashboard is a read-only MMI surface. It polls local decoded state and renders it for the driver/passenger display. It should not be used as a path for CAN transmit, actuator control, coding, adaptation, or security access.
+The operational web dashboard is a read-only vehicle surface. It polls local decoded
+state and renders it for the driver/passenger display. Explicit local setup may select
+profiles, bindings and receive-only SocketCAN provisioning, but it must not provide a
+path for CAN transmit, actuator control, coding, adaptation or security access.
 
 For live vehicle testing, use listen-only CAN wiring and removable harness/adaptor setups. Do not cut or permanently modify the vehicle loom for dashboard testing.
 <!-- OPENMMI_WEB_SETTINGS_DOCS_END -->

@@ -69,11 +69,13 @@ Normal setup should apply the selected vehicle profile as the source of truth:
 sudo ./scripts/manage.sh config apply-profile seat_1p default
 ```
 
-This creates user-owned profile/bindings files when missing, writes the daemon
-runtime drop-in, and generates udev rules from `can_buses` metadata.
+This selects the maintained profile and bindings from the installed Open MMI tree,
+writes the daemon runtime drop-in, and generates udev rules from `can_buses` metadata.
+It does not create or activate custom copies.
 
-`config init` only creates user config files. `config edit-can` remains available
-as an advanced override for unusual hardware or replay testing.
+`config init` explicitly creates user-owned custom copies from the installed maintained
+files without activating them. `config edit-can` remains available as an advanced
+override for unusual hardware or replay testing.
 
 ---
 

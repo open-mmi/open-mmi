@@ -17,6 +17,93 @@ SPEC.loader.exec_module(profile_provision)
 
 
 class ProfileProvisionTests(unittest.TestCase):
+    def test_source_paths_prefer_installed_maintained_content(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo_root = root / "repo"
+            install_dir = root / "install"
+            repo_profile = repo_root / "vehicles" / "seat_1p" / "config.json"
+            installed_profile = install_dir / "vehicles" / "seat_1p" / "config.json"
+            repo_bindings = repo_root / "bindings" / "default.json"
+            installed_bindings = install_dir / "bindings" / "default.json"
+
+            for path in (
+                repo_profile,
+                installed_profile,
+                repo_bindings,
+                installed_bindings,
+            ):
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("{}", encoding="utf-8")
+
+            self.assertEqual(
+                profile_provision.source_vehicle_path(
+                    repo_root,
+                    install_dir,
+                    "seat_1p",
+                ),
+                installed_profile,
+            )
+            self.assertEqual(
+                profile_provision.source_bindings_path(
+                    repo_root,
+                    install_dir,
+                    "default",
+                ),
+                installed_bindings,
+            )
+
+    def test_development_checkout_preference_is_explicit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo_root = root / "repo"
+            install_dir = root / "install"
+            repo_profile = repo_root / "vehicles" / "seat_1p" / "config.json"
+            installed_profile = install_dir / "vehicles" / "seat_1p" / "config.json"
+            repo_profile.parent.mkdir(parents=True)
+            installed_profile.parent.mkdir(parents=True)
+            repo_profile.write_text("{}", encoding="utf-8")
+            installed_profile.write_text("{}", encoding="utf-8")
+
+            self.assertEqual(
+                profile_provision.source_vehicle_path(
+                    repo_root,
+                    install_dir,
+                    "seat_1p",
+                    development_checkout=True,
+                ),
+                repo_profile,
+            )
+
+    def test_source_paths_fall_back_to_checkout_before_installation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo_root = root / "repo"
+            install_dir = root / "install"
+            repo_profile = repo_root / "vehicles" / "seat_1p" / "config.json"
+            repo_bindings = repo_root / "bindings" / "default.json"
+            repo_profile.parent.mkdir(parents=True)
+            repo_bindings.parent.mkdir(parents=True)
+            repo_profile.write_text("{}", encoding="utf-8")
+            repo_bindings.write_text("{}", encoding="utf-8")
+
+            self.assertEqual(
+                profile_provision.source_vehicle_path(
+                    repo_root,
+                    install_dir,
+                    "seat_1p",
+                ),
+                repo_profile,
+            )
+            self.assertEqual(
+                profile_provision.source_bindings_path(
+                    repo_root,
+                    install_dir,
+                    "default",
+                ),
+                repo_bindings,
+            )
+
     def test_build_plan_uses_profile_default_bus(self):
         profile = {
             "default_bus": "comfort",
@@ -163,6 +250,31 @@ class ProfileProvisionTests(unittest.TestCase):
 
             self.assertTrue((systemd_dir / "canbusd.service.d" / "10-can-runtime.conf").exists())
             self.assertTrue(udev_path.exists())
+
+    def test_apply_plan_does_not_change_maintained_source_ownership(self):
+        plan = profile_provision.build_plan(
+            {},
+            Path("/opt/open-mmi/vehicles/seat_1p/config.json"),
+            Path("/opt/open-mmi/bindings/default.json"),
+            "seat_1p",
+            "default",
+        )
+
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(
+            profile_provision,
+            "chown_tree",
+        ) as chown_tree:
+            profile_provision.apply_plan(
+                plan,
+                Path(tmp) / "systemd" / "user",
+                real_user="pitto",
+                udev_rule_path=Path(tmp) / "rules.d" / "80-canbus.rules",
+            )
+
+        chown_tree.assert_called_once_with(
+            Path(tmp) / "systemd" / "user",
+            "pitto",
+        )
 
 
     def test_dry_run_does_not_create_user_files(self):

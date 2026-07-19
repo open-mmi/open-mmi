@@ -111,6 +111,10 @@ That command reads the selected profile's `default_bus` and `can_buses`
 metadata, then generates the matching daemon runtime drop-in and udev
 provisioning rule.
 
+For a managed installation, the selected maintained profile and bindings come from the
+installed `/opt/open-mmi` tree. A mutable checkout is used only before installation or
+through an explicit development workflow.
+
 This avoids splitting one vehicle choice across several unrelated commands.
 
 The daemon remains passive. Provisioning is performed only by explicit management

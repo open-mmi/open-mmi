@@ -1190,8 +1190,16 @@ cmd_config() {
             mkdir -p "$USER_CONFIG_DIR/bindings"
             chown -R "$REAL_USER:$REAL_USER" "$USER_CONFIG_DIR"
 
-            local source_vehicle="$REPO_ROOT/vehicles/$vehicle/config.json"
-            local source_bindings="$REPO_ROOT/bindings/$bindings.json"
+            local source_vehicle="$INSTALL_DIR/vehicles/$vehicle/config.json"
+            local source_bindings="$INSTALL_DIR/bindings/$bindings.json"
+
+            if [ ! -f "$source_vehicle" ]; then
+                source_vehicle="$REPO_ROOT/vehicles/$vehicle/config.json"
+            fi
+
+            if [ ! -f "$source_bindings" ]; then
+                source_bindings="$REPO_ROOT/bindings/$bindings.json"
+            fi
 
             if [ ! -f "$source_vehicle" ]; then
                 log_error "Vehicle profile not found: $source_vehicle"
@@ -1338,8 +1346,9 @@ EOF
             echo ""
             echo "  Lookup order:"
             echo "    1. Explicit env path overrides"
-            echo "    2. User config directory"
-            echo "    3. Installed app defaults"
+            echo "    2. Installed app defaults"
+            echo ""
+            echo "  User config files are used only when explicitly selected."
             ;;
         help|--help|-h|*)
             cat <<EOF

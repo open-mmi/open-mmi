@@ -44,6 +44,18 @@ Default bindings are part of the OpenMMI repository. Normal users should receive
 
 Therefore, normal runtime should load installed bindings by default.
 
+## Maintained production resolution
+
+When both an installed Open MMI tree and a development checkout exist, normal setup
+and runtime selection use the maintained files under `/opt/open-mmi`.
+
+This keeps the active vehicle profile and bindings aligned with the installed Open MMI
+version. A checkout is a fallback before installation and may be preferred only through
+an explicit development mode.
+
+The presence of a checkout must not silently redirect a managed installation to mutable
+source files.
+
 ## User vehicle profile overrides
 
 A user vehicle profile override may exist at:
@@ -117,8 +129,8 @@ If a user wants to update a custom override, that must be an explicit user actio
 
 Normal setup should:
 
-    use repo/default vehicle profile
-    use repo/default bindings
+    use installed maintained vehicle profile
+    use installed maintained bindings
     not create user override files
     not select user override files
 
@@ -168,9 +180,9 @@ Safe migration path:
 
 ## Summary
 
-Repo vehicle profiles are used by default.
+Installed maintained vehicle profiles are used by default.
 
-Repo bindings are used by default.
+Installed maintained bindings are used by default.
 
 User vehicle profiles are sacred opt-in overrides.
 

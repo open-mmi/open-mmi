@@ -288,6 +288,34 @@ sudo() {{ printf '%s\\0' "$@"; }}
             self.text,
         )
 
+    def test_custom_template_creation_prefers_installed_maintained_files(self) -> None:
+        self.assertIn(
+            'local source_vehicle="$INSTALL_DIR/vehicles/$vehicle/config.json"',
+            self.text,
+        )
+        self.assertIn(
+            'local source_bindings="$INSTALL_DIR/bindings/$bindings.json"',
+            self.text,
+        )
+        self.assertIn(
+            'source_vehicle="$REPO_ROOT/vehicles/$vehicle/config.json"',
+            self.text,
+        )
+        self.assertIn(
+            'source_bindings="$REPO_ROOT/bindings/$bindings.json"',
+            self.text,
+        )
+
+    def test_config_paths_describes_custom_files_as_explicit_only(self) -> None:
+        self.assertIn(
+            'echo "  User config files are used only when explicitly selected."',
+            self.text,
+        )
+        self.assertNotIn(
+            'echo "    2. User config directory"',
+            self.text,
+        )
+
     def test_uninstall_handles_absent_units_quietly(self) -> None:
         self.assertIn(
             "for service in canbusd.service open-mmi-dashboard.service; do",
