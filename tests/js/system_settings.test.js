@@ -224,6 +224,24 @@ test("dashboard connection state cannot re-enable managed update controls", asyn
   assert.equal(controller.updateControlState().canPrepare, true);
 });
 
+test("completed and failed coordinator states are labelled as transaction history", async () => {
+  for (const transactionState of ["complete", "failed"]) {
+    const state = fixture({
+      coordinatorState: {
+        state: transactionState,
+        stage: transactionState,
+        target_version: "v1-runtime-41-gold1234",
+      },
+    });
+    const controller = settings.createController(state);
+    await controller.refresh();
+    const html = controller.systemTemplate();
+    assert.match(html, /data-testid="system-update-transaction-label">Last transaction/);
+    assert.match(html, /data-testid="system-update-target-label">Last transaction target/);
+    assert.match(html, /v1-runtime-41-gold1234/);
+  }
+});
+
 test("managed prepare and install require confirmation and send no caller-selected target", async () => {
   const state = fixture();
   const controller = settings.createController(state);

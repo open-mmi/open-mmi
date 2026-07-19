@@ -30,6 +30,11 @@ The panel includes three fixed actions:
 
 Opening Settings loads only local/cached status. The network check runs only after explicit user action.
 
+Completed and failed coordinator records remain visible as transaction history.
+The panel labels their state and target as **Last transaction** and
+**Last transaction target** so an out-of-band administrative deployment is not
+mistaken for a pending UI update.
+
 ## Wording rules
 
 - `up to date` is shown only when the installed commit exactly equals the tracked remote commit;

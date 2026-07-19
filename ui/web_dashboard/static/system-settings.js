@@ -240,6 +240,9 @@
           ? `blocked: ${readiness.blockers.join(", ")}`
           : "unavailable";
       const transactionLabel = transactionStateLabel(controls.transactionState);
+      const transactionIsHistory = ["complete", "failed"].includes(controls.transactionState);
+      const transactionTitle = transactionIsHistory ? "Last transaction" : "Transaction";
+      const targetTitle = transactionIsHistory ? "Last transaction target" : "Target version";
       const targetVersion = transaction.target_version || update.available_version || "--";
       const updateError = update.error
         ? `<p class="openmmi-update-status-note" data-testid="system-update-error">${escapeHtml(update.error)}</p>`
@@ -265,8 +268,8 @@
             <div class="openmmi-settings-metric"><span>Last checked</span><strong data-testid="system-update-checked-at">${escapeHtml(lastChecked)}</strong></div>
             <div class="openmmi-settings-metric"><span>Repository health</span><strong data-testid="system-update-repository">${escapeHtml(repositoryState)}</strong></div>
             <div class="openmmi-settings-metric"><span>Installation readiness</span><strong data-testid="system-update-readiness">${escapeHtml(readinessLabel)}</strong></div>
-            <div class="openmmi-settings-metric"><span>Transaction</span><strong data-testid="system-update-transaction">${escapeHtml(transactionLabel)}</strong></div>
-            <div class="openmmi-settings-metric"><span>Target version</span><strong data-testid="system-update-target">${escapeHtml(targetVersion)}</strong></div>
+            <div class="openmmi-settings-metric"><span data-testid="system-update-transaction-label">${escapeHtml(transactionTitle)}</span><strong data-testid="system-update-transaction">${escapeHtml(transactionLabel)}</strong></div>
+            <div class="openmmi-settings-metric"><span data-testid="system-update-target-label">${escapeHtml(targetTitle)}</span><strong data-testid="system-update-target">${escapeHtml(targetVersion)}</strong></div>
             ${updateError}
             ${transactionErrorHtml}
             <p class="openmmi-update-status-note">Channel selection remains administrative CLI policy. The browser can only check, prepare, and install the fixed managed candidate; failed health checks trigger automatic rollback.</p>
