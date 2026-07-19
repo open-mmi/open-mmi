@@ -36,12 +36,15 @@ DEFAULT_STATE_FILE = Path("/var/lib/open-mmi/update-state.json")
 DEFAULT_SOCKET = Path("/run/open-mmi/update-coordinator.sock")
 DEFAULT_LOCK = Path("/run/open-mmi/update.lock")
 DEFAULT_STAGING_ROOT = Path("/var/lib/open-mmi/staging")
+DEFAULT_ROLLBACK_ROOT = Path("/var/lib/open-mmi/rollback")
 DEFAULT_GROUP = "open-mmi-update"
+MAX_RETAINED_ROLLBACKS = 2
 ACTIVE_STATES = {"preparing", "downloading", "validating", "installing", "restarting", "checking-health", "rolling-back"}
 TERMINAL_STATES = {"idle", "prepared", "complete", "failed"}
 ALLOWED_STATES = ACTIVE_STATES | TERMINAL_STATES
 MAX_REQUEST_BYTES = 4096
 _VERSION_RE = re.compile(r"^[A-Za-z0-9._+:-]{1,128}$")
+_TRANSACTION_RE = re.compile(r"^prepare-[0-9a-f]{32}$")
 
 
 class CoordinatorError(RuntimeError):
@@ -88,10 +91,7 @@ def _validate_state(payload: object) -> Dict[str, Any]:
         raise CoordinatorError("Coordinator recovery state is invalid")
     transaction_id = payload.get("transaction_id")
     if transaction_id is not None and (
-        not isinstance(transaction_id, str)
-        or not transaction_id.startswith("prepare-")
-        or len(transaction_id) != 40
-        or any(character not in "0123456789abcdef" for character in transaction_id[8:])
+        not isinstance(transaction_id, str) or not _TRANSACTION_RE.fullmatch(transaction_id)
     ):
         raise CoordinatorError("Coordinator transaction identifier is invalid")
     candidate_commit = payload.get("candidate_commit")
@@ -158,18 +158,30 @@ def write_state(payload: Mapping[str, Any], path: Path = DEFAULT_STATE_FILE) -> 
     return validated
 
 
-def recover_interrupted_state(path: Path = DEFAULT_STATE_FILE) -> Dict[str, Any]:
+def _artifact_root(path: Path, default: Path, name: str) -> Path:
+    return default if path == DEFAULT_STATE_FILE else path.parent / name
+
+
+def recover_interrupted_state(
+    path: Path = DEFAULT_STATE_FILE,
+    staging_root: Optional[Path] = None,
+    rollback_root: Optional[Path] = None,
+) -> Dict[str, Any]:
+    staging_root = staging_root or _artifact_root(path, DEFAULT_STAGING_ROOT, "staging")
+    rollback_root = rollback_root or _artifact_root(path, DEFAULT_ROLLBACK_ROOT, "rollback")
     if not path.exists():
-        return write_state(initial_state(), path)
-    state = read_state(path)
-    if state["state"] not in ACTIVE_STATES:
-        return write_state(state, path)
-    state.update({
-        "state": "failed", "stage": "recovery", "updated_at": _timestamp(),
-        "completed_at": _timestamp(), "error": "Coordinator restarted during an active transaction",
-        "recovered": True,
-    })
-    return write_state(state, path)
+        state = initial_state()
+    else:
+        state = read_state(path)
+        if state["state"] in ACTIVE_STATES:
+            state.update({
+                "state": "failed", "stage": "recovery", "updated_at": _timestamp(),
+                "completed_at": _timestamp(), "error": "Coordinator restarted during an active transaction",
+                "recovered": True,
+            })
+    recovered = write_state(state, path)
+    _best_effort_artifact_cleanup(recovered, staging_root, rollback_root)
+    return recovered
 
 
 class TransactionLock(AbstractContextManager["TransactionLock"]):
@@ -211,16 +223,138 @@ def _public_response(state: Mapping[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _safe_remove_staging(path: Path, staging_root: Path) -> None:
+def _resolved_artifact_root(root: Path, label: str) -> Optional[Path]:
     try:
-        resolved = path.resolve()
-        root = staging_root.resolve()
-    except OSError:
+        metadata = root.lstat()
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise CoordinatorError(f"Coordinator {label} root is unavailable") from exc
+    if not stat.S_ISDIR(metadata.st_mode):
+        raise CoordinatorError(f"Coordinator {label} root is invalid")
+    try:
+        resolved = root.resolve(strict=True)
+    except OSError as exc:
+        raise CoordinatorError(f"Coordinator {label} root is unavailable") from exc
+    if resolved != root.absolute():
+        raise CoordinatorError(f"Coordinator {label} root is invalid")
+    if root in {DEFAULT_STAGING_ROOT, DEFAULT_ROLLBACK_ROOT} and (
+        metadata.st_uid != 0 or metadata.st_mode & 0o022
+    ):
+        raise CoordinatorError(f"Coordinator {label} root is untrusted")
+    return resolved
+
+
+def _safe_remove_transaction_tree(path: Path, root: Path, label: str) -> None:
+    if not _TRANSACTION_RE.fullmatch(path.name):
+        raise CoordinatorError(f"Coordinator {label} path is invalid")
+    resolved_root = _resolved_artifact_root(root, label)
+    if resolved_root is None:
         return
-    if resolved.parent != root or not path.name.startswith("prepare-"):
-        raise CoordinatorError("Coordinator staging path is invalid")
-    if path.exists():
-        shutil.rmtree(path)
+    try:
+        metadata = path.lstat()
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        raise CoordinatorError(f"Coordinator {label} path is unavailable") from exc
+    if not stat.S_ISDIR(metadata.st_mode):
+        raise CoordinatorError(f"Coordinator {label} path is invalid")
+    try:
+        resolved = path.resolve(strict=True)
+    except OSError as exc:
+        raise CoordinatorError(f"Coordinator {label} path is unavailable") from exc
+    if resolved.parent != resolved_root or resolved != path.absolute():
+        raise CoordinatorError(f"Coordinator {label} path is invalid")
+    shutil.rmtree(path)
+
+
+def _safe_remove_staging(path: Path, staging_root: Path) -> None:
+    _safe_remove_transaction_tree(path, staging_root, "staging")
+
+
+def _prune_transaction_trees(
+    root: Path,
+    *,
+    keep: set[str],
+    limit: int,
+    label: str,
+) -> None:
+    if limit < 0:
+        raise CoordinatorError(f"Coordinator {label} retention is invalid")
+    resolved_root = _resolved_artifact_root(root, label)
+    if resolved_root is None:
+        return
+    candidates: list[tuple[int, str, Path]] = []
+    try:
+        entries = list(root.iterdir())
+    except OSError as exc:
+        raise CoordinatorError(f"Coordinator {label} root is unavailable") from exc
+    for entry in entries:
+        if not _TRANSACTION_RE.fullmatch(entry.name):
+            continue
+        try:
+            metadata = entry.lstat()
+            resolved = entry.resolve(strict=True)
+        except OSError as exc:
+            raise CoordinatorError(f"Coordinator {label} path is unavailable") from exc
+        if (
+            not stat.S_ISDIR(metadata.st_mode)
+            or resolved.parent != resolved_root
+            or resolved != entry.absolute()
+        ):
+            raise CoordinatorError(f"Coordinator {label} path is invalid")
+        candidates.append((metadata.st_mtime_ns, entry.name, entry))
+    candidates.sort(reverse=True)
+    protected = {name for _, name, _ in candidates if name in keep}
+    remaining = max(0, limit - len(protected))
+    unprotected = [entry for entry in candidates if entry[1] not in protected]
+    for _, _, entry in unprotected[remaining:]:
+        _safe_remove_transaction_tree(entry, root, label)
+
+
+def _cleanup_transaction_artifacts(
+    state: Mapping[str, Any],
+    staging_root: Path,
+    rollback_root: Path,
+) -> None:
+    transaction_id = str(state.get("transaction_id") or "")
+    keep_transaction = {transaction_id} if _TRANSACTION_RE.fullmatch(transaction_id) else set()
+    keep_staging = keep_transaction if state.get("state") in ACTIVE_STATES | {"prepared"} else set()
+    _prune_transaction_trees(
+        staging_root, keep=keep_staging, limit=1 if keep_staging else 0, label="staging"
+    )
+    _prune_transaction_trees(
+        rollback_root, keep=keep_transaction, limit=MAX_RETAINED_ROLLBACKS, label="rollback"
+    )
+
+
+def _best_effort_artifact_cleanup(
+    state: Mapping[str, Any],
+    staging_root: Path,
+    rollback_root: Path,
+) -> None:
+    for root, keep, limit, label in (
+        (
+            staging_root,
+            {str(state.get("transaction_id"))}
+            if state.get("state") in ACTIVE_STATES | {"prepared"} and state.get("transaction_id")
+            else set(),
+            1 if state.get("state") in ACTIVE_STATES | {"prepared"} else 0,
+            "staging",
+        ),
+        (
+            rollback_root,
+            {str(state.get("transaction_id"))} if state.get("transaction_id") else set(),
+            MAX_RETAINED_ROLLBACKS,
+            "rollback",
+        ),
+    ):
+        try:
+            _prune_transaction_trees(root, keep=keep, limit=limit, label=label)
+        except (CoordinatorError, OSError):
+            # A successful deployment must not be reclassified as failed only
+            # because cleanup could not complete. Coordinator startup retries it.
+            pass
 
 
 def _secure_staging_tree(path: Path) -> None:
@@ -329,6 +463,12 @@ def _prepare_candidate(
         "previous_version": source["installed_version"],
     })
     with TransactionLock(lock_path):
+        previous_state = read_state(state_path)
+        if previous_state["state"] in ACTIVE_STATES:
+            raise CoordinatorError("Another update transaction is active")
+        # Starting a newly confirmed preparation supersedes every older staged
+        # checkout. Rollback archives remain available until installation.
+        _prune_transaction_trees(staging_root, keep=set(), limit=0, label="staging")
         write_state(state, state_path)
         try:
             target_version, candidate_commit, release_tag = _candidate(source, channel)

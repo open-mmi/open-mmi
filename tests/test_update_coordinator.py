@@ -164,18 +164,35 @@ class UpdateCoordinatorTests(unittest.TestCase):
 
     def test_interrupted_active_state_recovers_to_failed(self):
         with tempfile.TemporaryDirectory() as temporary:
-            path = Path(temporary) / "state.json"
+            root = Path(temporary)
+            path = root / "state.json"
+            staging = root / "staging"
+            rollback = root / "rollback"
+            transaction = "prepare-0123456789abcdef0123456789abcdef"
             state = update_coordinator.initial_state()
             state.update({
                 "state": "installing", "stage": "installing",
-                "transaction_id": "prepare-0123456789abcdef0123456789abcdef",
+                "transaction_id": transaction,
             })
             update_coordinator.write_state(state, path)
-            recovered = update_coordinator.recover_interrupted_state(path)
+            (staging / transaction).mkdir(parents=True)
+            for index, character in enumerate("abc", start=1):
+                archive = rollback / ("prepare-" + character * 32)
+                archive.mkdir(parents=True)
+                os.utime(archive, ns=(index, index))
+            recovered = update_coordinator.recover_interrupted_state(
+                path, staging, rollback
+            )
+            retained = {entry.name for entry in rollback.iterdir()}
         self.assertEqual(recovered["state"], "failed")
         self.assertEqual(recovered["stage"], "recovery")
         self.assertTrue(recovered["recovered"])
         self.assertNotIn("/", recovered["error"])
+        self.assertFalse((staging / transaction).exists())
+        self.assertEqual(
+            retained,
+            {"prepare-" + "b" * 32, "prepare-" + "c" * 32},
+        )
 
     def test_transaction_lock_prevents_overlap_and_is_removed(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -196,11 +213,51 @@ class UpdateCoordinatorTests(unittest.TestCase):
     def test_staging_cleanup_refuses_paths_outside_transaction_root(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary) / "staging"
-            outside = Path(temporary) / "important"
+            root.mkdir()
+            outside = Path(temporary) / ("prepare-" + "a" * 32)
             outside.mkdir()
             with self.assertRaisesRegex(update_coordinator.CoordinatorError, "staging path"):
                 update_coordinator._safe_remove_staging(outside, root)
             self.assertTrue(outside.exists())
+
+            linked = root / ("prepare-" + "b" * 32)
+            linked.symlink_to(outside, target_is_directory=True)
+            with self.assertRaisesRegex(update_coordinator.CoordinatorError, "staging path"):
+                update_coordinator._safe_remove_staging(linked, root)
+            self.assertTrue(outside.exists())
+
+    def test_artifact_retention_preserves_current_and_newest_archives(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            staging = root / "staging"
+            rollback = root / "rollback"
+            staging.mkdir()
+            rollback.mkdir()
+            current = "prepare-" + "a" * 32
+            stale_stage = "prepare-" + "b" * 32
+            (staging / current).mkdir()
+            (staging / stale_stage).mkdir()
+            for index, character in enumerate("abc", start=1):
+                archive = rollback / ("prepare-" + character * 32)
+                archive.mkdir()
+                os.utime(archive, ns=(index, index))
+            (rollback / "operator-notes").mkdir()
+            state = dict(
+                update_coordinator.initial_state(),
+                state="prepared",
+                stage="prepared",
+                transaction_id=current,
+            )
+            update_coordinator._cleanup_transaction_artifacts(
+                state, staging, rollback
+            )
+            staged = {entry.name for entry in staging.iterdir()}
+            retained = {entry.name for entry in rollback.iterdir()}
+        self.assertEqual(staged, {current})
+        self.assertEqual(
+            retained,
+            {current, "prepare-" + "c" * 32, "operator-notes"},
+        )
 
     def test_client_request_raises_for_coordinator_failure_response(self):
         fake_socket = MagicMock()
@@ -218,6 +275,8 @@ class UpdateCoordinatorTests(unittest.TestCase):
             state_path = root / "state.json"
             lock_path = root / "update.lock"
             staging_root = root / "staging"
+            stale_stage = staging_root / ("prepare-" + "f" * 32)
+            stale_stage.mkdir(parents=True)
             installed = "1" * 40
             candidate = "2" * 40
             source = {
@@ -238,10 +297,12 @@ class UpdateCoordinatorTests(unittest.TestCase):
                 update_coordinator, "_secure_staging_tree"
             ), patch.object(update_coordinator.uuid, "uuid4", return_value=SimpleNamespace(hex="a" * 32)):
                 prepared = update_coordinator._prepare_candidate(state_path, lock_path, staging_root)
+            stale_stage_exists = stale_stage.exists()
         self.assertEqual(prepared["state"], "prepared")
         self.assertEqual(prepared["candidate_commit"], candidate)
         self.assertEqual(prepared["previous_version"], "old")
         self.assertFalse(prepared["error"])
+        self.assertFalse(stale_stage_exists)
 
     def test_nightly_candidate_is_cloned_and_forward_ancestry_is_proved(self):
         with tempfile.TemporaryDirectory() as temporary:

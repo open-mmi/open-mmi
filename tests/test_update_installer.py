@@ -122,6 +122,58 @@ class UpdateInstallerTests(unittest.TestCase):
             "Prepared deployment failed during package-build; rollback unverified",
         )
 
+    def test_terminal_install_cleans_staging_and_bounds_rollback_archives(self):
+        for returncode in (0, 1):
+            with self.subTest(returncode=returncode), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                source, state_path, lock_path, staging = self.prepared(root)
+                rollback = root / "rollback"
+                for index, character in enumerate("bcd", start=1):
+                    archive = rollback / ("prepare-" + character * 32)
+                    archive.mkdir(parents=True)
+                    os.utime(archive, ns=(index, index))
+
+                def deploy(command, environment):
+                    current = rollback / environment["OPEN_MMI_PREPARED_TRANSACTION"]
+                    current.mkdir()
+                    return subprocess.CompletedProcess(
+                        command,
+                        returncode,
+                        stdout=(
+                            "Prepared deployment failed at stage: api-health\n"
+                            "Prepared rollback verified\n"
+                            if returncode
+                            else ""
+                        ),
+                    )
+
+                with patch.object(update_installer.update_status, "_read_source_descriptor", return_value=(source, "configured")), patch.object(
+                    update_installer.update_policy, "read_policy", return_value=({"channel": "nightly"}, "configured")
+                ), patch.object(update_installer.update_status, "_repository_snapshot", return_value={"state": "ready"}
+                ), patch.object(update_installer.pwd, "getpwuid", return_value=type("Account", (), {"pw_name": "tester"})()), patch.object(
+                    update_installer, "_run_deployment", side_effect=deploy
+                ):
+                    if returncode:
+                        with self.assertRaisesRegex(update_installer.InstallerError, "api-health"):
+                            update_installer.install_prepared(
+                                state_path, lock_path, staging,
+                                command=("fixed-deploy",), rollback_root=rollback,
+                            )
+                    else:
+                        completed = update_installer.install_prepared(
+                            state_path, lock_path, staging,
+                            command=("fixed-deploy",), rollback_root=rollback,
+                        )
+                        self.assertEqual(completed["state"], "complete")
+
+                transaction = "prepare-" + "a" * 32
+                retained = {entry.name for entry in rollback.iterdir()}
+                self.assertFalse((staging / transaction).exists())
+                self.assertEqual(
+                    retained,
+                    {transaction, "prepare-" + "d" * 32},
+                )
+
     def test_source_change_after_preparation_blocks_installation(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

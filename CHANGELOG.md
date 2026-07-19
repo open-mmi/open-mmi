@@ -14,6 +14,7 @@
 - Root-owned update coordinator service with atomic persistent state, crash recovery, exclusive transaction locking, and fixed status/prepare/install Unix-socket actions.
 - Restricted candidate preparation with fixed confirmation, root-owned staging, forward-ancestry proof, release-tag identity validation, and persistent preparation state.
 - Confirmed CLI and same-origin browser nightly candidate installation through a no-arguments one-shot root service, with identity/ancestry revalidation, deployment backup, fixed health checks, and automatic restoration on failure.
+- Automatic transaction-artifact cleanup with one active/prepared staging tree and two retained rollback archives.
 - Stable/beta semantic release-tag filtering, official-repository enforcement, downgrade refusal, and rewritten-tag detection.
 
 ### Security
@@ -24,6 +25,7 @@
 - Git inspection invoked through `sudo open-mmi-config` drops back to the original user before reading the user-owned checkout.
 - Browser execution accepts only exact confirmation objects over literal-loopback, same-origin JSON routes and delegates to the fixed coordinator protocol; it cannot select update inputs or pass DNS-rebinding hostnames.
 - Coordinator handoff completes even when the dashboard connection closes during its expected self-restart.
+- Artifact pruning accepts only contained, non-symlinked coordinator transaction directories and leaves unrelated entries untouched.
 
 ### Not yet included
 - No browser channel editor, scheduling, unattended updates, stable/beta installation, or caller-selected/manual rollback target.

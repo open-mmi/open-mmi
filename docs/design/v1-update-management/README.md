@@ -41,7 +41,7 @@ This branch turns the existing administrator-run `manage.sh update` path into a 
 5. Persistent coordinator state and fixed-action privileged boundary. **Implemented with status, preparation, and a separate no-arguments installer service.**
 6. User-triggered update execution. **Implemented for confirmed CLI and same-origin browser nightly candidates.**
 7. Post-update health validation. **Implemented for service state, `/api/health`, and target build identity.**
-8. Rollback mechanism. **Automatic restoration is implemented for failed CLI installation; manual rollback remains unavailable.**
+8. Rollback mechanism. **Automatic restoration and bounded transaction-artifact retention are implemented; manual rollback remains unavailable.**
 9. Diagnostics/log integration.
 10. Full laptop, tablet, suspend/resume, failure, and recovery qualification.
 

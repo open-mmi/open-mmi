@@ -149,9 +149,13 @@ def install_prepared(
     lock_path: Path = update_coordinator.DEFAULT_LOCK,
     staging_root: Path = update_coordinator.DEFAULT_STAGING_ROOT,
     command: Optional[Sequence[str]] = None,
+    rollback_root: Optional[Path] = None,
 ) -> Dict[str, Any]:
     if os.geteuid() != 0 and state_path == update_coordinator.DEFAULT_STATE_FILE:
         raise InstallerError("Prepared installation requires root")
+    rollback_root = rollback_root or update_coordinator._artifact_root(
+        state_path, update_coordinator.DEFAULT_ROLLBACK_ROOT, "rollback"
+    )
     with update_coordinator.TransactionLock(lock_path):
         state = update_coordinator.read_state(state_path)
         source, source_state = update_status._read_source_descriptor()
@@ -160,6 +164,16 @@ def install_prepared(
             raise InstallerError("Managed update source or policy is unavailable")
         stage = _trusted_stage(state, staging_root)
         _revalidate_candidate(stage, state, source, str(policy["channel"]))
+        transaction_id = str(state["transaction_id"])
+        update_coordinator._safe_remove_transaction_tree(
+            rollback_root / transaction_id, rollback_root, "rollback"
+        )
+        update_coordinator._prune_transaction_trees(
+            rollback_root,
+            keep=set(),
+            limit=max(0, update_coordinator.MAX_RETAINED_ROLLBACKS - 1),
+            label="rollback",
+        )
         state.update({
             "state": "installing", "stage": "installing",
             "updated_at": update_coordinator._timestamp(), "completed_at": None,
@@ -180,14 +194,21 @@ def install_prepared(
                 "updated_at": update_coordinator._timestamp(),
                 "completed_at": update_coordinator._timestamp(), "error": failure,
             })
-            update_coordinator.write_state(state, state_path)
+            failed = update_coordinator.write_state(state, state_path)
+            update_coordinator._best_effort_artifact_cleanup(
+                failed, staging_root, rollback_root
+            )
             raise InstallerError(failure)
         state.update({
             "state": "complete", "stage": "complete",
             "updated_at": update_coordinator._timestamp(),
             "completed_at": update_coordinator._timestamp(), "error": "",
         })
-        return update_coordinator.write_state(state, state_path)
+        completed = update_coordinator.write_state(state, state_path)
+        update_coordinator._best_effort_artifact_cleanup(
+            completed, staging_root, rollback_root
+        )
+        return completed
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:

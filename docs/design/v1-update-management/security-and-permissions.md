@@ -68,6 +68,11 @@ rollback, and manual rollback remain disabled.
 - explicit downgrade policy;
 - no success state before health validation;
 - no automatic update solely because a check found a different commit.
+- artifact cleanup accepts only exact coordinator transaction directory names,
+  proves root/child containment, refuses symlinks, and never removes unrelated
+  entries;
+- terminal staging is removed and rollback retention is fixed at two archives,
+  with cleanup retried after coordinator restart.
 
 
 ## Implemented policy-file controls

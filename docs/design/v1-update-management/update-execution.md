@@ -95,7 +95,7 @@ closed.
 12. Run post-update health checks.
 13. Confirm `/api/version` matches the intended build.
 14. Let runtime-hardening perform the one-shot frontend reload.
-15. Mark success and retain bounded rollback information.
+15. Mark success, remove terminal staging, and retain the two newest rollback archives.
 
 ## Persistence
 
@@ -105,6 +105,11 @@ Coordinator state must survive:
 - dashboard-server restart;
 - suspend/resume;
 - the frontend changed-build reload.
+
+Coordinator startup reconciles this state with retained artifacts: only the
+active/prepared staging tree is preserved, terminal staging is deleted, and
+rollback archives are pruned to the fixed retention bound while protecting the
+recorded transaction.
 
 States should include idle, preparing, downloading, validating, installing, restarting, checking health, complete, failed, and rolling back.
 
