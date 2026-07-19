@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 import subprocess
 import tempfile
 import unittest
@@ -83,6 +84,47 @@ class ManageScriptLifecycleTests(unittest.TestCase):
             policy.chmod(0o644)
             invalid = subprocess.run(arguments, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
             self.assertNotEqual(invalid.returncode, 0)
+
+    def test_checkout_metadata_ignores_stale_prepared_environment(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            install = root / "install"
+            repository = root / "source"
+            policy = root / "etc" / "update-policy.json"
+            install.mkdir()
+            repository.mkdir()
+            commit = "b" * 40
+            script = f"""
+source {shlex.quote(str(MANAGE_SCRIPT))}
+INSTALL_DIR={shlex.quote(str(install))}
+UPDATE_POLICY_FILE={shlex.quote(str(policy))}
+REPO_ROOT={shlex.quote(str(repository))}
+get_repo_branch() {{ printf '%s\\n' main; }}
+get_repo_upstream() {{ printf '%s\\n' origin/main; }}
+get_repo_commit() {{ printf '%s\\n' {commit}; }}
+get_current_version() {{ printf '%s\\n' v1-foundation-alpha-80-gb; }}
+export OPEN_MMI_MANAGED_BRANCH=v1-update-management
+export OPEN_MMI_MANAGED_UPSTREAM=origin/v1-update-management
+export OPEN_MMI_MANAGED_REPOSITORY=/tmp/stale-source
+export OPEN_MMI_PREPARED_COMMIT={'a' * 40}
+export OPEN_MMI_PREPARED_VERSION=v1-foundation-alpha-79-ga
+write_checkout_update_source_metadata
+"""
+            completed = subprocess.run(
+                ["bash", "-c", script],
+                cwd=ROOT,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            descriptor = json.loads((install / ".update-source.json").read_text(encoding="utf-8"))
+            self.assertEqual(descriptor["repository_path"], str(repository.resolve()))
+            self.assertEqual(descriptor["branch"], "main")
+            self.assertEqual(descriptor["upstream"], "origin/main")
+            self.assertEqual(descriptor["installed_commit"], commit)
+            self.assertEqual(descriptor["installed_version"], "v1-foundation-alpha-80-gb")
 
     def test_service_units_use_single_command_source_and_destination(self) -> None:
         install_canbusd = (
@@ -329,15 +371,15 @@ sudo() {{ printf '%s\\0' "$@"; }}
         self.assertIn('os.fsync(temporary.fileno())', metadata_block)
         self.assertIn('os.replace(temporary_name, path)', metadata_block)
         self.assertIn('atomic_json(metadata_path, payload, 0o644)', metadata_block)
-        self.assertIn("write_update_source_metadata", install_block)
-        self.assertIn("write_update_source_metadata", update_block)
+        self.assertIn("write_checkout_update_source_metadata", install_block)
+        self.assertIn("write_checkout_update_source_metadata", update_block)
         self.assertGreater(install_block.index('get_current_version > "$VERSION_FILE"'), 0)
         self.assertGreater(
-            install_block.index("write_update_source_metadata"),
+            install_block.index("write_checkout_update_source_metadata"),
             install_block.index('get_current_version > "$VERSION_FILE"'),
         )
         self.assertGreater(
-            update_block.index("write_update_source_metadata"),
+            update_block.index("write_checkout_update_source_metadata"),
             update_block.index("echo '$new_version' > '$VERSION_FILE'"),
         )
 

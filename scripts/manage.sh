@@ -120,6 +120,10 @@ get_current_version() {
         || echo "dev-$(sudo -u "$REAL_USER" git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || echo 'local')"
 }
 
+get_repo_commit() {
+    sudo -u "$REAL_USER" git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || true
+}
+
 daemon_running() {
     export XDG_RUNTIME_DIR="/run/user/$USER_ID"
     sudo -u "$REAL_USER" \
@@ -143,11 +147,12 @@ get_repo_upstream() {
 }
 
 write_update_source_metadata() {
-    local branch upstream commit version destination
-    branch="${OPEN_MMI_MANAGED_BRANCH:-$(get_repo_branch)}"
-    upstream="${OPEN_MMI_MANAGED_UPSTREAM:-$(get_repo_upstream)}"
-    commit="${OPEN_MMI_PREPARED_COMMIT:-$(sudo -u "$REAL_USER" git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || true)}"
-    version="${OPEN_MMI_PREPARED_VERSION:-$(get_current_version)}"
+    local branch upstream commit version repository destination
+    branch="${1:-${OPEN_MMI_MANAGED_BRANCH:-$(get_repo_branch)}}"
+    upstream="${2:-${OPEN_MMI_MANAGED_UPSTREAM:-$(get_repo_upstream)}}"
+    commit="${3:-${OPEN_MMI_PREPARED_COMMIT:-$(get_repo_commit)}}"
+    version="${4:-${OPEN_MMI_PREPARED_VERSION:-$(get_current_version)}}"
+    repository="${5:-${OPEN_MMI_MANAGED_REPOSITORY:-$REPO_ROOT}}"
     destination="$INSTALL_DIR/.update-source.json"
 
     if [[ ! "$commit" =~ ^[0-9a-fA-F]{40}$ ]]; then
@@ -155,7 +160,7 @@ write_update_source_metadata() {
         return 0
     fi
 
-    python3 - "$destination" "${OPEN_MMI_MANAGED_REPOSITORY:-$REPO_ROOT}" "$branch" "$upstream" "$commit" "$version" "$UPDATE_POLICY_FILE" <<'PY_UPDATE_SOURCE'
+    python3 - "$destination" "$repository" "$branch" "$upstream" "$commit" "$version" "$UPDATE_POLICY_FILE" <<'PY_UPDATE_SOURCE'
 import json
 import os
 import stat
@@ -258,6 +263,19 @@ payload = {
 atomic_json(metadata_path, payload, 0o644)
 PY_UPDATE_SOURCE
     log_success "Recorded managed update source and channel policy"
+}
+
+write_checkout_update_source_metadata() {
+    local branch upstream commit version
+    branch=$(get_repo_branch)
+    upstream=$(get_repo_upstream)
+    commit=$(get_repo_commit)
+    version=$(get_current_version)
+
+    # Interactive install/update operations must describe the checkout being
+    # deployed, even if prepared-installer variables remain in the caller's
+    # environment. Prepared deployments call the lower-level writer directly.
+    write_update_source_metadata "$branch" "$upstream" "$commit" "$version" "$REPO_ROOT"
 }
 
 copy_if_missing() {
@@ -665,7 +683,7 @@ cmd_install() {
     
     # Store version and the managed source descriptor used by read-only checks.
     get_current_version > "$VERSION_FILE"
-    write_update_source_metadata
+    write_checkout_update_source_metadata
     
     # Install systemd service
     log_info "Installing systemd user service..."
@@ -820,7 +838,7 @@ cmd_update() {
 
     # Version and managed source metadata writes need root because /opt is root-owned.
     sudo bash -c "echo '$new_version' > '$VERSION_FILE'"
-    write_update_source_metadata
+    write_checkout_update_source_metadata
 
     # Restart services
     sudo -u "$REAL_USER" env HOME="$REAL_HOME" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user restart canbusd.service open-mmi-dashboard.service
