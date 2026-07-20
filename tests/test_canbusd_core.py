@@ -205,6 +205,85 @@ class CanbusdCoreTests(unittest.TestCase):
             core.main(max_iterations=iterations, dispatch_fn=core.dispatch)
         return open_bus
 
+    def test_managed_main_pins_documents_until_process_restart(self):
+        bus = FakeBus([None, None])
+        load_config = mock.Mock(return_value=self._config())
+        load_bindings = mock.Mock(return_value={})
+        monotonic = mock.Mock(side_effect=[1.0, 1.1, 120.0, 120.1])
+
+        with (
+            mock.patch.object(core, "_managed_configuration_mode", return_value=True),
+            mock.patch.object(core, "_load_config", load_config),
+            mock.patch.object(core, "_load_bindings", load_bindings),
+            mock.patch.object(core.Path, "exists", return_value=True),
+            mock.patch.object(core.time, "monotonic", monotonic),
+            mock.patch.object(core.can.interface, "Bus", return_value=bus),
+            mock.patch.object(core, "IFACE", "can0"),
+            mock.patch.object(core, "CAN_BUS", "comfort"),
+            mock.patch.object(core, "RELOAD_INTERVAL", 0),
+        ):
+            core.main(max_iterations=2, dispatch_fn=core.dispatch)
+
+        self.assertEqual(load_config.call_count, 1)
+        self.assertEqual(load_bindings.call_count, 1)
+        self.assertEqual(self.runtime_publish.call_count, 1)
+        self.assertEqual(bus.shutdown_calls, 1)
+
+    def test_managed_main_reports_original_revisions_after_files_change(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            custom_root = Path(temporary) / "open-mmi"
+            profile_path = custom_root / "vehicles" / "custom-seat" / "config.json"
+            bindings_path = custom_root / "bindings" / "custom-bindings.json"
+            profile_path.parent.mkdir(parents=True)
+            bindings_path.parent.mkdir(parents=True)
+            original_profile = b'{"default_bus":"comfort","rules":[]}'
+            changed_profile = b'{"default_bus":"comfort","rules":[],"status":[]}'
+            original_bindings = b'{}'
+            changed_bindings = b'{"mute":{"module":"audio","func":"mute_toggle"}}'
+            profile_path.write_bytes(original_profile)
+            bindings_path.write_bytes(original_bindings)
+
+            class MutatingBus(FakeBus):
+                def recv(self, timeout):
+                    if self.messages:
+                        profile_path.write_bytes(changed_profile)
+                        bindings_path.write_bytes(changed_bindings)
+                    return super().recv(timeout)
+
+            bus = MutatingBus([None, None])
+            monotonic = mock.Mock(side_effect=[1.0, 1.1, 120.0, 120.1])
+
+            with (
+                mock.patch.dict(
+                    core.os.environ,
+                    {
+                        "OPEN_MMI_VEHICLE_CONFIG": str(profile_path),
+                        "OPEN_MMI_BINDINGS_FILE": str(bindings_path),
+                    },
+                    clear=False,
+                ),
+                mock.patch.object(core, "USER_CONFIG_DIR", custom_root),
+                mock.patch.object(core, "VEHICLE", "custom-seat"),
+                mock.patch.object(core, "BINDINGS", "custom-bindings"),
+                mock.patch.object(core, "CAN_RUNTIME", self.runtime),
+                mock.patch.object(core, "CAN_BUS", "comfort"),
+                mock.patch.object(core, "IFACE", "can0"),
+                mock.patch.object(core.Path, "exists", return_value=True),
+                mock.patch.object(core.time, "monotonic", monotonic),
+                mock.patch.object(core.can.interface, "Bus", return_value=bus),
+                mock.patch.object(core, "RELOAD_INTERVAL", 0),
+            ):
+                core.main(max_iterations=2, dispatch_fn=core.dispatch)
+
+        original_vehicle_revision = "sha256:" + hashlib.sha256(original_profile).hexdigest()
+        original_bindings_revision = "sha256:" + hashlib.sha256(original_bindings).hexdigest()
+        self.assertEqual(core.LOADED_VEHICLE["revision"], original_vehicle_revision)
+        self.assertEqual(core.LOADED_BINDINGS["revision"], original_bindings_revision)
+        self.runtime_publish.assert_called_once()
+        runtime = self.runtime_publish.call_args.args[0]
+        self.assertEqual(runtime["vehicle"]["revision"], original_vehicle_revision)
+        self.assertEqual(runtime["bindings"]["revision"], original_bindings_revision)
+
     def test_main_uses_bounded_action_queue_by_default(self):
         event_rules = {0x200: [(0, 1, "button:pressed")]}
         binding = {"module": "audio", "func": "play_pause"}

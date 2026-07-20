@@ -59,6 +59,7 @@ and adapter hotplug.
 - [x] private provenance sidecars outside the daemon catalogue;
 - [x] installer/update ownership hardening scoped to the custom catalogue only;
 - [x] safe custom-only load/save with revision tokens, validation and atomic replacement;
+- [x] managed daemon revisions remain pinned across editor saves until reviewed Apply restarts it;
 - [x] qualify maintained/custom activation switching through the existing reviewed apply flow;
 - [ ] qualify explicit return-to-maintained through the existing source-labelled selector; and
 - [ ] last-known-good user revision for editor saves.
@@ -138,6 +139,7 @@ Playwright coverage includes:
 - restored failure;
 - custom identifier conflict;
 - unsaved editor navigation warning;
+- active custom save leaves loaded runtime revisions and PID unchanged beyond the legacy reload interval;
 - focus preservation across status refresh;
 - no off-screen-only feedback; and
 - 800×480 containment with touch-sized controls.

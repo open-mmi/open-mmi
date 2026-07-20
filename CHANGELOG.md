@@ -25,6 +25,7 @@
 - Custom editor routes accept only `source: custom`, fixed kind/id identities, an expected SHA-256 revision and bounded JSON text. They reject maintained identities, symlinks, hard links, non-private ownership or modes, stale revisions, duplicate keys, non-finite values and invalid profile/bindings schemas before atomic replacement.
 
 ### Fixed
+- Coordinator-managed `canbusd` runtimes now pin the exact successfully parsed profile and bindings revisions until process restart. Legacy periodic and SIGHUP reloads remain available only outside managed Vehicle Setup, preventing an active custom editor save from silently becoming loaded before reviewed Apply.
 - Install, interactive update and prepared deployment now preflight the fixed custom vehicle catalogue for symlinks, hard links, special files and foreign ownership, then repair only its directories/files to user-owned `0700`/`0600`. Unrelated settings such as `dashboard.env`, `launcher.json` and qualification backups are not recursively changed.
 - Managed installs now require a live coordinator socket and successful status round trip before reporting success, and prepared-update rollback preserves the previous coordinator unit and environment file.
 - The update and vehicle-configuration coordinators preserve their shared `/run/open-mmi` runtime directory across service restarts, preventing one coordinator restart from deleting the other coordinator's live Unix socket.

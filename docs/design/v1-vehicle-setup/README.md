@@ -95,8 +95,10 @@ udev rules are generated outputs which may be checked, recreated or restored.
 
 ### Save and activate are separate
 
-A custom draft may be saved without touching the running daemon. Activation is a
-separate reviewed operation. Invalid drafts cannot be activated.
+A custom draft may be saved without changing the configuration loaded by the
+running daemon. Coordinator-managed exact profile and bindings paths are pinned for
+the lifetime of the daemon process; activation is a separate reviewed operation that
+restarts the daemon. Invalid drafts cannot be activated.
 
 ### Absence is not activation failure
 

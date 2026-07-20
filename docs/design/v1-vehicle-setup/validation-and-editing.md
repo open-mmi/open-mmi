@@ -149,8 +149,10 @@ Save sequence:
 
 The current editor rejects invalid JSON and semantic validation errors before writing.
 Saving never restarts `canbusd` and never changes maintained content or provenance.
-Activation remains a separate reviewed operation. Last-known-good user revision archives
-remain a later slice.
+For coordinator-managed exact document paths, the running daemon pins its successfully
+parsed profile and bindings revisions until restart; periodic and SIGHUP reloads cannot
+activate a saved draft. Activation remains a separate reviewed operation. Last-known-good
+user revision archives remain a later slice.
 
 ## Editor delivery order
 

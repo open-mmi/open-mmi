@@ -82,13 +82,62 @@ class ConfigLoadingTests(unittest.TestCase):
             self.assertIn("OPEN_MMI_VEHICLE_CONFIG", output)
             self.assertIn("OPEN_MMI_BINDINGS_FILE", output)
 
-    def test_sighup_marks_configuration_for_reload(self):
+    def test_managed_configuration_requires_both_exact_paths(self):
+        self.assertFalse(core._managed_configuration_mode({}))
+        self.assertFalse(
+            core._managed_configuration_mode(
+                {"OPEN_MMI_VEHICLE_CONFIG": "/tmp/profile.json"}
+            )
+        )
+        self.assertFalse(
+            core._managed_configuration_mode(
+                {"OPEN_MMI_BINDINGS_FILE": "/tmp/bindings.json"}
+            )
+        )
+        self.assertTrue(
+            core._managed_configuration_mode(
+                {
+                    "OPEN_MMI_VEHICLE_CONFIG": "/tmp/profile.json",
+                    "OPEN_MMI_BINDINGS_FILE": "/tmp/bindings.json",
+                }
+            )
+        )
+
+    def test_sighup_marks_unmanaged_configuration_for_reload(self):
         core._need_reload = False
-        with self.assertLogs("canbusd", level="INFO") as logs:
+        with (
+            mock.patch.dict(
+                os.environ,
+                {
+                    "OPEN_MMI_VEHICLE_CONFIG": "",
+                    "OPEN_MMI_BINDINGS_FILE": "",
+                },
+                clear=False,
+            ),
+            self.assertLogs("canbusd", level="INFO") as logs,
+        ):
             core._sig_hup(1, None)
 
         self.assertTrue(core._need_reload)
         self.assertIn("reload config", "\n".join(logs.output))
+
+    def test_sighup_cannot_reload_managed_configuration(self):
+        core._need_reload = False
+        with (
+            mock.patch.dict(
+                os.environ,
+                {
+                    "OPEN_MMI_VEHICLE_CONFIG": "/tmp/profile.json",
+                    "OPEN_MMI_BINDINGS_FILE": "/tmp/bindings.json",
+                },
+                clear=False,
+            ),
+            self.assertLogs("canbusd", level="INFO") as logs,
+        ):
+            core._sig_hup(1, None)
+
+        self.assertFalse(core._need_reload)
+        self.assertIn("ignored for managed", "\n".join(logs.output))
 
     def test_bindings_load_success(self):
         with tempfile.TemporaryDirectory() as tmp:

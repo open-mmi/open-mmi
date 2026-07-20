@@ -88,7 +88,10 @@ The status snapshot is currently written as a wrapper object:
 `runtime` contains daemon-owned loaded-configuration evidence. It is outside
 `state`, so vehicle profile status rules cannot overwrite it. The profile and
 bindings revisions hash the exact bytes successfully parsed by the running daemon.
-Adapter presence and recent frames remain separate runtime-health signals.
+For coordinator-managed exact document paths, those revisions remain pinned until the
+daemon process restarts through reviewed Apply; later file saves do not rewrite loaded
+runtime evidence. Adapter presence and recent frames remain separate runtime-health
+signals.
 
 ---
 

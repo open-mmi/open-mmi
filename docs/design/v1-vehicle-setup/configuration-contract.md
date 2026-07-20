@@ -396,8 +396,11 @@ Save accepts only:
 The server resolves the fixed custom path, requires user ownership, exact private
 `0700` directories and `0600` single-link regular files, validates the submitted JSON,
 compares the expected revision and atomically replaces the file. A stale revision is a
-`custom-stale` conflict. A successful save returns `applied: false`; review and apply
-remain a separate operation.
+`custom-stale` conflict. A successful save returns `applied: false`; review and apply remain a separate
+operation. When both exact coordinator-managed document paths are active, `canbusd`
+pins the successfully parsed profile and bindings revisions until process restart.
+Legacy periodic and SIGHUP reloads are disabled in that managed mode so a save cannot
+become an implicit activation.
 
 The browser supplies no path and creation supplies no document content. Maintained content has no save,
 rename or delete route. The route also writes a private provenance sidecar beneath

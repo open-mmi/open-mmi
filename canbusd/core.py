@@ -59,8 +59,33 @@ LOADED_VEHICLE: Optional[Dict[str, str]] = None
 LOADED_BINDINGS: Optional[Dict[str, str]] = None
 
 
+def _managed_configuration_mode(
+    environment: Optional[Dict[str, str]] = None,
+) -> bool:
+    """Return whether exact coordinator-managed catalogue paths are active.
+
+    Managed Vehicle Setup applies always provide both fixed document paths and
+    restart the daemon after review. Those revisions must remain pinned for the
+    lifetime of that process; periodic or signal-triggered rereads would turn an
+    editor save into an implicit activation.
+    """
+
+    env = os.environ if environment is None else environment
+    return bool(
+        str(env.get("OPEN_MMI_VEHICLE_CONFIG") or "").strip()
+        and str(env.get("OPEN_MMI_BINDINGS_FILE") or "").strip()
+    )
+
+
 def _sig_hup(_signo: int, _frame: Any) -> None:
     global _need_reload
+
+    if _managed_configuration_mode():
+        logger.info(
+            "SIGHUP ignored for managed vehicle configuration; "
+            "use reviewed Apply to load a new revision"
+        )
+        return
 
     with _reload_lock:
         _need_reload = True
@@ -445,8 +470,14 @@ def main(
     it as ``None`` for the normal unbounded daemon loop.
     """
 
+    managed_configuration = _managed_configuration_mode()
     rules, mtime, presence, status_rules, cfg_path, runtime = _load_config(None, None)
     bindings = _load_bindings()
+
+    if managed_configuration:
+        logger.info(
+            "Managed vehicle configuration is pinned until the daemon restarts"
+        )
 
     action_queue = None
     if dispatch_fn is None:
@@ -472,7 +503,7 @@ def main(
             iterations += 1
             now = time.monotonic()
 
-            if now - last_check > RELOAD_INTERVAL:
+            if not managed_configuration and now - last_check > RELOAD_INTERVAL:
                 previous_status_rules = status_rules
                 (
                     rules,
