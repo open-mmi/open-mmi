@@ -1093,6 +1093,56 @@ class ApplyTransactionTests(unittest.TestCase):
             self.assertTrue(response["apply_enabled"])
             self.assertFalse(response["restore_enabled"])
 
+    def test_restore_unverified_state_blocks_new_apply_until_recovery(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            target = self.target()
+            state = coordinator.initial_state()
+            state.update(
+                {
+                    "state": "failed",
+                    "stage": "restore-unverified",
+                    "transaction_id": "configuration-" + "a" * 32,
+                    "started_at": state["updated_at"],
+                    "completed_at": state["updated_at"],
+                    "target": {
+                        "vehicle": target["vehicle"],
+                        "bindings": target["bindings"],
+                        "active_bus": "comfort",
+                        "interface": "can0",
+                    },
+                    "expected_configuration_revision": "sha256:" + "c" * 64,
+                    "restoration_attempted": True,
+                    "restoration_verified": False,
+                    "error": "Vehicle configuration operation failed during reloading",
+                }
+            )
+            coordinator.write_state(state, root / "state.json")
+            status = coordinator.response_for_request(
+                {"api_version": 1, "action": "status"},
+                root / "state.json",
+                root / "configuration.lock",
+                root / "lifecycle.lock",
+                root / "update.lock",
+                apply_operations_factory=lambda reviewed: self.Operations(reviewed),
+            )
+            self.assertFalse(status["apply_enabled"])
+            self.assertTrue(status["read_only"])
+            response = coordinator.response_for_request(
+                {
+                    "api_version": 1,
+                    "action": "apply",
+                    "apply": self.apply_payload(target),
+                },
+                root / "state.json",
+                root / "configuration.lock",
+                root / "lifecycle.lock",
+                root / "update.lock",
+                apply_operations_factory=lambda reviewed: self.Operations(reviewed),
+            )
+            self.assertFalse(response["ok"])
+            self.assertEqual(response["code"], "restoration-required")
+
     def test_public_apply_protocol_executes_only_the_reviewed_target(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -1454,6 +1504,54 @@ class ApplyTransactionTests(unittest.TestCase):
             self.assertEqual(captured.exception.code, "apply-failed-restored")
             self.assertEqual(captured.exception.state["stage"], "restored")
             self.assertTrue(captured.exception.state["restoration_verified"])
+
+    def test_failed_unverified_restoration_is_retried_on_service_start(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            operations = self.Operations(self.target())
+            state = coordinator.initial_state()
+            state.update(
+                {
+                    "state": "failed",
+                    "stage": "restore-unverified",
+                    "transaction_id": "configuration-" + "f" * 32,
+                    "started_at": state["updated_at"],
+                    "completed_at": state["updated_at"],
+                    "target": {
+                        "vehicle": self.target()["vehicle"],
+                        "bindings": self.target()["bindings"],
+                        "active_bus": "comfort",
+                        "interface": "can0",
+                    },
+                    "expected_configuration_revision": "sha256:" + "c" * 64,
+                    "restoration_attempted": True,
+                    "restoration_verified": False,
+                    "error": "Vehicle configuration operation failed during reloading",
+                }
+            )
+            coordinator.write_state(state, root / "state.json")
+            recovered = coordinator.recover_interrupted_transaction(
+                operations,
+                state_path=root / "state.json",
+                configuration_lock=root / "configuration.lock",
+                lifecycle_lock=root / "lifecycle.lock",
+                update_lock=root / "update.lock",
+            )
+            self.assertEqual(recovered["state"], "failed")
+            self.assertEqual(recovered["stage"], "restored")
+            self.assertTrue(recovered["recovered"])
+            self.assertTrue(recovered["restoration_verified"])
+            self.assertEqual(
+                operations.calls,
+                [
+                    "load_snapshot",
+                    "restore",
+                    "restart",
+                    "loaded_runtime",
+                    "restoration_verified",
+                ],
+            )
+
 
 
 if __name__ == "__main__":

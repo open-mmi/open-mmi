@@ -205,10 +205,16 @@ Before connecting Settings, test the fixed HTTP route independently:
 - preview continues to return `apply_available: false`, leaving the UI control disabled.
 
 On the tablet, a confirmed reapply of the already-active maintained `can0` target is a
-safe first route smoke test: it exercises the socket, snapshot, fixed writes, restart and
-runtime verification without changing the intended selection. The fixed public apply
-protocol rejects `vcanN`; virtual CAN remains confined to the root-only one-shot
-qualification command so the temporary target cannot be persisted accidentally.
+safe first route smoke test: it exercises the socket, snapshot, fixed writes, host-network
+CAN provisioning, restart and runtime verification without changing the intended
+selection. The first attempt exposed that a broad `udevadm trigger` cannot run inside the
+network-isolated coordinator sandbox and also prevented rollback verification. The fixed
+implementation reloads udev rules without triggering all network devices and delegates
+only the reviewed physical CAN link setup to the bounded oneshot helper. A retained
+`restore-unverified` snapshot is retried automatically before apply is advertised again.
+The fixed public apply protocol rejects `vcanN`; virtual CAN remains confined to the
+root-only one-shot qualification command so the temporary target cannot be persisted
+accidentally.
 
 ## Device qualification
 

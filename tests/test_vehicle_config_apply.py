@@ -82,6 +82,7 @@ class VehicleConfigurationApplyOperationsTests(unittest.TestCase):
             self.paths.runtime_dropin,
             self.paths.udev_rules,
             self.paths.runtime_status,
+            self.root / "run" / "open-mmi" / "vehicle-can-provision-request.json",
         ):
             path.parent.mkdir(parents=True, exist_ok=True)
         self.commands = []
@@ -92,6 +93,7 @@ class VehicleConfigurationApplyOperationsTests(unittest.TestCase):
             service_uid=os.getuid(),
             service_gid=os.getgid(),
             service_home=self.root / "home" / "user",
+            provision_request_path=self.root / "run" / "open-mmi" / "vehicle-can-provision-request.json",
             command_runner=lambda argv, as_user: self.commands.append((tuple(argv), as_user)),
             loaded_timeout=0.2,
             poll_interval=0.0,
@@ -235,7 +237,7 @@ class VehicleConfigurationApplyOperationsTests(unittest.TestCase):
             [
                 (("systemctl", "--user", "daemon-reload"), True),
                 (("udevadm", "control", "--reload-rules"), False),
-                (("udevadm", "trigger", "--subsystem-match=net"), False),
+                (("systemctl", "start", "open-mmi-vehicle-can-provision.service"), False),
             ],
         )
 
@@ -272,7 +274,7 @@ class VehicleConfigurationApplyOperationsTests(unittest.TestCase):
             [
                 (("systemctl", "--user", "daemon-reload"), True),
                 (("udevadm", "control", "--reload-rules"), False),
-                (("udevadm", "trigger", "--subsystem-match=net"), False),
+                (("systemctl", "start", "open-mmi-vehicle-can-provision.service"), False),
                 (("systemctl", "--user", "restart", "canbusd.service"), True),
             ],
         )
@@ -285,6 +287,7 @@ class VehicleConfigurationApplyOperationsTests(unittest.TestCase):
             service_uid=os.getuid(),
             service_gid=os.getgid(),
             service_home=self.root / "home" / "user",
+            provision_request_path=self.root / "run" / "open-mmi" / "vehicle-can-provision-request.json",
             command_runner=lambda argv, as_user: self.commands.append((tuple(argv), as_user)),
             suppress_can_provisioning=True,
         )
@@ -317,6 +320,7 @@ class VehicleConfigurationApplyOperationsTests(unittest.TestCase):
             service_uid=os.getuid(),
             service_gid=os.getgid(),
             service_home=self.root / "home" / "user",
+            provision_request_path=self.root / "run" / "open-mmi" / "vehicle-can-provision-request.json",
             command_runner=lambda argv, as_user: None,
             wall_clock=lambda: wall,
             monotonic_clock=iter([0.0, 0.0, 0.1, 0.2, 0.3]).__next__,
@@ -369,6 +373,7 @@ class VehicleConfigurationApplyOperationsTests(unittest.TestCase):
             service_uid=os.getuid(),
             service_gid=os.getgid(),
             service_home=self.root / "home" / "user",
+            provision_request_path=self.root / "run" / "open-mmi" / "vehicle-can-provision-request.json",
             command_runner=runner,
             wall_clock=lambda: 1.5,
             sleep=lambda delay: None,
@@ -423,6 +428,7 @@ class VehicleConfigurationApplyOperationsTests(unittest.TestCase):
             service_uid=os.getuid(),
             service_gid=os.getgid(),
             service_home=self.root / "home" / "user",
+            provision_request_path=self.root / "run" / "open-mmi" / "vehicle-can-provision-request.json",
             command_runner=runner,
             wall_clock=lambda: 1.5,
             sleep=lambda delay: None,
@@ -484,6 +490,7 @@ class VehicleConfigurationApplyOperationsTests(unittest.TestCase):
             service_uid=os.getuid(),
             service_gid=os.getgid(),
             service_home=self.root / "home" / "user",
+            provision_request_path=self.root / "run" / "open-mmi" / "vehicle-can-provision-request.json",
             command_runner=runner,
             wall_clock=lambda: 1.5,
             sleep=lambda delay: None,
@@ -521,6 +528,103 @@ class VehicleConfigurationApplyOperationsTests(unittest.TestCase):
         self.write_status(invalid)
         with self.assertRaisesRegex(apply.ApplyOperationError, "not ready"):
             self.operations.snapshot("configuration-" + "c" * 32)
+
+    def _can_sysfs(self, interface: str, *, virtual: bool = False) -> Path:
+        class_net = self.root / "sys" / "class" / "net"
+        virtual_root = self.root / "sys" / "devices" / "virtual" / "net"
+        virtual_root.mkdir(parents=True, exist_ok=True)
+        if virtual:
+            device = virtual_root / interface
+        else:
+            device = self.root / "sys" / "devices" / "pci0000:00" / "net" / interface
+        device.mkdir(parents=True, exist_ok=True)
+        (device / "type").write_text("280\n", encoding="ascii")
+        class_net.mkdir(parents=True, exist_ok=True)
+        (class_net / interface).symlink_to(os.path.relpath(device, class_net))
+        return class_net
+
+    def test_host_can_provisioner_uses_only_fixed_ip_commands(self) -> None:
+        class_net = self._can_sysfs("can0")
+        commands = []
+        result = apply.provision_can_target(
+            self.target,
+            self.roots,
+            service_uid=os.getuid(),
+            sys_class_net=class_net,
+            command_runner=lambda argv: commands.append(tuple(argv)),
+        )
+        self.assertEqual(result, "configured")
+        self.assertEqual(
+            commands,
+            [
+                ("/sbin/ip", "link", "set", "dev", "can0", "down"),
+                (
+                    "/sbin/ip",
+                    "link",
+                    "set",
+                    "dev",
+                    "can0",
+                    "type",
+                    "can",
+                    "bitrate",
+                    "100000",
+                ),
+                ("/sbin/ip", "link", "set", "dev", "can0", "up"),
+            ],
+        )
+
+    def test_host_can_provisioner_leaves_an_absent_interface_for_udev(self) -> None:
+        class_net = self.root / "sys" / "class" / "net"
+        (self.root / "sys" / "devices" / "virtual" / "net").mkdir(
+            parents=True, exist_ok=True
+        )
+        class_net.mkdir(parents=True)
+        commands = []
+        result = apply.provision_can_target(
+            self.target,
+            self.roots,
+            service_uid=os.getuid(),
+            sys_class_net=class_net,
+            command_runner=lambda argv: commands.append(tuple(argv)),
+        )
+        self.assertEqual(result, "absent")
+        self.assertEqual(commands, [])
+
+    def test_host_can_provisioner_rejects_virtual_can_named_can0(self) -> None:
+        class_net = self._can_sysfs("can0", virtual=True)
+        with self.assertRaisesRegex(apply.ApplyOperationError, "Virtual CAN"):
+            apply.provision_can_target(
+                self.target,
+                self.roots,
+                service_uid=os.getuid(),
+                sys_class_net=class_net,
+                command_runner=lambda argv: None,
+            )
+
+    def test_provision_request_is_root_owned_one_shot_input(self) -> None:
+        request = self.root / "run" / "open-mmi" / "request.json"
+        request.parent.mkdir(parents=True, exist_ok=True)
+        apply._atomic_replace(
+            request,
+            apply._json_bytes(self.target),
+            mode=0o600,
+            uid=os.geteuid(),
+            gid=os.getegid(),
+        )
+        class_net = self.root / "sys" / "class" / "net"
+        (self.root / "sys" / "devices" / "virtual" / "net").mkdir(
+            parents=True, exist_ok=True
+        )
+        class_net.mkdir(parents=True)
+        result = apply.provision_from_request(
+            self.roots,
+            service_uid=os.getuid(),
+            request_path=request,
+            sys_class_net=class_net,
+        )
+        self.assertEqual(result, "absent")
+        self.assertFalse(request.exists())
+
 
 
 if __name__ == "__main__":

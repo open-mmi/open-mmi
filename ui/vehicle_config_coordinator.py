@@ -427,6 +427,15 @@ def _lock_status(
     }
 
 
+def _restoration_required(state: Mapping[str, Any]) -> bool:
+    return bool(
+        state.get("state") == "failed"
+        and state.get("stage") == "restore-unverified"
+        and state.get("restoration_attempted") is True
+        and state.get("restoration_verified") is False
+    )
+
+
 def _public_response(
     state: Mapping[str, Any],
     configuration_lock: Path = DEFAULT_LOCK,
@@ -435,12 +444,13 @@ def _public_response(
     *,
     apply_enabled: bool = False,
 ) -> Dict[str, Any]:
+    effective_apply_enabled = apply_enabled and not _restoration_required(state)
     return {
         "ok": True,
         "api_version": API_VERSION,
-        "read_only": not apply_enabled,
+        "read_only": not effective_apply_enabled,
         "preview_enabled": True,
-        "apply_enabled": apply_enabled,
+        "apply_enabled": effective_apply_enabled,
         "restore_enabled": False,
         "locks": _lock_status(configuration_lock, lifecycle_lock, update_lock),
         "state": dict(state),
@@ -879,12 +889,22 @@ def recover_interrupted_transaction(
     """
 
     state = read_state(state_path) if state_path.exists() else initial_state()
-    if state["state"] not in ACTIVE_STATES:
+    recoverable_failed_restoration = bool(
+        state.get("state") == "failed"
+        and state.get("stage") == "restore-unverified"
+        and state.get("restoration_attempted") is True
+        and state.get("restoration_verified") is False
+    )
+    if state["state"] not in ACTIVE_STATES and not recoverable_failed_restoration:
         return state
     transaction_id = state.get("transaction_id")
     if not isinstance(transaction_id, str) or not _TRANSACTION_RE.fullmatch(transaction_id):
         raise CoordinatorError("Interrupted transaction identifier is invalid")
-    error = "Coordinator restarted during an active transaction"
+    error = (
+        str(state.get("error") or "Vehicle configuration restoration requires recovery")
+        if recoverable_failed_restoration
+        else "Coordinator restarted during an active transaction"
+    )
     if state["state"] == "validating":
         return _best_effort_state_update(
             state_path,
@@ -1045,6 +1065,11 @@ def response_for_request(
         if action == "apply":
             if apply_operations_factory is None:
                 return {"ok": False, "error": "Coordinator action is not enabled"}
+            if _restoration_required(read_state(state_path)):
+                raise CoordinatorConflictError(
+                    "Previous vehicle configuration restoration requires recovery",
+                    "restoration-required",
+                )
             if set(payload) != {"api_version", "action", "apply"}:
                 return {"ok": False, "error": "Invalid coordinator request schema"}
             request, target, expected_revision = _normalize_apply_payload(
@@ -1511,6 +1536,19 @@ def root_apply_operations(*, suppress_can_provisioning: bool = False) -> Qualifi
     )
 
 
+def run_can_provision() -> str:
+    """Consume one root-owned request and provision the host CAN interface."""
+
+    from ui import vehicle_config_apply
+
+    roots, dropin_path, _status_path = _preview_context()
+    account = _service_account_from_runtime_dropin(dropin_path)
+    return vehicle_config_apply.provision_from_request(
+        roots,
+        service_uid=account.pw_uid,
+    )
+
+
 def _qualification_request(preview: object) -> tuple[Dict[str, Any], Dict[str, Any], str]:
     """Extract only the reviewed allowlisted target from a preview response."""
 
@@ -1787,7 +1825,9 @@ def _interrupt_qualification(_signum: int, _frame: object) -> None:
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Open MMI vehicle configuration coordinator")
-    parser.add_argument("command", choices=("serve", "status", "qualify-vcan"))
+    parser.add_argument(
+        "command", choices=("serve", "status", "qualify-vcan", "provision-can")
+    )
     args = parser.parse_args(argv)
     if args.command == "status":
         print(json.dumps(client_status(), indent=2, sort_keys=True))
@@ -1798,6 +1838,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         )
     try:
         load_coordinator_environment()
+        if args.command == "provision-can":
+            run_can_provision()
+            return 0
         persisted = read_state(DEFAULT_STATE_FILE)
         if args.command == "qualify-vcan":
             operations = root_apply_operations(suppress_can_provisioning=True)
@@ -1814,7 +1857,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 signal.signal(signal.SIGTERM, previous_sigterm)
             print(json.dumps(state, indent=2, sort_keys=True))
             return 0
-        if persisted["state"] in ACTIVE_STATES:
+        if persisted["state"] in ACTIVE_STATES or (
+            persisted.get("state") == "failed"
+            and persisted.get("stage") == "restore-unverified"
+            and persisted.get("restoration_attempted") is True
+            and persisted.get("restoration_verified") is False
+        ):
             operations = root_apply_operations(
                 suppress_can_provisioning=_interrupted_vcan_qualification(
                     persisted

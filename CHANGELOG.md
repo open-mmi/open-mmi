@@ -21,6 +21,7 @@
 - Managed installs now require a live coordinator socket and successful status round trip before reporting success, and prepared-update rollback preserves the previous coordinator unit and environment file.
 - The update and vehicle-configuration coordinators preserve their shared `/run/open-mmi` runtime directory across service restarts, preventing one coordinator restart from deleting the other coordinator's live Unix socket.
 - Managed installation writes an exact per-user systemd writable-path override so interrupted vcan qualification can be restored by the hardened coordinator service without granting write access to the rest of the service user's home directory.
+- Physical CAN provisioning now runs through a separate fixed oneshot service in the host network namespace with only `CAP_NET_ADMIN`/read-search capabilities. The long-running JSON coordinator remains network-isolated, no longer performs a broad `udevadm trigger`, and retries retained `restore-unverified` snapshots before reopening apply.
 - Fixed the coordinator sandbox installer so its shell function is defined outside the environment-file Python heredoc, and normalize the exact managed canbusd drop-in directory to trusted `0755` permissions before qualification.
 
 

@@ -17,6 +17,7 @@ UPDATE_COORDINATOR_UNIT="open-mmi-update-coordinator.service"
 UPDATE_INSTALLER_UNIT="open-mmi-update-installer.service"
 VEHICLE_CONFIG_COORDINATOR_GROUP="open-mmi-config"
 VEHICLE_CONFIG_COORDINATOR_UNIT="open-mmi-vehicle-config-coordinator.service"
+VEHICLE_CAN_PROVISION_UNIT="open-mmi-vehicle-can-provision.service"
 VEHICLE_CONFIG_COORDINATOR_ENV="/etc/open-mmi/vehicle-config-coordinator.env"
 VEHICLE_CONFIG_COORDINATOR_OVERRIDE_DIR="/etc/systemd/system/$VEHICLE_CONFIG_COORDINATOR_UNIT.d"
 VEHICLE_CONFIG_COORDINATOR_SANDBOX="$VEHICLE_CONFIG_COORDINATOR_OVERRIDE_DIR/10-write-paths.conf"
@@ -686,6 +687,9 @@ install_vehicle_config_coordinator() {
     install -m 0644 -o root -g root \
         "$REPO_ROOT/systemd/system/$VEHICLE_CONFIG_COORDINATOR_UNIT" \
         "/etc/systemd/system/$VEHICLE_CONFIG_COORDINATOR_UNIT"
+    install -m 0644 -o root -g root \
+        "$REPO_ROOT/systemd/system/$VEHICLE_CAN_PROVISION_UNIT" \
+        "/etc/systemd/system/$VEHICLE_CAN_PROVISION_UNIT"
     install -d -m 0755 -o root -g root "$UPDATE_COORDINATOR_STATE_DIR"
     systemctl daemon-reload
     systemctl enable "$VEHICLE_CONFIG_COORDINATOR_UNIT"
@@ -1048,7 +1052,7 @@ cmd_deploy_prepared() {
         "$rollback_root/system-units" \
         "$rollback_root/system-files" \
         "$rollback_root/user-units"
-    for unit in "$UPDATE_COORDINATOR_UNIT" "$UPDATE_INSTALLER_UNIT" "$VEHICLE_CONFIG_COORDINATOR_UNIT"; do
+    for unit in "$UPDATE_COORDINATOR_UNIT" "$UPDATE_INSTALLER_UNIT" "$VEHICLE_CONFIG_COORDINATOR_UNIT" "$VEHICLE_CAN_PROVISION_UNIT"; do
         if [ -e "/etc/systemd/system/$unit" ]; then
             cp -a -- "/etc/systemd/system/$unit" "$rollback_root/system-units/$unit"
         else
@@ -1096,7 +1100,7 @@ cmd_deploy_prepared() {
         if [ -d "${OPEN_MMI_MANAGED_REPOSITORY:-}/.git" ]; then
             sudo -u "$REAL_USER" git -C "$OPEN_MMI_MANAGED_REPOSITORY" reset --hard "$previous_commit" >/dev/null 2>&1 || true
         fi
-        for unit in "$UPDATE_COORDINATOR_UNIT" "$UPDATE_INSTALLER_UNIT" "$VEHICLE_CONFIG_COORDINATOR_UNIT"; do
+        for unit in "$UPDATE_COORDINATOR_UNIT" "$UPDATE_INSTALLER_UNIT" "$VEHICLE_CONFIG_COORDINATOR_UNIT" "$VEHICLE_CAN_PROVISION_UNIT"; do
             if [ -e "$rollback_root/system-units/$unit" ]; then
                 cp -a -- "$rollback_root/system-units/$unit" "/etc/systemd/system/$unit"
             elif [ -e "$rollback_root/system-units/$unit.absent" ]; then
@@ -1267,11 +1271,13 @@ cmd_uninstall() {
     done
     systemctl disable --now "$UPDATE_COORDINATOR_UNIT" >/dev/null 2>&1 || true
     systemctl disable --now "$VEHICLE_CONFIG_COORDINATOR_UNIT" >/dev/null 2>&1 || true
+    systemctl stop "$VEHICLE_CAN_PROVISION_UNIT" >/dev/null 2>&1 || true
     systemctl stop "$UPDATE_INSTALLER_UNIT" >/dev/null 2>&1 || true
     rm -f \
         "/etc/systemd/system/$UPDATE_COORDINATOR_UNIT" \
         "/etc/systemd/system/$UPDATE_INSTALLER_UNIT" \
         "/etc/systemd/system/$VEHICLE_CONFIG_COORDINATOR_UNIT" \
+        "/etc/systemd/system/$VEHICLE_CAN_PROVISION_UNIT" \
         "$VEHICLE_CONFIG_COORDINATOR_ENV" \
         "$VEHICLE_CONFIG_COORDINATOR_SANDBOX"
     rmdir "$VEHICLE_CONFIG_COORDINATOR_OVERRIDE_DIR" >/dev/null 2>&1 || true

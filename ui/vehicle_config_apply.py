@@ -30,12 +30,15 @@ SNAPSHOT_SCHEMA_VERSION = 1
 DEFAULT_DESCRIPTOR_PATH = Path("/etc/open-mmi/vehicle-configuration.json")
 DEFAULT_UDEV_RULE_PATH = Path("/etc/udev/rules.d/80-canbus.rules")
 DEFAULT_ROLLBACK_ROOT = Path("/var/lib/open-mmi/vehicle-configuration-rollback")
+DEFAULT_PROVISION_REQUEST_PATH = Path("/run/open-mmi/vehicle-can-provision-request.json")
+DEFAULT_PROVISION_SERVICE = "open-mmi-vehicle-can-provision.service"
 MAX_ARTIFACT_BYTES = 256 * 1024
 DEFAULT_COMMAND_TIMEOUT = 20.0
 DEFAULT_LOADED_TIMEOUT = 12.0
 DEFAULT_POLL_INTERVAL = 0.1
 _TRANSACTION_RE = re.compile(r"^configuration-[0-9a-f]{32}$")
 _SAFE_USER_RE = re.compile(r"^[a-z_][a-z0-9_-]{0,31}$")
+_PHYSICAL_CAN_INTERFACE_RE = re.compile(r"^can[0-9]{1,3}$")
 
 
 def _unique_json_object(pairs: Sequence[tuple[str, Any]]) -> Dict[str, Any]:
@@ -444,6 +447,172 @@ def _remove_file(path: Path) -> None:
         os.close(parent_fd)
 
 
+def _consume_provision_request(
+    path: Path = DEFAULT_PROVISION_REQUEST_PATH,
+) -> Dict[str, Any]:
+    item = _read_file(path, vehicle_configuration.MAX_DESCRIPTOR_BYTES)
+    expected_uid = 0 if os.geteuid() == 0 else os.geteuid()
+    expected_gid = 0 if os.geteuid() == 0 else os.getegid()
+    if (
+        not item.present
+        or item.mode != 0o600
+        or item.uid != expected_uid
+        or item.gid != expected_gid
+    ):
+        raise ApplyOperationError("CAN provision request is untrusted")
+    try:
+        payload = json.loads(
+            item.content.decode("utf-8"),
+            object_pairs_hook=_unique_json_object,
+            parse_constant=_reject_json_constant,
+        )
+        normalized = vehicle_configuration.normalize_selection(payload)
+    except (
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+        ApplyOperationError,
+        vehicle_configuration.VehicleConfigurationError,
+    ) as exc:
+        raise ApplyOperationError("CAN provision request is invalid") from exc
+    _remove_file(path)
+    return normalized
+
+
+def _run_ip_command(argv: Sequence[str]) -> None:
+    try:
+        result = subprocess.run(
+            list(argv),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=DEFAULT_COMMAND_TIMEOUT,
+            env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C"},
+        )
+    except (OSError, ValueError, subprocess.TimeoutExpired) as exc:
+        raise ApplyOperationError("CAN provisioning command could not run") from exc
+    if result.returncode != 0:
+        raise ApplyOperationError("CAN provisioning command failed")
+
+
+def provision_can_target(
+    target: Mapping[str, Any],
+    roots: vehicle_setup.CatalogueRoots,
+    *,
+    service_uid: int,
+    sys_class_net: Path = Path("/sys/class/net"),
+    command_runner: Optional[Callable[[Sequence[str]], None]] = None,
+) -> str:
+    """Provision one present physical CAN interface from a reviewed target.
+
+    The helper runs in the host network namespace.  It independently revalidates
+    the selected catalogue revisions and never accepts paths, bitrates, commands,
+    or service names from the caller.  An absent interface is left for the
+    generated udev rule to configure on a future hotplug.
+    """
+
+    normalized = vehicle_configuration.normalize_selection(target)
+    maintained_uid = 0 if os.geteuid() == 0 else os.geteuid()
+    render_artifacts(
+        normalized,
+        roots,
+        maintained_uid=maintained_uid,
+        custom_uid=service_uid,
+    )
+    active_bus = normalized["runtime"]["active_bus"]
+    interface = normalized["runtime"]["buses"][active_bus]["interface"]
+    if not _PHYSICAL_CAN_INTERFACE_RE.fullmatch(interface):
+        raise ApplyOperationError("CAN provisioning interface is invalid")
+
+    profile_path = vehicle_setup.resolve_catalogue_path(
+        roots,
+        "profile",
+        normalized["vehicle"]["source"],
+        normalized["vehicle"]["id"],
+    )
+    expected_uid = (
+        maintained_uid
+        if normalized["vehicle"]["source"] == "maintained"
+        else service_uid
+    )
+    profile, revision = _read_catalogue_document(
+        profile_path,
+        vehicle_setup.MAX_PROFILE_BYTES,
+        expected_uid=expected_uid,
+    )
+    if revision != normalized["vehicle"]["revision"]:
+        raise ApplyOperationError("Vehicle profile changed before CAN provisioning")
+    validation = vehicle_setup.validate_profile(profile)
+    if not validation["valid"]:
+        raise ApplyOperationError("Selected vehicle profile is invalid")
+    bus = vehicle_setup._profile_bus_metadata(profile, active_bus)  # type: ignore[attr-defined]
+
+    entry = sys_class_net / interface
+    if not entry.exists():
+        return "absent"
+    try:
+        resolved = entry.resolve(strict=True)
+        virtual_root = (sys_class_net.parent.parent / "devices" / "virtual" / "net").resolve(
+            strict=True
+        )
+        try:
+            resolved.relative_to(virtual_root)
+        except ValueError:
+            pass
+        else:
+            raise ApplyOperationError("Virtual CAN cannot be persistently provisioned")
+        interface_type = int((entry / "type").read_text(encoding="ascii").strip(), 10)
+    except ApplyOperationError:
+        raise
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise ApplyOperationError("CAN interface cannot be inspected safely") from exc
+    if interface_type != 280:
+        raise ApplyOperationError("Selected interface is not SocketCAN")
+
+    provisioning = bus.get("provisioning")
+    bitrate = bus.get("bitrate")
+    if provisioning != "udev":
+        return "not-required"
+    if isinstance(bitrate, bool) or not isinstance(bitrate, int) or bitrate <= 0:
+        raise ApplyOperationError("Selected CAN bitrate is invalid")
+
+    run = command_runner or _run_ip_command
+    run(("/sbin/ip", "link", "set", "dev", interface, "down"))
+    run(
+        (
+            "/sbin/ip",
+            "link",
+            "set",
+            "dev",
+            interface,
+            "type",
+            "can",
+            "bitrate",
+            str(bitrate),
+        )
+    )
+    run(("/sbin/ip", "link", "set", "dev", interface, "up"))
+    return "configured"
+
+
+def provision_from_request(
+    roots: vehicle_setup.CatalogueRoots,
+    *,
+    service_uid: int,
+    request_path: Path = DEFAULT_PROVISION_REQUEST_PATH,
+    sys_class_net: Path = Path("/sys/class/net"),
+    command_runner: Optional[Callable[[Sequence[str]], None]] = None,
+) -> str:
+    target = _consume_provision_request(request_path)
+    return provision_can_target(
+        target,
+        roots,
+        service_uid=service_uid,
+        sys_class_net=sys_class_net,
+        command_runner=command_runner,
+    )
+
+
 def _loaded_identity(value: object) -> Dict[str, str]:
     if not isinstance(value, Mapping) or set(value) != {"source", "id", "revision"}:
         raise ApplyOperationError("Loaded runtime identity is invalid")
@@ -597,6 +766,8 @@ class RootApplyOperations:
         loaded_timeout: float = DEFAULT_LOADED_TIMEOUT,
         poll_interval: float = DEFAULT_POLL_INTERVAL,
         suppress_can_provisioning: bool = False,
+        provision_request_path: Path = DEFAULT_PROVISION_REQUEST_PATH,
+        provision_service: str = DEFAULT_PROVISION_SERVICE,
     ):
         if not _SAFE_USER_RE.fullmatch(service_user):
             raise ApplyOperationError("Service account is invalid")
@@ -626,6 +797,11 @@ class RootApplyOperations:
         self.loaded_timeout = loaded_timeout
         self.poll_interval = poll_interval
         self.suppress_can_provisioning = suppress_can_provisioning
+        _validate_absolute_path(provision_request_path, "CAN provision request")
+        if provision_service != DEFAULT_PROVISION_SERVICE:
+            raise ApplyOperationError("CAN provision service is invalid")
+        self.provision_request_path = provision_request_path
+        self.provision_service = provision_service
         self._restart_started_at: Optional[float] = None
 
     def _run(self, argv: Sequence[str], as_user: bool = False) -> None:
@@ -862,13 +1038,29 @@ class RootApplyOperations:
             gid=0 if os.geteuid() == 0 else os.getegid(),
         )
 
+    def _provision(self, target: Mapping[str, Any]) -> None:
+        if self.suppress_can_provisioning:
+            return
+        normalized = vehicle_configuration.normalize_selection(target)
+        _atomic_replace(
+            self.provision_request_path,
+            _json_bytes(normalized),
+            mode=0o600,
+            uid=0 if os.geteuid() == 0 else os.geteuid(),
+            gid=0 if os.geteuid() == 0 else os.getegid(),
+        )
+        try:
+            self._run(("systemctl", "start", self.provision_service), False)
+        finally:
+            _remove_file(self.provision_request_path)
+
     def reload(self, target: Mapping[str, Any]) -> None:
         vehicle_configuration.normalize_selection(target)
         self._run(("systemctl", "--user", "daemon-reload"), True)
         if self.suppress_can_provisioning:
             return
         self._run(("udevadm", "control", "--reload-rules"), False)
-        self._run(("udevadm", "trigger", "--subsystem-match=net"), False)
+        self._provision(target)
 
     def restart(self) -> None:
         self._restart_started_at = self.wall_clock()
@@ -920,7 +1112,20 @@ class RootApplyOperations:
         self._run(("systemctl", "--user", "daemon-reload"), True)
         if not self.suppress_can_provisioning:
             self._run(("udevadm", "control", "--reload-rules"), False)
-            self._run(("udevadm", "trigger", "--subsystem-match=net"), False)
+            previous_target = {
+                "vehicle": dict(snapshot.previous_loaded["vehicle"]),
+                "bindings": dict(snapshot.previous_loaded["bindings"]),
+                "runtime": {
+                    "mode": "single",
+                    "active_bus": snapshot.previous_loaded["active_bus"],
+                    "buses": {
+                        snapshot.previous_loaded["active_bus"]: {
+                            "interface": snapshot.previous_loaded["interface"]
+                        }
+                    },
+                },
+            }
+            self._provision(previous_target)
 
     def restoration_verified(
         self, snapshot: object, loaded: Mapping[str, Any]

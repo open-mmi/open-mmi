@@ -1,0 +1,28 @@
+[Unit]
+Description=Open MMI Current CAN Interface Provisioning
+Documentation=https://github.com/open-mmi/open-mmi
+After=local-fs.target systemd-udevd.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/open-mmi/vehicle-config-coordinator.env
+ExecStart=/opt/open-mmi/venv/bin/open-mmi-vehicle-config-coordinator provision-can
+UMask=0077
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectClock=true
+ProtectControlGroups=true
+ProtectHome=read-only
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+ReadWritePaths=/run/open-mmi
+RestrictAddressFamilies=AF_NETLINK AF_UNIX
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_DAC_READ_SEARCH

@@ -121,7 +121,8 @@ protocol. It:
 - renders canonical JSON, the canbusd systemd runtime drop-in and active-bus udev rules;
 - stores a durable root-owned rollback manifest plus checksummed file payloads;
 - atomically replaces each fixed destination through sibling files and directory fsync;
-- invokes only fixed `systemctl --user` and `udevadm` argument lists;
+- invokes only fixed `systemctl --user`, `udevadm control --reload-rules`, and a fixed system-service start;
+- hands host-network CAN link setup to a separate oneshot helper that consumes one root-owned normalized target and executes only fixed `ip link` argument lists;
 - requires loaded-runtime evidence newer than the service restart; and
 - verifies both restored files and the exact previous loaded identities, revisions, bus and interface.
 
@@ -150,10 +151,15 @@ successful round trip removes its snapshot and records
 `stage=qualification-restored`; a failed or interrupted transaction remains available
 to the root-owned recovery path.
 
-The system service sandbox is widened only to `/etc/open-mmi`, `/etc/udev/rules.d`, the
-coordinator state/runtime directories, and the generated per-user canbusd drop-in
-directory. It remains network-isolated. The public protocol exposes fixed apply but
-continues to reject caller-selected restore.
+The long-running coordinator service sandbox is widened only to `/etc/open-mmi`,
+`/etc/udev/rules.d`, the coordinator state/runtime directories, and the generated
+per-user canbusd drop-in directory. It remains network-isolated. A separate static
+oneshot helper enters the host network namespace with only `CAP_NET_ADMIN` and
+`CAP_DAC_READ_SEARCH`, consumes a root-owned request from `/run/open-mmi`, independently
+revalidates catalogue revisions and interface identity, and configures only the reviewed
+physical `canN` interface. It never accepts paths, commands, service names, or bitrates
+from the socket caller. The public protocol exposes fixed apply but continues to reject
+caller-selected restore.
 
 ## Fixed public apply protocol
 
