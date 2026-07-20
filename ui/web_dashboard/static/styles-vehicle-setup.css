@@ -277,3 +277,16 @@
 .openmmi-vehicle-custom-editor-actions {
   align-items: center;
 }
+
+.openmmi-vehicle-custom-import {
+  display: inline-flex;
+  align-items: center;
+}
+
+.openmmi-vehicle-custom-import-file {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}

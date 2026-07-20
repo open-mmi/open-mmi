@@ -242,6 +242,29 @@ function fixture(options = {}) {
           applied: false,
         };
       }
+      if (path === vehicleSetup.IMPORT_CUSTOM_ENDPOINT) {
+        if (options.importError) throw options.importError;
+        const collectionName = body.kind === "profile" ? "profiles" : "bindings";
+        const collection = statusPayload.catalogue[collectionName];
+        const imported = {
+          source: "custom", id: body.id, display_name: body.id.replaceAll(/[-_]/g, " "),
+          valid: true, revision: options.importedRevision || "sha256:imported-custom",
+          validation: { valid: true, errors: [], warnings: [] },
+        };
+        if (body.kind === "profile") {
+          imported.default_bus = "comfort";
+          imported.buses = [{ name: "comfort", interface: "can0", bitrate: 100000 }];
+        } else {
+          imported.binding_count = 1;
+        }
+        collection.push(imported);
+        customDocuments[`${body.kind}:${body.id}`] = body.content;
+        return options.imported || {
+          ok: true, api_version: 1, action: "import-custom-item", kind: body.kind,
+          custom: { source: "custom", id: body.id, revision: imported.revision },
+          validation: { valid: true, errors: [], warnings: [] }, applied: false,
+        };
+      }
       if (path === vehicleSetup.MANAGE_CUSTOM_ENDPOINT) {
         if (options.manageError) throw options.manageError;
         const collection = statusPayload.catalogue[body.kind === "profile" ? "profiles" : "bindings"];
@@ -358,6 +381,39 @@ test("maintained items create revision-bound custom copies in the user catalogue
   assert.doesNotMatch(html, /data-testid="vehicle-setup-copy-vehicle"/);
 });
 
+
+test("custom JSON files import as validated unapplied drafts", async () => {
+  const state = fixture({ promptResult: "imported-seat" });
+  const controller = vehicleSetup.createController(state);
+  await controller.refresh();
+
+  let html = controller.template();
+  assert.match(html, /Import profile JSON/);
+  assert.match(html, /Import bindings JSON/);
+
+  const content = '{\n  "default_bus": "comfort",\n  "rules": [],\n  "presence": [],\n  "status": []\n}\n';
+  const file = {
+    name: "Seat Profile.json",
+    size: Buffer.byteLength(content),
+    async text() { return content; },
+  };
+  const result = await controller.importCustomFile("vehicle", file);
+
+  assert.equal(result.custom.id, "imported-seat");
+  assert.deepEqual(state.prompts, [[
+    "Choose an id for the imported custom profile. Use lowercase letters, numbers, hyphens or underscores.",
+    "seat-profile",
+  ]]);
+  assert.deepEqual(state.calls.find((call) => call[1] === vehicleSetup.IMPORT_CUSTOM_ENDPOINT), [
+    "POST", vehicleSetup.IMPORT_CUSTOM_ENDPOINT,
+    { kind: "profile", id: "imported-seat", content },
+  ]);
+  assert.equal(controller.draft().vehicle, "custom:imported-seat");
+  assert.equal(controller.draftDiffers(), true);
+  html = controller.template();
+  assert.match(html, /imported and selected as an unapplied draft/);
+  assert.equal(state.calls.some((call) => call[1] === vehicleSetup.APPLY_ENDPOINT), false);
+});
 
 test("custom lifecycle controls are custom-only and active items stay protected", async () => {
   const status = payload();

@@ -689,6 +689,124 @@ class VehicleCatalogueTests(unittest.TestCase):
             )
         self.assertFalse(self.custom.exists())
 
+    def test_profile_import_is_validated_private_and_unapplied(self):
+        content = json.dumps(self.profile_document, indent=2) + "\n\n"
+        maintained_before = self.profile_path.read_bytes()
+
+        result = vehicle_catalogue.import_custom_item(
+            {"kind": "profile", "id": "imported-seat", "content": content},
+            roots=self.roots,
+        )
+
+        destination = self.custom / "vehicles" / "imported-seat" / "config.json"
+        provenance_path = (
+            self.custom / ".open-mmi-provenance" / "profile" / "imported-seat.json"
+        )
+        provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+        self.assertEqual(destination.read_text(encoding="utf-8"), content)
+        self.assertEqual(self.profile_path.read_bytes(), maintained_before)
+        self.assertEqual(stat.S_IMODE(destination.parent.stat().st_mode), 0o700)
+        self.assertEqual(stat.S_IMODE(destination.stat().st_mode), 0o600)
+        self.assertEqual(stat.S_IMODE(provenance_path.stat().st_mode), 0o600)
+        self.assertEqual(provenance["origin"], {"type": "import"})
+        self.assertNotIn("template", provenance)
+        self.assertEqual(result["action"], "import-custom-item")
+        self.assertEqual(result["custom"], {
+            "source": "custom",
+            "id": "imported-seat",
+            "revision": self._revision(destination),
+        })
+        self.assertTrue(result["validation"]["valid"])
+        self.assertFalse(result["applied"])
+        catalogue = vehicle_setup.catalogue_payload(self.roots)
+        self.assertIn(
+            ("custom", "imported-seat"),
+            [(entry["source"], entry["id"]) for entry in catalogue["profiles"]],
+        )
+
+    def test_bindings_import_preserves_exact_json_bytes(self):
+        content = json.dumps(self.bindings_document, separators=(",", ":")) + "\r\n"
+        result = vehicle_catalogue.import_custom_item(
+            {"kind": "bindings", "id": "imported-controls", "content": content},
+            roots=self.roots,
+        )
+        destination = self.custom / "bindings" / "imported-controls.json"
+        self.assertEqual(destination.read_bytes(), content.encode("utf-8"))
+        self.assertEqual(stat.S_IMODE(destination.stat().st_mode), 0o600)
+        self.assertEqual(result["custom"]["revision"], self._revision(destination))
+        self.assertFalse(result["applied"])
+
+    def test_invalid_import_and_existing_destination_never_mutate(self):
+        invalid = '{"rules":[{"id":"bad"}]}\n'
+        with self.assertRaisesRegex(
+            vehicle_catalogue.VehicleCatalogueError,
+            "not valid",
+        ):
+            vehicle_catalogue.import_custom_item(
+                {"kind": "profile", "id": "invalid-seat", "content": invalid},
+                roots=self.roots,
+            )
+        self.assertFalse((self.custom / "vehicles" / "invalid-seat").exists())
+        self.assertFalse((
+            self.custom / ".open-mmi-provenance" / "profile" / "invalid-seat.json"
+        ).exists())
+
+        destination = self._copy_custom("bindings", "existing-controls")
+        before = destination.read_bytes()
+        with self.assertRaises(
+            vehicle_catalogue.VehicleCatalogueConflictError
+        ) as raised:
+            vehicle_catalogue.import_custom_item(
+                {
+                    "kind": "bindings",
+                    "id": "existing-controls",
+                    "content": json.dumps(self.bindings_document),
+                },
+                roots=self.roots,
+            )
+        self.assertEqual(raised.exception.code, "custom-exists")
+        self.assertEqual(destination.read_bytes(), before)
+
+    def test_import_rejects_duplicate_keys_and_oversize_before_creation(self):
+        with self.assertRaisesRegex(
+            vehicle_catalogue.VehicleCatalogueError,
+            "Duplicate catalogue JSON field",
+        ):
+            vehicle_catalogue.import_custom_item(
+                {
+                    "kind": "bindings",
+                    "id": "duplicate-keys",
+                    "content": '{"play":{},"play":{}}',
+                },
+                roots=self.roots,
+            )
+        with self.assertRaisesRegex(
+            vehicle_catalogue.VehicleCatalogueError,
+            "size limit",
+        ):
+            vehicle_catalogue.import_custom_item(
+                {
+                    "kind": "bindings",
+                    "id": "too-large",
+                    "content": " " * (vehicle_setup.MAX_BINDINGS_BYTES + 1),
+                },
+                roots=self.roots,
+            )
+        self.assertFalse(self.custom.exists())
+
+    def test_import_request_schema_is_strict(self):
+        requests = [
+            {"kind": "profile", "id": "valid-id"},
+            {"kind": "profile", "id": "../escape", "content": "{}"},
+            {"kind": "maintained", "id": "valid-id", "content": "{}"},
+            {"kind": "bindings", "id": "valid-id", "content": {}, "path": "/tmp/x"},
+        ]
+        for request in requests:
+            with self.subTest(request=request):
+                with self.assertRaises(vehicle_catalogue.VehicleCatalogueError):
+                    vehicle_catalogue.import_custom_item(request, roots=self.roots)
+        self.assertFalse(self.custom.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

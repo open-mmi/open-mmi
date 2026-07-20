@@ -155,7 +155,7 @@ Settings UI
 4. Add the canonical descriptor and privileged apply transaction.
 5. Qualify maintained selection through CLI and `vcan` before exposing writes in UI.
 6. Add the Vehicle setup selector and review screen.
-7. Add custom copy, revision-safe JSON editing, validation and activation.
+7. Add custom copy/import, revision-safe JSON editing, validation and activation.
 8. Add rename, duplicate and protected deletion, then last-known-good user revisions.
 9. Add bindings editing through an explicit action registry.
 10. Add broader structured profile editing only after rule schemas are complete.

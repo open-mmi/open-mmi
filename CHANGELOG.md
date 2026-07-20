@@ -15,6 +15,7 @@
 - Private custom-copy provenance sidecars recording the template identity, template revision, Open MMI build identity, display name and creation time without exposing those files to `canbusd`.
 - Custom-only JSON loading and editing in **Settings → Vehicle setup**. Loads return exact content plus its revision; saves require that revision, validate before writing, atomically replace only the user-owned file and remain explicitly unapplied until a separate review and confirmation.
 - Revision-bound custom lifecycle controls for duplicate, rename and delete. Maintained items expose no lifecycle actions; active custom items can be duplicated but cannot be renamed or deleted until another item is applied. Provenance follows duplicates and renames, and every lifecycle result remains unapplied.
+- Local same-origin JSON import for new custom profiles and bindings. The server validates strict UTF-8 JSON and the complete profile/bindings schema before a private no-overwrite creation, records import provenance, selects the new item only as a draft, and never applies or restarts the CAN service.
 
 ### Security
 - Privileged rendering reopens catalogue files through descriptor-relative no-follow traversal, verifies maintained/custom ownership and non-writable modes, and rechecks the reviewed content revisions immediately before installation.

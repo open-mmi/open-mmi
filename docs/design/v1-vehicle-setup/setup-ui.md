@@ -195,6 +195,7 @@ The user chooses:
 - whether to open the new draft immediately.
 
 Creation does not activate the file. Existing identifiers are never overwritten.
+A separate **Import profile JSON** / **Import bindings JSON** control accepts a local JSON file, prompts for a new safe identifier, validates it on the server, and selects the imported item only as an unapplied draft.
 
 ## Editor screen
 

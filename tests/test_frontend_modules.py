@@ -187,6 +187,7 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
         self.assertIn('const LOAD_CUSTOM_ENDPOINT = "/api/system/vehicle-custom/load";', source)
         self.assertIn('const SAVE_CUSTOM_ENDPOINT = "/api/system/vehicle-custom/save";', source)
         self.assertIn('const MANAGE_CUSTOM_ENDPOINT = "/api/system/vehicle-custom/manage";', source)
+        self.assertIn('const IMPORT_CUSTOM_ENDPOINT = "/api/system/vehicle-custom/import";', source)
         self.assertIn(
             'const COORDINATOR_ENDPOINT = "/api/system/vehicle-setup/coordinator";',
             source,
@@ -198,6 +199,7 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
         self.assertIn("api.postJson(LOAD_CUSTOM_ENDPOINT", source)
         self.assertIn("api.postJson(SAVE_CUSTOM_ENDPOINT", source)
         self.assertIn("api.postJson(MANAGE_CUSTOM_ENDPOINT", source)
+        self.assertIn("api.postJson(IMPORT_CUSTOM_ENDPOINT", source)
         self.assertIn("Use maintained ${label} as template", source)
         self.assertIn("Stored in your user catalogue", source)
         self.assertIn('data-openmmi-vehicle-custom-edit', source)
@@ -206,6 +208,8 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
         self.assertIn('data-openmmi-vehicle-custom-manage="delete"', source)
         self.assertIn("expected_revision", source)
         self.assertIn("Lifecycle changes do not apply or restart", source)
+        self.assertIn("Import ${label} JSON", source)
+        self.assertIn("selected as an unapplied draft", source)
         self.assertNotIn("Edit maintained", source)
         self.assertNotIn("Delete maintained", source)
         self.assertIn("expected_configuration_revision", source)

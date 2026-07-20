@@ -421,6 +421,8 @@ async function loadDashboard(page, options = {}) {
     window.__openMmiVehicleSetupSaveBodies = [];
     window.__openMmiVehicleSetupManageRequests = 0;
     window.__openMmiVehicleSetupManageBodies = [];
+    window.__openMmiVehicleSetupImportRequests = 0;
+    window.__openMmiVehicleSetupImportBodies = [];
     window.__openMmiVehicleSetupCustomContents = {
       "profile:my-seat": '{\n  "default_bus": "comfort",\n  "can_buses": {"comfort": {"interface": "can1", "bitrate": 100000}},\n  "rules": [],\n  "presence": [],\n  "status": []\n}\n',
       "bindings:my-controls": '{}\n',
@@ -534,6 +536,33 @@ async function loadDashboard(page, options = {}) {
           ok: true, api_version: 1, action: "manage-custom-item", operation: body.action, kind: body.kind,
           source: { source: "custom", id: body.id, revision: source.revision },
           custom: { source: "custom", id: body.new_id, revision: source.revision }, applied: false,
+        });
+      }
+      if (url.includes("/api/system/vehicle-custom/import")) {
+        const body = JSON.parse(init.body || "{}");
+        window.__openMmiVehicleSetupImportRequests += 1;
+        window.__openMmiVehicleSetupImportBodies.push(body);
+        const collection = body.kind === "profile" ? "profiles" : "bindings";
+        const custom = {
+          source: "custom",
+          id: body.id,
+          display_name: body.id.split(/[-_]/).map((part) => part ? part[0].toUpperCase() + part.slice(1) : "").join(" "),
+          valid: true,
+          revision: "sha256:imported-custom",
+          validation: { valid: true, errors: [], warnings: [] },
+        };
+        if (body.kind === "profile") {
+          custom.default_bus = "comfort";
+          custom.buses = [{ name: "comfort", interface: "can0", bitrate: 100000 }];
+        } else {
+          custom.binding_count = 1;
+        }
+        window.__openMmiVehicleSetupFixture.catalogue[collection].push(custom);
+        window.__openMmiVehicleSetupCustomContents[`${body.kind}:${body.id}`] = body.content;
+        return json({
+          ok: true, api_version: 1, action: "import-custom-item", kind: body.kind,
+          custom: { source: "custom", id: body.id, revision: custom.revision },
+          validation: { valid: true, errors: [], warnings: [] }, applied: false,
         });
       }
       if (url.includes("/api/system/vehicle-custom/create")) {
@@ -786,6 +815,12 @@ async function loadDashboard(page, options = {}) {
     },
     async vehicleSetupManageBodies() {
       return page.evaluate(() => window.__openMmiVehicleSetupManageBodies);
+    },
+    async vehicleSetupImportRequests() {
+      return page.evaluate(() => window.__openMmiVehicleSetupImportRequests);
+    },
+    async vehicleSetupImportBodies() {
+      return page.evaluate(() => window.__openMmiVehicleSetupImportBodies);
     },
     async setDashboardOnline(online) {
       await page.evaluate((value) => { window.__openMmiDashboardOnline = Boolean(value); }, online);
@@ -1372,6 +1407,36 @@ test("vehicle setup copies maintained templates into the user catalogue", async 
   await expectNoRuntimeFailures(failures);
 });
 
+
+test("vehicle setup imports JSON as a new unapplied custom draft", async ({ page }) => {
+  const failures = captureRuntimeFailures(page);
+  const dashboard = await loadDashboard(page);
+  await openSettings(page);
+  await page.locator('[data-openmmi-settings-section="vehicle-setup"]').click();
+  await expect(page.locator('[data-openmmi-vehicle-setup-ready="true"]')).toBeVisible();
+
+  await expect(page.getByTestId("vehicle-setup-import-vehicle")).toBeEnabled();
+  const content = '{\n  "default_bus": "comfort",\n  "can_buses": {"comfort": {"interface": "can0", "bitrate": 100000}},\n  "rules": [],\n  "presence": [],\n  "status": []\n}\n';
+  page.once("dialog", async (dialog) => {
+    expect(dialog.type()).toBe("prompt");
+    expect(dialog.defaultValue()).toBe("seat-import");
+    await dialog.accept("imported-seat");
+  });
+  await page.getByTestId("vehicle-setup-import-file-vehicle").setInputFiles({
+    name: "Seat Import.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(content),
+  });
+
+  await expect(page.getByTestId("vehicle-setup-profile")).toHaveValue("custom:imported-seat");
+  await expect(page.getByTestId("vehicle-setup-copy-feedback")).toContainText("imported and selected as an unapplied draft");
+  expect(await dashboard.vehicleSetupImportRequests()).toBe(1);
+  expect(await dashboard.vehicleSetupImportBodies()).toEqual([{
+    kind: "profile", id: "imported-seat", content,
+  }]);
+  expect(await dashboard.vehicleSetupApplyRequests()).toBe(0);
+  await expectNoRuntimeFailures(failures);
+});
 
 test("vehicle setup manages only inactive custom catalogue items without applying", async ({ page }) => {
   const failures = captureRuntimeFailures(page);

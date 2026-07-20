@@ -356,6 +356,7 @@ POST /api/system/vehicle-custom/create
 POST /api/system/vehicle-custom/load
 POST /api/system/vehicle-custom/save
 POST /api/system/vehicle-custom/manage
+POST /api/system/vehicle-custom/import
 ```
 
 Creation accepts only this exact small body:
@@ -375,6 +376,21 @@ Only `profile` and `bindings` are accepted kinds. `template_source` must be
 root, verifies the exact content revision, parses and validates it, and creates a new
 private file under the fixed custom root. Existing custom identifiers are conflicts and
 are never replaced. Creation does not activate the new item.
+
+Import accepts only a fixed kind, new identifier and bounded JSON text:
+
+```json
+{
+  "kind": "profile",
+  "id": "imported-seat",
+  "content": "{\n  \"rules\": []\n}\n"
+}
+```
+
+The server rejects duplicate keys, non-finite values, invalid UTF-8, invalid profile or
+bindings semantics, path-shaped identifiers and existing destinations before any custom
+file is published. A successful import creates a private provenance sidecar with
+`origin.type: import`, returns `applied: false`, and does not change the active setup.
 
 Load accepts only:
 

@@ -61,6 +61,7 @@ and adapter hotplug.
 - [x] safe custom-only load/save with revision tokens, validation and atomic replacement;
 - [x] managed daemon revisions remain pinned across editor saves until reviewed Apply restarts it;
 - [x] revision-bound custom duplicate, inactive rename and inactive deletion with lifecycle-lock exclusion;
+- [x] strict JSON import into a new private custom identity with validation, no overwrite and no activation;
 - [x] active custom identities are protected from rename/delete in both UI and backend;
 - [x] install/update pre-creates trusted transaction locks without replacing held lock inodes;
 - [x] qualify maintained/custom activation switching through the existing reviewed apply flow;
@@ -141,6 +142,7 @@ Playwright coverage includes:
 - coordinator unavailable;
 - restored failure;
 - custom identifier conflict;
+- valid and invalid custom JSON import, existing import destination and unapplied selection;
 - stale custom lifecycle revision and existing lifecycle destination;
 - active custom rename/delete rejection;
 - lifecycle-lock contention during duplicate, rename or delete;

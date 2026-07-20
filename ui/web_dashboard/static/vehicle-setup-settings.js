@@ -12,6 +12,7 @@
   const LOAD_CUSTOM_ENDPOINT = "/api/system/vehicle-custom/load";
   const SAVE_CUSTOM_ENDPOINT = "/api/system/vehicle-custom/save";
   const MANAGE_CUSTOM_ENDPOINT = "/api/system/vehicle-custom/manage";
+  const IMPORT_CUSTOM_ENDPOINT = "/api/system/vehicle-custom/import";
   const COORDINATOR_ENDPOINT = "/api/system/vehicle-setup/coordinator";
   const ACTIVE_APPLY_STATES = new Set(["validating", "applying", "reloading", "verifying", "restoring"]);
   const TERMINAL_APPLY_STATES = new Set(["idle", "complete", "failed"]);
@@ -119,6 +120,7 @@
     let editorMessage = "";
     let editorMessageKind = "";
     let lifecycleBusyKind = "";
+    let importBusyKind = "";
 
     function activeSection() {
       return documentRef.querySelector("[data-openmmi-settings-section].active")
@@ -249,7 +251,7 @@
         const editing = editor?.kind === kind && editor?.id === entry.id;
         const active = identityKey(activeIdentity(kind)) === identityKey(entry);
         const disabled = loading || previewLoading || applyBusy || Boolean(copyBusyKind)
-          || Boolean(lifecycleBusyKind) || editorBusy || Boolean(editor) || entry.valid === false;
+          || Boolean(lifecycleBusyKind) || Boolean(importBusyKind) || editorBusy || Boolean(editor) || entry.valid === false;
         const destructiveDisabled = disabled || active;
         const busy = lifecycleBusyKind === kind;
         return `
@@ -266,7 +268,7 @@
       if (entry?.source !== "maintained") return "";
       const busy = copyBusyKind === kind;
       const disabled = loading || previewLoading || applyBusy || Boolean(copyBusyKind)
-        || Boolean(lifecycleBusyKind) || editorBusy || Boolean(editor)
+        || Boolean(lifecycleBusyKind) || Boolean(importBusyKind) || editorBusy || Boolean(editor)
         || entry.valid === false
         || typeof entry.revision !== "string"
         || !entry.revision;
@@ -285,6 +287,94 @@
       if (base.length <= 64 && IDENTIFIER_RE.test(base)) return base;
       const shortened = `custom-${String(identifier || "item").slice(0, 56)}`;
       return IDENTIFIER_RE.test(shortened) ? shortened : "custom-item";
+    }
+
+    function suggestedImportId(filename, kind) {
+      const fallback = kind === "vehicle" ? "imported-profile" : "imported-bindings";
+      const withoutExtension = String(filename || "").replace(/\.json$/i, "");
+      const normalized = withoutExtension
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]+/g, "-")
+        .replace(/^[-_]+|[-_]+$/g, "")
+        .slice(0, 64);
+      return IDENTIFIER_RE.test(normalized) ? normalized : fallback;
+    }
+
+    function importControl(kind) {
+      const label = kind === "vehicle" ? "profile" : "bindings";
+      const busy = importBusyKind === kind;
+      const disabled = loading || previewLoading || applyBusy || Boolean(copyBusyKind)
+        || Boolean(lifecycleBusyKind) || Boolean(importBusyKind) || editorBusy || Boolean(editor);
+      return `
+        <div class="openmmi-vehicle-custom-import">
+          <button type="button" class="openmmi-settings-link" data-openmmi-vehicle-custom-import="${escapeHtml(kind)}" data-testid="vehicle-setup-import-${escapeHtml(kind)}" ${disabled ? "disabled" : ""}>${busy ? "Importing…" : `Import ${label} JSON`}</button>
+          <input class="openmmi-vehicle-custom-import-file" type="file" accept="application/json,.json" data-openmmi-vehicle-custom-import-file="${escapeHtml(kind)}" data-testid="vehicle-setup-import-file-${escapeHtml(kind)}" tabindex="-1" aria-hidden="true">
+        </div>`;
+    }
+
+    async function importCustomFile(kind, file) {
+      const label = editorKind(kind);
+      if (!file || typeof file.text !== "function") {
+        throw new Error(`Choose a JSON file to import as custom ${label}`);
+      }
+      const maximum = label === "profile" ? 1024 * 1024 : 256 * 1024;
+      if (Number(file.size) > maximum) {
+        throw new Error(`The custom ${label} JSON file exceeds the size limit`);
+      }
+      const suggested = suggestedImportId(file.name, kind);
+      const answer = windowRef.prompt(
+        `Choose an id for the imported custom ${label}. Use lowercase letters, numbers, hyphens or underscores.`,
+        suggested,
+      );
+      if (answer === null) return null;
+      const identifier = String(answer || "").trim();
+      if (!IDENTIFIER_RE.test(identifier)) {
+        setCopyMessage("The custom id is invalid. Use lowercase letters, numbers, hyphens or underscores.", "warning");
+        render();
+        return null;
+      }
+      importBusyKind = kind;
+      setCopyMessage(`Reading and validating custom ${label} JSON…`, "warning");
+      clearPreview();
+      render();
+      try {
+        const content = await file.text();
+        if (typeof content !== "string") throw new Error("The selected JSON file could not be read");
+        const result = await api.postJson(IMPORT_CUSTOM_ENDPOINT, {
+          kind: label,
+          id: identifier,
+          content,
+        }, { usePayloadError: true });
+        if (result?.custom?.source !== "custom"
+          || result?.custom?.id !== identifier
+          || typeof result?.custom?.revision !== "string"
+          || result?.applied !== false) {
+          throw new Error("The custom catalogue import response was unsafe");
+        }
+        const previousDraft = draft ? { ...draft } : null;
+        snapshot = await api.getJson(ENDPOINT, { usePayloadError: true });
+        if (!previousDraft) seedDraft();
+        else draft = previousDraft;
+        const key = identityKey(result.custom);
+        if (!entryFor(catalogue(kind), key)) {
+          throw new Error("The imported custom catalogue item could not be reloaded");
+        }
+        draft[kind] = key;
+        draftDirty = draftDiffers();
+        setCopyMessage(`Custom ${label} ${identifier} was imported and selected as an unapplied draft.`, "success");
+        return result;
+      } catch (error) {
+        const code = String(error?.payload?.code || "");
+        if (code === "custom-exists") {
+          setCopyMessage("A custom item with that id already exists. Choose another id.", "warning");
+        } else {
+          setCopyMessage(error?.message || `Could not import the custom ${label}`, "error");
+        }
+        throw error;
+      } finally {
+        importBusyKind = "";
+        render();
+      }
     }
 
     function editorKind(kind) {
@@ -1016,19 +1106,21 @@
             <div class="openmmi-vehicle-setup-selector">
               <label for="openMmiVehicleProfile"><strong>Vehicle profile</strong><small>${escapeHtml(validationNote(profile, "Choose a valid profile"))}</small></label>
               <div class="openmmi-vehicle-setup-selection-control">
-                <select id="openMmiVehicleProfile" data-openmmi-vehicle-setup-select="vehicle" data-testid="vehicle-setup-profile" ${loading || previewLoading || applyBusy || copyBusyKind || lifecycleBusyKind || editor || editorBusy ? "disabled" : ""}>
+                <select id="openMmiVehicleProfile" data-openmmi-vehicle-setup-select="vehicle" data-testid="vehicle-setup-profile" ${loading || previewLoading || applyBusy || copyBusyKind || lifecycleBusyKind || importBusyKind || editor || editorBusy ? "disabled" : ""}>
                   ${optionGroups(catalogue("vehicle"), draft.vehicle, activeVehicle)}
                 </select>
                 ${customCopyControl("vehicle", profile)}
+                ${importControl("vehicle")}
               </div>
             </div>
             <div class="openmmi-vehicle-setup-selector">
               <label for="openMmiVehicleBindings"><strong>Bindings</strong><small>${escapeHtml(validationNote(bindings, "Choose valid bindings"))}</small></label>
               <div class="openmmi-vehicle-setup-selection-control">
-                <select id="openMmiVehicleBindings" data-openmmi-vehicle-setup-select="bindings" data-testid="vehicle-setup-bindings" ${loading || previewLoading || applyBusy || copyBusyKind || lifecycleBusyKind || editor || editorBusy ? "disabled" : ""}>
+                <select id="openMmiVehicleBindings" data-openmmi-vehicle-setup-select="bindings" data-testid="vehicle-setup-bindings" ${loading || previewLoading || applyBusy || copyBusyKind || lifecycleBusyKind || importBusyKind || editor || editorBusy ? "disabled" : ""}>
                   ${optionGroups(catalogue("bindings"), draft.bindings, activeBindings)}
                 </select>
                 ${customCopyControl("bindings", bindings)}
+                ${importControl("bindings")}
               </div>
             </div>
           </div>
@@ -1044,7 +1136,7 @@
           </div>
 
           <div class="openmmi-config-actions openmmi-vehicle-setup-actions">
-            <button type="button" class="openmmi-settings-link" data-openmmi-vehicle-setup-refresh="true" data-testid="vehicle-setup-refresh" ${loading || previewLoading || applyBusy || copyBusyKind || lifecycleBusyKind || editor || editorBusy ? "disabled" : ""}>Refresh status</button>
+            <button type="button" class="openmmi-settings-link" data-openmmi-vehicle-setup-refresh="true" data-testid="vehicle-setup-refresh" ${loading || previewLoading || applyBusy || copyBusyKind || lifecycleBusyKind || importBusyKind || editor || editorBusy ? "disabled" : ""}>Refresh status</button>
             <button type="button" class="openmmi-setting-pill" data-openmmi-vehicle-setup-review="true" data-testid="vehicle-setup-review" ${canReview ? "" : "disabled"}>${previewLoading ? "Checking setup…" : preview ? "Refresh review" : changed ? "Review changes" : "Review current setup"}</button>
           </div>
           <p class="openmmi-vehicle-setup-note">Applying requires this exact review and an explicit confirmation. The coordinator verifies the loaded runtime and restores the previous setup after a failed mutation.</p>
@@ -1109,6 +1201,13 @@
     }
 
     function changeHandler(event) {
+      const importInput = event.target?.closest?.("[data-openmmi-vehicle-custom-import-file]");
+      if (importInput) {
+        const file = importInput.files?.[0] || null;
+        importInput.value = "";
+        if (file) importCustomFile(importInput.dataset.openmmiVehicleCustomImportFile, file).catch(() => {});
+        return;
+      }
       const select = event.target?.closest?.("[data-openmmi-vehicle-setup-select]");
       if (!select) return;
       setDraft(select.dataset.openmmiVehicleSetupSelect, select.value);
@@ -1118,6 +1217,11 @@
       const refreshButton = event.target?.closest?.("[data-openmmi-vehicle-setup-refresh]");
       if (refreshButton) {
         refresh().catch(() => {});
+        return;
+      }
+      const importButton = event.target?.closest?.("[data-openmmi-vehicle-custom-import]");
+      if (importButton && !importButton.disabled) {
+        documentRef.querySelector?.(`[data-openmmi-vehicle-custom-import-file="${importButton.dataset.openmmiVehicleCustomImport}"]`)?.click?.();
         return;
       }
       const copyButton = event.target?.closest?.("[data-openmmi-vehicle-setup-copy]");
@@ -1187,6 +1291,7 @@
       copyTemplate,
       openCustomEditor,
       manageCustomItem,
+      importCustomFile,
       saveCustomEditor,
       closeCustomEditor,
       setEditorContent,
@@ -1225,6 +1330,7 @@
     LOAD_CUSTOM_ENDPOINT,
     SAVE_CUSTOM_ENDPOINT,
     MANAGE_CUSTOM_ENDPOINT,
+    IMPORT_CUSTOM_ENDPOINT,
     COORDINATOR_ENDPOINT,
     createController,
     escapeHtml,

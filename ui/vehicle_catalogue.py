@@ -27,6 +27,7 @@ COPY_ACTION = "copy-maintained-template"
 LOAD_ACTION = "load-custom-item"
 SAVE_ACTION = "save-custom-item"
 MANAGE_ACTION = "manage-custom-item"
+IMPORT_ACTION = "import-custom-item"
 DEFAULT_LIFECYCLE_LOCK = Path("/run/open-mmi/lifecycle.lock")
 MAX_PROVENANCE_BYTES = 64 * 1024
 _CATALOGUE_WRITE_LOCK = threading.Lock()
@@ -124,6 +125,23 @@ def _normalize_lifecycle_request(
         if new_id == identifier:
             raise VehicleCatalogueError("New custom catalogue id must be different")
     return str(action), str(kind), identifier, revision, new_id
+
+
+def _normalize_import_request(payload: object) -> tuple[str, str, bytes]:
+    if not isinstance(payload, Mapping) or set(payload) != {"kind", "id", "content"}:
+        raise VehicleCatalogueError("Invalid custom catalogue import schema")
+    kind = payload.get("kind")
+    if kind not in _KIND_LIMITS:
+        raise VehicleCatalogueError("Custom catalogue kind must be profile or bindings")
+    identifier = _validate_identifier(payload.get("id"), field="Custom catalogue id")
+    text = payload.get("content")
+    if not isinstance(text, str):
+        raise VehicleCatalogueError("Imported custom catalogue content must be text")
+    try:
+        content = text.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise VehicleCatalogueError("Imported custom catalogue content is not valid UTF-8") from exc
+    return str(kind), identifier, content
 
 
 def _normalize_custom_request(payload: object, *, save: bool) -> tuple[str, str, Optional[str], Optional[str]]:
@@ -493,6 +511,18 @@ def _provenance_content(
     return (json.dumps(payload, indent=2, sort_keys=True) + "\n").encode("utf-8")
 
 
+def _import_provenance_content(kind: str, custom_id: str) -> bytes:
+    payload = {
+        "schema_version": 1,
+        "kind": kind,
+        "id": custom_id,
+        "display_name": _display_name(custom_id),
+        "origin": {"type": "import"},
+        "created_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+    }
+    return (json.dumps(payload, indent=2, sort_keys=True) + "\n").encode("utf-8")
+
+
 def _provenance_destination(
     root: Path,
     kind: str,
@@ -669,6 +699,94 @@ def copy_maintained_template(
             "id": custom_id,
             "revision": revision,
         },
+    }
+
+
+def import_custom_item(
+    payload: object,
+    *,
+    roots: Optional[vehicle_setup.CatalogueRoots] = None,
+) -> dict[str, Any]:
+    """Validate and create one new custom JSON item without applying it."""
+
+    kind, custom_id, content = _normalize_import_request(payload)
+    _document, validation = _parse_catalogue_content(kind, content)
+    if validation.get("valid") is not True:
+        _raise_invalid_custom(kind, validation)
+    selected_roots = roots or vehicle_setup.default_roots()
+    _ensure_user_directory(selected_roots.custom)
+
+    provenance = _import_provenance_content(kind, custom_id)
+    provenance_name = f"{custom_id}.json"
+    provenance_path = (
+        selected_roots.custom
+        / ".open-mmi-provenance"
+        / kind
+        / provenance_name
+    )
+    if kind == "profile":
+        destination = selected_roots.custom / "vehicles" / custom_id
+        content_path = destination / "config.json"
+    else:
+        destination = selected_roots.custom / "bindings"
+        content_path = destination / f"{custom_id}.json"
+    if _path_present(content_path) or _path_present(provenance_path) or (
+        kind == "profile" and _path_present(destination)
+    ):
+        raise VehicleCatalogueConflictError(
+            "A custom catalogue item with that id already exists",
+            "custom-exists",
+        )
+
+    provenance_directory = _provenance_destination(selected_roots.custom, kind)
+    with _CATALOGUE_WRITE_LOCK:
+        if kind == "profile":
+            profiles = selected_roots.custom / "vehicles"
+            _ensure_user_directory(profiles)
+            destination = profiles / custom_id
+            try:
+                destination.mkdir(mode=0o700)
+                destination.chmod(0o700)
+            except FileExistsError as exc:
+                raise VehicleCatalogueConflictError(
+                    "A custom catalogue item with that id already exists",
+                    "custom-exists",
+                ) from exc
+            except OSError as exc:
+                raise VehicleCatalogueError("Custom profile directory could not be created") from exc
+            try:
+                _ensure_user_directory(destination, create=False)
+                _write_new_file(destination, "config.json", content)
+                _write_new_file(provenance_directory, provenance_name, provenance)
+            except BaseException:
+                _remove_new_file(destination, "config.json")
+                _remove_new_file(provenance_directory, provenance_name)
+                try:
+                    destination.rmdir()
+                except OSError:
+                    pass
+                raise
+        else:
+            bindings = selected_roots.custom / "bindings"
+            _ensure_user_directory(bindings)
+            binding_name = f"{custom_id}.json"
+            try:
+                _write_new_file(bindings, binding_name, content)
+                _write_new_file(provenance_directory, provenance_name, provenance)
+            except BaseException:
+                _remove_new_file(bindings, binding_name)
+                _remove_new_file(provenance_directory, provenance_name)
+                raise
+
+    revision = "sha256:" + hashlib.sha256(content).hexdigest()
+    return {
+        "ok": True,
+        "api_version": API_VERSION,
+        "action": IMPORT_ACTION,
+        "kind": kind,
+        "custom": {"source": "custom", "id": custom_id, "revision": revision},
+        "validation": validation,
+        "applied": False,
     }
 
 

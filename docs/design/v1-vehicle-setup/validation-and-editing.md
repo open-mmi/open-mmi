@@ -124,6 +124,19 @@ The implemented copy route stores these private sidecars under
 hidden tree. Profile data remains under `vehicles/<id>/config.json`; bindings data
 remains under `bindings/<id>.json`. Maintained files are never opened for writing.
 
+## JSON import
+
+The dashboard can import a local `.json` file only as a new `custom` identity. The browser
+sends the selected kind, a validated identifier and bounded JSON text; it never sends a
+filesystem path. The backend parses with duplicate-key and non-finite-number rejection,
+runs the same full profile or bindings validator used by catalogue discovery, and uses
+private no-overwrite creation. Invalid content, an existing identifier or an untrusted
+custom directory leaves no imported item behind.
+
+Imported content is selected as an unapplied draft. It does not restart `canbusd`, alter
+maintained content, or replace any existing custom item. Import provenance records the
+creation origin separately from maintained-template provenance.
+
 ## Draft loading and saving
 
 Loading returns:

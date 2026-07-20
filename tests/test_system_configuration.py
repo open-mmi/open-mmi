@@ -497,6 +497,81 @@ class SystemConfigurationTests(unittest.TestCase):
         load.assert_not_called()
         self.assertEqual(handler.sent[1], 403)
 
+    def test_vehicle_custom_import_route_is_local_bounded_and_creation_only(self):
+        request = {
+            "kind": "profile",
+            "id": "imported-seat",
+            "content": '{"rules":[],"presence":[],"status":[]}\n',
+        }
+
+        class Handler:
+            client_address = ("127.0.0.1", 1234)
+
+            def __init__(self):
+                body = json.dumps(request).encode("utf-8")
+                self.headers = {
+                    "Host": "127.0.0.1:8765",
+                    "Origin": "http://127.0.0.1:8765",
+                    "Content-Type": "application/json",
+                    "Content-Length": str(len(body)),
+                }
+                self.sent = None
+                self.rfile = io.BytesIO(body)
+
+            def _send_json(self, payload, status=200):
+                self.sent = (payload, status)
+
+        result = {
+            "ok": True,
+            "api_version": 1,
+            "action": "import-custom-item",
+            "kind": "profile",
+            "custom": {
+                "source": "custom",
+                "id": "imported-seat",
+                "revision": "sha256:" + "a" * 64,
+            },
+            "validation": {"valid": True, "errors": [], "warnings": []},
+            "applied": False,
+        }
+        handler = Handler()
+        with patch.object(
+            system_settings.vehicle_catalogue,
+            "import_custom_item",
+            return_value=result,
+        ) as import_item:
+            self.assertTrue(system_settings._handle_post(
+                handler, "/api/system/vehicle-custom/import"
+            ))
+        import_item.assert_called_once_with(request)
+        self.assertEqual(handler.sent, (result, 200))
+
+        handler = Handler()
+        with patch.object(
+            system_settings.vehicle_catalogue,
+            "import_custom_item",
+            side_effect=system_settings.vehicle_catalogue.VehicleCatalogueConflictError(
+                "A custom catalogue item with that id already exists",
+                "custom-exists",
+            ),
+        ):
+            system_settings._handle_post(
+                handler, "/api/system/vehicle-custom/import"
+            )
+        self.assertEqual(handler.sent[1], 409)
+        self.assertEqual(handler.sent[0]["code"], "custom-exists")
+
+        handler = Handler()
+        handler.client_address = ("192.0.2.10", 1234)
+        with patch.object(
+            system_settings.vehicle_catalogue, "import_custom_item"
+        ) as import_item:
+            system_settings._handle_post(
+                handler, "/api/system/vehicle-custom/import"
+            )
+        import_item.assert_not_called()
+        self.assertEqual(handler.sent[1], 403)
+
     def test_vehicle_custom_manage_route_is_local_and_revision_bound(self):
         request = {
             "action": "rename",
