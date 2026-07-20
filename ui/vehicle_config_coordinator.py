@@ -18,10 +18,11 @@ import socket
 import socketserver
 import stat
 import tempfile
+import uuid
 from contextlib import AbstractContextManager, ExitStack
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Mapping, Optional, Sequence
+from typing import Any, Dict, Mapping, Optional, Protocol, Sequence
 
 from ui import vehicle_configuration, vehicle_setup
 
@@ -460,6 +461,212 @@ def coordinator_preview(
         "apply_blocked": any(locks.values()),
     }
     return preview
+
+
+class ApplyOperations(Protocol):
+    """Fixed coordinator-owned system operations for one apply transaction."""
+
+    def snapshot(self) -> object: ...
+    def install(self, target: Mapping[str, Any]) -> None: ...
+    def reload(self, target: Mapping[str, Any]) -> None: ...
+    def restart(self) -> None: ...
+    def loaded_runtime(self) -> Mapping[str, Any]: ...
+    def restore(self, snapshot: object) -> None: ...
+    def restoration_verified(self, snapshot: object, loaded: Mapping[str, Any]) -> bool: ...
+
+
+def _state_update(path: Path, payload: Dict[str, Any], **changes: Any) -> Dict[str, Any]:
+    payload.update(changes)
+    payload["updated_at"] = _timestamp()
+    return write_state(payload, path)
+
+
+def _sanitized_failure(stage: str, exc: BaseException) -> str:
+    """Return a bounded public error without leaking operation output."""
+
+    if isinstance(exc, CoordinatorError):
+        raw = str(exc) or "Vehicle configuration transaction failed"
+    else:
+        raw = f"Vehicle configuration operation failed during {stage}"
+    sanitized = " ".join(raw.split())
+    return sanitized[:MAX_ERROR_LENGTH] or "Vehicle configuration transaction failed"
+
+
+def _best_effort_state_update(
+    path: Path,
+    payload: Dict[str, Any],
+    **changes: Any,
+) -> Dict[str, Any]:
+    """Never allow public-state persistence to block restoration."""
+
+    updated = dict(payload)
+    updated.update(changes)
+    updated["updated_at"] = _timestamp()
+    try:
+        return write_state(updated, path)
+    except Exception:
+        return updated
+
+
+def _loaded_matches_target(loaded: Mapping[str, Any], target: Mapping[str, Any]) -> bool:
+    try:
+        return (
+            loaded.get("state") == "ready"
+            and loaded.get("errors") == []
+            and loaded["vehicle"] == target["vehicle"]
+            and loaded["bindings"] == target["bindings"]
+            and loaded["active_bus"] == target["runtime"]["active_bus"]
+            and loaded["interface"]
+            == target["runtime"]["buses"][target["runtime"]["active_bus"]]["interface"]
+        )
+    except (KeyError, TypeError):
+        return False
+
+
+def run_apply_transaction(
+    request: Mapping[str, Any],
+    *,
+    reviewed_target: Mapping[str, Any],
+    expected_configuration_revision: str,
+    confirm: bool,
+    operations: ApplyOperations,
+    state_path: Path = DEFAULT_STATE_FILE,
+    roots: Optional[vehicle_setup.CatalogueRoots] = None,
+    dropin_path: Optional[Path] = None,
+    status_path: Optional[Path] = None,
+    sys_class_net: Path = Path("/sys/class/net"),
+    configuration_lock: Path = DEFAULT_LOCK,
+    lifecycle_lock: Path = DEFAULT_LIFECYCLE_LOCK,
+    update_lock: Path = DEFAULT_UPDATE_LOCK,
+) -> Dict[str, Any]:
+    """Execute the fail-closed apply state machine behind the disabled API.
+
+    Apply is bound both to the active configuration revision and to the exact
+    normalized target (including profile and bindings content revisions) that
+    the user reviewed.  System mutation is supplied only by coordinator-owned
+    operations.  The public socket does not expose this function.
+    """
+
+    if confirm is not True:
+        raise CoordinatorError("Vehicle configuration apply requires explicit confirmation")
+    if (
+        not isinstance(expected_configuration_revision, str)
+        or not vehicle_configuration.REVISION_RE.fullmatch(expected_configuration_revision)
+    ):
+        raise CoordinatorError("Expected configuration revision is invalid")
+    try:
+        expected_target = vehicle_configuration.normalize_selection(reviewed_target)
+    except vehicle_configuration.VehicleConfigurationError as exc:
+        raise CoordinatorError("Reviewed vehicle configuration target is invalid") from exc
+
+    with ConfigurationTransactionLocks(configuration_lock, lifecycle_lock, update_lock):
+        preview = coordinator_preview(
+            request,
+            roots=roots,
+            dropin_path=dropin_path,
+            status_path=status_path,
+            sys_class_net=sys_class_net,
+            configuration_lock=configuration_lock,
+            lifecycle_lock=lifecycle_lock,
+            update_lock=update_lock,
+        )
+        if preview["expected_configuration_revision"] != expected_configuration_revision:
+            raise CoordinatorError("Vehicle configuration preview is stale")
+        target = vehicle_configuration.normalize_selection(preview["target"])
+        if target != expected_target:
+            raise CoordinatorError("Vehicle configuration target changed after review")
+        if preview.get("target_configuration_revision") != vehicle_configuration.selection_revision(target):
+            raise CoordinatorError("Vehicle configuration preview target is inconsistent")
+
+        transaction_id = f"configuration-{uuid.uuid4().hex}"
+        state = initial_state()
+        state.update(
+            {
+                "state": "validating",
+                "stage": "validated",
+                "transaction_id": transaction_id,
+                "started_at": _timestamp(),
+                "target": {
+                    "vehicle": target["vehicle"],
+                    "bindings": target["bindings"],
+                    "active_bus": target["runtime"]["active_bus"],
+                    "interface": target["runtime"]["buses"][target["runtime"]["active_bus"]]["interface"],
+                },
+                "expected_configuration_revision": expected_configuration_revision,
+            }
+        )
+        state = write_state(state, state_path)
+        snapshot: object = None
+        mutation_started = False
+        stage = "snapshot"
+        try:
+            snapshot = operations.snapshot()
+            state = _state_update(state_path, state, state="applying", stage="installing")
+            mutation_started = True
+            stage = "installing"
+            operations.install(target)
+            state = _state_update(state_path, state, state="reloading", stage="reloading")
+            stage = "reloading"
+            operations.reload(target)
+            stage = "restarting"
+            operations.restart()
+            state = _state_update(state_path, state, state="verifying", stage="verifying")
+            stage = "verifying"
+            loaded = operations.loaded_runtime()
+            if not _loaded_matches_target(loaded, target):
+                raise CoordinatorError("Applied vehicle configuration could not be verified")
+            now = _timestamp()
+            return _state_update(
+                state_path,
+                state,
+                state="complete",
+                stage="complete",
+                completed_at=now,
+                error="",
+                restoration_attempted=False,
+                restoration_verified=False,
+            )
+        except Exception as exc:
+            error = _sanitized_failure(stage, exc)
+            if mutation_started:
+                state = _best_effort_state_update(
+                    state_path,
+                    state,
+                    state="restoring",
+                    stage="restoring",
+                    restoration_attempted=True,
+                    error=error,
+                )
+                restoration_verified = False
+                try:
+                    operations.restore(snapshot)
+                    operations.restart()
+                    restored_loaded = operations.loaded_runtime()
+                    restoration_verified = operations.restoration_verified(snapshot, restored_loaded)
+                except Exception:
+                    restoration_verified = False
+                now = _timestamp()
+                _best_effort_state_update(
+                    state_path,
+                    state,
+                    state="failed",
+                    stage="restored" if restoration_verified else "restore-unverified",
+                    completed_at=now,
+                    restoration_attempted=True,
+                    restoration_verified=restoration_verified,
+                    error=error,
+                )
+            else:
+                now = _timestamp()
+                _best_effort_state_update(
+                    state_path,
+                    state,
+                    state="failed",
+                    stage="failed",
+                    completed_at=now,
+                    error=error,
+                )
+            raise CoordinatorError(error) from exc
 
 
 def response_for_request(

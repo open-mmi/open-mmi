@@ -474,5 +474,221 @@ class VehicleConfigurationCoordinatorTests(unittest.TestCase):
                 coordinator.client_status(Path(temporary) / "missing.sock")
 
 
+class ApplyTransactionTests(unittest.TestCase):
+    class Operations:
+        def __init__(self, target, *, fail_at="", failure_message=""):
+            self.target = target
+            self.fail_at = fail_at
+            self.failure_message = failure_message
+            self.calls = []
+            self.restored = False
+
+        def _call(self, name):
+            self.calls.append(name)
+            if self.fail_at == name:
+                raise RuntimeError(self.failure_message or f"failed at {name}")
+
+        def snapshot(self):
+            self._call("snapshot")
+            return {"previous": True}
+
+        def install(self, target):
+            self.assert_safe_target(target)
+            self._call("install")
+
+        def reload(self, target):
+            self.assert_safe_target(target)
+            self._call("reload")
+
+        def assert_safe_target(self, target):
+            if set(target) != {"vehicle", "bindings", "runtime"}:
+                raise AssertionError("operations received an unsafe preview object")
+
+        def restart(self):
+            self._call("restart")
+
+        def restore(self, snapshot):
+            self._call("restore")
+            self.restored = True
+
+        def restoration_verified(self, snapshot, loaded):
+            self._call("restoration_verified")
+            return snapshot == {"previous": True} and loaded.get("state") == "ready"
+
+        def loaded_runtime(self):
+            self._call("loaded_runtime")
+            if self.restored:
+                return {"state": "ready"}
+            bus = self.target["runtime"]["active_bus"]
+            return {
+                "state": "ready",
+                "errors": [],
+                "vehicle": self.target["vehicle"],
+                "bindings": self.target["bindings"],
+                "active_bus": bus,
+                "interface": self.target["runtime"]["buses"][bus]["interface"],
+            }
+
+    def target(self):
+        return {
+            "vehicle": {
+                "source": "maintained",
+                "id": "seat_1p",
+                "revision": "sha256:" + "a" * 64,
+            },
+            "bindings": {
+                "source": "maintained",
+                "id": "default",
+                "revision": "sha256:" + "b" * 64,
+            },
+            "runtime": {
+                "mode": "single",
+                "active_bus": "comfort",
+                "buses": {"comfort": {"interface": "can0"}},
+            },
+        }
+
+    def preview(self, target=None):
+        selected = target or self.target()
+        return {
+            "expected_configuration_revision": "sha256:" + "c" * 64,
+            "target_configuration_revision": coordinator.vehicle_configuration.selection_revision(selected),
+            "target": selected,
+        }
+
+    def execute(self, operations, root, **updates):
+        args = dict(
+            request={},
+            reviewed_target=self.target(),
+            expected_configuration_revision="sha256:" + "c" * 64,
+            confirm=True,
+            operations=operations,
+            state_path=root / "state.json",
+            configuration_lock=root / "configuration.lock",
+            lifecycle_lock=root / "lifecycle.lock",
+            update_lock=root / "update.lock",
+        )
+        args.update(updates)
+        preview = args.pop("preview", self.preview())
+        with patch.object(coordinator, "coordinator_preview", return_value=preview):
+            return coordinator.run_apply_transaction(**args)
+
+    def test_internal_apply_completes_and_verifies_loaded_runtime(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            operations = self.Operations(self.target())
+            state = self.execute(operations, root)
+            self.assertEqual(state["state"], "complete")
+            self.assertEqual(
+                operations.calls,
+                ["snapshot", "install", "reload", "restart", "loaded_runtime"],
+            )
+            self.assertFalse(state["restoration_attempted"])
+
+    def test_stale_or_unconfirmed_apply_mutates_nothing(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            operations = self.Operations(self.target())
+            with self.assertRaisesRegex(coordinator.CoordinatorError, "confirmation"):
+                self.execute(operations, root, confirm=False)
+            with self.assertRaisesRegex(coordinator.CoordinatorError, "stale"):
+                self.execute(
+                    operations,
+                    root,
+                    expected_configuration_revision="sha256:" + "d" * 64,
+                )
+            self.assertEqual(operations.calls, [])
+
+    def test_changed_reviewed_target_is_rejected_before_snapshot(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            operations = self.Operations(self.target())
+            changed = self.target()
+            changed["vehicle"]["revision"] = "sha256:" + "d" * 64
+            with self.assertRaisesRegex(coordinator.CoordinatorError, "changed after review"):
+                self.execute(operations, root, preview=self.preview(changed))
+            self.assertEqual(operations.calls, [])
+
+    def test_inconsistent_preview_target_revision_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            operations = self.Operations(self.target())
+            preview = self.preview()
+            preview["target_configuration_revision"] = "sha256:" + "f" * 64
+            with self.assertRaisesRegex(coordinator.CoordinatorError, "inconsistent"):
+                self.execute(operations, root, preview=preview)
+            self.assertEqual(operations.calls, [])
+
+    def test_failure_after_mutation_restores_and_marks_verified(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            operations = self.Operations(self.target(), fail_at="reload")
+            with self.assertRaisesRegex(coordinator.CoordinatorError, "during reloading"):
+                self.execute(operations, root)
+            state = coordinator.read_state(root / "state.json")
+            self.assertEqual(state["state"], "failed")
+            self.assertEqual(state["stage"], "restored")
+            self.assertTrue(state["restoration_attempted"])
+            self.assertTrue(state["restoration_verified"])
+            self.assertIn("restore", operations.calls)
+            self.assertIn("restoration_verified", operations.calls)
+
+    def test_multiline_operation_error_is_not_exposed_and_cannot_block_restore(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            secret = "failed\nprivate=/root/secret"
+            operations = self.Operations(
+                self.target(), fail_at="reload", failure_message=secret
+            )
+            with self.assertRaisesRegex(coordinator.CoordinatorError, "during reloading") as raised:
+                self.execute(operations, root)
+            self.assertNotIn("secret", str(raised.exception))
+            state = coordinator.read_state(root / "state.json")
+            self.assertEqual(state["stage"], "restored")
+            self.assertNotIn("secret", state["error"])
+            self.assertIn("restore", operations.calls)
+
+    def test_state_write_failure_entering_restore_does_not_block_restore(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            operations = self.Operations(self.target(), fail_at="reload")
+            real_write = coordinator.write_state
+
+            def fail_restoring(payload, path):
+                if payload.get("state") == "restoring":
+                    raise coordinator.CoordinatorError("state storage unavailable")
+                return real_write(payload, path)
+
+            with patch.object(coordinator, "write_state", side_effect=fail_restoring):
+                with self.assertRaises(coordinator.CoordinatorError):
+                    self.execute(operations, root)
+            self.assertIn("restore", operations.calls)
+            self.assertIn("restoration_verified", operations.calls)
+
+    def test_snapshot_failure_does_not_attempt_restore(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            operations = self.Operations(self.target(), fail_at="snapshot")
+            with self.assertRaisesRegex(coordinator.CoordinatorError, "during snapshot"):
+                self.execute(operations, root)
+            state = coordinator.read_state(root / "state.json")
+            self.assertFalse(state["restoration_attempted"])
+            self.assertNotIn("restore", operations.calls)
+
+    def test_public_protocol_still_rejects_apply(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            coordinator.write_state(coordinator.initial_state(), root / "state.json")
+            response = coordinator.response_for_request(
+                {"api_version": 1, "action": "apply", "confirm": True},
+                root / "state.json",
+                root / "configuration.lock",
+                root / "lifecycle.lock",
+                root / "update.lock",
+            )
+            self.assertFalse(response["ok"])
+            self.assertIn("not enabled", response["error"])
+
+
 if __name__ == "__main__":
     unittest.main()
