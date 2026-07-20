@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import socket
 import shlex
 import subprocess
 import tempfile
@@ -364,7 +365,60 @@ sudo() {{ printf '%s\\0' "$@"; }}
         self.assertIn('for _attempt in {1..15}; do', block)
         self.assertIn('[[ "$api_ready" == true ]]', block)
         self.assertIn('[[ "$version_ready" == true ]]', block)
+        self.assertIn('"$VEHICLE_CONFIG_COORDINATOR_UNIT"', block)
+        self.assertIn('vehicle-config-coordinator.env', block)
+        self.assertIn('deployment_stage="vehicle-config-coordinator"', block)
+        self.assertIn('systemctl restart "$VEHICLE_CONFIG_COORDINATOR_UNIT"', block)
         self.assertNotIn("eval ", block)
+
+    def test_vehicle_coordinator_health_check_requires_live_socket_and_protocol(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            install = root / "install"
+            command = install / "venv/bin/open-mmi-config"
+            command.parent.mkdir(parents=True)
+            command.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            command.chmod(0o755)
+            socket_path = root / "coordinator.sock"
+            listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            listener.bind(str(socket_path))
+            listener.close()
+
+            common = f"""
+source {shlex.quote(str(MANAGE_SCRIPT))}
+INSTALL_DIR={shlex.quote(str(install))}
+VEHICLE_CONFIG_COORDINATOR_SOCKET={shlex.quote(str(socket_path))}
+OPEN_MMI_COORDINATOR_HEALTH_ATTEMPTS=1
+OPEN_MMI_COORDINATOR_HEALTH_DELAY=0
+systemctl() {{ return 0; }}
+sleep() {{ :; }}
+"""
+            success = subprocess.run(
+                ["bash", "-c", common + "wait_for_vehicle_config_coordinator"],
+                cwd=ROOT,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            self.assertEqual(success.returncode, 0, success.stderr)
+
+            socket_path.unlink()
+            failure = subprocess.run(
+                [
+                    "bash",
+                    "-c",
+                    common
+                    + "if wait_for_vehicle_config_coordinator; then exit 9; else exit 0; fi",
+                ],
+                cwd=ROOT,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            self.assertEqual(failure.returncode, 0, failure.stderr)
+            self.assertIn("post-install health check", failure.stderr)
 
     def test_installer_unit_is_one_shot_and_accepts_no_arguments(self) -> None:
         unit = (ROOT / "systemd/system/open-mmi-update-installer.service").read_text(encoding="utf-8")
@@ -398,6 +452,7 @@ sudo() {{ printf '%s\\0' "$@"; }}
         self.assertIn('groupadd --system "$VEHICLE_CONFIG_COORDINATOR_GROUP"', block)
         self.assertIn('usermod -aG "$VEHICLE_CONFIG_COORDINATOR_GROUP" "$REAL_USER"', block)
         self.assertIn('systemctl restart "$VEHICLE_CONFIG_COORDINATOR_UNIT"', block)
+        self.assertIn("wait_for_vehicle_config_coordinator", block)
         self.assertIn("write_vehicle_config_coordinator_environment", block)
         self.assertIn('"$USER_CONFIG_DIR"', self.text)
         self.assertIn('"/run/user/$USER_ID/open-mmi/status.json"', self.text)

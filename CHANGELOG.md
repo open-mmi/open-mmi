@@ -8,6 +8,9 @@
 - Local-only `GET /api/system/vehicle-setup/coordinator`, `POST /api/system/vehicle-setup/preview`, and matching `open-mmi-config vehicle-setup` clients. Apply and restoration remain explicitly disabled.
 - Hardened `open-mmi-vehicle-config-coordinator.service` with an AF_UNIX-only, network-isolated, read-only system sandbox and a root-owned fixed-path environment file for the installed service user.
 
+### Fixed
+- Managed installs now require a live coordinator socket and successful status round trip before reporting success, and prepared-update rollback preserves the previous coordinator unit and environment file.
+
 
 ## Unreleased — V1 update management
 

@@ -18,6 +18,7 @@ UPDATE_INSTALLER_UNIT="open-mmi-update-installer.service"
 VEHICLE_CONFIG_COORDINATOR_GROUP="open-mmi-config"
 VEHICLE_CONFIG_COORDINATOR_UNIT="open-mmi-vehicle-config-coordinator.service"
 VEHICLE_CONFIG_COORDINATOR_ENV="/etc/open-mmi/vehicle-config-coordinator.env"
+VEHICLE_CONFIG_COORDINATOR_SOCKET="/run/open-mmi/vehicle-configuration-coordinator.sock"
 UPDATE_COORDINATOR_STATE_DIR="/var/lib/open-mmi"
 UPDATE_COORDINATOR_RUNTIME_DIR="/run/open-mmi"
 
@@ -612,6 +613,27 @@ PY_VEHICLE_CONFIG_COORDINATOR_ENV
     chmod 0644 "$VEHICLE_CONFIG_COORDINATOR_ENV"
 }
 
+wait_for_vehicle_config_coordinator() {
+    local coordinator_cli="$INSTALL_DIR/venv/bin/open-mmi-config"
+    local attempts="${OPEN_MMI_COORDINATOR_HEALTH_ATTEMPTS:-15}"
+    local delay="${OPEN_MMI_COORDINATOR_HEALTH_DELAY:-1}"
+    local attempt
+
+    for ((attempt = 1; attempt <= attempts; attempt++)); do
+        if systemctl is-active --quiet "$VEHICLE_CONFIG_COORDINATOR_UNIT" \
+            && [ -S "$VEHICLE_CONFIG_COORDINATOR_SOCKET" ] \
+            && [ -x "$coordinator_cli" ] \
+            && env -u PYTHONPATH "$coordinator_cli" vehicle-setup coordinator >/dev/null 2>&1; then
+            return 0
+        fi
+        sleep "$delay"
+    done
+
+    log_error "Vehicle configuration coordinator failed its post-install health check"
+    systemctl --no-pager --full status "$VEHICLE_CONFIG_COORDINATOR_UNIT" >&2 || true
+    return 1
+}
+
 
 install_vehicle_config_coordinator() {
     local authorization_added=false
@@ -631,6 +653,7 @@ install_vehicle_config_coordinator() {
     systemctl daemon-reload
     systemctl enable "$VEHICLE_CONFIG_COORDINATOR_UNIT"
     systemctl restart "$VEHICLE_CONFIG_COORDINATOR_UNIT"
+    wait_for_vehicle_config_coordinator
     if [ "$authorization_added" = true ]; then
         log_warn "Log out and back in before inspecting vehicle configuration coordinator status."
     fi
@@ -979,14 +1002,23 @@ cmd_deploy_prepared() {
         cp -a -- "$INSTALL_DIR" "$rollback_root/installation"
         env -u PYTHONPATH "$rollback_root/installation/venv/bin/python" -I -c 'import ui.config_cli'
     fi
-    install -d -m 0700 -o root -g root "$rollback_root/system-units" "$rollback_root/user-units"
-    for unit in "$UPDATE_COORDINATOR_UNIT" "$UPDATE_INSTALLER_UNIT"; do
+    install -d -m 0700 -o root -g root \
+        "$rollback_root/system-units" \
+        "$rollback_root/system-files" \
+        "$rollback_root/user-units"
+    for unit in "$UPDATE_COORDINATOR_UNIT" "$UPDATE_INSTALLER_UNIT" "$VEHICLE_CONFIG_COORDINATOR_UNIT"; do
         if [ -e "/etc/systemd/system/$unit" ]; then
             cp -a -- "/etc/systemd/system/$unit" "$rollback_root/system-units/$unit"
         else
             : > "$rollback_root/system-units/$unit.absent"
         fi
     done
+    if [ -e "$VEHICLE_CONFIG_COORDINATOR_ENV" ]; then
+        cp -a -- "$VEHICLE_CONFIG_COORDINATOR_ENV" \
+            "$rollback_root/system-files/vehicle-config-coordinator.env"
+    else
+        : > "$rollback_root/system-files/vehicle-config-coordinator.env.absent"
+    fi
     for unit in canbusd.service open-mmi-dashboard.service; do
         if [ -e "$REAL_HOME/.config/systemd/user/$unit" ]; then
             cp -a -- "$REAL_HOME/.config/systemd/user/$unit" "$rollback_root/user-units/$unit"
@@ -1016,13 +1048,20 @@ cmd_deploy_prepared() {
         if [ -d "${OPEN_MMI_MANAGED_REPOSITORY:-}/.git" ]; then
             sudo -u "$REAL_USER" git -C "$OPEN_MMI_MANAGED_REPOSITORY" reset --hard "$previous_commit" >/dev/null 2>&1 || true
         fi
-        for unit in "$UPDATE_COORDINATOR_UNIT" "$UPDATE_INSTALLER_UNIT"; do
+        for unit in "$UPDATE_COORDINATOR_UNIT" "$UPDATE_INSTALLER_UNIT" "$VEHICLE_CONFIG_COORDINATOR_UNIT"; do
             if [ -e "$rollback_root/system-units/$unit" ]; then
                 cp -a -- "$rollback_root/system-units/$unit" "/etc/systemd/system/$unit"
             elif [ -e "$rollback_root/system-units/$unit.absent" ]; then
                 rm -f -- "/etc/systemd/system/$unit"
             fi
         done
+        if [ -e "$rollback_root/system-files/vehicle-config-coordinator.env" ]; then
+            install -d -m 0755 -o root -g root "$(dirname "$VEHICLE_CONFIG_COORDINATOR_ENV")"
+            cp -a -- "$rollback_root/system-files/vehicle-config-coordinator.env" \
+                "$VEHICLE_CONFIG_COORDINATOR_ENV"
+        elif [ -e "$rollback_root/system-files/vehicle-config-coordinator.env.absent" ]; then
+            rm -f -- "$VEHICLE_CONFIG_COORDINATOR_ENV"
+        fi
         for unit in canbusd.service open-mmi-dashboard.service; do
             if [ -e "$rollback_root/user-units/$unit" ]; then
                 cp -a -- "$rollback_root/user-units/$unit" "$REAL_HOME/.config/systemd/user/$unit"
@@ -1032,6 +1071,11 @@ cmd_deploy_prepared() {
             fi
         done
         systemctl daemon-reload >/dev/null 2>&1 || true
+        if [ -e "/etc/systemd/system/$VEHICLE_CONFIG_COORDINATOR_UNIT" ]; then
+            systemctl restart "$VEHICLE_CONFIG_COORDINATOR_UNIT" >/dev/null 2>&1 || true
+        else
+            systemctl stop "$VEHICLE_CONFIG_COORDINATOR_UNIT" >/dev/null 2>&1 || true
+        fi
         export XDG_RUNTIME_DIR="/run/user/$USER_ID"
         sudo -u "$REAL_USER" env HOME="$REAL_HOME" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
             systemctl --user daemon-reload >/dev/null 2>&1 || true
@@ -1083,6 +1127,7 @@ cmd_deploy_prepared() {
     install_command_links
     deployment_stage="system-services"
     install_update_coordinator
+    deployment_stage="vehicle-config-coordinator"
     install_vehicle_config_coordinator
 
     deployment_stage="user-services"
