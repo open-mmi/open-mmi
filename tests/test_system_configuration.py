@@ -166,6 +166,69 @@ class SystemConfigurationTests(unittest.TestCase):
         status_payload.assert_not_called()
         self.assertEqual(handler.sent[1], 403)
 
+    def test_vehicle_setup_preview_route_is_fixed_local_and_non_mutating(self):
+        request = {
+            "vehicle": {"source": "maintained", "id": "seat_1p"},
+            "bindings": {"source": "maintained", "id": "default"},
+            "runtime": {
+                "active_bus": "comfort",
+                "buses": {"comfort": {"interface": "can0"}},
+            },
+        }
+        body = json.dumps(request).encode("utf-8")
+
+        class Handler:
+            client_address = ("127.0.0.1", 1234)
+            headers = {
+                "Host": "127.0.0.1:8765",
+                "Origin": "http://127.0.0.1:8765",
+                "Content-Type": "application/json",
+                "Content-Length": str(len(body)),
+            }
+
+            def __init__(self):
+                self.sent = None
+                self.rfile = io.BytesIO(body)
+
+            def _send_json(self, payload, status=200):
+                self.sent = (payload, status)
+
+        result = {
+            "api_version": 1,
+            "read_only": True,
+            "apply_available": False,
+            "state": "ready",
+        }
+        handler = Handler()
+        with patch.object(
+            system_settings.vehicle_setup,
+            "preview_payload",
+            return_value=result,
+        ) as preview:
+            self.assertTrue(
+                system_settings._handle_post(
+                    handler,
+                    "/api/system/vehicle-setup/preview",
+                )
+            )
+        preview.assert_called_once_with(request)
+        self.assertEqual(handler.sent, (result, 200))
+
+        handler = Handler()
+        handler.client_address = ("192.0.2.10", 1234)
+        with patch.object(
+            system_settings.vehicle_setup,
+            "preview_payload",
+        ) as preview:
+            self.assertTrue(
+                system_settings._handle_post(
+                    handler,
+                    "/api/system/vehicle-setup/preview",
+                )
+            )
+        preview.assert_not_called()
+        self.assertEqual(handler.sent[1], 403)
+
 
     def test_update_status_routes_are_local_fixed_and_read_only(self):
         class Handler:

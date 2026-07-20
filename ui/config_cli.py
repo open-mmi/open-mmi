@@ -101,6 +101,24 @@ def build_parser() -> argparse.ArgumentParser:
     )
     vehicle_setup_commands.add_parser("status")
     vehicle_setup_commands.add_parser("catalogue")
+    vehicle_preview = vehicle_setup_commands.add_parser(
+        "preview",
+        help="validate a non-mutating vehicle setup plan",
+    )
+    vehicle_preview.add_argument("vehicle")
+    vehicle_preview.add_argument("bindings")
+    vehicle_preview.add_argument(
+        "--vehicle-source",
+        choices=("maintained", "custom"),
+        default="maintained",
+    )
+    vehicle_preview.add_argument(
+        "--bindings-source",
+        choices=("maintained", "custom"),
+        default="maintained",
+    )
+    vehicle_preview.add_argument("--bus", required=True)
+    vehicle_preview.add_argument("--interface", required=True)
     return parser
 
 
@@ -162,6 +180,27 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if args.group == "vehicle-setup":
             if args.command == "catalogue":
                 _print(vehicle_setup.catalogue_payload())
+            elif args.command == "preview":
+                _print(
+                    vehicle_setup.preview_payload(
+                        {
+                            "vehicle": {
+                                "source": args.vehicle_source,
+                                "id": args.vehicle,
+                            },
+                            "bindings": {
+                                "source": args.bindings_source,
+                                "id": args.bindings,
+                            },
+                            "runtime": {
+                                "active_bus": args.bus,
+                                "buses": {
+                                    args.bus: {"interface": args.interface}
+                                },
+                            },
+                        }
+                    )
+                )
             else:
                 _print(vehicle_setup.status_payload())
             return 0

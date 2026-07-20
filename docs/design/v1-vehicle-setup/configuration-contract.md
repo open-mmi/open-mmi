@@ -220,7 +220,7 @@ activation failed.
 
 ## Preview API
 
-Proposed fixed route:
+Implemented fixed route:
 
 ```text
 POST /api/system/vehicle-setup/preview
@@ -240,7 +240,14 @@ Payload:
 ```
 
 Preview is read-only. It returns a normalized plan, compatibility results, warnings and
-the current configuration revision required by apply.
+the current configuration revision required by apply. It also returns
+`apply_available: false` while the privileged coordinator is absent. Preview performs
+no filesystem write, systemd/udev reload or service restart, and its response contains
+no resolved filesystem path or generated command text.
+
+The normalized target uses the canonical selection shape without `applied_at`. The
+future coordinator adds its own trusted application timestamp only after it has
+independently resolved, revalidated and applied that selection.
 
 ## Apply API
 

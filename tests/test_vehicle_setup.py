@@ -1,4 +1,5 @@
 import contextlib
+import hashlib
 import io
 import json
 import tempfile
@@ -346,6 +347,206 @@ class VehicleSetupTests(unittest.TestCase):
             vehicle_setup.read_runtime_environment(dropin),
             {"OPEN_MMI_VEHICLE": "seat_1p", "OPEN_MMI_CAN_INTERFACE": "can0"},
         )
+
+    def preview_request(self, **updates):
+        request = {
+            "vehicle": {"source": "maintained", "id": "seat_1p"},
+            "bindings": {"source": "maintained", "id": "default"},
+            "runtime": {
+                "active_bus": "comfort",
+                "buses": {"comfort": {"interface": "can0"}},
+            },
+        }
+        request.update(updates)
+        return request
+
+    def current_status(self, profile_revision, bindings_revision, **updates):
+        active = {
+            "state": "ready",
+            "vehicle": {
+                "source": "maintained",
+                "id": "seat_1p",
+                "revision": profile_revision,
+            },
+            "bindings": {
+                "source": "maintained",
+                "id": "default",
+                "revision": bindings_revision,
+            },
+            "active_bus": "comfort",
+            "interface": "can0",
+            "configuration_revision": "sha256:" + "c" * 64,
+        }
+        active.update(updates)
+        return {"active": active, "interfaces": []}
+
+    def test_preview_is_deterministic_read_only_and_contains_no_paths(self):
+        profile_path = self.profile()
+        bindings_path = self.bindings()
+        profile_revision = "sha256:" + hashlib.sha256(
+            profile_path.read_bytes()
+        ).hexdigest()
+        bindings_revision = "sha256:" + hashlib.sha256(
+            bindings_path.read_bytes()
+        ).hexdigest()
+        current = self.current_status(profile_revision, bindings_revision)
+        request = self.preview_request()
+
+        first = vehicle_setup.preview_payload(
+            request,
+            self.roots,
+            current_status=current,
+        )
+        second = vehicle_setup.preview_payload(
+            request,
+            self.roots,
+            current_status=current,
+        )
+        self.assertEqual(first, second)
+        self.assertTrue(first["read_only"])
+        self.assertFalse(first["apply_available"])
+        self.assertEqual(first["state"], "ready")
+        self.assertEqual(first["plan"]["changes"], [])
+        self.assertFalse(
+            first["plan"]["effects"]["restart_can_service"]
+        )
+        self.assertIn(
+            "interface-not-present",
+            {issue["code"] for issue in first["validation"]["warnings"]},
+        )
+        rendered = json.dumps(first)
+        self.assertNotIn(str(self.root), rendered)
+        self.assertNotIn("/opt/open-mmi", rendered)
+        self.assertNotIn("manage.sh", rendered)
+
+    def test_preview_reports_changes_interface_health_and_udev_effects(self):
+        profile_path = self.profile()
+        bindings_path = self.bindings()
+        profile_revision = "sha256:" + hashlib.sha256(
+            profile_path.read_bytes()
+        ).hexdigest()
+        bindings_revision = "sha256:" + hashlib.sha256(
+            bindings_path.read_bytes()
+        ).hexdigest()
+        current = self.current_status(
+            profile_revision,
+            bindings_revision,
+            interface="can9",
+        )
+        current["interfaces"] = [
+            {
+                "name": "can0",
+                "present": True,
+                "up": True,
+                "configured_bitrate": 500000,
+            }
+        ]
+        preview = vehicle_setup.preview_payload(
+            self.preview_request(),
+            self.roots,
+            current_status=current,
+        )
+        self.assertEqual(
+            [change["field"] for change in preview["plan"]["changes"]],
+            ["interface"],
+        )
+        self.assertTrue(preview["interface"]["present"])
+        self.assertTrue(preview["plan"]["effects"]["write_udev_rules"])
+        self.assertTrue(preview["plan"]["effects"]["restart_can_service"])
+        self.assertIn(
+            "bitrate-mismatch",
+            {issue["code"] for issue in preview["validation"]["warnings"]},
+        )
+
+    def test_preview_rewrites_udev_plan_when_switching_to_manual_provisioning(self):
+        profile_path = self.profile(
+            can_buses={
+                "comfort": {
+                    "interface": "vcan0",
+                    "provisioning": "manual",
+                }
+            }
+        )
+        bindings_path = self.bindings()
+        current = self.current_status(
+            "sha256:" + hashlib.sha256(profile_path.read_bytes()).hexdigest(),
+            "sha256:" + hashlib.sha256(bindings_path.read_bytes()).hexdigest(),
+            interface="can0",
+        )
+        request = self.preview_request(
+            runtime={
+                "active_bus": "comfort",
+                "buses": {"comfort": {"interface": "vcan0"}},
+            }
+        )
+        preview = vehicle_setup.preview_payload(
+            request,
+            self.roots,
+            current_status=current,
+        )
+        self.assertEqual(preview["active_bus"]["provisioning"], "manual")
+        self.assertTrue(preview["plan"]["effects"]["write_udev_rules"])
+        self.assertTrue(preview["plan"]["effects"]["reload_udev"])
+
+    def test_preview_rejects_unknown_fields_paths_and_undeclared_buses(self):
+        self.profile()
+        self.bindings()
+        current = self.current_status(
+            "sha256:" + "a" * 64,
+            "sha256:" + "b" * 64,
+        )
+        cases = [
+            {**self.preview_request(), "command": "manage.sh"},
+            self.preview_request(
+                vehicle={"source": "maintained", "id": "../seat"}
+            ),
+            self.preview_request(
+                runtime={
+                    "active_bus": "powertrain",
+                    "buses": {"powertrain": {"interface": "can1"}},
+                }
+            ),
+            self.preview_request(
+                runtime={
+                    "active_bus": "comfort",
+                    "buses": {"comfort": {"interface": "../../can0"}},
+                }
+            ),
+        ]
+        for request in cases:
+            with self.subTest(request=request), self.assertRaises(
+                vehicle_setup.VehicleSetupError
+            ):
+                vehicle_setup.preview_payload(
+                    request,
+                    self.roots,
+                    current_status=current,
+                )
+
+    def test_cli_vehicle_setup_preview_uses_shared_backend(self):
+        expected = {"api_version": 1, "read_only": True, "state": "ready"}
+        output = io.StringIO()
+        with (
+            mock.patch.object(
+                vehicle_setup, "preview_payload", return_value=expected
+            ) as preview,
+            contextlib.redirect_stdout(output),
+        ):
+            result = config_cli.main(
+                [
+                    "vehicle-setup",
+                    "preview",
+                    "seat_1p",
+                    "default",
+                    "--bus",
+                    "comfort",
+                    "--interface",
+                    "can0",
+                ]
+            )
+        self.assertEqual(result, 0)
+        self.assertEqual(json.loads(output.getvalue()), expected)
+        preview.assert_called_once_with(self.preview_request())
 
     def test_cli_vehicle_setup_status_uses_shared_backend(self):
         expected = {"api_version": 1, "read_only": True}

@@ -210,6 +210,7 @@ def _handle_post(handler: Any, path: str) -> bool:
     if path not in routes and path not in {
         "/api/system/jellyfin/clear",
         "/api/system/dashboard/restart",
+        "/api/system/vehicle-setup/preview",
         "/api/system/update-check",
         "/api/system/update-prepare",
         "/api/system/update-install",
@@ -225,6 +226,8 @@ def _handle_post(handler: Any, path: str) -> bool:
             if payload not in ({}, {"confirm": True}):
                 raise ValueError("Invalid clear request")
             result = _clear_jellyfin()
+        elif path == "/api/system/vehicle-setup/preview":
+            result = vehicle_setup.preview_payload(_json_body(handler))
         elif path == "/api/system/update-check":
             payload = _json_body(handler)
             if payload not in ({}, {"confirm": True}):
@@ -249,7 +252,14 @@ def _handle_post(handler: Any, path: str) -> bool:
         else:
             result = routes[path](_json_body(handler))
         handler._send_json(result)
-    except (ValueError, ConfigurationError, launcher.LauncherError, update_coordinator.CoordinatorError, update_status.UpdateStatusError) as exc:
+    except (
+        ValueError,
+        ConfigurationError,
+        launcher.LauncherError,
+        update_coordinator.CoordinatorError,
+        update_status.UpdateStatusError,
+        vehicle_setup.VehicleSetupError,
+    ) as exc:
         handler._send_json({"ok": False, "error": str(exc)}, 400)
     except (RuntimeError, TimeoutError, OSError):
         handler._send_json({"ok": False, "error": "Configuration operation failed"}, 502)

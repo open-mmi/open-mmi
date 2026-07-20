@@ -438,9 +438,20 @@ not apply or restart vehicle configuration.
 
 **Settings → Vehicle setup** displays the active configuration and catalogue. Profile
 and bindings selectors create a page-local draft so the next workflow can be reviewed,
-but the draft is not persisted and **Review and apply** remains disabled. Preview and
-activation remain unavailable until their separate coordinator boundary is implemented
-and qualified.
+but the draft is not persisted and **Review and apply** remains disabled.
+
+`POST /api/system/vehicle-setup/preview` is a fixed, same-origin, non-mutating backend
+contract. It accepts only maintained/custom identifiers plus one declared bus/interface
+assignment, then returns a normalized canonical target, compatibility warnings and
+deterministic systemd/udev/restart effects. The current page does not call preview yet;
+activation remains unavailable until the separate coordinator boundary is implemented
+and qualified. The same planner can be inspected from a terminal without mutation:
+
+```bash
+open-mmi-config vehicle-setup preview seat_1p default \
+  --bus comfort \
+  --interface can0
+```
 
 `static/styles.css` remains as an import-only compatibility manifest. `tools/verify_css_split.py` locks the module order and verifies that their concatenated bytes remain identical to the pre-split stylesheet, preventing accidental cascade changes during this structural phase.
 

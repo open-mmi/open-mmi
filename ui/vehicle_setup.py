@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping, Optional, Sequence
 
 from canbusd.can_runtime import resolve_can_runtime
+from ui import vehicle_configuration
 
 
 API_VERSION = 1
@@ -863,4 +864,327 @@ def status_payload(
         },
         "compatibility": compatibility_report(profile_document, bindings_document),
         "interfaces": interfaces,
+    }
+
+
+def _request_object(
+    value: Any,
+    *,
+    path: str,
+    required: set[str],
+) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        raise VehicleSetupError(f"{path} must be an object")
+    if any(not isinstance(key, str) for key in value):
+        raise VehicleSetupError(f"{path} contains an invalid field name")
+    unknown = sorted(set(value) - required)
+    missing = sorted(required - set(value))
+    if unknown:
+        raise VehicleSetupError(
+            f"{path} contains unsupported fields: {', '.join(unknown)}"
+        )
+    if missing:
+        raise VehicleSetupError(
+            f"{path} is missing required fields: {', '.join(missing)}"
+        )
+    return value
+
+
+def _request_identity(value: Any, *, path: str) -> dict[str, str]:
+    identity = _request_object(
+        value,
+        path=path,
+        required={"source", "id"},
+    )
+    source = identity["source"]
+    identifier = identity["id"]
+    if not isinstance(source, str) or source not in {"maintained", "custom"}:
+        raise VehicleSetupError(f"{path}.source must be maintained or custom")
+    if not isinstance(identifier, str) or not IDENTIFIER_RE.fullmatch(identifier):
+        raise VehicleSetupError(f"{path}.id is invalid")
+    return {"source": source, "id": identifier}
+
+
+def _request_runtime(value: Any) -> tuple[str, str]:
+    runtime = _request_object(
+        value,
+        path="runtime",
+        required={"active_bus", "buses"},
+    )
+    active_bus = runtime["active_bus"]
+    if not isinstance(active_bus, str) or not IDENTIFIER_RE.fullmatch(active_bus):
+        raise VehicleSetupError("runtime.active_bus is invalid")
+    buses = _request_object(
+        runtime["buses"],
+        path="runtime.buses",
+        required={active_bus},
+    )
+    if len(buses) != 1:
+        raise VehicleSetupError("runtime.buses must contain exactly the active bus")
+    assignment = _request_object(
+        buses[active_bus],
+        path=f"runtime.buses.{active_bus}",
+        required={"interface"},
+    )
+    interface = assignment["interface"]
+    if not isinstance(interface, str) or not INTERFACE_RE.fullmatch(interface):
+        raise VehicleSetupError(
+            f"runtime.buses.{active_bus}.interface is invalid"
+        )
+    return active_bus, interface
+
+
+def _selected_document(
+    roots: CatalogueRoots,
+    kind: str,
+    identity: Mapping[str, str],
+) -> tuple[Mapping[str, Any], str, dict[str, Any]]:
+    path = resolve_catalogue_path(
+        roots,
+        kind,
+        identity["source"],
+        identity["id"],
+    )
+    document, revision = _read_document(
+        path,
+        MAX_PROFILE_BYTES if kind == "profile" else MAX_BINDINGS_BYTES,
+    )
+    validation = (
+        validate_profile(document)
+        if kind == "profile"
+        else validate_bindings(document)
+    )
+    if not validation["valid"] or not isinstance(document, Mapping):
+        label = "vehicle profile" if kind == "profile" else "bindings"
+        raise VehicleSetupError(f"Selected {label} is invalid")
+    return document, revision, validation
+
+
+def _profile_bus_metadata(
+    profile: Mapping[str, Any],
+    active_bus: str,
+) -> dict[str, Any]:
+    default_bus = str(profile.get("default_bus") or DEFAULT_BUS)
+    raw_buses = profile.get("can_buses")
+    if not isinstance(raw_buses, Mapping):
+        raw_buses = {default_bus: {}}
+    if active_bus not in raw_buses:
+        if active_bus != default_bus:
+            raise VehicleSetupError("runtime.active_bus is not declared by the profile")
+        metadata: Mapping[str, Any] = {}
+    else:
+        raw_metadata = raw_buses[active_bus]
+        metadata = raw_metadata if isinstance(raw_metadata, Mapping) else {}
+    bitrate = metadata.get("bitrate")
+    try:
+        parsed_bitrate = _parse_int(bitrate) if bitrate is not None else None
+    except (TypeError, ValueError):
+        parsed_bitrate = None
+    return {
+        "name": active_bus,
+        "profile_interface": str(
+            metadata.get("interface")
+            or metadata.get("tested_interface")
+            or DEFAULT_INTERFACE
+        ),
+        "bitrate": parsed_bitrate,
+        "provisioning": str(metadata.get("provisioning") or "manual"),
+        "declared_bus_count": len(raw_buses),
+    }
+
+
+def _preview_warning(code: str, path: str, message: str) -> dict[str, str]:
+    return _issue("warning", code, path, message)
+
+
+def preview_payload(
+    request: Mapping[str, Any],
+    roots: Optional[CatalogueRoots] = None,
+    *,
+    current_status: Optional[Mapping[str, Any]] = None,
+    sys_class_net: Path = Path("/sys/class/net"),
+) -> dict[str, Any]:
+    """Return a deterministic, non-mutating configuration plan.
+
+    Caller input contains only allowlisted catalogue identities and one logical
+    bus-to-interface assignment.  Paths and generated configuration text are
+    resolved later by the privileged coordinator and never cross the browser
+    contract.
+    """
+
+    payload = _request_object(
+        request,
+        path="request",
+        required={"vehicle", "bindings", "runtime"},
+    )
+    selected_roots = roots or default_roots()
+    vehicle = _request_identity(payload["vehicle"], path="vehicle")
+    bindings = _request_identity(payload["bindings"], path="bindings")
+    active_bus, interface = _request_runtime(payload["runtime"])
+
+    profile_document, profile_revision, profile_validation = _selected_document(
+        selected_roots, "profile", vehicle
+    )
+    bindings_document, bindings_revision, bindings_validation = _selected_document(
+        selected_roots, "bindings", bindings
+    )
+    bus = _profile_bus_metadata(profile_document, active_bus)
+    compatibility = compatibility_report(profile_document, bindings_document)
+
+    target = vehicle_configuration.normalize_selection(
+        {
+            "vehicle": {**vehicle, "revision": profile_revision},
+            "bindings": {**bindings, "revision": bindings_revision},
+            "runtime": {
+                "mode": "single",
+                "active_bus": active_bus,
+                "buses": {active_bus: {"interface": interface}},
+            },
+        }
+    )
+    status = dict(current_status) if current_status is not None else status_payload(
+        selected_roots,
+        sys_class_net=sys_class_net,
+    )
+    current = status.get("active") if isinstance(status.get("active"), Mapping) else {}
+    interfaces = status.get("interfaces") if isinstance(status.get("interfaces"), list) else []
+    selected_interface = next(
+        (
+            dict(entry)
+            for entry in interfaces
+            if isinstance(entry, Mapping) and entry.get("name") == interface
+        ),
+        None,
+    )
+    interface_status = {
+        "name": interface,
+        "present": bool(
+            selected_interface and selected_interface.get("present") is True
+        ),
+        "up": bool(selected_interface and selected_interface.get("up") is True),
+        "configured_bitrate": (
+            selected_interface.get("configured_bitrate")
+            if selected_interface
+            else None
+        ),
+    }
+
+    warnings: list[dict[str, str]] = []
+    warnings.extend(dict(issue) for issue in profile_validation["warnings"])
+    warnings.extend(dict(issue) for issue in bindings_validation["warnings"])
+    if not selected_interface:
+        warnings.append(
+            _preview_warning(
+                "interface-not-present",
+                "runtime.buses",
+                f"{interface} is not currently detected",
+            )
+        )
+    elif selected_interface.get("up") is not True:
+        warnings.append(
+            _preview_warning(
+                "interface-down",
+                "runtime.buses",
+                f"{interface} is present but not up",
+            )
+        )
+    configured_bitrate = interface_status["configured_bitrate"]
+    if (
+        bus["bitrate"] is not None
+        and configured_bitrate is not None
+        and bus["bitrate"] != configured_bitrate
+    ):
+        warnings.append(
+            _preview_warning(
+                "bitrate-mismatch",
+                "runtime.buses",
+                "the detected adapter bitrate differs from the profile",
+            )
+        )
+    if compatibility["emitted_unbound"]:
+        warnings.append(
+            _preview_warning(
+                "emitted-events-unbound",
+                "bindings",
+                f"{len(compatibility['emitted_unbound'])} emitted event(s) have no binding",
+            )
+        )
+    if compatibility["bound_unemitted"]:
+        warnings.append(
+            _preview_warning(
+                "bindings-unused",
+                "bindings",
+                f"{len(compatibility['bound_unemitted'])} binding(s) are not emitted by the profile",
+            )
+        )
+    if compatibility["duplicate_emitted"]:
+        warnings.append(
+            _preview_warning(
+                "duplicate-emitted-events",
+                "vehicle",
+                f"{len(compatibility['duplicate_emitted'])} event(s) are emitted more than once",
+            )
+        )
+    if bus["declared_bus_count"] > 1:
+        warnings.append(
+            _preview_warning(
+                "single-active-bus",
+                "runtime.active_bus",
+                "this Open MMI version listens to one selected CAN bus at a time",
+            )
+        )
+    if interface != bus["profile_interface"]:
+        warnings.append(
+            _preview_warning(
+                "interface-override",
+                "runtime.buses",
+                f"{interface} overrides the profile default {bus['profile_interface']}",
+            )
+        )
+
+    changes: list[dict[str, Any]] = []
+    for field, before, after in (
+        ("vehicle", current.get("vehicle"), target["vehicle"]),
+        ("bindings", current.get("bindings"), target["bindings"]),
+        ("active_bus", current.get("active_bus"), active_bus),
+        ("interface", current.get("interface"), interface),
+    ):
+        if before != after:
+            changes.append({"field": field, "from": before, "to": after})
+    requires_apply = bool(changes) or current.get("state") != "ready"
+    expected_revision = str(current.get("configuration_revision") or "")
+    if not vehicle_configuration.REVISION_RE.fullmatch(expected_revision):
+        raise VehicleSetupError("Current configuration revision is unavailable")
+
+    return {
+        "api_version": API_VERSION,
+        "read_only": True,
+        "apply_available": False,
+        "state": "ready",
+        "expected_configuration_revision": expected_revision,
+        "target_configuration_revision": vehicle_configuration.selection_revision(
+            target
+        ),
+        "target": target,
+        "active_bus": {
+            "name": active_bus,
+            "interface": interface,
+            "profile_interface": bus["profile_interface"],
+            "bitrate": bus["bitrate"],
+            "provisioning": bus["provisioning"],
+        },
+        "interface": interface_status,
+        "compatibility": compatibility,
+        "validation": {"valid": True, "errors": [], "warnings": warnings},
+        "plan": {
+            "changes": changes,
+            "effects": {
+                "write_canonical_configuration": requires_apply,
+                "write_systemd_runtime": requires_apply,
+                "write_udev_rules": requires_apply,
+                "reload_user_manager": requires_apply,
+                "reload_udev": requires_apply,
+                "restart_can_service": requires_apply,
+            },
+        },
     }
