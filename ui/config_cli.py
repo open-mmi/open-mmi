@@ -9,7 +9,13 @@ import os
 import sys
 from typing import Any, Mapping, Optional, Sequence
 
-from ui import launcher, update_coordinator, update_readiness, vehicle_setup
+from ui import (
+    launcher,
+    update_coordinator,
+    update_readiness,
+    vehicle_config_coordinator,
+    vehicle_setup,
+)
 from ui.configuration import (
     ConfigurationError,
     JELLYFIN_ENV_KEYS,
@@ -101,6 +107,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     vehicle_setup_commands.add_parser("status")
     vehicle_setup_commands.add_parser("catalogue")
+    vehicle_setup_commands.add_parser(
+        "coordinator",
+        help="inspect the privileged vehicle configuration coordinator",
+    )
     vehicle_preview = vehicle_setup_commands.add_parser(
         "preview",
         help="validate a non-mutating vehicle setup plan",
@@ -178,7 +188,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             return 0
 
         if args.group == "vehicle-setup":
-            if args.command == "catalogue":
+            if args.command == "coordinator":
+                _print(vehicle_config_coordinator.client_status())
+            elif args.command == "catalogue":
                 _print(vehicle_setup.catalogue_payload())
             elif args.command == "preview":
                 _print(
@@ -231,7 +243,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         result = _jellyfin_test(values)
         _print({"ok": True, **result})
         return 0
-    except (ConfigurationError, launcher.LauncherError, update_coordinator.CoordinatorError, update_status.UpdateStatusError, vehicle_setup.VehicleSetupError, RuntimeError, ValueError) as exc:
+    except (ConfigurationError, launcher.LauncherError, update_coordinator.CoordinatorError, vehicle_config_coordinator.CoordinatorError, update_status.UpdateStatusError, vehicle_setup.VehicleSetupError, RuntimeError, ValueError) as exc:
         print(f"open-mmi-config: {exc}", file=sys.stderr)
         return 1
 

@@ -441,6 +441,14 @@ exact profile and bindings revisions, logical bus and interface successfully loa
 the daemon. This evidence is independent of adapter presence and recent CAN frames and
 is the future coordinator's verification input after a service restart.
 
+`GET /api/system/vehicle-setup/coordinator` delegates to the dedicated root-owned
+status-only coordinator socket. It reports persistent public transaction state and
+configuration/update/lifecycle lock activity while explicitly keeping preview, apply
+and restoration coordinator actions disabled. The equivalent terminal command is
+`open-mmi-config vehicle-setup coordinator`. A newly installed `open-mmi-config`
+authorization group requires one logout/login or reboot before the existing dashboard
+session can reach the socket.
+
 **Settings → Vehicle setup** displays the active configuration and catalogue. Profile
 and bindings selectors create a page-local draft. **Review current setup** or
 **Review changes** sends only the
@@ -453,9 +461,9 @@ and proposed system effects inline. The draft and preview are not persisted, and
 contract. It accepts only maintained/custom identifiers plus one declared bus/interface
 assignment, then returns a normalized canonical target, compatibility warnings and
 deterministic systemd/udev/restart effects. The page fails closed unless the response
-explicitly remains a read-only preview with apply unavailable. Activation remains
-unavailable until the separate coordinator boundary is implemented and qualified. The
-same planner can be inspected from a terminal without mutation:
+explicitly remains a read-only preview with apply unavailable. Activation remains unavailable until the coordinator gains atomic apply, verification
+and restoration actions and those paths are qualified. The same planner can be
+inspected from a terminal without mutation:
 
 ```bash
 open-mmi-config vehicle-setup preview seat_1p default \

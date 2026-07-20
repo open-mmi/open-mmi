@@ -17,6 +17,7 @@ COMMANDS = (
     "open-mmi-status",
     "open-mmi-update-coordinator",
     "open-mmi-update-installer",
+    "open-mmi-vehicle-config-coordinator",
 )
 
 
@@ -130,7 +131,7 @@ class CommandInstallationTests(unittest.TestCase):
 
                 test -f \"$COMMAND_LINK_DIR/open-mmi-launcher\"
                 test ! -L \"$COMMAND_LINK_DIR/open-mmi-launcher\"
-                for command in open-mmi-canbusd open-mmi-config open-mmi-dashboard open-mmi-status open-mmi-update-coordinator open-mmi-update-installer; do
+                for command in open-mmi-canbusd open-mmi-config open-mmi-dashboard open-mmi-status open-mmi-update-coordinator open-mmi-update-installer open-mmi-vehicle-config-coordinator; do
                     test ! -e \"$COMMAND_LINK_DIR/$command\"
                     test ! -L \"$COMMAND_LINK_DIR/$command\"
                 done

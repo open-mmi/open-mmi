@@ -17,7 +17,7 @@ from urllib.parse import urlparse
 
 try:
     from ui import launcher, update_coordinator, update_readiness
-    from ui import vehicle_setup
+    from ui import vehicle_config_coordinator, vehicle_setup
     from ui.configuration import (
         ConfigurationError,
         client_is_loopback,
@@ -33,7 +33,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover - direct script fallback
         raise
     sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[2]))
     from ui import launcher, update_coordinator, update_readiness
-    from ui import vehicle_setup
+    from ui import vehicle_config_coordinator, vehicle_setup
     from ui.configuration import (
         ConfigurationError,
         client_is_loopback,
@@ -183,6 +183,7 @@ def _handle_get(handler: Any, path: str) -> bool:
     routes = {
         "/api/system/settings": _settings_status,
         "/api/system/vehicle-setup": vehicle_setup.status_payload,
+        "/api/system/vehicle-setup/coordinator": vehicle_config_coordinator.client_status,
         "/api/system/update-status": update_status.status_payload,
         "/api/system/update-readiness": lambda: update_readiness.readiness_payload(update_status.status_payload()),
         "/api/system/update-coordinator": update_coordinator.client_status,
@@ -194,7 +195,10 @@ def _handle_get(handler: Any, path: str) -> bool:
         return True
     try:
         handler._send_json(routes[path]())
-    except update_coordinator.CoordinatorError as exc:
+    except (
+        update_coordinator.CoordinatorError,
+        vehicle_config_coordinator.CoordinatorError,
+    ) as exc:
         handler._send_json({"ok": False, "error": str(exc)}, 502)
     except (RuntimeError, TimeoutError, OSError):
         handler._send_json({"ok": False, "error": "System status operation failed"}, 502)
@@ -257,6 +261,7 @@ def _handle_post(handler: Any, path: str) -> bool:
         ConfigurationError,
         launcher.LauncherError,
         update_coordinator.CoordinatorError,
+        vehicle_config_coordinator.CoordinatorError,
         update_status.UpdateStatusError,
         vehicle_setup.VehicleSetupError,
     ) as exc:

@@ -151,6 +151,7 @@ jobs:
               "open-mmi-status": "ui.dashboard.status_cli:main",
               "open-mmi-update-coordinator": "ui.update_coordinator:main",
               "open-mmi-update-installer": "ui.update_installer:main",
+              "open-mmi-vehicle-config-coordinator": "ui.vehicle_config_coordinator:main",
           }
           installed = {
               entry.name: entry.value

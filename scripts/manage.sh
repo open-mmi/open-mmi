@@ -15,6 +15,8 @@ UPDATE_POLICY_FILE="/etc/open-mmi/update-policy.json"
 UPDATE_COORDINATOR_GROUP="open-mmi-update"
 UPDATE_COORDINATOR_UNIT="open-mmi-update-coordinator.service"
 UPDATE_INSTALLER_UNIT="open-mmi-update-installer.service"
+VEHICLE_CONFIG_COORDINATOR_GROUP="open-mmi-config"
+VEHICLE_CONFIG_COORDINATOR_UNIT="open-mmi-vehicle-config-coordinator.service"
 UPDATE_COORDINATOR_STATE_DIR="/var/lib/open-mmi"
 UPDATE_COORDINATOR_RUNTIME_DIR="/run/open-mmi"
 
@@ -50,6 +52,7 @@ OPEN_MMI_COMMANDS=(
     open-mmi-status
     open-mmi-update-coordinator
     open-mmi-update-installer
+    open-mmi-vehicle-config-coordinator
 )
 
 # =============================================================================
@@ -568,6 +571,28 @@ install_update_coordinator() {
     fi
 }
 
+install_vehicle_config_coordinator() {
+    local authorization_added=false
+    if ! getent group "$VEHICLE_CONFIG_COORDINATOR_GROUP" >/dev/null 2>&1; then
+        groupadd --system "$VEHICLE_CONFIG_COORDINATOR_GROUP"
+    fi
+    if ! id -nG "$REAL_USER" | tr ' ' '\n' | grep -Fqx "$VEHICLE_CONFIG_COORDINATOR_GROUP"; then
+        usermod -aG "$VEHICLE_CONFIG_COORDINATOR_GROUP" "$REAL_USER"
+        authorization_added=true
+    fi
+    install -d -m 0755 -o root -g root /etc/systemd/system
+    install -m 0644 -o root -g root \
+        "$REPO_ROOT/systemd/system/$VEHICLE_CONFIG_COORDINATOR_UNIT" \
+        "/etc/systemd/system/$VEHICLE_CONFIG_COORDINATOR_UNIT"
+    install -d -m 0755 -o root -g root "$UPDATE_COORDINATOR_STATE_DIR"
+    systemctl daemon-reload
+    systemctl enable "$VEHICLE_CONFIG_COORDINATOR_UNIT"
+    systemctl restart "$VEHICLE_CONFIG_COORDINATOR_UNIT"
+    if [ "$authorization_added" = true ]; then
+        log_warn "Log out and back in before inspecting vehicle configuration coordinator status."
+    fi
+}
+
 remove_login_autostart() {
     if [ -f "$LOGIN_AUTOSTART_ENTRY" ] && grep -Fqx "Exec=/usr/local/bin/open-mmi-launcher" "$LOGIN_AUTOSTART_ENTRY"; then
         rm -f "$LOGIN_AUTOSTART_ENTRY"
@@ -700,6 +725,7 @@ cmd_install() {
         return 1
     fi
     install_update_coordinator
+    install_vehicle_config_coordinator
     
     # Store version and the managed source descriptor used by read-only checks.
     get_current_version > "$VERSION_FILE"
@@ -846,6 +872,7 @@ cmd_update() {
         return 1
     fi
     install_update_coordinator
+    install_vehicle_config_coordinator
 
     local user_systemd_dir="$REAL_HOME/.config/systemd/user"
     sudo install -d -m 0755 -o "$REAL_USER" -g "$REAL_USER" "$user_systemd_dir"
@@ -1013,6 +1040,7 @@ cmd_deploy_prepared() {
     install_command_links
     deployment_stage="system-services"
     install_update_coordinator
+    install_vehicle_config_coordinator
 
     deployment_stage="user-services"
     local user_systemd_dir="$REAL_HOME/.config/systemd/user"
@@ -1095,8 +1123,12 @@ cmd_uninstall() {
         sudo -u "$REAL_USER" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user disable --now "$service" >/dev/null 2>&1 || true
     done
     systemctl disable --now "$UPDATE_COORDINATOR_UNIT" >/dev/null 2>&1 || true
+    systemctl disable --now "$VEHICLE_CONFIG_COORDINATOR_UNIT" >/dev/null 2>&1 || true
     systemctl stop "$UPDATE_INSTALLER_UNIT" >/dev/null 2>&1 || true
-    rm -f "/etc/systemd/system/$UPDATE_COORDINATOR_UNIT" "/etc/systemd/system/$UPDATE_INSTALLER_UNIT"
+    rm -f \
+        "/etc/systemd/system/$UPDATE_COORDINATOR_UNIT" \
+        "/etc/systemd/system/$UPDATE_INSTALLER_UNIT" \
+        "/etc/systemd/system/$VEHICLE_CONFIG_COORDINATOR_UNIT"
     systemctl daemon-reload
     rm -rf "$UPDATE_COORDINATOR_RUNTIME_DIR" "$UPDATE_COORDINATOR_STATE_DIR"
 

@@ -230,6 +230,51 @@ class SystemConfigurationTests(unittest.TestCase):
         self.assertEqual(handler.sent[1], 403)
 
 
+    def test_vehicle_configuration_coordinator_status_route_uses_fixed_socket_client(self):
+        class Handler:
+            client_address = ("127.0.0.1", 1234)
+            headers = {"Host": "127.0.0.1:8765", "Origin": "http://127.0.0.1:8765"}
+            sent = None
+
+            def _send_json(self, payload, status=200):
+                self.sent = (payload, status)
+
+        handler = Handler()
+        fixture = {
+            "ok": True,
+            "read_only": True,
+            "apply_enabled": False,
+            "state": {"state": "idle"},
+        }
+        with patch.object(
+            system_settings.vehicle_config_coordinator,
+            "client_status",
+            return_value=fixture,
+        ) as status:
+            self.assertTrue(
+                system_settings._handle_get(
+                    handler,
+                    "/api/system/vehicle-setup/coordinator",
+                )
+            )
+        status.assert_called_once_with()
+        self.assertEqual(handler.sent, (fixture, 200))
+
+        handler = Handler()
+        handler.client_address = ("192.0.2.10", 1234)
+        with patch.object(
+            system_settings.vehicle_config_coordinator,
+            "client_status",
+        ) as status:
+            self.assertTrue(
+                system_settings._handle_get(
+                    handler,
+                    "/api/system/vehicle-setup/coordinator",
+                )
+            )
+        status.assert_not_called()
+        self.assertEqual(handler.sent[1], 403)
+
     def test_update_status_routes_are_local_fixed_and_read_only(self):
         class Handler:
             client_address = ("127.0.0.1", 1234)
@@ -447,6 +492,24 @@ class SystemConfigurationTests(unittest.TestCase):
         self.assertEqual(result, 0)
         install.assert_called_once_with()
         self.assertIn('"state": "complete"', output.getvalue())
+
+    def test_cli_vehicle_configuration_coordinator_uses_fixed_status_action(self):
+        output = io.StringIO()
+        fixture = {
+            "ok": True,
+            "read_only": True,
+            "apply_enabled": False,
+            "state": {"state": "idle"},
+        }
+        with patch.object(
+            config_cli.vehicle_config_coordinator,
+            "client_status",
+            return_value=fixture,
+        ) as status, contextlib.redirect_stdout(output):
+            result = config_cli.main(["vehicle-setup", "coordinator"])
+        self.assertEqual(result, 0)
+        status.assert_called_once_with()
+        self.assertIn('"apply_enabled": false', output.getvalue().lower())
 
     def test_cli_dashboard_enable_remains_advanced_service_control(self):
         output = io.StringIO()

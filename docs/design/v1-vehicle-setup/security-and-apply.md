@@ -27,7 +27,9 @@ paths, actions and failure modes.
 The coordinator socket is local, group-authorized and unavailable to remote clients.
 Its public protocol contains fixed actions and bounded JSON objects only.
 
-Suggested actions:
+The first coordinator foundation exposes only `status`. It persists strict public transaction state, reports configuration/update/lifecycle lock ownership, and explicitly reports preview/apply/restore as disabled. The service has no writable access to `/etc/open-mmi` in this slice.
+
+Planned actions after the transaction implementation is complete:
 
 ```text
 status

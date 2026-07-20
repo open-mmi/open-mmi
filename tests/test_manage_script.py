@@ -284,6 +284,7 @@ sudo() {{ printf '%s\\0' "$@"; }}
             "open-mmi-status",
             "open-mmi-update-coordinator",
             "open-mmi-update-installer",
+            "open-mmi-vehicle-config-coordinator",
         ):
             self.assertIn(command, self.text)
         self.assertIn(
@@ -338,6 +339,8 @@ sudo() {{ printf '%s\\0' "$@"; }}
         )
         self.assertIn('systemctl stop "$UPDATE_INSTALLER_UNIT"', self.text)
         self.assertIn('"/etc/systemd/system/$UPDATE_INSTALLER_UNIT"', self.text)
+        self.assertIn('systemctl disable --now "$VEHICLE_CONFIG_COORDINATOR_UNIT"', self.text)
+        self.assertIn('"/etc/systemd/system/$VEHICLE_CONFIG_COORDINATOR_UNIT"', self.text)
 
     def test_prepared_deployment_is_fixed_root_only_and_rolls_back_on_error(self) -> None:
         start = self.text.index("cmd_deploy_prepared() {")
@@ -375,6 +378,23 @@ sudo() {{ printf '%s\\0' "$@"; }}
         self.assertNotIn("ReadWritePaths=/opt/open-mmi ", unit)
         self.assertNotIn("%i", unit)
         self.assertIn("ProtectSystem=strict", unit)
+
+    def test_vehicle_configuration_coordinator_is_read_only_and_hardened(self) -> None:
+        unit = (ROOT / "systemd/system/open-mmi-vehicle-config-coordinator.service").read_text(encoding="utf-8")
+        self.assertIn("ExecStart=/opt/open-mmi/venv/bin/open-mmi-vehicle-config-coordinator serve", unit)
+        self.assertIn("ProtectHome=true", unit)
+        self.assertIn("PrivateNetwork=true", unit)
+        self.assertIn("RestrictAddressFamilies=AF_UNIX", unit)
+        self.assertIn("ProtectSystem=strict", unit)
+        self.assertIn("ReadWritePaths=/var/lib/open-mmi /run/open-mmi", unit)
+        self.assertNotIn("/etc/open-mmi", unit)
+        start = self.text.index("install_vehicle_config_coordinator() {")
+        end = self.text.index("remove_login_autostart() {", start)
+        block = self.text[start:end]
+        self.assertIn('groupadd --system "$VEHICLE_CONFIG_COORDINATOR_GROUP"', block)
+        self.assertIn('usermod -aG "$VEHICLE_CONFIG_COORDINATOR_GROUP" "$REAL_USER"', block)
+        self.assertIn('systemctl restart "$VEHICLE_CONFIG_COORDINATOR_UNIT"', block)
+        self.assertNotIn('${OPEN_MMI_PREPARED_DEPLOYMENT:-0}', block)
 
     def test_coordinator_can_read_the_managed_checkout_and_is_restarted(self) -> None:
         unit = (ROOT / "systemd/system/open-mmi-update-coordinator.service").read_text(encoding="utf-8")

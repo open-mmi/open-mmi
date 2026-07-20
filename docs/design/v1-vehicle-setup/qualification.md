@@ -28,6 +28,8 @@ Gate: no mutation endpoints; malformed and symlinked fixtures fail closed.
 
 ### Slice 2: canonical state and coordinator
 
+Current foundation status: the root-owned status-only coordinator service, persistent state schema, recovery path, dedicated authorization group, and configuration/update/lifecycle lock primitives are implemented. Preview remains in the unprivileged planning layer; apply, systemd/udev mutation, runtime verification and restoration remain gated.
+
 - root-owned descriptor;
 - deterministic plan rendering;
 - dedicated configuration transaction lock/state;

@@ -104,6 +104,7 @@ open-mmi-config updates status
 open-mmi-config updates check
 open-mmi-config updates readiness
 open-mmi-config updates coordinator
+open-mmi-config vehicle-setup coordinator
 open-mmi-config updates prepare
 open-mmi-config updates install
 ```

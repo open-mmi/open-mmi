@@ -219,8 +219,8 @@ This endpoint performs no mutation, accepts no query-selected path or source and
 not imply that activation is available. `loaded` is `null` until bounded daemon evidence
 is available. It reports the exact identities, content revisions, bus and interface
 successfully loaded by `canbusd`; it does not require an adapter or recent frames.
-Coordinator capability and transaction state are added only with the separately
-qualified apply boundary.
+Coordinator capability and transaction state are exposed separately through the
+status-only coordinator boundary described below.
 
 Interface entries distinguish configuration from live health:
 
@@ -237,6 +237,27 @@ Interface entries distinguish configuration from live health:
 
 No recent frames is not the same as a missing interface, and neither means that profile
 activation failed.
+
+## Coordinator status API
+
+Implemented fixed route:
+
+```text
+GET /api/system/vehicle-setup/coordinator
+```
+
+The dashboard delegates this request to the dedicated root-owned Unix-socket service.
+The first response is deliberately read-only and reports strict persistent transaction
+state plus configuration, update and lifecycle lock activity. It explicitly returns
+`preview_enabled: false`, `apply_enabled: false` and `restore_enabled: false`; no
+coordinator request can yet write the canonical descriptor, generated systemd content
+or udev rules.
+
+The equivalent fixed CLI action is:
+
+```text
+open-mmi-config vehicle-setup coordinator
+```
 
 ## Preview API
 
@@ -261,7 +282,7 @@ Payload:
 
 Preview is read-only. It returns a normalized plan, compatibility results, warnings and
 the current configuration revision required by apply. It also returns
-`apply_available: false` while the privileged coordinator is absent. Preview performs
+`apply_available: false` while coordinator mutation actions remain disabled. Preview performs
 no filesystem write, systemd/udev reload or service restart, and its response contains
 no resolved filesystem path or generated command text.
 
