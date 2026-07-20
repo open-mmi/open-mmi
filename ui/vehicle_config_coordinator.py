@@ -1,9 +1,10 @@
 """Privileged vehicle configuration coordination.
 
 The coordinator owns a fixed local Unix-socket boundary, persistent public
-transaction state, and independent non-mutating preview validation.  The
-public socket remains read-only.  A separate root-only, one-shot vcan round-trip
-command exists solely to qualify the internal apply and restoration engine.
+transaction state, independent preview validation, and the fixed apply action.
+The browser UI remains disabled until its review/progress workflow is connected.
+A separate root-only, one-shot vcan round-trip command remains available for
+qualification of the apply and restoration engine.
 """
 
 from __future__ import annotations
@@ -25,7 +26,7 @@ import uuid
 from contextlib import AbstractContextManager, ExitStack
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Mapping, Optional, Protocol, Sequence
+from typing import Any, Callable, Dict, Mapping, Optional, Protocol, Sequence
 
 from ui import vehicle_configuration, vehicle_setup
 
@@ -49,6 +50,7 @@ DEFAULT_QUALIFICATION_GATE = Path(
 QUALIFICATION_GATE_CONTENT = b"OPEN_MMI_ALLOW_VCAN_CONFIGURATION_APPLY=1\n"
 MAX_REQUEST_BYTES = 4096
 MAX_RESPONSE_BYTES = 256 * 1024
+DEFAULT_APPLY_TIMEOUT = 60.0
 MAX_QUALIFICATION_PREVIEW_BYTES = 256 * 1024
 MAX_CONFIGURED_PATH_LENGTH = 4096
 MAX_ERROR_LENGTH = 512
@@ -58,6 +60,7 @@ ALLOWED_STATES = ACTIVE_STATES | TERMINAL_STATES
 _TRANSACTION_RE = re.compile(r"^configuration-[0-9a-f]{32}$")
 _STAGE_RE = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
 _VCAN_INTERFACE_RE = re.compile(r"^vcan[0-9]{1,3}$")
+_ABSENT_CAN_INTERFACE_RE = re.compile(r"^can[0-9]{1,3}$")
 _DROPIN_NAME_RE = re.compile(r"^[A-Za-z0-9_.-]{1,128}\.conf$")
 _COORDINATOR_ENV_KEYS = {
     "OPEN_MMI_INSTALL_DIR",
@@ -77,6 +80,27 @@ _MANAGED_RUNTIME_KEYS = {
 
 class CoordinatorError(RuntimeError):
     """A fail-closed coordinator boundary error."""
+
+
+class CoordinatorUnavailableError(CoordinatorError):
+    """The fixed local coordinator boundary could not be reached."""
+
+
+class CoordinatorConflictError(CoordinatorError):
+    """A stale preview or active lifecycle transaction blocked apply."""
+
+    def __init__(self, message: str, code: str):
+        super().__init__(message)
+        self.code = code
+
+
+class CoordinatorApplyError(CoordinatorError):
+    """An apply failed after the coordinator created transaction state."""
+
+    def __init__(self, message: str, code: str, state: Mapping[str, Any]):
+        super().__init__(message)
+        self.code = code
+        self.state = dict(state)
 
 
 def _unique_json_object(pairs: Sequence[tuple[str, Any]]) -> Dict[str, Any]:
@@ -313,7 +337,7 @@ class TransactionLock(AbstractContextManager["TransactionLock"]):
         except BlockingIOError as exc:
             self.handle.close()
             self.handle = None
-            raise CoordinatorError(self.busy_error) from exc
+            raise CoordinatorConflictError(self.busy_error, "busy") from exc
         return self
 
     def __exit__(self, *args: object) -> None:
@@ -408,13 +432,15 @@ def _public_response(
     configuration_lock: Path = DEFAULT_LOCK,
     lifecycle_lock: Path = DEFAULT_LIFECYCLE_LOCK,
     update_lock: Path = DEFAULT_UPDATE_LOCK,
+    *,
+    apply_enabled: bool = False,
 ) -> Dict[str, Any]:
     return {
         "ok": True,
         "api_version": API_VERSION,
-        "read_only": True,
+        "read_only": not apply_enabled,
         "preview_enabled": True,
-        "apply_enabled": False,
+        "apply_enabled": apply_enabled,
         "restore_enabled": False,
         "locks": _lock_status(configuration_lock, lifecycle_lock, update_lock),
         "state": dict(state),
@@ -512,6 +538,73 @@ class QualificationApplyOperations(RecoverableApplyOperations, Protocol):
     def discard_snapshot(self, snapshot: object) -> None: ...
 
 
+ApplyOperationsFactory = Callable[[Mapping[str, Any]], ApplyOperations]
+PreSnapshotValidator = Callable[[Mapping[str, Any]], None]
+
+
+def _request_for_target(target: Mapping[str, Any]) -> Dict[str, Any]:
+    """Drop reviewed revisions and rebuild the fixed preview request schema."""
+
+    normalized = vehicle_configuration.normalize_selection(target)
+    active_bus = normalized["runtime"]["active_bus"]
+    return {
+        "vehicle": {
+            "source": normalized["vehicle"]["source"],
+            "id": normalized["vehicle"]["id"],
+        },
+        "bindings": {
+            "source": normalized["bindings"]["source"],
+            "id": normalized["bindings"]["id"],
+        },
+        "runtime": {
+            "active_bus": active_bus,
+            "buses": {
+                active_bus: {
+                    "interface": normalized["runtime"]["buses"][active_bus][
+                        "interface"
+                    ]
+                }
+            },
+        },
+    }
+
+
+def _normalize_apply_payload(
+    payload: object,
+) -> tuple[Dict[str, Any], Dict[str, Any], str]:
+    """Validate the exact reviewed apply body accepted by HTTP and the socket."""
+
+    if not isinstance(payload, Mapping) or set(payload) != {
+        "target",
+        "expected_configuration_revision",
+        "target_configuration_revision",
+        "confirm",
+    }:
+        raise CoordinatorError("Invalid vehicle configuration apply schema")
+    if payload.get("confirm") is not True:
+        raise CoordinatorError(
+            "Vehicle configuration apply requires explicit confirmation"
+        )
+    expected_revision = payload.get("expected_configuration_revision")
+    target_revision = payload.get("target_configuration_revision")
+    if (
+        not isinstance(expected_revision, str)
+        or not vehicle_configuration.REVISION_RE.fullmatch(expected_revision)
+    ):
+        raise CoordinatorError("Expected configuration revision is invalid")
+    try:
+        target = vehicle_configuration.normalize_selection(payload.get("target"))
+    except vehicle_configuration.VehicleConfigurationError as exc:
+        raise CoordinatorError("Reviewed vehicle configuration target is invalid") from exc
+    if (
+        not isinstance(target_revision, str)
+        or not vehicle_configuration.REVISION_RE.fullmatch(target_revision)
+        or target_revision != vehicle_configuration.selection_revision(target)
+    ):
+        raise CoordinatorError("Reviewed target configuration revision is invalid")
+    return _request_for_target(target), target, expected_revision
+
+
 def _state_update(path: Path, payload: Dict[str, Any], **changes: Any) -> Dict[str, Any]:
     payload.update(changes)
     payload["updated_at"] = _timestamp()
@@ -566,7 +659,9 @@ def run_apply_transaction(
     reviewed_target: Mapping[str, Any],
     expected_configuration_revision: str,
     confirm: bool,
-    operations: ApplyOperations,
+    operations: Optional[ApplyOperations] = None,
+    operations_factory: Optional[ApplyOperationsFactory] = None,
+    pre_snapshot_validator: Optional[PreSnapshotValidator] = None,
     state_path: Path = DEFAULT_STATE_FILE,
     roots: Optional[vehicle_setup.CatalogueRoots] = None,
     dropin_path: Optional[Path] = None,
@@ -577,12 +672,13 @@ def run_apply_transaction(
     update_lock: Path = DEFAULT_UPDATE_LOCK,
     qualification_restore_on_success: bool = False,
 ) -> Dict[str, Any]:
-    """Execute the fail-closed apply state machine behind the disabled API.
+    """Execute one fail-closed apply transaction.
 
     Apply is bound both to the active configuration revision and to the exact
     normalized target (including profile and bindings content revisions) that
-    the user reviewed.  System mutation is supplied only by coordinator-owned
-    operations.  The public socket does not expose this function.
+    the user reviewed. System mutation is supplied only by coordinator-owned
+    operations selected after stale-review checks while all transaction locks
+    are held.
     """
 
     if confirm is not True:
@@ -596,6 +692,8 @@ def run_apply_transaction(
         expected_target = vehicle_configuration.normalize_selection(reviewed_target)
     except vehicle_configuration.VehicleConfigurationError as exc:
         raise CoordinatorError("Reviewed vehicle configuration target is invalid") from exc
+    if (operations is None) == (operations_factory is None):
+        raise CoordinatorError("Vehicle configuration apply operations are unavailable")
 
     with ConfigurationTransactionLocks(configuration_lock, lifecycle_lock, update_lock):
         preview = coordinator_preview(
@@ -609,12 +707,28 @@ def run_apply_transaction(
             update_lock=update_lock,
         )
         if preview["expected_configuration_revision"] != expected_configuration_revision:
-            raise CoordinatorError("Vehicle configuration preview is stale")
+            raise CoordinatorConflictError(
+                "Vehicle configuration preview is stale",
+                "stale-preview",
+            )
         target = vehicle_configuration.normalize_selection(preview["target"])
         if target != expected_target:
-            raise CoordinatorError("Vehicle configuration target changed after review")
+            raise CoordinatorConflictError(
+                "Vehicle configuration target changed after review",
+                "stale-preview",
+            )
         if preview.get("target_configuration_revision") != vehicle_configuration.selection_revision(target):
-            raise CoordinatorError("Vehicle configuration preview target is inconsistent")
+            raise CoordinatorConflictError(
+                "Vehicle configuration preview target is inconsistent",
+                "stale-preview",
+            )
+        if pre_snapshot_validator is not None:
+            pre_snapshot_validator(target)
+        if operations is not None:
+            selected_operations = operations
+        else:
+            assert operations_factory is not None
+            selected_operations = operations_factory(target)
 
         transaction_id = f"configuration-{uuid.uuid4().hex}"
         state = initial_state()
@@ -638,19 +752,19 @@ def run_apply_transaction(
         mutation_started = False
         stage = "snapshot"
         try:
-            snapshot = operations.snapshot(transaction_id)
+            snapshot = selected_operations.snapshot(transaction_id)
             state = _state_update(state_path, state, state="applying", stage="installing")
             mutation_started = True
             stage = "installing"
-            operations.install(target)
+            selected_operations.install(target)
             state = _state_update(state_path, state, state="reloading", stage="reloading")
             stage = "reloading"
-            operations.reload(target)
+            selected_operations.reload(target)
             stage = "restarting"
-            operations.restart()
+            selected_operations.restart()
             state = _state_update(state_path, state, state="verifying", stage="verifying")
             stage = "verifying"
-            loaded = operations.loaded_runtime()
+            loaded = selected_operations.loaded_runtime()
             if not _loaded_matches_target(loaded, target):
                 raise CoordinatorError("Applied vehicle configuration could not be verified")
             if qualification_restore_on_success:
@@ -662,10 +776,10 @@ def run_apply_transaction(
                     stage=stage,
                     restoration_attempted=True,
                 )
-                operations.restore(snapshot)
-                operations.restart()
-                restored_loaded = operations.loaded_runtime()
-                if not operations.restoration_verified(snapshot, restored_loaded):
+                selected_operations.restore(snapshot)
+                selected_operations.restart()
+                restored_loaded = selected_operations.loaded_runtime()
+                if not selected_operations.restoration_verified(snapshot, restored_loaded):
                     raise CoordinatorError(
                         "Vehicle configuration qualification restoration could not be verified"
                     )
@@ -682,7 +796,7 @@ def run_apply_transaction(
                 # Persist the terminal state before deleting the only durable
                 # snapshot. A process interruption may leave an extra snapshot,
                 # but can never leave an active state with no recovery material.
-                discard = getattr(operations, "discard_snapshot", None)
+                discard = getattr(selected_operations, "discard_snapshot", None)
                 if callable(discard):
                     try:
                         discard(snapshot)
@@ -713,34 +827,39 @@ def run_apply_transaction(
                 )
                 restoration_verified = False
                 try:
-                    operations.restore(snapshot)
-                    operations.restart()
-                    restored_loaded = operations.loaded_runtime()
-                    restoration_verified = operations.restoration_verified(snapshot, restored_loaded)
+                    selected_operations.restore(snapshot)
+                    selected_operations.restart()
+                    restored_loaded = selected_operations.loaded_runtime()
+                    restoration_verified = selected_operations.restoration_verified(
+                        snapshot,
+                        restored_loaded,
+                    )
                 except BaseException:
                     restoration_verified = False
-                now = _timestamp()
-                _best_effort_state_update(
+                terminal_state = _best_effort_state_update(
                     state_path,
                     state,
                     state="failed",
                     stage="restored" if restoration_verified else "restore-unverified",
-                    completed_at=now,
+                    completed_at=_timestamp(),
                     restoration_attempted=True,
                     restoration_verified=restoration_verified,
                     error=error,
                 )
             else:
-                now = _timestamp()
-                _best_effort_state_update(
+                terminal_state = _best_effort_state_update(
                     state_path,
                     state,
                     state="failed",
                     stage="failed",
-                    completed_at=now,
+                    completed_at=_timestamp(),
                     error=error,
                 )
-            raise CoordinatorError(error) from exc
+            raise CoordinatorApplyError(
+                error,
+                _apply_failure_code(terminal_state),
+                terminal_state,
+            ) from exc
 
 
 def recover_interrupted_transaction(
@@ -809,6 +928,68 @@ def recover_interrupted_transaction(
         )
 
 
+def _resolved_preview_context(
+    roots: Optional[vehicle_setup.CatalogueRoots],
+    dropin_path: Optional[Path],
+    status_path: Optional[Path],
+) -> tuple[vehicle_setup.CatalogueRoots, Path, Path]:
+    if roots is None or dropin_path is None or status_path is None:
+        configured_roots, configured_dropin, configured_status = _preview_context()
+        roots = roots or configured_roots
+        dropin_path = dropin_path or configured_dropin
+        status_path = status_path or configured_status
+    return roots, dropin_path, status_path
+
+
+def validate_apply_interface(
+    interface: str,
+    *,
+    sys_class_net: Path = Path("/sys/class/net"),
+) -> None:
+    """Require a physical SocketCAN target or an absent conventional ``canN``.
+
+    The public apply protocol must not bypass the root-only vcan qualification
+    gate. Present interfaces must be kernel SocketCAN devices. An absent target
+    is accepted only with the conservative ``canN`` naming contract so a future
+    non-CAN device cannot accidentally match the generated udev rule.
+    """
+
+    if not isinstance(interface, str) or not vehicle_configuration.INTERFACE_RE.fullmatch(
+        interface
+    ):
+        raise CoordinatorError("Vehicle configuration interface is invalid")
+    if _VCAN_INTERFACE_RE.fullmatch(interface):
+        raise CoordinatorError("vcan targets require root-only qualification")
+    type_path = sys_class_net / interface / "type"
+    try:
+        interface_type = type_path.read_text(encoding="ascii").strip()
+    except FileNotFoundError:
+        if not _ABSENT_CAN_INTERFACE_RE.fullmatch(interface):
+            raise CoordinatorError(
+                "Absent vehicle interfaces must use the conventional canN name"
+            )
+        return
+    except (OSError, UnicodeError) as exc:
+        raise CoordinatorError("Selected interface type cannot be inspected") from exc
+    if interface_type != "280":
+        raise CoordinatorError("Selected interface is not a SocketCAN device")
+
+
+def production_apply_operations(_target: Mapping[str, Any]) -> ApplyOperations:
+    """Construct the concrete fixed operation layer for one reviewed target."""
+
+    return root_apply_operations(suppress_can_provisioning=False)
+
+
+def _apply_failure_code(state: Optional[Mapping[str, Any]]) -> str:
+    if isinstance(state, Mapping):
+        if state.get("stage") == "restored" and state.get("restoration_verified") is True:
+            return "apply-failed-restored"
+        if state.get("stage") == "restore-unverified":
+            return "apply-failed-restore-unverified"
+    return "apply-failed"
+
+
 def response_for_request(
     payload: object,
     state_path: Path = DEFAULT_STATE_FILE,
@@ -820,6 +1001,7 @@ def response_for_request(
     preview_dropin_path: Optional[Path] = None,
     preview_status_path: Optional[Path] = None,
     preview_sys_class_net: Path = Path("/sys/class/net"),
+    apply_operations_factory: Optional[ApplyOperationsFactory] = None,
 ) -> Dict[str, Any]:
     if not isinstance(payload, dict):
         return {"ok": False, "error": "Invalid coordinator request schema"}
@@ -836,6 +1018,7 @@ def response_for_request(
                 configuration_lock,
                 lifecycle_lock,
                 update_lock,
+                apply_enabled=apply_operations_factory is not None,
             )
         if action == "preview":
             if set(payload) != {"api_version", "action", "request"}:
@@ -859,7 +1042,61 @@ def response_for_request(
                 "action": "preview",
                 "preview": preview,
             }
+        if action == "apply":
+            if apply_operations_factory is None:
+                return {"ok": False, "error": "Coordinator action is not enabled"}
+            if set(payload) != {"api_version", "action", "apply"}:
+                return {"ok": False, "error": "Invalid coordinator request schema"}
+            request, target, expected_revision = _normalize_apply_payload(
+                payload.get("apply")
+            )
+            roots, dropin_path, status_path = _resolved_preview_context(
+                preview_roots,
+                preview_dropin_path,
+                preview_status_path,
+            )
+
+            def validate_target(reviewed: Mapping[str, Any]) -> None:
+                active_bus = reviewed["runtime"]["active_bus"]
+                interface = reviewed["runtime"]["buses"][active_bus]["interface"]
+                validate_no_conflicting_runtime_dropins(dropin_path)
+                validate_apply_interface(
+                    interface,
+                    sys_class_net=preview_sys_class_net,
+                )
+
+            state = run_apply_transaction(
+                request,
+                reviewed_target=target,
+                expected_configuration_revision=expected_revision,
+                confirm=True,
+                operations_factory=apply_operations_factory,
+                pre_snapshot_validator=validate_target,
+                state_path=state_path,
+                roots=roots,
+                dropin_path=dropin_path,
+                status_path=status_path,
+                sys_class_net=preview_sys_class_net,
+                configuration_lock=configuration_lock,
+                lifecycle_lock=lifecycle_lock,
+                update_lock=update_lock,
+            )
+            return {
+                "ok": True,
+                "api_version": API_VERSION,
+                "action": "apply",
+                "state": state,
+            }
         return {"ok": False, "error": "Coordinator action is not enabled"}
+    except CoordinatorConflictError as exc:
+        return {"ok": False, "code": exc.code, "error": str(exc)}
+    except CoordinatorApplyError as exc:
+        return {
+            "ok": False,
+            "code": exc.code,
+            "error": str(exc),
+            "state": exc.state,
+        }
     except (
         CoordinatorError,
         vehicle_configuration.VehicleConfigurationError,
@@ -882,7 +1119,18 @@ class _Handler(socketserver.StreamRequestHandler):
                 )
             except (UnicodeError, json.JSONDecodeError, CoordinatorError):
                 payload = None
-            response = response_for_request(payload, self.server.state_path)  # type: ignore[attr-defined]
+            response = response_for_request(
+                payload,
+                self.server.state_path,  # type: ignore[attr-defined]
+                self.server.configuration_lock,  # type: ignore[attr-defined]
+                self.server.lifecycle_lock,  # type: ignore[attr-defined]
+                self.server.update_lock,  # type: ignore[attr-defined]
+                preview_roots=self.server.preview_roots,  # type: ignore[attr-defined]
+                preview_dropin_path=self.server.preview_dropin_path,  # type: ignore[attr-defined]
+                preview_status_path=self.server.preview_status_path,  # type: ignore[attr-defined]
+                preview_sys_class_net=self.server.preview_sys_class_net,  # type: ignore[attr-defined]
+                apply_operations_factory=self.server.apply_operations_factory,  # type: ignore[attr-defined]
+            )
         try:
             encoded = (json.dumps(response, sort_keys=True) + "\n").encode("utf-8")
             if len(encoded) > MAX_RESPONSE_BYTES:
@@ -903,9 +1151,30 @@ class CoordinatorServer(socketserver.ThreadingMixIn, socketserver.UnixStreamServ
     allow_reuse_address = False
     daemon_threads = True
 
-    def __init__(self, socket_path: Path, state_path: Path):
+    def __init__(
+        self,
+        socket_path: Path,
+        state_path: Path,
+        *,
+        configuration_lock: Path = DEFAULT_LOCK,
+        lifecycle_lock: Path = DEFAULT_LIFECYCLE_LOCK,
+        update_lock: Path = DEFAULT_UPDATE_LOCK,
+        preview_roots: Optional[vehicle_setup.CatalogueRoots] = None,
+        preview_dropin_path: Optional[Path] = None,
+        preview_status_path: Optional[Path] = None,
+        preview_sys_class_net: Path = Path("/sys/class/net"),
+        apply_operations_factory: Optional[ApplyOperationsFactory] = None,
+    ):
         self.socket_path = socket_path
         self.state_path = state_path
+        self.configuration_lock = configuration_lock
+        self.lifecycle_lock = lifecycle_lock
+        self.update_lock = update_lock
+        self.preview_roots = preview_roots
+        self.preview_dropin_path = preview_dropin_path
+        self.preview_status_path = preview_status_path
+        self.preview_sys_class_net = preview_sys_class_net
+        self.apply_operations_factory = apply_operations_factory
         socket_path.parent.mkdir(parents=True, exist_ok=True, mode=0o755)
         try:
             existing = socket_path.lstat()
@@ -959,11 +1228,31 @@ def _client_request(
     except CoordinatorError:
         raise
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        raise CoordinatorError("Vehicle configuration coordinator is unavailable") from exc
+        raise CoordinatorUnavailableError(
+            "Vehicle configuration coordinator is unavailable"
+        ) from exc
     if not isinstance(decoded, dict):
         raise CoordinatorError("Coordinator returned an invalid response")
     if decoded.get("ok") is not True:
-        raise CoordinatorError(str(decoded.get("error") or "Coordinator request failed"))
+        message = decoded.get("error")
+        if not _bounded_text(message, MAX_ERROR_LENGTH, allow_empty=False):
+            raise CoordinatorError("Coordinator returned an invalid error response")
+        code = decoded.get("code")
+        if code in {"busy", "stale-preview"}:
+            raise CoordinatorConflictError(message, code)
+        state = decoded.get("state")
+        if state is not None:
+            validated_state = _validate_state(state)
+            if code not in {
+                "apply-failed",
+                "apply-failed-restored",
+                "apply-failed-restore-unverified",
+            }:
+                raise CoordinatorError("Coordinator returned an invalid apply error")
+            raise CoordinatorApplyError(message, code, validated_state)
+        if code is not None:
+            raise CoordinatorError("Coordinator returned an invalid error code")
+        raise CoordinatorError(message)
     return decoded
 
 
@@ -1033,6 +1322,63 @@ def client_preview(
     ):
         raise CoordinatorError("Coordinator returned invalid preview metadata")
     return dict(preview)
+
+
+def client_apply(
+    apply: Mapping[str, Any],
+    socket_path: Path = DEFAULT_SOCKET,
+    *,
+    timeout: float = DEFAULT_APPLY_TIMEOUT,
+) -> Dict[str, Any]:
+    """Submit one exact reviewed target to the fixed coordinator action."""
+
+    _request, target, expected_revision = _normalize_apply_payload(apply)
+    canonical_apply = {
+        "target": target,
+        "expected_configuration_revision": expected_revision,
+        "target_configuration_revision": vehicle_configuration.selection_revision(
+            target
+        ),
+        "confirm": True,
+    }
+    response = _client_request(
+        {
+            "api_version": API_VERSION,
+            "action": "apply",
+            "apply": canonical_apply,
+        },
+        socket_path,
+        timeout,
+    )
+    if (
+        response.get("api_version") != API_VERSION
+        or response.get("action") != "apply"
+        or set(response) != {"ok", "api_version", "action", "state"}
+    ):
+        raise CoordinatorError("Coordinator returned an invalid apply wrapper")
+    state = _validate_state(response.get("state"))
+    active_bus = target["runtime"]["active_bus"]
+    expected_state_target = {
+        "vehicle": target["vehicle"],
+        "bindings": target["bindings"],
+        "active_bus": active_bus,
+        "interface": target["runtime"]["buses"][active_bus]["interface"],
+    }
+    if (
+        state.get("state") != "complete"
+        or state.get("stage") != "complete"
+        or state.get("target") != expected_state_target
+        or state.get("expected_configuration_revision") != expected_revision
+        or state.get("restoration_attempted") is not False
+        or state.get("restoration_verified") is not False
+    ):
+        raise CoordinatorError("Coordinator returned an invalid apply result")
+    return {
+        "ok": True,
+        "api_version": API_VERSION,
+        "action": "apply",
+        "state": state,
+    }
 
 
 def _read_no_follow_file(
@@ -1478,7 +1824,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     except CoordinatorError as exc:
         print(f"open-mmi-vehicle-config-coordinator: {exc}", file=sys.stderr)
         return 1
-    with CoordinatorServer(DEFAULT_SOCKET, DEFAULT_STATE_FILE) as server:
+    with CoordinatorServer(
+        DEFAULT_SOCKET,
+        DEFAULT_STATE_FILE,
+        apply_operations_factory=production_apply_operations,
+    ) as server:
         server.serve_forever()
     return 0
 

@@ -1,10 +1,10 @@
 """Concrete, fixed-path vehicle configuration apply operations.
 
 This module contains the root-owned filesystem and service operations used by
-``vehicle_config_coordinator.run_apply_transaction``.  The public coordinator
-protocol does not expose apply yet; keeping these operations in a separate
-module lets their rendering, snapshot, atomic replacement, verification and
-restoration behavior be qualified before the socket action is enabled.
+``vehicle_config_coordinator.run_apply_transaction``. Keeping these operations
+in a separate module preserves a narrow privileged surface for rendering,
+snapshot, atomic replacement, verification and restoration while the fixed
+socket/HTTP action supplies only a reviewed normalized target.
 """
 
 from __future__ import annotations

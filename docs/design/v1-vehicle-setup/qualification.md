@@ -157,11 +157,12 @@ Before exposing apply, unit and integration tests must prove:
 - an injected post-mutation failure restores both files and previous runtime evidence; and
 - interrupted mutation recovery reopens the durable snapshot and reports restored versus unverified restoration.
 
-These tests do not enable the public socket action or browser button.
+These tests qualified the concrete operation layer before the public socket action was
+enabled. They still do not enable the browser button.
 
 ## Root-only vcan round-trip qualification
 
-Before enabling any public apply route, the reference tablet qualifies the concrete
+Before the public apply route was enabled, the reference tablet qualified the concrete
 operation layer through the coordinator binary's local `qualify-vcan` command. This is
 not a general administrative apply path:
 
@@ -187,8 +188,27 @@ transaction and retains enough root-owned rollback material for interrupted reco
 
 The coordinator service receives only the exact generated-file and runtime-drop-in
 writable paths required to recover an interrupted qualification after process or tablet
-restart. The browser button and public socket `apply` action remain disabled throughout
-this stage.
+restart. The fixed socket/HTTP apply action is enabled only after this round trip; the
+browser button remains disabled.
+
+## Fixed apply protocol qualification
+
+Before connecting Settings, test the fixed HTTP route independently:
+
+- exact strict body from a fresh preview succeeds with `confirm: true`;
+- missing/false confirmation and extra fields mutate nothing;
+- a stale active revision returns `code=stale-preview`;
+- an active update or configuration transaction returns `code=busy`;
+- an existing selected non-SocketCAN interface is rejected before snapshot;
+- a post-mutation injected failure returns `apply-failed-restored` with verified state;
+- an unverified restoration returns `apply-failed-restore-unverified`; and
+- preview continues to return `apply_available: false`, leaving the UI control disabled.
+
+On the tablet, a confirmed reapply of the already-active maintained `can0` target is a
+safe first route smoke test: it exercises the socket, snapshot, fixed writes, restart and
+runtime verification without changing the intended selection. The fixed public apply
+protocol rejects `vcanN`; virtual CAN remains confined to the root-only one-shot
+qualification command so the temporary target cannot be persisted accidentally.
 
 ## Device qualification
 

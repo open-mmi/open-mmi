@@ -671,6 +671,19 @@ class ApplyTransactionTests(unittest.TestCase):
             "target": selected,
         }
 
+    def apply_payload(self, target=None, **updates):
+        selected = target or self.target()
+        payload = {
+            "target": selected,
+            "expected_configuration_revision": "sha256:" + "c" * 64,
+            "target_configuration_revision": coordinator.vehicle_configuration.selection_revision(
+                selected
+            ),
+            "confirm": True,
+        }
+        payload.update(updates)
+        return payload
+
     def execute(self, operations, root, **updates):
         args = dict(
             request={},
@@ -1061,6 +1074,386 @@ class ApplyTransactionTests(unittest.TestCase):
             )
             self.assertFalse(response["ok"])
             self.assertIn("not enabled", response["error"])
+
+    def test_status_reports_apply_only_when_operations_are_available(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            coordinator.write_state(coordinator.initial_state(), root / "state.json")
+            response = coordinator.response_for_request(
+                {"api_version": 1, "action": "status"},
+                root / "state.json",
+                root / "configuration.lock",
+                root / "lifecycle.lock",
+                root / "update.lock",
+                apply_operations_factory=lambda target: self.Operations(target),
+            )
+            self.assertTrue(response["ok"])
+            self.assertFalse(response["read_only"])
+            self.assertTrue(response["preview_enabled"])
+            self.assertTrue(response["apply_enabled"])
+            self.assertFalse(response["restore_enabled"])
+
+    def test_public_apply_protocol_executes_only_the_reviewed_target(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            dropin = root / "home" / "10-can-runtime.conf"
+            dropin.parent.mkdir(mode=0o700)
+            target = self.target()
+            operations = self.Operations(target)
+            factory_targets = []
+
+            def factory(reviewed):
+                factory_targets.append(reviewed)
+                return operations
+
+            with patch.object(
+                coordinator,
+                "coordinator_preview",
+                return_value=self.preview(target),
+            ):
+                response = coordinator.response_for_request(
+                    {
+                        "api_version": 1,
+                        "action": "apply",
+                        "apply": self.apply_payload(target),
+                    },
+                    root / "state.json",
+                    root / "configuration.lock",
+                    root / "lifecycle.lock",
+                    root / "update.lock",
+                    preview_roots=vehicle_setup.CatalogueRoots(
+                        root / "installed",
+                        root / "custom",
+                    ),
+                    preview_dropin_path=dropin,
+                    preview_status_path=root / "status.json",
+                    preview_sys_class_net=root / "sys" / "class" / "net",
+                    apply_operations_factory=factory,
+                )
+
+            self.assertTrue(response["ok"])
+            self.assertEqual(response["action"], "apply")
+            self.assertEqual(response["state"]["state"], "complete")
+            self.assertEqual(response["state"]["stage"], "complete")
+            self.assertEqual(factory_targets, [target])
+            self.assertEqual(
+                operations.calls,
+                ["snapshot", "install", "reload", "restart", "loaded_runtime"],
+            )
+
+    def test_public_apply_rejects_unconfirmed_or_changed_review_before_factory(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            called = []
+
+            def factory(target):
+                called.append(target)
+                return self.Operations(target)
+
+            unconfirmed = self.apply_payload(confirm=False)
+            response = coordinator.response_for_request(
+                {"api_version": 1, "action": "apply", "apply": unconfirmed},
+                root / "state.json",
+                apply_operations_factory=factory,
+            )
+            self.assertFalse(response["ok"])
+            self.assertIn("confirmation", response["error"])
+
+            invalid_revision = self.apply_payload(
+                target_configuration_revision="sha256:" + "f" * 64
+            )
+            response = coordinator.response_for_request(
+                {
+                    "api_version": 1,
+                    "action": "apply",
+                    "apply": invalid_revision,
+                },
+                root / "state.json",
+                apply_operations_factory=factory,
+            )
+            self.assertFalse(response["ok"])
+            self.assertIn("target", response["error"].lower())
+            self.assertEqual(called, [])
+
+    def test_public_apply_reports_stale_preview_as_machine_readable_conflict(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            target = self.target()
+            stale = self.preview(target)
+            stale["expected_configuration_revision"] = "sha256:" + "d" * 64
+            with patch.object(coordinator, "coordinator_preview", return_value=stale):
+                response = coordinator.response_for_request(
+                    {
+                        "api_version": 1,
+                        "action": "apply",
+                        "apply": self.apply_payload(target),
+                    },
+                    root / "state.json",
+                    root / "configuration.lock",
+                    root / "lifecycle.lock",
+                    root / "update.lock",
+                    apply_operations_factory=lambda selected: self.Operations(
+                        selected
+                    ),
+                )
+            self.assertEqual(
+                response,
+                {
+                    "ok": False,
+                    "code": "stale-preview",
+                    "error": "Vehicle configuration preview is stale",
+                },
+            )
+
+    def test_public_apply_rejects_an_existing_non_socketcan_interface(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            dropin = root / "home" / "10-can-runtime.conf"
+            dropin.parent.mkdir(mode=0o700)
+            class_net = root / "sys" / "class" / "net"
+            interface = class_net / "eth0"
+            interface.mkdir(parents=True)
+            (interface / "type").write_text("1\n", encoding="ascii")
+            target = self.target()
+            target["runtime"]["buses"]["comfort"]["interface"] = "eth0"
+            called = []
+
+            def factory(selected):
+                called.append(selected)
+                return self.Operations(selected)
+
+            with patch.object(
+                coordinator,
+                "coordinator_preview",
+                return_value=self.preview(target),
+            ):
+                response = coordinator.response_for_request(
+                    {
+                        "api_version": 1,
+                        "action": "apply",
+                        "apply": self.apply_payload(target),
+                    },
+                    root / "state.json",
+                    root / "configuration.lock",
+                    root / "lifecycle.lock",
+                    root / "update.lock",
+                    preview_dropin_path=dropin,
+                    preview_sys_class_net=class_net,
+                    apply_operations_factory=factory,
+                )
+            self.assertFalse(response["ok"])
+            self.assertIn("not a SocketCAN", response["error"])
+            self.assertEqual(called, [])
+
+    def test_public_apply_rejects_vcan_and_absent_non_can_names(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            dropin = root / "home" / "10-can-runtime.conf"
+            dropin.parent.mkdir(mode=0o700)
+            class_net = root / "sys" / "class" / "net"
+            called = []
+
+            def factory(selected):
+                called.append(selected)
+                return self.Operations(selected)
+
+            for interface, message in (
+                ("vcan0", "root-only qualification"),
+                ("future-net", "conventional canN"),
+            ):
+                target = self.target()
+                target["runtime"]["buses"]["comfort"]["interface"] = interface
+                with self.subTest(interface=interface), patch.object(
+                    coordinator,
+                    "coordinator_preview",
+                    return_value=self.preview(target),
+                ):
+                    response = coordinator.response_for_request(
+                        {
+                            "api_version": 1,
+                            "action": "apply",
+                            "apply": self.apply_payload(target),
+                        },
+                        root / "state.json",
+                        root / "configuration.lock",
+                        root / "lifecycle.lock",
+                        root / "update.lock",
+                        preview_dropin_path=dropin,
+                        preview_sys_class_net=class_net,
+                        apply_operations_factory=factory,
+                    )
+                    self.assertFalse(response["ok"])
+                    self.assertIn(message, response["error"])
+            self.assertEqual(called, [])
+
+    def test_pretransaction_rejection_never_reuses_previous_failure_state(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            state_path = root / "state.json"
+            previous = coordinator.initial_state()
+            previous.update(
+                {
+                    "state": "failed",
+                    "stage": "restored",
+                    "transaction_id": "configuration-" + "f" * 32,
+                    "started_at": previous["updated_at"],
+                    "completed_at": previous["updated_at"],
+                    "target": {
+                        "vehicle": self.target()["vehicle"],
+                        "bindings": self.target()["bindings"],
+                        "active_bus": "comfort",
+                        "interface": "can0",
+                    },
+                    "expected_configuration_revision": "sha256:" + "c" * 64,
+                    "restoration_attempted": True,
+                    "restoration_verified": True,
+                    "error": "Earlier operation failed",
+                }
+            )
+            coordinator.write_state(previous, state_path)
+            response = coordinator.response_for_request(
+                {
+                    "api_version": 1,
+                    "action": "apply",
+                    "apply": self.apply_payload(confirm=False),
+                },
+                state_path,
+                apply_operations_factory=lambda selected: self.Operations(selected),
+            )
+            self.assertFalse(response["ok"])
+            self.assertIn("confirmation", response["error"])
+            self.assertNotIn("code", response)
+            self.assertNotIn("state", response)
+
+    def test_public_apply_failure_returns_verified_restoration_state(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            dropin = root / "home" / "10-can-runtime.conf"
+            dropin.parent.mkdir(mode=0o700)
+            target = self.target()
+            operations = self.Operations(target, fail_at="install")
+            with patch.object(
+                coordinator,
+                "coordinator_preview",
+                return_value=self.preview(target),
+            ):
+                response = coordinator.response_for_request(
+                    {
+                        "api_version": 1,
+                        "action": "apply",
+                        "apply": self.apply_payload(target),
+                    },
+                    root / "state.json",
+                    root / "configuration.lock",
+                    root / "lifecycle.lock",
+                    root / "update.lock",
+                    preview_dropin_path=dropin,
+                    preview_sys_class_net=root / "sys" / "class" / "net",
+                    apply_operations_factory=lambda selected: operations,
+                )
+            self.assertFalse(response["ok"])
+            self.assertEqual(response["code"], "apply-failed-restored")
+            self.assertEqual(response["state"]["stage"], "restored")
+            self.assertTrue(response["state"]["restoration_verified"])
+
+    def test_socket_client_apply_round_trip_validates_the_result(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            socket_path = root / "coordinator.sock"
+            state_path = root / "state.json"
+            dropin = root / "home" / "10-can-runtime.conf"
+            dropin.parent.mkdir(mode=0o700)
+            coordinator.write_state(coordinator.initial_state(), state_path)
+            target = self.target()
+            operations = self.Operations(target)
+            group = type("Group", (), {"gr_gid": os.getgid()})()
+            with patch.object(
+                coordinator.grp,
+                "getgrnam",
+                return_value=group,
+            ), patch.object(coordinator.os, "chown"), patch.object(
+                coordinator,
+                "coordinator_preview",
+                return_value=self.preview(target),
+            ):
+                server = coordinator.CoordinatorServer(
+                    socket_path,
+                    state_path,
+                    configuration_lock=root / "configuration.lock",
+                    lifecycle_lock=root / "lifecycle.lock",
+                    update_lock=root / "update.lock",
+                    preview_dropin_path=dropin,
+                    preview_status_path=root / "status.json",
+                    preview_sys_class_net=root / "sys" / "class" / "net",
+                    apply_operations_factory=lambda selected: operations,
+                )
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    status = coordinator.client_status(socket_path)
+                    response = coordinator.client_apply(
+                        self.apply_payload(target),
+                        socket_path,
+                        timeout=2.0,
+                    )
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    thread.join(timeout=2)
+            self.assertTrue(status["apply_enabled"])
+            self.assertFalse(status["read_only"])
+            self.assertTrue(response["ok"])
+            self.assertEqual(response["state"]["state"], "complete")
+
+    def test_socket_client_apply_surfaces_verified_restoration_failure(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            socket_path = root / "coordinator.sock"
+            state_path = root / "state.json"
+            dropin = root / "home" / "10-can-runtime.conf"
+            dropin.parent.mkdir(mode=0o700)
+            coordinator.write_state(coordinator.initial_state(), state_path)
+            target = self.target()
+            operations = self.Operations(target, fail_at="install")
+            group = type("Group", (), {"gr_gid": os.getgid()})()
+            with patch.object(
+                coordinator.grp,
+                "getgrnam",
+                return_value=group,
+            ), patch.object(coordinator.os, "chown"), patch.object(
+                coordinator,
+                "coordinator_preview",
+                return_value=self.preview(target),
+            ):
+                server = coordinator.CoordinatorServer(
+                    socket_path,
+                    state_path,
+                    configuration_lock=root / "configuration.lock",
+                    lifecycle_lock=root / "lifecycle.lock",
+                    update_lock=root / "update.lock",
+                    preview_dropin_path=dropin,
+                    preview_status_path=root / "status.json",
+                    preview_sys_class_net=root / "sys" / "class" / "net",
+                    apply_operations_factory=lambda selected: operations,
+                )
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    with self.assertRaises(
+                        coordinator.CoordinatorApplyError
+                    ) as captured:
+                        coordinator.client_apply(
+                            self.apply_payload(target),
+                            socket_path,
+                            timeout=2.0,
+                        )
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    thread.join(timeout=2)
+            self.assertEqual(captured.exception.code, "apply-failed-restored")
+            self.assertEqual(captured.exception.state["stage"], "restored")
+            self.assertTrue(captured.exception.state["restoration_verified"])
 
 
 if __name__ == "__main__":

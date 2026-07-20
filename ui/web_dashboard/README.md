@@ -443,8 +443,9 @@ is the future coordinator's verification input after a service restart.
 
 `GET /api/system/vehicle-setup/coordinator` delegates to the dedicated root-owned
 coordinator socket. It reports persistent public transaction state and
-configuration/update/lifecycle lock activity while explicitly keeping apply and
-restoration disabled. Coordinator-owned preview is enabled and remains read-only. The equivalent terminal command is
+configuration/update/lifecycle lock activity. Coordinator-owned preview and the fixed
+confirmed backend apply action are enabled; caller-selected restoration remains
+disabled. The equivalent terminal command is
 `open-mmi-config vehicle-setup coordinator`. A newly installed `open-mmi-config`
 authorization group requires one logout/login or reboot before the existing dashboard
 session can reach the socket.
@@ -460,8 +461,9 @@ and proposed system effects inline. The draft and preview are not persisted, and
 `POST /api/system/vehicle-setup/preview` is a fixed, same-origin, non-mutating backend
 contract routed through the root-owned coordinator socket. It accepts only maintained/custom identifiers plus one declared bus/interface
 assignment. The coordinator rereads fixed catalogue/runtime paths, rebuilds the plan independently, and returns a normalized canonical target, compatibility warnings, lock activity and deterministic systemd/udev/restart effects. The page fails closed unless the response
-explicitly remains a read-only preview with apply unavailable. Activation remains unavailable until the coordinator gains atomic apply, verification
-and restoration actions and those paths are qualified. The same planner can be
+explicitly remains a read-only preview with apply unavailable. The backend now has
+qualified atomic apply, verification and restoration actions, but preview intentionally
+still returns `apply_available: false` so the unfinished page cannot enable itself. The same planner can be
 inspected from a terminal without mutation:
 
 ```bash
@@ -469,6 +471,16 @@ open-mmi-config vehicle-setup preview seat_1p default \
   --bus comfort \
   --interface can0
 ```
+
+`POST /api/system/vehicle-setup/apply` is a fixed literal-loopback, same-origin route
+for backend/device qualification. It accepts exactly the normalized `target`,
+`expected_configuration_revision`, `target_configuration_revision` and `confirm: true`
+copied from a fresh preview. The coordinator rebuilds the plan under the shared locks,
+rechecks catalogue revisions, rejects conflicting runtime drop-ins, existing
+non-SocketCAN interfaces, absent non-`canN` names and all public `vcanN` targets, then
+applies or automatically restores through fixed operations. Stale/busy responses are machine-readable; restored failures include only
+bounded persisted transaction state. The frontend JavaScript does not call this route
+yet, and **Apply setup** remains disabled.
 
 `static/styles.css` remains as an import-only compatibility manifest. `tools/verify_css_split.py` locks the module order and verifies that their concatenated bytes remain identical to the pre-split stylesheet, preventing accidental cascade changes during this structural phase.
 

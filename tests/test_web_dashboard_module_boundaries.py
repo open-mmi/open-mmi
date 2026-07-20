@@ -154,6 +154,14 @@ class DashboardModuleBoundaryTests(unittest.TestCase):
             "vehicle_config_coordinator.client_preview(_json_body(handler))",
             post_routes_source,
         )
+        self.assertIn(
+            '"/api/system/vehicle-setup/apply"',
+            post_routes_source,
+        )
+        self.assertIn(
+            "vehicle_config_coordinator.client_apply(_json_body(handler))",
+            post_routes_source,
+        )
         self.assertFalse(hasattr(vehicle_setup, "DashboardHandler"))
         source = inspect.getsource(vehicle_setup)
         self.assertNotIn("from ui.web_dashboard.server", source)

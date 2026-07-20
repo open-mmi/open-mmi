@@ -229,6 +229,187 @@ class SystemConfigurationTests(unittest.TestCase):
         preview.assert_not_called()
         self.assertEqual(handler.sent[1], 403)
 
+    def test_vehicle_setup_apply_route_forwards_only_exact_local_json(self):
+        target = {
+            "vehicle": {
+                "source": "maintained",
+                "id": "seat_1p",
+                "revision": "sha256:" + "a" * 64,
+            },
+            "bindings": {
+                "source": "maintained",
+                "id": "default",
+                "revision": "sha256:" + "b" * 64,
+            },
+            "runtime": {
+                "mode": "single",
+                "active_bus": "comfort",
+                "buses": {"comfort": {"interface": "can0"}},
+            },
+        }
+        request = {
+            "target": target,
+            "expected_configuration_revision": "sha256:" + "c" * 64,
+            "target_configuration_revision": system_settings.vehicle_config_coordinator.vehicle_configuration.selection_revision(
+                target
+            ),
+            "confirm": True,
+        }
+        body = json.dumps(request).encode("utf-8")
+
+        class Handler:
+            client_address = ("127.0.0.1", 1234)
+            headers = {
+                "Host": "127.0.0.1:8765",
+                "Origin": "http://127.0.0.1:8765",
+                "Content-Type": "application/json",
+                "Content-Length": str(len(body)),
+            }
+
+            def __init__(self):
+                self.sent = None
+                self.rfile = io.BytesIO(body)
+
+            def _send_json(self, payload, status=200):
+                self.sent = (payload, status)
+
+        result = {
+            "ok": True,
+            "api_version": 1,
+            "action": "apply",
+            "state": {"state": "complete", "stage": "complete"},
+        }
+        handler = Handler()
+        with patch.object(
+            system_settings.vehicle_config_coordinator,
+            "client_apply",
+            return_value=result,
+        ) as apply:
+            self.assertTrue(
+                system_settings._handle_post(
+                    handler,
+                    "/api/system/vehicle-setup/apply",
+                )
+            )
+        apply.assert_called_once_with(request)
+        self.assertEqual(handler.sent, (result, 200))
+
+        handler = Handler()
+        handler.client_address = ("192.0.2.10", 1234)
+        with patch.object(
+            system_settings.vehicle_config_coordinator,
+            "client_apply",
+        ) as apply:
+            self.assertTrue(
+                system_settings._handle_post(
+                    handler,
+                    "/api/system/vehicle-setup/apply",
+                )
+            )
+        apply.assert_not_called()
+        self.assertEqual(handler.sent[1], 403)
+
+    def test_vehicle_setup_apply_route_maps_conflict_failure_and_unavailable(self):
+        body = b'{"confirm":true}'
+
+        class Handler:
+            client_address = ("127.0.0.1", 1234)
+            headers = {
+                "Host": "127.0.0.1:8765",
+                "Origin": "http://127.0.0.1:8765",
+                "Content-Type": "application/json",
+                "Content-Length": str(len(body)),
+            }
+
+            def __init__(self):
+                self.sent = None
+                self.rfile = io.BytesIO(body)
+
+            def _send_json(self, payload, status=200):
+                self.sent = (payload, status)
+
+        handler = Handler()
+        with patch.object(
+            system_settings.vehicle_config_coordinator,
+            "client_apply",
+            side_effect=system_settings.vehicle_config_coordinator.CoordinatorConflictError(
+                "Vehicle configuration preview is stale",
+                "stale-preview",
+            ),
+        ):
+            system_settings._handle_post(
+                handler,
+                "/api/system/vehicle-setup/apply",
+            )
+        self.assertEqual(handler.sent[1], 409)
+        self.assertEqual(handler.sent[0]["code"], "stale-preview")
+
+        handler = Handler()
+        state = {"state": "failed", "stage": "restored"}
+        with patch.object(
+            system_settings.vehicle_config_coordinator,
+            "client_apply",
+            side_effect=system_settings.vehicle_config_coordinator.CoordinatorApplyError(
+                "Vehicle configuration operation failed during installing",
+                "apply-failed-restored",
+                state,
+            ),
+        ):
+            system_settings._handle_post(
+                handler,
+                "/api/system/vehicle-setup/apply",
+            )
+        self.assertEqual(handler.sent[1], 500)
+        self.assertEqual(handler.sent[0]["state"], state)
+
+        handler = Handler()
+        with patch.object(
+            system_settings.vehicle_config_coordinator,
+            "client_apply",
+            side_effect=system_settings.vehicle_config_coordinator.CoordinatorUnavailableError(
+                "Vehicle configuration coordinator is unavailable"
+            ),
+        ):
+            system_settings._handle_post(
+                handler,
+                "/api/system/vehicle-setup/apply",
+            )
+        self.assertEqual(handler.sent[1], 502)
+
+    def test_system_json_rejects_duplicate_fields_before_apply(self):
+        body = b'{"confirm":true,"confirm":false}'
+
+        class Handler:
+            client_address = ("127.0.0.1", 1234)
+            headers = {
+                "Host": "127.0.0.1:8765",
+                "Origin": "http://127.0.0.1:8765",
+                "Content-Type": "application/json",
+                "Content-Length": str(len(body)),
+            }
+
+            def __init__(self):
+                self.sent = None
+                self.rfile = io.BytesIO(body)
+
+            def _send_json(self, payload, status=200):
+                self.sent = (payload, status)
+
+        handler = Handler()
+        with patch.object(
+            system_settings.vehicle_config_coordinator,
+            "client_apply",
+        ) as apply:
+            self.assertTrue(
+                system_settings._handle_post(
+                    handler,
+                    "/api/system/vehicle-setup/apply",
+                )
+            )
+        apply.assert_not_called()
+        self.assertEqual(handler.sent[1], 400)
+        self.assertEqual(handler.sent[0]["error"], "Invalid JSON request")
+
 
     def test_vehicle_configuration_coordinator_status_route_uses_fixed_socket_client(self):
         class Handler:

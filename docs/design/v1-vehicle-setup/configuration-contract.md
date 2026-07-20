@@ -220,7 +220,7 @@ not imply that activation is available. `loaded` is `null` until bounded daemon 
 is available. It reports the exact identities, content revisions, bus and interface
 successfully loaded by `canbusd`; it does not require an adapter or recent frames.
 Coordinator capability and transaction state are exposed separately through the
-read-only coordinator boundary described below.
+fixed coordinator boundary described below.
 
 Interface entries distinguish configuration from live health:
 
@@ -247,11 +247,10 @@ GET /api/system/vehicle-setup/coordinator
 ```
 
 The dashboard delegates this request to the dedicated root-owned Unix-socket service.
-The response is deliberately read-only and reports strict persistent transaction state
-plus configuration, update and lifecycle lock activity. It returns
-`preview_enabled: true`, `apply_enabled: false` and `restore_enabled: false`; no
-coordinator request can yet write the canonical descriptor, generated systemd content
-or udev rules.
+The response reports strict persistent transaction state plus configuration, update
+and lifecycle lock activity. Installed production service capability returns
+`preview_enabled: true`, `apply_enabled: true` and `restore_enabled: false`. Restore is
+coordinator-owned recovery only; callers cannot select an arbitrary rollback target.
 
 The equivalent fixed CLI action is:
 
@@ -287,41 +286,66 @@ Payload:
 ```
 
 Preview is read-only. It returns a normalized plan, compatibility results, warnings and
-the current configuration revision required by apply. It also returns
-`apply_available: false` while coordinator mutation actions remain disabled. Preview performs
-no filesystem write, systemd/udev reload or service restart, and its response contains
-no resolved filesystem path or generated command text.
+the current configuration revision required by apply. It deliberately continues to
+return `apply_available: false` so the unfinished Settings workflow cannot enable its
+button merely because the backend route exists. Preview performs no filesystem write,
+systemd/udev reload or service restart, and its response contains no resolved
+filesystem path or generated command text.
 
 The normalized target uses the canonical selection shape without `applied_at`. The
-future coordinator adds its own trusted application timestamp only after it has
-independently resolved, revalidated and applied that selection.
+coordinator adds its own trusted application timestamp only after it has independently
+resolved, revalidated and applied that selection.
 
 ## Apply API
 
-Proposed fixed route:
+Implemented fixed route:
 
 ```text
 POST /api/system/vehicle-setup/apply
 ```
 
-Payload includes the normalized source identities, assignments, the revision observed
-during preview and explicit confirmation:
+Payload is copied directly from one reviewed preview and includes the complete
+normalized target, both revision tokens and explicit confirmation:
 
 ```json
 {
-  "vehicle": {"source": "maintained", "id": "seat_1p"},
-  "bindings": {"source": "maintained", "id": "default"},
-  "runtime": {
-    "active_bus": "comfort",
-    "buses": {"comfort": {"interface": "can0"}}
+  "target": {
+    "vehicle": {
+      "source": "maintained",
+      "id": "seat_1p",
+      "revision": "sha256:…"
+    },
+    "bindings": {
+      "source": "maintained",
+      "id": "default",
+      "revision": "sha256:…"
+    },
+    "runtime": {
+      "mode": "single",
+      "active_bus": "comfort",
+      "buses": {"comfort": {"interface": "can0"}}
+    }
   },
   "expected_configuration_revision": "sha256:…",
+  "target_configuration_revision": "sha256:…",
   "confirm": true
 }
 ```
 
-The dashboard normalizes this request and sends a fixed coordinator action. The
-coordinator independently resolves and revalidates all inputs before mutation.
+The dashboard route accepts only literal-loopback, same-origin, bounded strict JSON and
+sends one fixed coordinator action. The coordinator discards caller-generated planning
+data, reconstructs the identity-only preview request from `target`, then rereads and
+revalidates the active revision, target content revisions, bus, interface and runtime
+drop-ins while all lifecycle/update/configuration locks are held. Existing network
+interfaces must be SocketCAN; an absent interface is accepted only with the conservative
+`canN` name. Public apply rejects `vcanN`, which remains confined to the root-only
+qualification command. Stale or busy requests return machine-readable conflict codes. A post-mutation
+failure returns bounded transaction state distinguishing verified restoration from an
+unverified restoration failure.
+
+This route is currently for backend/device qualification. **Settings → Vehicle setup**
+still leaves **Apply setup** disabled until confirmation, progress polling, focus and
+result handling are connected in the frontend.
 
 ## Custom-file routes
 

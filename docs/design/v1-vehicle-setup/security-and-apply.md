@@ -27,15 +27,21 @@ paths, actions and failure modes.
 The coordinator socket is local, group-authorized and unavailable to remote clients.
 Its public protocol contains fixed actions and bounded JSON objects only.
 
-The coordinator currently exposes `status` and non-mutating `preview`. It persists strict public transaction state, reports configuration/update/lifecycle lock ownership, and explicitly reports apply/restore as disabled. Preview rereads the fixed installed catalogue, the configured service user's custom catalogue and runtime drop-in inside the privileged boundary; it never accepts a path from the dashboard. The service still has no writable access to `/etc/open-mmi`.
+The coordinator exposes `status`, non-mutating `preview`, and one fixed confirmed
+`apply` action. It persists strict public transaction state and reports
+configuration/update/lifecycle lock ownership. Preview rereads the fixed installed
+catalogue, the configured service user's custom catalogue and runtime drop-in inside
+the privileged boundary; it never accepts a path from the dashboard. Apply has write
+access only to the fixed canonical descriptor, generated udev rule, rollback/state
+roots and configured canbusd runtime-drop-in directory.
 
 Fixed protocol actions are staged as follows:
 
 ```text
 status   implemented
 preview  implemented, read-only
-apply    gated
-restore  internal recovery, gated
+apply    implemented, exact reviewed target plus confirmation
+restore  internal recovery only; no caller-selected target
 ```
 
 `restore` is an internal recovery action tied to coordinator-owned transaction state;
@@ -46,13 +52,15 @@ it is not a browser-selected arbitrary rollback target.
 Both the dashboard and coordinator validate:
 
 - exact allowed object keys;
+- duplicate JSON keys and non-finite JSON values;
 - source class (`maintained` or `custom`);
 - identifier syntax;
 - fixed runtime mode (`single` in V1);
 - bus names declared by the selected profile;
 - valid Linux interface names;
 - one interface assignment for the active bus;
-- expected canonical configuration revision; and
+- expected canonical configuration revision;
+- reviewed target configuration revision; and
 - explicit `confirm: true` for apply.
 
 The privileged side must not trust validation performed by the dashboard.
@@ -103,10 +111,10 @@ It records only safe public detail:
 
 It does not expose temporary paths, commands or subprocess output to the browser.
 
-## Internal concrete operation layer
+## Concrete operation layer
 
-The coordinator now has a concrete operation implementation behind the still-disabled
-public apply protocol. It:
+The coordinator uses a concrete operation implementation behind the fixed public apply
+protocol. It:
 
 - securely reopens maintained and custom catalogue files without following symlinks;
 - verifies expected ownership, permissions, semantic validity and reviewed revisions;
@@ -118,14 +126,14 @@ public apply protocol. It:
 - verifies both restored files and the exact previous loaded identities, revisions, bus and interface.
 
 The internal state machine can reopen a durable snapshot after an interrupted mutation.
-The socket still rejects `apply`, so these operations cannot yet be triggered by the CLI
-or browser.
+The socket and fixed HTTP route may trigger apply; the Settings button still cannot.
 
 ## Vcan qualification boundary
 
-The only executable mutation path at this stage is a root-only, local round-trip
-qualification command. It is deliberately separate from `open-mmi-config`, the
-dashboard server and the group-readable coordinator socket.
+Before the fixed public apply protocol was enabled, the reference tablet qualified the
+same concrete transaction through a root-only local round-trip command. It remains
+deliberately separate from `open-mmi-config`, the dashboard server and the
+group-readable coordinator socket.
 
 The command consumes an exact root-owned `0600` one-shot marker, reads one bounded JSON
 preview from standard input, and accepts no caller-provided path, command, service name
@@ -144,8 +152,32 @@ to the root-owned recovery path.
 
 The system service sandbox is widened only to `/etc/open-mmi`, `/etc/udev/rules.d`, the
 coordinator state/runtime directories, and the generated per-user canbusd drop-in
-directory. It remains network-isolated and the public protocol continues to reject
-`apply` and `restore`.
+directory. It remains network-isolated. The public protocol exposes fixed apply but
+continues to reject caller-selected restore.
+
+## Fixed public apply protocol
+
+The apply body contains exactly `target`, `expected_configuration_revision`,
+`target_configuration_revision` and `confirm`. `target` is the canonical normalized
+selection returned by preview, including profile and bindings content revisions. The
+coordinator converts it back to an identity-only request and rebuilds the plan under all
+three locks. It rejects:
+
+- stale active configuration revisions;
+- changed profile or bindings content revisions;
+- inconsistent target revision hashes;
+- additional canbusd drop-ins that override coordinator-owned environment keys;
+- existing selected interfaces that are not SocketCAN;
+- absent selected interfaces whose names do not match `canN`;
+- all `vcanN` targets outside the root-only qualification command; and
+- concurrent update, lifecycle or configuration transactions.
+
+The dashboard route remains literal-loopback and same-origin. Conflict results use the
+bounded `busy` or `stale-preview` code. A failed mutation returns safe persisted state
+with `apply-failed-restored` or `apply-failed-restore-unverified`; raw command output,
+paths and subprocess errors do not cross the boundary. Public apply rejects `vcanN`
+targets and absent interface names outside the conservative `canN` contract. Virtual
+CAN remains confined to the root-only qualification command.
 
 ## Apply sequence
 
