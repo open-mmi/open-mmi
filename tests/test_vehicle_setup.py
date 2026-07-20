@@ -315,7 +315,104 @@ class VehicleSetupTests(unittest.TestCase):
         self.assertEqual(payload["active"]["bindings"]["id"], "default")
         self.assertTrue(payload["active"]["interface_present"])
         self.assertTrue(payload["active"]["configuration_revision"].startswith("sha256:"))
+        self.assertIsNone(payload["active"]["loaded"])
         self.assertEqual(payload["compatibility"]["emitted_unbound"], ["vehicle:off"])
+
+    def test_status_surfaces_strict_daemon_loaded_runtime_evidence(self):
+        profile_path = self.profile()
+        bindings_path = self.bindings()
+        profile_revision = "sha256:" + hashlib.sha256(profile_path.read_bytes()).hexdigest()
+        bindings_revision = "sha256:" + hashlib.sha256(bindings_path.read_bytes()).hexdigest()
+        status_path = self.root / "runtime" / "status.json"
+        status_path.parent.mkdir(parents=True)
+        status_path.write_text(
+            json.dumps(
+                {
+                    "updated_at": 1234.5,
+                    "state": {"vehicle": {"present": False}},
+                    "runtime": {
+                        "api_version": 1,
+                        "state": "ready",
+                        "errors": [],
+                        "vehicle": {
+                            "source": "maintained",
+                            "id": "seat_1p",
+                            "revision": profile_revision,
+                        },
+                        "bindings": {
+                            "source": "maintained",
+                            "id": "default",
+                            "revision": bindings_revision,
+                        },
+                        "active_bus": "comfort",
+                        "interface": "can0",
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        payload = vehicle_setup.status_payload(
+            self.roots,
+            environment={
+                "OPEN_MMI_VEHICLE": "seat_1p",
+                "OPEN_MMI_BINDINGS": "default",
+                "OPEN_MMI_VEHICLE_CONFIG": str(profile_path),
+                "OPEN_MMI_BINDINGS_FILE": str(bindings_path),
+            },
+            sys_class_net=self.root / "missing-sysfs",
+            status_path=status_path,
+        )
+
+        self.assertEqual(
+            payload["active"]["loaded"],
+            {
+                "api_version": 1,
+                "state": "ready",
+                "errors": [],
+                "vehicle": {
+                    "source": "maintained",
+                    "id": "seat_1p",
+                    "revision": profile_revision,
+                },
+                "bindings": {
+                    "source": "maintained",
+                    "id": "default",
+                    "revision": bindings_revision,
+                },
+                "active_bus": "comfort",
+                "interface": "can0",
+                "updated_at": 1234.5,
+            },
+        )
+
+    def test_loaded_runtime_evidence_rejects_links_and_malformed_capabilities(self):
+        status_path = self.root / "status.json"
+        status_path.write_text(
+            json.dumps(
+                {
+                    "updated_at": 1,
+                    "runtime": {
+                        "api_version": 1,
+                        "state": "ready",
+                        "errors": [],
+                        "vehicle": {},
+                        "bindings": {},
+                        "active_bus": "comfort",
+                        "interface": "can0",
+                        "apply": True,
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        self.assertIsNone(vehicle_setup.read_loaded_runtime(status_path))
+
+        target = self.root / "real-status.json"
+        target.write_text("{}", encoding="utf-8")
+        linked = self.root / "linked-status.json"
+        linked.symlink_to(target)
+        self.assertIsNone(vehicle_setup.read_loaded_runtime(linked))
 
     def test_external_runtime_paths_are_reported_but_never_followed(self):
         self.profile()

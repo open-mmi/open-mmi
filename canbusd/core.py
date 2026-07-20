@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Open MMI CAN Bus Daemon."""
 
+import hashlib
 import json
 import logging
 import os
@@ -14,6 +15,7 @@ import can
 from canbusd.can_runtime import CanRuntimeConfig, item_matches_bus, resolve_can_runtime
 from canbusd.dispatcher import ActionQueue, dispatch
 from canbusd.status_bus import publish as publish_status
+from canbusd.status_bus import publish_runtime as publish_runtime_status
 from canbusd.status_bus import reset as reset_status
 from canbusd.status_rules import StatusRuleState, evaluate_status_rules, parse_status_rules
 
@@ -52,6 +54,9 @@ DEFAULT_PRESENCE_TIMEOUT = 1000
 
 _need_reload = False
 _reload_lock = __import__("threading").Lock()
+
+LOADED_VEHICLE: Optional[Dict[str, str]] = None
+LOADED_BINDINGS: Optional[Dict[str, str]] = None
 
 
 def _sig_hup(_signo: int, _frame: Any) -> None:
@@ -98,6 +103,33 @@ def _resolve_bindings_path() -> Path:
     return BASE_DIR / "bindings" / f"{BINDINGS}.json"
 
 
+def _document_source(kind: str, identifier: str, path: Path) -> str:
+    """Classify one daemon-resolved document without exposing its path."""
+
+    if kind == "vehicle":
+        maintained = BASE_DIR / "vehicles" / identifier / "config.json"
+        custom = USER_CONFIG_DIR / "vehicles" / identifier / "config.json"
+    elif kind == "bindings":
+        maintained = BASE_DIR / "bindings" / f"{identifier}.json"
+        custom = USER_CONFIG_DIR / "bindings" / f"{identifier}.json"
+    else:  # pragma: no cover - internal fixed callers only
+        return "external"
+
+    candidate = path.expanduser().absolute()
+    if candidate == maintained.expanduser().absolute():
+        return "maintained"
+    if candidate == custom.expanduser().absolute():
+        return "custom"
+    return "external"
+
+
+def _read_json_with_revision(path: Path) -> Tuple[Any, str]:
+    content = path.read_bytes()
+    document = json.loads(content.decode("utf-8"))
+    revision = "sha256:" + hashlib.sha256(content).hexdigest()
+    return document, revision
+
+
 def _set_path(dst: Dict[str, Any], path: str, value: Any) -> None:
     parts = [p for p in path.split(".") if p]
     if not parts:
@@ -111,16 +143,26 @@ def _set_path(dst: Dict[str, Any], path: str, value: Any) -> None:
 
 
 def _load_bindings() -> Dict[str, Dict[str, Any]]:
+    global LOADED_BINDINGS
+
     path = _resolve_bindings_path()
 
     try:
-        with open(path, "r") as f:
-            bindings = json.load(f)
+        bindings, revision = _read_json_with_revision(path)
+        if not isinstance(bindings, dict):
+            raise ValueError("bindings root must be an object")
+
+        LOADED_BINDINGS = {
+            "source": _document_source("bindings", BINDINGS, path),
+            "id": BINDINGS,
+            "revision": revision,
+        }
 
         logger.info("Loaded %d bindings from %s", len(bindings), path)
         return bindings
 
     except Exception as e:
+        LOADED_BINDINGS = None
         logger.error("Bindings load failed from %s: %s", path, e)
         return {}
 
@@ -144,7 +186,7 @@ def _load_config(
     prev_path=None,
     prev_runtime=None,
 ):
-    global _need_reload, CAN_RUNTIME, CAN_BUS, IFACE
+    global _need_reload, CAN_RUNTIME, CAN_BUS, IFACE, LOADED_VEHICLE
 
     path = _resolve_vehicle_config_path()
 
@@ -176,8 +218,9 @@ def _load_config(
         )
 
     try:
-        with open(path, "r") as f:
-            cfg = json.load(f)
+        cfg, revision = _read_json_with_revision(path)
+        if not isinstance(cfg, dict):
+            raise ValueError("vehicle profile root must be an object")
 
         runtime = resolve_can_runtime(
             cfg,
@@ -224,6 +267,11 @@ def _load_config(
         CAN_RUNTIME = runtime
         CAN_BUS = runtime.name
         IFACE = runtime.interface
+        LOADED_VEHICLE = {
+            "source": _document_source("vehicle", VEHICLE, path),
+            "id": VEHICLE,
+            "revision": revision,
+        }
 
         if runtime.profile_has_buses and not runtime.declared:
             logger.warning(
@@ -290,6 +338,32 @@ def _safe_reset_status() -> None:
         reset_status(persist=True, notify=True)
     except Exception:
         logger.exception("Status reset failed")
+
+
+def _loaded_runtime_payload(runtime: CanRuntimeConfig) -> Dict[str, Any]:
+    errors = []
+    if LOADED_VEHICLE is None:
+        errors.append("vehicle-profile-not-loaded")
+    if LOADED_BINDINGS is None:
+        errors.append("bindings-not-loaded")
+    return {
+        "api_version": 1,
+        "state": "ready" if not errors else "invalid",
+        "errors": errors,
+        "vehicle": dict(LOADED_VEHICLE or {}),
+        "bindings": dict(LOADED_BINDINGS or {}),
+        "active_bus": runtime.name,
+        "interface": runtime.interface,
+    }
+
+
+def _safe_publish_loaded_runtime(runtime: CanRuntimeConfig) -> None:
+    """Publish exact loaded identities without interrupting CAN reception."""
+
+    try:
+        publish_runtime_status(_loaded_runtime_payload(runtime))
+    except Exception:
+        logger.exception("Loaded runtime publication failed")
 
 
 def _publish_presence(
@@ -367,6 +441,7 @@ def main(
     present_state: Dict[int, Optional[bool]] = {}
     status_state = StatusRuleState()
     _safe_reset_status()
+    _safe_publish_loaded_runtime(runtime)
     bus = None
     opened_interface: Optional[str] = None
     last_check = 0.0
@@ -401,6 +476,7 @@ def main(
                     status_state.reset()
                     _safe_reset_status()
                 bindings = _load_bindings()
+                _safe_publish_loaded_runtime(runtime)
                 last_check = now
 
             if opened_interface != IFACE:

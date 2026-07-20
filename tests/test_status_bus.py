@@ -40,6 +40,40 @@ class StatusBusTests(unittest.TestCase):
         payload = json.loads(self.path.read_text())
         self.assertEqual(payload["state"], {"vehicle": {"present": False}})
 
+    def test_runtime_evidence_is_separate_from_decoded_state_and_persists(self):
+        runtime = {
+            "api_version": 1,
+            "state": "ready",
+            "errors": [],
+            "vehicle": {
+                "source": "maintained",
+                "id": "seat_1p",
+                "revision": "sha256:" + "a" * 64,
+            },
+            "bindings": {
+                "source": "maintained",
+                "id": "default",
+                "revision": "sha256:" + "b" * 64,
+            },
+            "active_bus": "comfort",
+            "interface": "can0",
+        }
+
+        returned = self.bus.publish_runtime(runtime)
+        runtime["interface"] = "can9"
+        returned["interface"] = "can8"
+        self.bus.publish({"vehicle": {"speed_kmh": 12}})
+
+        payload = json.loads(self.path.read_text())
+        self.assertEqual(payload["runtime"]["interface"], "can0")
+        self.assertEqual(payload["state"], {"vehicle": {"speed_kmh": 12}})
+        self.assertEqual(self.bus.runtime_snapshot()["interface"], "can0")
+
+        self.bus.reset(persist=True)
+        payload = json.loads(self.path.read_text())
+        self.assertEqual(payload["state"], {})
+        self.assertEqual(payload["runtime"]["interface"], "can0")
+
     def test_snapshots_and_subscribers_cannot_mutate_internal_state(self):
         update = {"vehicle": {"speed_kmh": 20}}
         received = []
@@ -154,12 +188,15 @@ class StatusBusTests(unittest.TestCase):
             received = []
             status_bus.subscribe(received.append)
             status_bus.publish({"vehicle": {"present": True}})
+            status_bus.publish_runtime({"state": "ready"})
             self.assertEqual(status_bus.snapshot(), {"vehicle": {"present": True}})
+            self.assertEqual(status_bus.runtime_snapshot(), {"state": "ready"})
             self.assertTrue(status_bus.unsubscribe(received.append))
             status_bus.reset(persist=True)
             status_bus._write_status_file({"manual": True})
 
         self.assertEqual(json.loads(self.path.read_text())["state"], {"manual": True})
+        self.assertEqual(json.loads(self.path.read_text())["runtime"], {"state": "ready"})
 
     def test_directory_fsync_is_best_effort(self):
         with mock.patch("canbusd.status_bus.os.open", side_effect=OSError("unsupported")):
@@ -168,6 +205,8 @@ class StatusBusTests(unittest.TestCase):
     def test_publish_rejects_non_mapping_updates(self):
         with self.assertRaisesRegex(TypeError, "dictionary"):
             self.bus.publish([])  # type: ignore[arg-type]
+        with self.assertRaisesRegex(TypeError, "dictionary"):
+            self.bus.publish_runtime([])  # type: ignore[arg-type]
 
 
 if __name__ == "__main__":

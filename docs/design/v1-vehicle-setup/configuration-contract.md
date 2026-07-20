@@ -186,7 +186,24 @@ Current response shape:
     "interface": "can0",
     "interface_present": true,
     "configuration_revision": "sha256:…",
-    "loaded": null
+    "loaded": {
+      "api_version": 1,
+      "state": "ready",
+      "errors": [],
+      "vehicle": {
+        "source": "maintained",
+        "id": "seat_1p",
+        "revision": "sha256:…"
+      },
+      "bindings": {
+        "source": "maintained",
+        "id": "default",
+        "revision": "sha256:…"
+      },
+      "active_bus": "comfort",
+      "interface": "can0",
+      "updated_at": 1712345678.5
+    }
   },
   "interfaces": [],
   "compatibility": {
@@ -198,9 +215,12 @@ Current response shape:
 }
 ```
 
-This first endpoint performs no mutation, accepts no query-selected path or source and
-does not imply that activation is available. Coordinator capability and transaction
-state are added only with the separately qualified apply boundary.
+This endpoint performs no mutation, accepts no query-selected path or source and does
+not imply that activation is available. `loaded` is `null` until bounded daemon evidence
+is available. It reports the exact identities, content revisions, bus and interface
+successfully loaded by `canbusd`; it does not require an adapter or recent frames.
+Coordinator capability and transaction state are added only with the separately
+qualified apply boundary.
 
 Interface entries distinguish configuration from live health:
 

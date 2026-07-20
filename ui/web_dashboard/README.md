@@ -436,6 +436,11 @@ single-bus runtime and discovered SocketCAN interfaces. The fixed route is loopb
 and same-origin only, accepts no caller-selected filesystem path or source, and does
 not apply or restart vehicle configuration.
 
+When `canbusd` has published bounded runtime evidence, the response also reports the
+exact profile and bindings revisions, logical bus and interface successfully loaded by
+the daemon. This evidence is independent of adapter presence and recent CAN frames and
+is the future coordinator's verification input after a service restart.
+
 **Settings → Vehicle setup** displays the active configuration and catalogue. Profile
 and bindings selectors create a page-local draft. **Review current setup** or
 **Review changes** sends only the

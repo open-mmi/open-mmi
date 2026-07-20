@@ -28,6 +28,7 @@ DEFAULT_BUS = "comfort"
 DEFAULT_INTERFACE = "can0"
 MAX_PROFILE_BYTES = 1024 * 1024
 MAX_BINDINGS_BYTES = 256 * 1024
+MAX_STATUS_BYTES = 2 * 1024 * 1024
 MAX_CAN_ID = 0x1FFFFFFF
 MAX_EVENT_LENGTH = 128
 MAX_STATUS_PATH_LENGTH = 192
@@ -782,12 +783,132 @@ def _load_identity_document(
         return {}
 
 
+def _default_status_path(environment: Optional[Mapping[str, str]] = None) -> Path:
+    env = os.environ if environment is None else environment
+    explicit = str(env.get("OPEN_MMI_STATUS_PATH") or "").strip()
+    if explicit:
+        return Path(explicit).expanduser()
+    runtime_dir = str(env.get("XDG_RUNTIME_DIR") or "").strip()
+    if runtime_dir:
+        return Path(runtime_dir) / "open-mmi" / "status.json"
+    return Path("/tmp/open-mmi-status.json")
+
+
+def _loaded_identity(value: Any) -> Optional[dict[str, str]]:
+    if value == {}:
+        return {}
+    if not isinstance(value, Mapping) or set(value) != {"source", "id", "revision"}:
+        return None
+    source = value.get("source")
+    identifier = value.get("id")
+    revision = value.get("revision")
+    if not isinstance(source, str) or source not in {"maintained", "custom", "external"}:
+        return None
+    if not isinstance(identifier, str) or not IDENTIFIER_RE.fullmatch(identifier):
+        return None
+    if not isinstance(revision, str) or not vehicle_configuration.REVISION_RE.fullmatch(revision):
+        return None
+    return {"source": source, "id": identifier, "revision": revision}
+
+
+def read_loaded_runtime(path: Path) -> Optional[dict[str, Any]]:
+    """Read bounded daemon evidence from the status wrapper, failing closed."""
+
+    descriptor_fd = -1
+    flags = os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor_fd = os.open(path, flags)
+    except FileNotFoundError:
+        return None
+    except OSError:
+        return None
+    try:
+        metadata = os.fstat(descriptor_fd)
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > MAX_STATUS_BYTES:
+            return None
+        with os.fdopen(descriptor_fd, "rb", closefd=True) as handle:
+            descriptor_fd = -1
+            content = handle.read(MAX_STATUS_BYTES + 1)
+    except OSError:
+        return None
+    finally:
+        if descriptor_fd >= 0:
+            os.close(descriptor_fd)
+    if len(content) > MAX_STATUS_BYTES:
+        return None
+    try:
+        payload = json.loads(
+            content.decode("utf-8"),
+            object_pairs_hook=_unique_json_object,
+            parse_constant=_reject_json_constant,
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
+        return None
+    if not isinstance(payload, Mapping):
+        return None
+    runtime = payload.get("runtime")
+    if not isinstance(runtime, Mapping) or set(runtime) != {
+        "api_version",
+        "state",
+        "errors",
+        "vehicle",
+        "bindings",
+        "active_bus",
+        "interface",
+    }:
+        return None
+    if runtime.get("api_version") != API_VERSION:
+        return None
+    state = runtime.get("state")
+    errors = runtime.get("errors")
+    active_bus = runtime.get("active_bus")
+    interface = runtime.get("interface")
+    vehicle = _loaded_identity(runtime.get("vehicle"))
+    bindings = _loaded_identity(runtime.get("bindings"))
+    if state not in {"ready", "invalid"}:
+        return None
+    if not isinstance(errors, list) or len(errors) > 16 or any(
+        not isinstance(error, str) or not error or len(error) > 128
+        for error in errors
+    ):
+        return None
+    if not isinstance(active_bus, str) or not IDENTIFIER_RE.fullmatch(active_bus):
+        return None
+    if not isinstance(interface, str) or not INTERFACE_RE.fullmatch(interface):
+        return None
+    if vehicle is None or bindings is None:
+        return None
+    if state == "ready" and (not vehicle or not bindings or errors):
+        return None
+    if state == "invalid" and not errors:
+        return None
+    updated_at = payload.get("updated_at")
+    if (
+        isinstance(updated_at, bool)
+        or not isinstance(updated_at, (int, float))
+        or not math.isfinite(float(updated_at))
+        or float(updated_at) < 0
+    ):
+        return None
+    return {
+        "api_version": API_VERSION,
+        "state": state,
+        "errors": list(errors),
+        "vehicle": vehicle,
+        "bindings": bindings,
+        "active_bus": active_bus,
+        "interface": interface,
+        "updated_at": float(updated_at),
+    }
+
+
 def status_payload(
     roots: Optional[CatalogueRoots] = None,
     *,
     environment: Optional[Mapping[str, str]] = None,
     dropin_path: Optional[Path] = None,
     sys_class_net: Path = Path("/sys/class/net"),
+    status_path: Optional[Path] = None,
 ) -> dict[str, Any]:
     """Return the complete read-only setup status used by CLI and dashboard."""
 
@@ -846,6 +967,12 @@ def status_payload(
     configuration_revision = "sha256:" + hashlib.sha256(revision_input).hexdigest()
     interfaces = discover_interfaces(sys_class_net)
     interface_names = {entry["name"] for entry in interfaces}
+    loaded_path = status_path
+    if loaded_path is None and environment is None:
+        loaded_path = _default_status_path()
+    elif loaded_path is None and environment is not None and environment.get("OPEN_MMI_STATUS_PATH"):
+        loaded_path = _default_status_path(environment)
+    loaded = read_loaded_runtime(loaded_path) if loaded_path is not None else None
     return {
         "api_version": API_VERSION,
         "read_only": True,
@@ -860,7 +987,7 @@ def status_payload(
             "interface": runtime.interface,
             "interface_present": runtime.interface in interface_names,
             "configuration_revision": configuration_revision,
-            "loaded": None,
+            "loaded": loaded,
         },
         "compatibility": compatibility_report(profile_document, bindings_document),
         "interfaces": interfaces,

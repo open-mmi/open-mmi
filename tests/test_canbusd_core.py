@@ -1,6 +1,9 @@
+import hashlib
 import sys
+import tempfile
 import types
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
@@ -35,12 +38,89 @@ class FakeBus:
 
 class CanbusdCoreTests(unittest.TestCase):
     def setUp(self):
+        runtime_patcher = mock.patch.object(core, "publish_runtime_status")
+        self.runtime_publish = runtime_patcher.start()
+        self.addCleanup(runtime_patcher.stop)
+        core.LOADED_VEHICLE = None
+        core.LOADED_BINDINGS = None
         self.runtime = CanRuntimeConfig(
             name="comfort",
             default_bus="comfort",
             interface="can0",
             interface_source="test",
         )
+
+    def test_loaders_record_exact_loaded_identity_and_content_revision(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            profile_path = root / "vehicles" / "seat_1p" / "config.json"
+            bindings_path = root / "bindings" / "default.json"
+            profile_path.parent.mkdir(parents=True)
+            bindings_path.parent.mkdir(parents=True)
+            profile_content = b'{"default_bus":"comfort","can_buses":{"comfort":{"interface":"can0"}}}'
+            bindings_content = b'{"play_pause":{"module":"audio","func":"play_pause"}}'
+            profile_path.write_bytes(profile_content)
+            bindings_path.write_bytes(bindings_content)
+
+            with (
+                mock.patch.object(core, "BASE_DIR", root),
+                mock.patch.object(core, "VEHICLE", "seat_1p"),
+                mock.patch.object(core, "BINDINGS", "default"),
+                mock.patch.object(core, "_resolve_vehicle_config_path", return_value=profile_path),
+                mock.patch.object(core, "_resolve_bindings_path", return_value=bindings_path),
+            ):
+                loaded = core._load_config(None, None)
+                bindings = core._load_bindings()
+
+        self.assertEqual(loaded[5].interface, "can0")
+        self.assertIn("play_pause", bindings)
+        self.assertEqual(
+            core.LOADED_VEHICLE,
+            {
+                "source": "maintained",
+                "id": "seat_1p",
+                "revision": "sha256:" + hashlib.sha256(profile_content).hexdigest(),
+            },
+        )
+        self.assertEqual(
+            core.LOADED_BINDINGS,
+            {
+                "source": "maintained",
+                "id": "default",
+                "revision": "sha256:" + hashlib.sha256(bindings_content).hexdigest(),
+            },
+        )
+
+    def test_loaded_runtime_evidence_is_bounded_and_publication_failure_is_isolated(self):
+        core.LOADED_VEHICLE = {
+            "source": "custom",
+            "id": "my-seat",
+            "revision": "sha256:" + "a" * 64,
+        }
+        core.LOADED_BINDINGS = {
+            "source": "maintained",
+            "id": "default",
+            "revision": "sha256:" + "b" * 64,
+        }
+
+        core._safe_publish_loaded_runtime(self.runtime)
+        self.runtime_publish.assert_called_once_with(
+            {
+                "api_version": 1,
+                "state": "ready",
+                "errors": [],
+                "vehicle": core.LOADED_VEHICLE,
+                "bindings": core.LOADED_BINDINGS,
+                "active_bus": "comfort",
+                "interface": "can0",
+            }
+        )
+
+        self.runtime_publish.reset_mock(side_effect=True)
+        self.runtime_publish.side_effect = OSError("read only")
+        with self.assertLogs("canbusd", level="ERROR") as logs:
+            core._safe_publish_loaded_runtime(self.runtime)
+        self.assertIn("Loaded runtime publication failed", "\n".join(logs.output))
 
     def _config(self, rules=None, presence=None, status_rules=None):
         return (
