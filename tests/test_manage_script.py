@@ -445,6 +445,7 @@ sleep() {{ :; }}
         self.assertIn("RestrictAddressFamilies=AF_UNIX", unit)
         self.assertIn("ProtectSystem=strict", unit)
         self.assertIn("ReadWritePaths=/var/lib/open-mmi /run/open-mmi", unit)
+        self.assertIn("RuntimeDirectoryPreserve=yes", unit)
         self.assertNotIn("ReadWritePaths=/etc/open-mmi", unit)
         start = self.text.index("install_vehicle_config_coordinator() {")
         end = self.text.index("remove_login_autostart() {", start)
@@ -461,6 +462,7 @@ sleep() {{ :; }}
     def test_coordinator_can_read_the_managed_checkout_and_is_restarted(self) -> None:
         unit = (ROOT / "systemd/system/open-mmi-update-coordinator.service").read_text(encoding="utf-8")
         self.assertIn("ProtectHome=read-only", unit)
+        self.assertIn("RuntimeDirectoryPreserve=yes", unit)
         self.assertNotIn("ProtectHome=true", unit)
         start = self.text.index("install_update_coordinator() {")
         end = self.text.index("remove_login_autostart() {", start)

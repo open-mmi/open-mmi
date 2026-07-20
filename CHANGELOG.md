@@ -10,6 +10,7 @@
 
 ### Fixed
 - Managed installs now require a live coordinator socket and successful status round trip before reporting success, and prepared-update rollback preserves the previous coordinator unit and environment file.
+- The update and vehicle-configuration coordinators preserve their shared `/run/open-mmi` runtime directory across service restarts, preventing one coordinator restart from deleting the other coordinator's live Unix socket.
 
 
 ## Unreleased — V1 update management
