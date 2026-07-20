@@ -8,6 +8,7 @@ Too much CAN-bus reverse-engineering is rediscovered privately, lost in forum th
 
 - keep vehicle integration local-first
 - keep vehicle profiles reusable
+- translate every vehicle into one shared canonical event and status vocabulary
 - keep the core daemon small and boring
 - keep vehicle-specific CAN knowledge out of core Python
 - make it possible to add vehicle support without reinventing the whole project
@@ -58,6 +59,8 @@ core daemon:
 vehicle profiles:
   reusable
   reviewable
+  manufacturer-specific at the CAN boundary
+  canonical at the event/status boundary
   marked experimental/stable
   kept out of core Python
 

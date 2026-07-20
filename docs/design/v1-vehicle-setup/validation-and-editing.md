@@ -31,7 +31,10 @@ At minimum validate:
 - CAN identifiers parse and are in the supported range;
 - byte indexes and masks are valid for the supported frame type;
 - rule bus references exist;
-- events and status paths are non-empty bounded strings;
+- event identifiers are canonical entries in the Open MMI vehicle-event registry;
+- `value: "any"` rules match the registered payload contract and exact-value rules use no-payload events;
+- presence transitions use registered no-payload events;
+- status paths are non-empty bounded strings;
 - supported status rule types contain their required fields; and
 - aliases do not create ambiguous output without an explicit warning.
 
@@ -57,14 +60,15 @@ The registry defines:
 Bindings validation then checks:
 
 - top-level event map;
-- valid event names;
+- canonical registered vehicle-event keys;
 - registered action identifier;
 - bounded argument arrays;
 - argument types and values; and
 - no unsupported extra fields.
 
-The runtime may retain a compatibility reader for existing `module` and `func` fields,
-but newly saved UI bindings should resolve through the registry.
+The vehicle-event registry is already authoritative for binding keys. The runtime may retain
+a compatibility reader for existing `module` and `func` action fields, but newly saved UI
+bindings should eventually resolve action implementations through the separate action registry.
 
 ## Compatibility validation
 

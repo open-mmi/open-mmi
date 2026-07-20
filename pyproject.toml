@@ -43,6 +43,7 @@ include = [
 
 [tool.setuptools.package-data]
 bindings = ["*.json"]
+canbusd = ["data/*.json"]
 "vehicles.seat_1p" = ["*.json", "notes/*.md"]
 "ui.web_dashboard" = [
     "static/*.css",

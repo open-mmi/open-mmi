@@ -14,6 +14,7 @@ import can
 
 from canbusd.can_runtime import CanRuntimeConfig, item_matches_bus, resolve_can_runtime
 from canbusd.dispatcher import ActionQueue, dispatch
+from canbusd import event_registry
 from canbusd.status_bus import publish as publish_status
 from canbusd.status_bus import publish_runtime as publish_runtime_status
 from canbusd.status_bus import reset as reset_status
@@ -193,6 +194,8 @@ def _load_bindings() -> Dict[str, Dict[str, Any]]:
         bindings, revision = _read_json_with_revision(path)
         if not isinstance(bindings, dict):
             raise ValueError("bindings root must be an object")
+        for event in bindings:
+            event_registry.require_event(event)
 
         LOADED_BINDINGS = {
             "source": _document_source("bindings", BINDINGS, path),
@@ -272,6 +275,15 @@ def _load_config(
         )
 
         all_rule_items = cfg.get("rules", [])
+        for item in all_rule_items:
+            raw_value = item.get("value")
+            event_registry.require_event(
+                item["event"],
+                carries_payload=(
+                    isinstance(raw_value, str)
+                    and raw_value.lower() == ANY_VALUE_WILDCARD
+                ),
+            )
         rule_items = _filter_items_for_bus(all_rule_items, runtime)
 
         rules: Dict[int, List[Tuple[int, Optional[int], str]]] = {}
@@ -279,8 +291,12 @@ def _load_config(
             cid = int(r["id"], 16) if isinstance(r["id"], str) else int(r["id"])
             b = int(r.get("byte", 0))
             v = r.get("value")
+            carries_payload = (
+                isinstance(v, str)
+                and v.lower() == ANY_VALUE_WILDCARD
+            )
 
-            if isinstance(v, str) and v.lower() == ANY_VALUE_WILDCARD:
+            if carries_payload:
                 v = None
             elif v is not None:
                 v = int(v)
@@ -288,6 +304,13 @@ def _load_config(
             rules.setdefault(cid, []).append((b, v, r["event"]))
 
         all_presence_items = cfg.get("presence", [])
+        for item in all_presence_items:
+            for event_key in ("on_present", "on_absent"):
+                if item.get(event_key) is not None:
+                    event_registry.require_event(
+                        item[event_key],
+                        carries_payload=False,
+                    )
         presence_items = _filter_items_for_bus(all_presence_items, runtime)
 
         presence = []

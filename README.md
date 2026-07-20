@@ -378,7 +378,7 @@ The core idea is that vehicle-specific CAN knowledge should live in vehicle prof
 
 Named CAN bus metadata is documented in [`docs/can-bus-model.md`](docs/can-bus-model.md).
 
-See [`docs/vehicle-profiles.md`](docs/vehicle-profiles.md) for the profile boundary, supported status rule types, and guidance for adding or reviewing vehicle profiles.
+See [`docs/vehicle-profiles.md`](docs/vehicle-profiles.md) for the profile boundary and [`docs/vehicle-integration-standard.md`](docs/vehicle-integration-standard.md) for the canonical event and contribution contract. The generated event catalogue is [`docs/vehicle-event-registry.md`](docs/vehicle-event-registry.md).
 
 ---
 
@@ -399,7 +399,10 @@ open-mmi/
 │       └── config.json      ← vehicle CAN profile
 │
 ├── bindings/
-│   └── default.json         ← semantic event → action mapping
+│   └── default.json         ← canonical event → action mapping
+│
+├── ui/data/
+│   └── vehicle-events.v1.json ← canonical vehicle-event registry
 │
 ├── actions/
 │   ├── audio.py
@@ -472,7 +475,7 @@ arrow_left
 brightness_level
 ```
 
-These events are looked up in `bindings/*.json` and routed to functions in `actions/`.
+These events must be declared by the canonical registry in `canbusd/data/vehicle-events.v1.json`, are looked up in `bindings/*.json`, and are then routed to functions in `actions/`. Different vehicles use the same event identifier for the same universal intent.
 
 ## `presence`
 

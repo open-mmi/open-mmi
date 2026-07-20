@@ -15,12 +15,18 @@ class ConfigLoadingTests(unittest.TestCase):
         self.original_bus = core.CAN_BUS
         self.original_iface = core.IFACE
         self.original_reload = core._need_reload
+        self.original_loaded_vehicle = core.LOADED_VEHICLE
+        self.original_loaded_bindings = core.LOADED_BINDINGS
+        core.LOADED_VEHICLE = None
+        core.LOADED_BINDINGS = None
 
     def tearDown(self):
         core.CAN_RUNTIME = self.original_runtime
         core.CAN_BUS = self.original_bus
         core.IFACE = self.original_iface
         core._need_reload = self.original_reload
+        core.LOADED_VEHICLE = self.original_loaded_vehicle
+        core.LOADED_BINDINGS = self.original_loaded_bindings
 
     def _write_json(self, path: Path, value) -> Path:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -143,15 +149,36 @@ class ConfigLoadingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = self._write_json(
                 Path(tmp) / "bindings.json",
-                {"mute": {"module": "audio", "func": "mute_toggle"}},
+                {"mute_toggle": {"module": "audio", "func": "mute_toggle"}},
             )
             with mock.patch.object(core, "_resolve_bindings_path", return_value=path):
                 bindings = core._load_bindings()
 
         self.assertEqual(
             bindings,
-            {"mute": {"module": "audio", "func": "mute_toggle"}},
+            {"mute_toggle": {"module": "audio", "func": "mute_toggle"}},
         )
+
+    def test_bindings_reject_unregistered_event_names(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._write_json(
+                Path(tmp) / "bindings.json",
+                {
+                    "vauxhall_steering_volume_off": {
+                        "module": "audio",
+                        "func": "mute_toggle",
+                    }
+                },
+            )
+            with (
+                mock.patch.object(core, "_resolve_bindings_path", return_value=path),
+                self.assertLogs("canbusd", level="ERROR") as logs,
+            ):
+                bindings = core._load_bindings()
+
+        self.assertEqual(bindings, {})
+        self.assertIsNone(core.LOADED_BINDINGS)
+        self.assertIn("event is not registered", "\n".join(logs.output))
 
     def test_bindings_load_failure_is_non_fatal(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -165,6 +192,42 @@ class ConfigLoadingTests(unittest.TestCase):
 
             self.assertIn("Bindings load failed", "\n".join(logs.output))
 
+    def test_runtime_rejects_unregistered_or_mismatched_profile_events(self):
+        cases = (
+            {
+                "id": "0x231",
+                "byte": 3,
+                "value": 30,
+                "event": "vauxhall_steering_volume_off",
+            },
+            {
+                "id": "0x231",
+                "byte": 3,
+                "value": "any",
+                "event": "mute_toggle",
+            },
+        )
+        for rule in cases:
+            with self.subTest(rule=rule), tempfile.TemporaryDirectory() as tmp:
+                path = self._write_json(
+                    Path(tmp) / "config.json",
+                    {"rules": [rule]},
+                )
+                with (
+                    mock.patch.object(
+                        core,
+                        "_resolve_vehicle_config_path",
+                        return_value=path,
+                    ),
+                    self.assertLogs("canbusd", level="ERROR") as logs,
+                ):
+                    result = core._load_config()
+
+                self.assertIsNone(result[0])
+                self.assertIsNone(result[4])
+                self.assertIsNone(core.LOADED_VEHICLE)
+                self.assertIn("Config load failed", "\n".join(logs.output))
+
     def test_load_config_filters_rules_for_selected_bus(self):
         config = {
             "default_bus": "comfort",
@@ -173,17 +236,17 @@ class ConfigLoadingTests(unittest.TestCase):
                 "powertrain": {"interface": "can1", "bitrate": 500000},
             },
             "rules": [
-                {"id": "0x100", "byte": 0, "value": 1, "event": "comfort"},
+                {"id": "0x100", "byte": 0, "value": 1, "event": "play_pause"},
                 {
                     "id": "0x101",
                     "byte": 1,
                     "value": "any",
-                    "event": "powertrain",
+                    "event": "brightness_level",
                     "bus": "powertrain",
                 },
             ],
             "presence": [
-                {"id": "0x200", "on_present": "comfort:present"},
+                {"id": "0x200", "on_present": "vehicle_present:on"},
                 {
                     "id": "0x201",
                     "timeout_ms": 2500,
@@ -226,7 +289,7 @@ class ConfigLoadingTests(unittest.TestCase):
         self.assertEqual(runtime.name, "powertrain")
         self.assertEqual(runtime.interface, "can1")
         self.assertEqual(runtime.bitrate, 500000)
-        self.assertEqual(rules, {0x101: [(1, None, "powertrain")]})
+        self.assertEqual(rules, {0x101: [(1, None, "brightness_level")]})
         self.assertEqual(
             presence,
             [

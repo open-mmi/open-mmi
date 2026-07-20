@@ -17,6 +17,8 @@ REQUIRED_PATHS = {
     "ui/update_readiness.py",
     "ui/update_coordinator.py",
     "ui/update_installer.py",
+    "canbusd/event_registry.py",
+    "canbusd/data/vehicle-events.v1.json",
     "ui/vehicle_config_coordinator.py",
     "ui/web_dashboard/bluetooth.py",
     "ui/web_dashboard/jellyfin.py",

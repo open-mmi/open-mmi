@@ -48,8 +48,8 @@ class VehicleSetupTests(unittest.TestCase):
                 {
                     "id": "0x101",
                     "timeout_ms": 1000,
-                    "on_present": "vehicle:on",
-                    "on_absent": "vehicle:off",
+                    "on_present": "vehicle_present:on",
+                    "on_absent": "vehicle_present:off",
                 }
             ],
             "status": [
@@ -70,7 +70,7 @@ class VehicleSetupTests(unittest.TestCase):
             document
             or {
                 "play_pause": {"module": "audio", "func": "play_pause"},
-                "vehicle:on": {"module": "screen", "func": "wake_and_login"},
+                "vehicle_present:on": {"module": "screen", "func": "wake_and_login"},
             },
         )
 
@@ -159,7 +159,7 @@ class VehicleSetupTests(unittest.TestCase):
         result = vehicle_setup.validate_profile(
             {
                 "rules": [
-                    {"id": "0x100", "byte": 0, "value": "any", "event": "level"}
+                    {"id": "0x100", "byte": 0, "value": "any", "event": "brightness_level"}
                 ]
             }
         )
@@ -316,7 +316,7 @@ class VehicleSetupTests(unittest.TestCase):
         self.assertTrue(payload["active"]["interface_present"])
         self.assertTrue(payload["active"]["configuration_revision"].startswith("sha256:"))
         self.assertIsNone(payload["active"]["loaded"])
-        self.assertEqual(payload["compatibility"]["emitted_unbound"], ["vehicle:off"])
+        self.assertEqual(payload["compatibility"]["emitted_unbound"], ["vehicle_present:off"])
 
     def test_status_surfaces_strict_daemon_loaded_runtime_evidence(self):
         profile_path = self.profile()

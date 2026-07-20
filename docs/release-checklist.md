@@ -4,6 +4,8 @@
 
 - [ ] Python 3.9 and current Python CI are green.
 - [ ] Unit, Node, Playwright, CSS-cascade, package-content, and dashboard-smoke jobs are green.
+- [ ] Maintained profiles and bindings pass the canonical vehicle-event registry checks.
+- [ ] `python tools/generate_vehicle_event_docs.py --check` confirms the generated event reference is current.
 - [ ] The wheel installs in a clean environment and all console entry points start.
 - [ ] `npm ci` reproduces the browser-test environment from `package-lock.json`.
 

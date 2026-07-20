@@ -79,6 +79,21 @@ override for unusual hardware or replay testing.
 
 ---
 
+## Universal events, not vehicle-specific actions
+
+A profile translates vehicle-specific CAN signals into canonical Open MMI events. It must
+not embed Python modules, function names, or manufacturer-specific synonyms for an existing
+universal intent.
+
+For example, different Seat and Vauxhall CAN messages may both emit `mute_toggle`; the
+application action belongs in the separate bindings file. The canonical names and payload
+contracts are defined by the machine-readable event registry and documented in
+[`vehicle-event-registry.md`](vehicle-event-registry.md). The complete contribution rules
+are in [`vehicle-integration-standard.md`](vehicle-integration-standard.md).
+
+Unknown event names, deprecated aliases, payload-bearing `any` rules for no-payload events,
+and no-payload rules for value events fail profile validation.
+
 ## What belongs in a vehicle profile
 
 Vehicle profiles may define:
@@ -238,14 +253,16 @@ A new vehicle profile should start small.
 
 Recommended process:
 
-1. Copy an existing profile only if the platform is genuinely related.
-2. Record the vehicle, platform, model year, and tested CAN bus.
-3. Document named bus metadata and capture point.
-4. Add one signal at a time.
-5. Test against replay data where possible.
-6. Test on a real vehicle only when safe.
-7. Keep uncertain mappings clearly marked.
-8. Do not modify core logic unless the rule type is genuinely reusable.
+1. Read the vehicle integration standard and canonical event registry.
+2. Copy an existing profile only if the platform is genuinely related.
+3. Record the vehicle, platform, model year, and tested CAN bus.
+4. Document named bus metadata and capture point.
+5. Map each control to an existing canonical event before proposing a new one.
+6. Add one signal at a time.
+7. Test against replay data where possible.
+8. Test on a real vehicle only when safe.
+9. Keep uncertain mappings clearly marked.
+10. Do not modify core logic unless the rule type is genuinely reusable.
 
 ---
 

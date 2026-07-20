@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping, Optional, Sequence
 
 from canbusd.can_runtime import resolve_can_runtime
+from canbusd import event_registry as vehicle_events
 from ui import vehicle_configuration
 
 
@@ -237,12 +238,64 @@ def _validate_bus_reference(
             issues.append(_issue("error", "undeclared-bus", path, f"references undeclared bus {item!r}"))
 
 
+def _validate_event_reference(
+    value: Any,
+    *,
+    path: str,
+    registry: Mapping[str, Any],
+    issues: list[dict[str, str]],
+) -> Optional[Mapping[str, Any]]:
+    if not _bounded_text(value, maximum=MAX_EVENT_LENGTH) or not vehicle_events.EVENT_NAME_RE.fullmatch(value):
+        issues.append(
+            _issue(
+                "error",
+                "invalid-event",
+                path,
+                "must be a canonical Open MMI event identifier",
+            )
+        )
+        return None
+    if value in registry["events"]:
+        definition = registry["events"][value]
+        if definition.get("status") == "deprecated":
+            issues.append(
+                _issue(
+                    "warning",
+                    "deprecated-event",
+                    path,
+                    "canonical event is deprecated and should be migrated",
+                )
+            )
+        return definition
+    alias = registry["aliases"].get(value)
+    if alias:
+        issues.append(
+            _issue(
+                "error",
+                "deprecated-event-alias",
+                path,
+                f"must use canonical event {alias['event']!r}",
+            )
+        )
+        return None
+    issues.append(
+        _issue(
+            "error",
+            "unregistered-event",
+            path,
+            "must be declared by the Open MMI vehicle-event registry",
+        )
+    )
+    return None
+
+
 def _validate_profile_item(
     item: Any,
     path: str,
     kind: str,
     default_bus: str,
     declared_buses: set[str],
+    event_registry: Mapping[str, Any],
     issues: list[dict[str, str]],
 ) -> None:
     if not isinstance(item, Mapping):
@@ -260,10 +313,35 @@ def _validate_profile_item(
 
     if kind == "rule":
         _validate_byte(item.get("byte", 0), f"{path}.byte", issues)
-        if not _bounded_text(item.get("event"), maximum=MAX_EVENT_LENGTH):
-            issues.append(_issue("error", "invalid-event", f"{path}.event", "must be a non-empty bounded string"))
+        event_definition = _validate_event_reference(
+            item.get("event"),
+            path=f"{path}.event",
+            registry=event_registry,
+            issues=issues,
+        )
         value = item.get("value")
-        if not (isinstance(value, str) and value.lower() == "any"):
+        carries_payload = isinstance(value, str) and value.lower() == "any"
+        if event_definition is not None:
+            expects_payload = event_definition["payload"]["type"] != "none"
+            if carries_payload and not expects_payload:
+                issues.append(
+                    _issue(
+                        "error",
+                        "unexpected-event-payload",
+                        f"{path}.value",
+                        "'any' forwards a CAN byte but this event declares no payload",
+                    )
+                )
+            elif expects_payload and not carries_payload:
+                issues.append(
+                    _issue(
+                        "error",
+                        "missing-event-payload",
+                        f"{path}.value",
+                        "this event requires the decoded value payload",
+                    )
+                )
+        if not carries_payload:
             try:
                 parsed = _parse_int(value)
             except (TypeError, ValueError):
@@ -280,8 +358,25 @@ def _validate_profile_item(
         if not 1 <= timeout <= 86_400_000:
             issues.append(_issue("error", "invalid-timeout", f"{path}.timeout_ms", "must be between 1 and 86400000"))
         for key in ("on_present", "on_absent"):
-            if key in item and item[key] is not None and not _bounded_text(item[key], maximum=MAX_EVENT_LENGTH):
-                issues.append(_issue("error", "invalid-event", f"{path}.{key}", "must be a bounded string"))
+            if key in item and item[key] is not None:
+                event_definition = _validate_event_reference(
+                    item[key],
+                    path=f"{path}.{key}",
+                    registry=event_registry,
+                    issues=issues,
+                )
+                if (
+                    event_definition is not None
+                    and event_definition["payload"]["type"] != "none"
+                ):
+                    issues.append(
+                        _issue(
+                            "error",
+                            "missing-event-payload",
+                            f"{path}.{key}",
+                            "presence transitions cannot supply this event payload",
+                        )
+                    )
         status_path = item.get("status_path", "vehicle.present")
         if not _bounded_text(status_path, maximum=MAX_STATUS_PATH_LENGTH):
             issues.append(_issue("error", "invalid-status-path", f"{path}.status_path", "must be a bounded string"))
@@ -370,8 +465,17 @@ def _validate_profile_item(
                 issues.append(_issue("error", "status-width-exceeds-frame", path, "selected bytes exceed an eight-byte CAN frame"))
 
 
-def validate_profile(document: Any) -> dict[str, Any]:
+def validate_profile(
+    document: Any,
+    *,
+    event_registry: Optional[Mapping[str, Any]] = None,
+) -> dict[str, Any]:
     issues: list[dict[str, str]] = []
+    selected_event_registry = (
+        vehicle_events.normalize_registry(event_registry)
+        if event_registry is not None
+        else vehicle_events.registry_payload()
+    )
     if not isinstance(document, Mapping):
         return _validation([_issue("error", "invalid-document", "$", "profile must contain a JSON object")])
 
@@ -424,13 +528,30 @@ def validate_profile(document: Any) -> dict[str, Any]:
             issues.append(_issue("error", "invalid-rule-collection", key, "must be an array"))
             continue
         for index, item in enumerate(items):
-            _validate_profile_item(item, f"{key}[{index}]", kind, default_bus, declared_buses, issues)
+            _validate_profile_item(
+                item,
+                f"{key}[{index}]",
+                kind,
+                default_bus,
+                declared_buses,
+                selected_event_registry,
+                issues,
+            )
 
     return _validation(issues)
 
 
-def validate_bindings(document: Any) -> dict[str, Any]:
+def validate_bindings(
+    document: Any,
+    *,
+    event_registry: Optional[Mapping[str, Any]] = None,
+) -> dict[str, Any]:
     issues: list[dict[str, str]] = []
+    selected_event_registry = (
+        vehicle_events.normalize_registry(event_registry)
+        if event_registry is not None
+        else vehicle_events.registry_payload()
+    )
     if not isinstance(document, Mapping):
         return _validation([_issue("error", "invalid-document", "$", "bindings must contain a JSON object")])
 
@@ -445,8 +566,12 @@ def validate_bindings(document: Any) -> dict[str, Any]:
         )
     for event, action in document.items():
         path = f"bindings.{event}"
-        if not _bounded_text(event, maximum=MAX_EVENT_LENGTH):
-            issues.append(_issue("error", "invalid-event", path, "event name must be a bounded string"))
+        _validate_event_reference(
+            event,
+            path=path,
+            registry=selected_event_registry,
+            issues=issues,
+        )
         if not isinstance(action, Mapping):
             issues.append(_issue("error", "invalid-binding", path, "must be an object"))
             continue

@@ -46,7 +46,8 @@ The V1 setup-management scope includes:
 - creation-only validated JSON import into new custom identities;
 - draft editing with atomic saves and revision checks;
 - revision-bound duplicate, rename and inactive-only deletion for custom entries;
-- machine-readable active configuration and CAN health status; and
+- machine-readable active configuration and CAN health status;
+- canonical vehicle-event registry validation for profile emissions and binding keys; and
 - an 800×480 Settings workflow with inline feedback.
 
 ## Non-goals
@@ -148,6 +149,8 @@ Settings UI
 - [`multi-can-runtime.md`](multi-can-runtime.md) records the later simultaneous-bus
   architecture without expanding V1 scope.
 - [`qualification.md`](qualification.md) defines delivery slices and acceptance gates.
+- [`../../vehicle-integration-standard.md`](../../vehicle-integration-standard.md) defines the
+  universal profile/event/binding boundary used by every vehicle integration.
 
 ## Required implementation order
 

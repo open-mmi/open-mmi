@@ -9,6 +9,8 @@ import os
 import sys
 from typing import Any, Mapping, Optional, Sequence
 
+from canbusd import event_registry as vehicle_events
+
 from ui import (
     launcher,
     update_coordinator,
@@ -107,6 +109,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     vehicle_setup_commands.add_parser("status")
     vehicle_setup_commands.add_parser("catalogue")
+    vehicle_events_parser = vehicle_setup_commands.add_parser(
+        "events",
+        help="inspect the canonical vehicle-event registry",
+    )
+    vehicle_events_parser.add_argument("event", nargs="?")
     vehicle_setup_commands.add_parser(
         "coordinator",
         help="inspect the privileged vehicle configuration coordinator",
@@ -192,6 +199,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 _print(vehicle_config_coordinator.client_status())
             elif args.command == "catalogue":
                 _print(vehicle_setup.catalogue_payload())
+            elif args.command == "events":
+                _print(
+                    vehicle_events.event_definition(args.event)
+                    if args.event
+                    else vehicle_events.registry_payload()
+                )
             elif args.command == "preview":
                 _print(
                     vehicle_config_coordinator.client_preview(
@@ -243,7 +256,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         result = _jellyfin_test(values)
         _print({"ok": True, **result})
         return 0
-    except (ConfigurationError, launcher.LauncherError, update_coordinator.CoordinatorError, vehicle_config_coordinator.CoordinatorError, update_status.UpdateStatusError, vehicle_setup.VehicleSetupError, RuntimeError, ValueError) as exc:
+    except (ConfigurationError, launcher.LauncherError, update_coordinator.CoordinatorError, vehicle_config_coordinator.CoordinatorError, update_status.UpdateStatusError, vehicle_events.VehicleEventRegistryError, vehicle_setup.VehicleSetupError, RuntimeError, ValueError) as exc:
         print(f"open-mmi-config: {exc}", file=sys.stderr)
         return 1
 

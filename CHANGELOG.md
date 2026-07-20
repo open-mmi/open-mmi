@@ -3,6 +3,8 @@
 ## Unreleased — V1 vehicle setup coordinator
 
 ### Added
+- Canonical machine-readable vehicle-event registry with stable semantic, payload, delivery and lifecycle contracts for all maintained profile emissions and binding keys.
+- Generated event reference, vehicle-integration standard, CLI registry inspection and conformance tests that reject vehicle-specific event synonyms and payload mismatches.
 - Dedicated root-owned vehicle configuration coordinator with atomic persistent public state, interrupted-state recovery, fixed status/preview Unix-socket actions, dedicated group authorization, and configuration/update/lifecycle lock primitives.
 - Coordinator-owned non-mutating vehicle setup preview that independently rereads fixed maintained/custom catalogue roots, the installed runtime drop-in, SocketCAN state, and the current configuration revision before returning a normalized plan.
 - Local-only `GET /api/system/vehicle-setup/coordinator`, `POST /api/system/vehicle-setup/preview`, fixed confirmed `POST /api/system/vehicle-setup/apply`, and matching status/preview/apply clients. Settings binds Apply to the reviewed target and revisions, shows live transaction state, and keeps caller-selected restore unavailable.

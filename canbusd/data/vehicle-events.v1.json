@@ -1,0 +1,130 @@
+{
+  "schema_version": 1,
+  "registry_id": "open-mmi.vehicle-events",
+  "events": {
+    "arrow_left": {
+      "title": "Navigate left",
+      "category": "navigation",
+      "description": "Request one logical leftward navigation step in the currently focused interface.",
+      "payload": {
+        "type": "none"
+      },
+      "delivery": "repeatable",
+      "status": "stable"
+    },
+    "arrow_right": {
+      "title": "Navigate right",
+      "category": "navigation",
+      "description": "Request one logical rightward navigation step in the currently focused interface.",
+      "payload": {
+        "type": "none"
+      },
+      "delivery": "repeatable",
+      "status": "stable"
+    },
+    "brightness_level": {
+      "title": "Brightness level",
+      "category": "display",
+      "description": "Report a requested display brightness level as an integer percentage from 0 to 100.",
+      "payload": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 100,
+        "unit": "percent"
+      },
+      "delivery": "value",
+      "status": "stable"
+    },
+    "mute_toggle": {
+      "title": "Toggle mute",
+      "category": "media",
+      "description": "Request inversion of the current audio mute state; this event never means mute-on or mute-off specifically.",
+      "payload": {
+        "type": "none"
+      },
+      "delivery": "edge",
+      "status": "stable"
+    },
+    "next_track": {
+      "title": "Next track",
+      "category": "media",
+      "description": "Request the next playable media item in the active playback context.",
+      "payload": {
+        "type": "none"
+      },
+      "delivery": "edge",
+      "status": "stable"
+    },
+    "play_pause": {
+      "title": "Play or pause",
+      "category": "media",
+      "description": "Request toggling the active playback context between playing and paused states.",
+      "payload": {
+        "type": "none"
+      },
+      "delivery": "edge",
+      "status": "stable"
+    },
+    "previous_track": {
+      "title": "Previous track",
+      "category": "media",
+      "description": "Request the previous playable media item in the active playback context.",
+      "payload": {
+        "type": "none"
+      },
+      "delivery": "edge",
+      "status": "stable"
+    },
+    "stop_playback": {
+      "title": "Stop playback",
+      "category": "media",
+      "description": "Request stopping playback in the active playback context.",
+      "payload": {
+        "type": "none"
+      },
+      "delivery": "edge",
+      "status": "stable"
+    },
+    "vehicle_present:off": {
+      "title": "Vehicle no longer present",
+      "category": "vehicle",
+      "description": "Report the transition from vehicle-present to vehicle-absent after the profile presence timeout expires.",
+      "payload": {
+        "type": "none"
+      },
+      "delivery": "state_transition",
+      "status": "stable"
+    },
+    "vehicle_present:on": {
+      "title": "Vehicle present",
+      "category": "vehicle",
+      "description": "Report the transition from vehicle-absent to vehicle-present after the configured presence frame is observed.",
+      "payload": {
+        "type": "none"
+      },
+      "delivery": "state_transition",
+      "status": "stable"
+    },
+    "volume_down": {
+      "title": "Volume down",
+      "category": "media",
+      "description": "Request one relative decrease in audio volume; the binding defines the size of the step.",
+      "payload": {
+        "type": "none"
+      },
+      "delivery": "repeatable",
+      "status": "stable"
+    },
+    "volume_up": {
+      "title": "Volume up",
+      "category": "media",
+      "description": "Request one relative increase in audio volume; the binding defines the size of the step.",
+      "payload": {
+        "type": "none"
+      },
+      "delivery": "repeatable",
+      "status": "stable"
+    }
+  },
+  "aliases": {}
+}
