@@ -364,6 +364,7 @@ sudo() {{ printf '%s\\0' "$@"; }}
         self.assertIn('systemctl stop "$VEHICLE_CAN_PROVISION_UNIT"', self.text)
         self.assertIn('"/etc/systemd/system/$VEHICLE_CONFIG_COORDINATOR_UNIT"', self.text)
         self.assertIn('"/etc/systemd/system/$VEHICLE_CAN_PROVISION_UNIT"', self.text)
+        self.assertIn('"$VEHICLE_CONFIG_UI_QUALIFICATION_GATE"', self.text)
 
     def test_prepared_deployment_is_fixed_root_only_and_rolls_back_on_error(self) -> None:
         start = self.text.index("cmd_deploy_prepared() {")

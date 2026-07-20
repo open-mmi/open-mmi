@@ -671,6 +671,20 @@ class ApplyTransactionTests(unittest.TestCase):
             "target": selected,
         }
 
+    def qualification_preview(self, target=None):
+        preview = self.preview(target)
+        preview.update(
+            {
+                "state": "ready",
+                "validation": {"valid": True, "errors": [], "warnings": []},
+                "plan": {
+                    "changes": [],
+                    "effects": {"write_canonical_configuration": False},
+                },
+            }
+        )
+        return preview
+
     def apply_payload(self, target=None, **updates):
         selected = target or self.target()
         payload = {
@@ -875,6 +889,116 @@ class ApplyTransactionTests(unittest.TestCase):
                     update_lock=root / "update.lock",
                 )
             self.assertTrue(gate.exists())
+
+    def test_ui_qualification_gate_is_trusted_root_only_and_one_shot(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            root.chmod(0o700)
+            gate = root / "ui-qualification"
+            result = coordinator.arm_ui_qualification("stale-preview", gate)
+            self.assertEqual(
+                result,
+                {
+                    "armed": True,
+                    "mode": "stale-preview",
+                    "path": str(gate),
+                },
+            )
+            self.assertEqual(gate.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(
+                gate.read_bytes(),
+                coordinator.UI_QUALIFICATION_CONTENT["stale-preview"],
+            )
+            with self.assertRaisesRegex(coordinator.CoordinatorError, "already armed"):
+                coordinator.arm_ui_qualification("stale-preview", gate)
+            mode = coordinator.consume_ui_qualification_gate(
+                self.qualification_preview(), gate
+            )
+            self.assertEqual(mode, "stale-preview")
+            self.assertFalse(gate.exists())
+            self.assertIsNone(
+                coordinator.consume_ui_qualification_gate(
+                    self.qualification_preview(), gate
+                )
+            )
+            with self.assertRaisesRegex(coordinator.CoordinatorError, "Unsupported"):
+                coordinator.arm_ui_qualification("unexpected", gate)
+
+    def test_ui_stale_qualification_rejects_before_snapshot(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            root.chmod(0o700)
+            gate = root / "ui-qualification"
+            coordinator.arm_ui_qualification("stale-preview", gate)
+            operations = self.Operations(self.target())
+            with self.assertRaises(coordinator.CoordinatorConflictError) as captured:
+                self.execute(
+                    operations,
+                    root,
+                    preview=self.qualification_preview(),
+                    ui_qualification_gate_path=gate,
+                )
+            self.assertEqual(captured.exception.code, "stale-preview")
+            self.assertEqual(operations.calls, [])
+            self.assertFalse(gate.exists())
+
+    def test_ui_restored_failure_qualification_uses_real_restore_path(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            root.chmod(0o700)
+            gate = root / "ui-qualification"
+            coordinator.arm_ui_qualification("apply-failed-restored", gate)
+            operations = self.Operations(self.target())
+            with self.assertRaises(coordinator.CoordinatorApplyError) as captured:
+                self.execute(
+                    operations,
+                    root,
+                    preview=self.qualification_preview(),
+                    ui_qualification_gate_path=gate,
+                )
+            self.assertEqual(captured.exception.code, "apply-failed-restored")
+            self.assertEqual(captured.exception.state["state"], "failed")
+            self.assertEqual(captured.exception.state["stage"], "restored")
+            self.assertTrue(captured.exception.state["restoration_attempted"])
+            self.assertTrue(captured.exception.state["restoration_verified"])
+            self.assertEqual(
+                operations.calls,
+                [
+                    "snapshot",
+                    "install",
+                    "reload",
+                    "restart",
+                    "restore",
+                    "restart",
+                    "loaded_runtime",
+                    "restoration_verified",
+                ],
+            )
+            self.assertFalse(gate.exists())
+
+    def test_ui_qualification_consumes_gate_but_rejects_changed_setup(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            root.chmod(0o700)
+            gate = root / "ui-qualification"
+            coordinator.arm_ui_qualification("apply-failed-restored", gate)
+            preview = self.qualification_preview()
+            preview["plan"]["changes"] = [
+                {"field": "interface", "from": "can0", "to": "can1"}
+            ]
+            preview["plan"]["effects"]["write_canonical_configuration"] = True
+            operations = self.Operations(self.target())
+            with self.assertRaisesRegex(
+                coordinator.CoordinatorError, "current ready setup"
+            ):
+                self.execute(
+                    operations,
+                    root,
+                    preview=preview,
+                    ui_qualification_gate_path=gate,
+                )
+            self.assertEqual(operations.calls, [])
+            self.assertFalse(gate.exists())
 
     def test_stale_or_unconfirmed_apply_mutates_nothing(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -1190,6 +1314,50 @@ class ApplyTransactionTests(unittest.TestCase):
                 operations.calls,
                 ["snapshot", "install", "reload", "restart", "loaded_runtime"],
             )
+
+    def test_public_ui_qualification_modes_reach_machine_readable_results(self):
+        for mode, expected_code in (
+            ("stale-preview", "stale-preview"),
+            ("apply-failed-restored", "apply-failed-restored"),
+        ):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                root.chmod(0o700)
+                dropin = root / "home" / "10-can-runtime.conf"
+                dropin.parent.mkdir(mode=0o700)
+                gate = root / "ui-qualification"
+                coordinator.arm_ui_qualification(mode, gate)
+                target = self.target()
+                operations = self.Operations(target)
+                with patch.object(
+                    coordinator,
+                    "coordinator_preview",
+                    return_value=self.qualification_preview(target),
+                ):
+                    response = coordinator.response_for_request(
+                        {
+                            "api_version": 1,
+                            "action": "apply",
+                            "apply": self.apply_payload(target),
+                        },
+                        root / "state.json",
+                        root / "configuration.lock",
+                        root / "lifecycle.lock",
+                        root / "update.lock",
+                        preview_dropin_path=dropin,
+                        preview_sys_class_net=root / "sys" / "class" / "net",
+                        apply_operations_factory=lambda selected: operations,
+                        ui_qualification_gate_path=gate,
+                    )
+                self.assertFalse(response["ok"])
+                self.assertEqual(response["code"], expected_code)
+                self.assertFalse(gate.exists())
+                if mode == "stale-preview":
+                    self.assertNotIn("state", response)
+                    self.assertEqual(operations.calls, [])
+                else:
+                    self.assertEqual(response["state"]["stage"], "restored")
+                    self.assertTrue(response["state"]["restoration_verified"])
 
     def test_public_apply_rejects_unconfirmed_or_changed_review_before_factory(self):
         with tempfile.TemporaryDirectory() as temporary:

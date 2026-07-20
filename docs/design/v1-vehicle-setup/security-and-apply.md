@@ -185,6 +185,25 @@ paths and subprocess errors do not cross the boundary. Public apply rejects `vca
 targets and absent interface names outside the conservative `canN` contract. Virtual
 CAN remains confined to the root-only qualification command.
 
+## Root-only browser failure qualification
+
+Browser failure messaging is qualified without making failure selection part of the
+public protocol. Root may arm exactly one of two fixed modes through the installed
+coordinator command: `stale-preview` or `apply-failed-restored`. The command creates
+`/etc/open-mmi/vehicle-configuration-ui-qualification` as a single-link, root-owned
+`0600` regular file containing one exact allowlisted value. Symlinks, writable files,
+unknown content, duplicate arming, and untrusted parent directories fail closed.
+
+The long-running root coordinator checks and consumes the marker only while holding the
+configuration, lifecycle, and update locks. It accepts qualification only when its fresh
+preview has no changes and the current setup is ready. The stale mode returns the normal
+machine-readable stale conflict before snapshot. The restored-failure mode injects one
+fixed error after the normal apply restart has entered verification, causing the ordinary
+exception path to restore and verify the durable snapshot. The socket and HTTP bodies do
+not contain a qualification field, and non-root callers cannot arm or choose a mode.
+There is intentionally no mode that sabotages restoration verification on a connected
+vehicle.
+
 ## Apply sequence
 
 1. Acquire the configuration transaction lock.

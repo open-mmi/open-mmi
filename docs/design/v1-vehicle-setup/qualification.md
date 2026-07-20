@@ -216,6 +216,46 @@ The fixed public apply protocol rejects `vcanN`; virtual CAN remains confined to
 root-only one-shot qualification command so the temporary target cannot be persisted
 accidentally.
 
+## Browser failure and restoration qualification
+
+The installed coordinator provides two root-only, one-shot qualification commands for
+the browser workflow. They do not add an HTTP parameter, public restore action, caller
+selected path, or general failure-injection interface. Both commands arm a fixed
+`0600` root-owned marker at
+`/etc/open-mmi/vehicle-configuration-ui-qualification`. The next confirmed apply must
+be a no-change review of the current ready setup; any changed selection consumes the
+marker and is rejected before snapshot.
+
+To qualify stale-review handling without mutation:
+
+```bash
+sudo /opt/open-mmi/venv/bin/open-mmi-vehicle-config-coordinator arm-ui-stale
+```
+
+Review the current setup in Settings and choose **Apply setup**. The coordinator consumes
+the marker under all transaction locks and returns `code=stale-preview` before creating a
+snapshot. The browser must discard the review, explain that it is stale, and require a
+fresh review. `canbusd` must not restart.
+
+To qualify verified automatic restoration:
+
+```bash
+sudo /opt/open-mmi/venv/bin/open-mmi-vehicle-config-coordinator arm-ui-restored-failure
+```
+
+Review and apply the current setup again. The coordinator creates the real durable
+snapshot, installs and reloads the same active target, provisions/restarts normally, then
+injects a fixed verification-stage failure. It must automatically restore the snapshot,
+restart `canbusd`, verify the previous loaded runtime, and return
+`code=apply-failed-restored`, `stage=restored`, `restoration_attempted=true`, and
+`restoration_verified=true`. The browser must report that apply failed but the previous
+setup was restored and verified. Apply remains available after a fresh review.
+
+The qualification marker must be absent after either attempt. Deliberately causing an
+unverified restoration on connected hardware is out of scope; automated coordinator and
+frontend tests cover `apply-failed-restore-unverified`, explicit recovery guidance, and
+retry blocking.
+
 ## Device qualification
 
 On the reference tablet and Seat 1P profile verify:

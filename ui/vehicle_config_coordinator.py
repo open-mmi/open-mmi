@@ -2,9 +2,9 @@
 
 The coordinator owns a fixed local Unix-socket boundary, persistent public
 transaction state, independent preview validation, and the fixed apply action.
-The browser UI remains disabled until its review/progress workflow is connected.
-A separate root-only, one-shot vcan round-trip command remains available for
-qualification of the apply and restoration engine.
+The browser UI uses the fixed reviewed apply action. Separate root-only,
+one-shot qualification gates exercise stale-review handling and verified automatic
+restoration without exposing failure injection through HTTP or the Unix socket.
 """
 
 from __future__ import annotations
@@ -48,6 +48,17 @@ DEFAULT_QUALIFICATION_GATE = Path(
     "/etc/open-mmi/enable-vcan-vehicle-configuration-qualification"
 )
 QUALIFICATION_GATE_CONTENT = b"OPEN_MMI_ALLOW_VCAN_CONFIGURATION_APPLY=1\n"
+DEFAULT_UI_QUALIFICATION_GATE = Path(
+    "/etc/open-mmi/vehicle-configuration-ui-qualification"
+)
+UI_QUALIFICATION_CONTENT = {
+    "stale-preview": (
+        b"OPEN_MMI_VEHICLE_CONFIGURATION_UI_QUALIFICATION=stale-preview\n"
+    ),
+    "apply-failed-restored": (
+        b"OPEN_MMI_VEHICLE_CONFIGURATION_UI_QUALIFICATION=apply-failed-restored\n"
+    ),
+}
 MAX_REQUEST_BYTES = 4096
 MAX_RESPONSE_BYTES = 256 * 1024
 DEFAULT_APPLY_TIMEOUT = 60.0
@@ -681,6 +692,7 @@ def run_apply_transaction(
     lifecycle_lock: Path = DEFAULT_LIFECYCLE_LOCK,
     update_lock: Path = DEFAULT_UPDATE_LOCK,
     qualification_restore_on_success: bool = False,
+    ui_qualification_gate_path: Optional[Path] = None,
 ) -> Dict[str, Any]:
     """Execute one fail-closed apply transaction.
 
@@ -716,6 +728,16 @@ def run_apply_transaction(
             lifecycle_lock=lifecycle_lock,
             update_lock=update_lock,
         )
+        ui_qualification_mode = (
+            consume_ui_qualification_gate(preview, ui_qualification_gate_path)
+            if ui_qualification_gate_path is not None
+            else None
+        )
+        if ui_qualification_mode == "stale-preview":
+            raise CoordinatorConflictError(
+                "Vehicle configuration preview is stale",
+                "stale-preview",
+            )
         if preview["expected_configuration_revision"] != expected_configuration_revision:
             raise CoordinatorConflictError(
                 "Vehicle configuration preview is stale",
@@ -774,6 +796,10 @@ def run_apply_transaction(
             selected_operations.restart()
             state = _state_update(state_path, state, state="verifying", stage="verifying")
             stage = "verifying"
+            if ui_qualification_mode == "apply-failed-restored":
+                raise CoordinatorError(
+                    "Vehicle configuration UI qualification injected a verification failure"
+                )
             loaded = selected_operations.loaded_runtime()
             if not _loaded_matches_target(loaded, target):
                 raise CoordinatorError("Applied vehicle configuration could not be verified")
@@ -1022,6 +1048,7 @@ def response_for_request(
     preview_status_path: Optional[Path] = None,
     preview_sys_class_net: Path = Path("/sys/class/net"),
     apply_operations_factory: Optional[ApplyOperationsFactory] = None,
+    ui_qualification_gate_path: Optional[Path] = None,
 ) -> Dict[str, Any]:
     if not isinstance(payload, dict):
         return {"ok": False, "error": "Invalid coordinator request schema"}
@@ -1105,6 +1132,7 @@ def response_for_request(
                 configuration_lock=configuration_lock,
                 lifecycle_lock=lifecycle_lock,
                 update_lock=update_lock,
+                ui_qualification_gate_path=ui_qualification_gate_path,
             )
             return {
                 "ok": True,
@@ -1155,6 +1183,7 @@ class _Handler(socketserver.StreamRequestHandler):
                 preview_status_path=self.server.preview_status_path,  # type: ignore[attr-defined]
                 preview_sys_class_net=self.server.preview_sys_class_net,  # type: ignore[attr-defined]
                 apply_operations_factory=self.server.apply_operations_factory,  # type: ignore[attr-defined]
+                ui_qualification_gate_path=self.server.ui_qualification_gate_path,  # type: ignore[attr-defined]
             )
         try:
             encoded = (json.dumps(response, sort_keys=True) + "\n").encode("utf-8")
@@ -1189,6 +1218,7 @@ class CoordinatorServer(socketserver.ThreadingMixIn, socketserver.UnixStreamServ
         preview_status_path: Optional[Path] = None,
         preview_sys_class_net: Path = Path("/sys/class/net"),
         apply_operations_factory: Optional[ApplyOperationsFactory] = None,
+        ui_qualification_gate_path: Optional[Path] = DEFAULT_UI_QUALIFICATION_GATE,
     ):
         self.socket_path = socket_path
         self.state_path = state_path
@@ -1200,6 +1230,7 @@ class CoordinatorServer(socketserver.ThreadingMixIn, socketserver.UnixStreamServ
         self.preview_status_path = preview_status_path
         self.preview_sys_class_net = preview_sys_class_net
         self.apply_operations_factory = apply_operations_factory
+        self.ui_qualification_gate_path = ui_qualification_gate_path
         socket_path.parent.mkdir(parents=True, exist_ok=True, mode=0o755)
         try:
             existing = socket_path.lstat()
@@ -1414,8 +1445,13 @@ def _read_no_follow_file(
 ) -> bytes:
     """Read a trusted fixed file without following a final-component symlink."""
 
-    expected_uid = 0 if path in {DEFAULT_COORDINATOR_ENV, DEFAULT_QUALIFICATION_GATE} else os.geteuid()
-    expected_gid = 0 if path in {DEFAULT_COORDINATOR_ENV, DEFAULT_QUALIFICATION_GATE} else os.getegid()
+    root_owned_paths = {
+        DEFAULT_COORDINATOR_ENV,
+        DEFAULT_QUALIFICATION_GATE,
+        DEFAULT_UI_QUALIFICATION_GATE,
+    }
+    expected_uid = 0 if path in root_owned_paths else os.geteuid()
+    expected_gid = 0 if path in root_owned_paths else os.getegid()
     flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
     try:
         descriptor = os.open(path, flags)
@@ -1744,6 +1780,124 @@ def consume_qualification_gate(path: Path = DEFAULT_QUALIFICATION_GATE) -> None:
         raise CoordinatorError("Qualification gate could not be consumed") from exc
 
 
+def arm_ui_qualification(
+    mode: str,
+    path: Path = DEFAULT_UI_QUALIFICATION_GATE,
+) -> Dict[str, Any]:
+    """Create one trusted root-only marker for the next no-change UI apply."""
+
+    content = UI_QUALIFICATION_CONTENT.get(mode)
+    if content is None:
+        raise CoordinatorError("Unsupported vehicle configuration UI qualification mode")
+    expected_uid = 0 if path == DEFAULT_UI_QUALIFICATION_GATE else os.geteuid()
+    expected_gid = 0 if path == DEFAULT_UI_QUALIFICATION_GATE else os.getegid()
+    try:
+        parent = path.parent.lstat()
+    except OSError as exc:
+        raise CoordinatorError("UI qualification gate directory is unavailable") from exc
+    if (
+        not stat.S_ISDIR(parent.st_mode)
+        or parent.st_uid != expected_uid
+        or parent.st_gid != expected_gid
+        or parent.st_mode & 0o022
+    ):
+        raise CoordinatorError("UI qualification gate directory is untrusted")
+
+    flags = (
+        os.O_WRONLY
+        | os.O_CREAT
+        | os.O_EXCL
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    try:
+        descriptor = os.open(path, flags, 0o600)
+    except FileExistsError as exc:
+        raise CoordinatorError("UI qualification is already armed") from exc
+    except OSError as exc:
+        raise CoordinatorError("UI qualification could not be armed") from exc
+    try:
+        os.fchmod(descriptor, 0o600)
+        if path == DEFAULT_UI_QUALIFICATION_GATE:
+            os.fchown(descriptor, expected_uid, expected_gid)
+        offset = 0
+        while offset < len(content):
+            offset += os.write(descriptor, content[offset:])
+        os.fsync(descriptor)
+    except OSError as exc:
+        try:
+            path.unlink()
+        except OSError:
+            pass
+        raise CoordinatorError("UI qualification could not be armed") from exc
+    finally:
+        os.close(descriptor)
+    try:
+        directory = os.open(
+            path.parent,
+            os.O_RDONLY
+            | getattr(os, "O_DIRECTORY", 0)
+            | getattr(os, "O_CLOEXEC", 0),
+        )
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    except OSError as exc:
+        try:
+            path.unlink()
+        except OSError:
+            pass
+        raise CoordinatorError("UI qualification could not be armed") from exc
+    return {"armed": True, "mode": mode, "path": str(path)}
+
+
+def consume_ui_qualification_gate(
+    preview: Mapping[str, Any],
+    path: Path = DEFAULT_UI_QUALIFICATION_GATE,
+) -> Optional[str]:
+    """Consume a root-only UI qualification marker inside transaction locks."""
+
+    try:
+        path.lstat()
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise CoordinatorError("UI qualification gate cannot be inspected") from exc
+
+    maximum = max(len(content) for content in UI_QUALIFICATION_CONTENT.values())
+    content = _read_no_follow_file(path, maximum, exact_mode=0o600)
+    mode = next(
+        (name for name, expected in UI_QUALIFICATION_CONTENT.items() if content == expected),
+        None,
+    )
+    if mode is None:
+        raise CoordinatorError("UI qualification gate content is invalid")
+    try:
+        path.unlink()
+        directory = os.open(path.parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    except OSError as exc:
+        raise CoordinatorError("UI qualification gate could not be consumed") from exc
+
+    plan = preview.get("plan")
+    changes = plan.get("changes") if isinstance(plan, Mapping) else None
+    effects = plan.get("effects") if isinstance(plan, Mapping) else None
+    if (
+        preview.get("state") != "ready"
+        or changes != []
+        or not isinstance(effects, Mapping)
+        or effects.get("write_canonical_configuration") is not False
+    ):
+        raise CoordinatorError(
+            "UI qualification requires reapplying the current ready setup"
+        )
+    return mode
+
+
 def read_qualification_preview(stream: Any = None) -> Dict[str, Any]:
     """Read one bounded strict preview object from standard input."""
 
@@ -1826,7 +1980,15 @@ def _interrupt_qualification(_signum: int, _frame: object) -> None:
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Open MMI vehicle configuration coordinator")
     parser.add_argument(
-        "command", choices=("serve", "status", "qualify-vcan", "provision-can")
+        "command",
+        choices=(
+            "serve",
+            "status",
+            "qualify-vcan",
+            "provision-can",
+            "arm-ui-stale",
+            "arm-ui-restored-failure",
+        ),
     )
     args = parser.parse_args(argv)
     if args.command == "status":
@@ -1837,6 +1999,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             f"open-mmi-vehicle-config-coordinator: {args.command} requires root"
         )
     try:
+        if args.command in {"arm-ui-stale", "arm-ui-restored-failure"}:
+            mode = (
+                "stale-preview"
+                if args.command == "arm-ui-stale"
+                else "apply-failed-restored"
+            )
+            print(json.dumps(arm_ui_qualification(mode), indent=2, sort_keys=True))
+            return 0
         load_coordinator_environment()
         if args.command == "provision-can":
             run_can_provision()

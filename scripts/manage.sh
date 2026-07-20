@@ -19,6 +19,7 @@ VEHICLE_CONFIG_COORDINATOR_GROUP="open-mmi-config"
 VEHICLE_CONFIG_COORDINATOR_UNIT="open-mmi-vehicle-config-coordinator.service"
 VEHICLE_CAN_PROVISION_UNIT="open-mmi-vehicle-can-provision.service"
 VEHICLE_CONFIG_COORDINATOR_ENV="/etc/open-mmi/vehicle-config-coordinator.env"
+VEHICLE_CONFIG_UI_QUALIFICATION_GATE="/etc/open-mmi/vehicle-configuration-ui-qualification"
 VEHICLE_CONFIG_COORDINATOR_OVERRIDE_DIR="/etc/systemd/system/$VEHICLE_CONFIG_COORDINATOR_UNIT.d"
 VEHICLE_CONFIG_COORDINATOR_SANDBOX="$VEHICLE_CONFIG_COORDINATOR_OVERRIDE_DIR/10-write-paths.conf"
 VEHICLE_CONFIG_COORDINATOR_SOCKET="/run/open-mmi/vehicle-configuration-coordinator.sock"
@@ -1279,6 +1280,7 @@ cmd_uninstall() {
         "/etc/systemd/system/$VEHICLE_CONFIG_COORDINATOR_UNIT" \
         "/etc/systemd/system/$VEHICLE_CAN_PROVISION_UNIT" \
         "$VEHICLE_CONFIG_COORDINATOR_ENV" \
+        "$VEHICLE_CONFIG_UI_QUALIFICATION_GATE" \
         "$VEHICLE_CONFIG_COORDINATOR_SANDBOX"
     rmdir "$VEHICLE_CONFIG_COORDINATOR_OVERRIDE_DIR" >/dev/null 2>&1 || true
     systemctl daemon-reload
