@@ -62,6 +62,52 @@ function payload() {
   };
 }
 
+function previewPayload() {
+  return {
+    api_version: 1,
+    read_only: true,
+    apply_available: false,
+    state: "ready",
+    expected_configuration_revision: "sha256:configuration",
+    target_configuration_revision: "sha256:target",
+    target: {
+      vehicle: { source: "custom", id: "my-seat", revision: "sha256:custom-profile" },
+      bindings: { source: "custom", id: "my-controls", revision: "sha256:custom-bindings" },
+      runtime: { mode: "single", active_bus: "comfort", buses: { comfort: { interface: "can1" } } },
+    },
+    active_bus: { name: "comfort", interface: "can1", profile_interface: "can1", bitrate: 100000, provisioning: "manual" },
+    interface: { name: "can1", present: false, up: false, configured_bitrate: null },
+    compatibility: {
+      emitted_and_bound: ["play_pause"], emitted_unbound: [],
+      bound_unemitted: ["stop_playback"], duplicate_emitted: [],
+    },
+    validation: {
+      valid: true,
+      errors: [],
+      warnings: [{ code: "bindings-unused", message: "1 binding is not emitted by the profile" }],
+    },
+    plan: {
+      changes: [
+        {
+          field: "vehicle",
+          from: { source: "maintained", id: "seat_1p", revision: "sha256:profile" },
+          to: { source: "custom", id: "my-seat", revision: "sha256:custom-profile" },
+        },
+        { field: "bindings", from: { source: "maintained", id: "default" }, to: { source: "custom", id: "my-controls" } },
+        { field: "interface", from: "can0", to: "can1" },
+      ],
+      effects: {
+        write_canonical_configuration: true,
+        write_systemd_runtime: true,
+        write_udev_rules: true,
+        reload_user_manager: true,
+        reload_udev: true,
+        restart_can_service: true,
+      },
+    },
+  };
+}
+
 function fixture(options = {}) {
   const listeners = {};
   const calls = [];
@@ -88,13 +134,15 @@ function fixture(options = {}) {
     },
     async postJson(path, body) {
       calls.push(["POST", path, body]);
-      throw new Error("Vehicle setup status must not POST");
+      if (options.previewError) throw new Error(options.previewError);
+      if (path !== vehicleSetup.PREVIEW_ENDPOINT) throw new Error("Unexpected vehicle setup POST");
+      return options.preview || previewPayload();
     },
   };
   return { active, api, calls, document, listeners, panel, window };
 }
 
-test("vehicle setup renders maintained and custom draft choices without apply", async () => {
+test("vehicle setup renders maintained and custom draft choices before review", async () => {
   const state = fixture();
   const controller = vehicleSetup.createController(state);
   await controller.refresh();
@@ -110,13 +158,45 @@ test("vehicle setup renders maintained and custom draft choices without apply", 
   assert.match(html, /value="custom:broken" disabled/);
   assert.match(html, /can0 · not detected/);
   assert.match(html, /100 kbit\/s/);
-  assert.match(html, /Review and apply/);
-  assert.match(html, /data-testid="vehicle-setup-review" disabled/);
+  assert.match(html, /Review current setup/);
+  assert.doesNotMatch(html, /data-testid="vehicle-setup-review" disabled/);
   assert.deepEqual(state.calls, [["GET", "/api/system/vehicle-setup"]]);
   assert.equal(state.calls.some((call) => call[0] === "POST"), false);
 });
 
-test("profile and bindings changes remain an unapplied in-memory draft", async () => {
+test("the current setup can be reviewed when no alternative catalogue entry exists", async () => {
+  const currentPreview = {
+    ...previewPayload(),
+    plan: {
+      changes: [],
+      effects: {
+        write_canonical_configuration: false,
+        write_systemd_runtime: false,
+        write_udev_rules: false,
+        reload_user_manager: false,
+        reload_udev: false,
+        restart_can_service: false,
+      },
+    },
+  };
+  const state = fixture({ preview: currentPreview });
+  const controller = vehicleSetup.createController(state);
+  await controller.refresh();
+  assert.equal(controller.draftDiffers(), false);
+  await controller.reviewDraft();
+  assert.deepEqual(state.calls[1], ["POST", "/api/system/vehicle-setup/preview", {
+    vehicle: { source: "maintained", id: "seat_1p" },
+    bindings: { source: "maintained", id: "default" },
+    runtime: { active_bus: "comfort", buses: { comfort: { interface: "can0" } } },
+  }]);
+  const html = controller.template();
+  assert.match(html, /current setup would remain unchanged/);
+  assert.match(html, /No active configuration values would change/);
+  assert.match(html, /No service or adapter changes are required/);
+  assert.match(html, /data-testid="vehicle-setup-apply" disabled/);
+});
+
+test("profile and bindings changes produce an exact read-only review request", async () => {
   const state = fixture();
   const controller = vehicleSetup.createController(state);
   await controller.refresh();
@@ -130,8 +210,45 @@ test("profile and bindings changes remain an unapplied in-memory draft", async (
   });
   assert.match(controller.template(), /Changes not applied/);
   assert.match(controller.template(), /can1/);
+  assert.doesNotMatch(controller.template(), /data-testid="vehicle-setup-review" disabled/);
   assert.equal(controller.setDraft("vehicle", "custom:broken"), false);
-  assert.equal(state.calls.some((call) => call[0] === "POST"), false);
+
+  const request = controller.previewRequest();
+  assert.deepEqual(request, {
+    vehicle: { source: "custom", id: "my-seat" },
+    bindings: { source: "custom", id: "my-controls" },
+    runtime: { active_bus: "comfort", buses: { comfort: { interface: "can1" } } },
+  });
+  await controller.reviewDraft();
+  assert.deepEqual(state.calls[1], ["POST", "/api/system/vehicle-setup/preview", request]);
+  assert.equal(controller.preview().read_only, true);
+  const review = controller.template();
+  assert.match(review, /Review ready/);
+  assert.match(review, /data-testid="vehicle-setup-preview"/);
+  assert.match(review, /My &lt;Seat&gt; · Custom/);
+  assert.match(review, /can1 · not detected/);
+  assert.match(review, /1 binding is not emitted by the profile/);
+  assert.match(review, /Restart the CAN service/);
+  assert.match(review, /data-testid="vehicle-setup-apply" disabled/);
+  assert.doesNotMatch(JSON.stringify(request), /path|command|revision/);
+});
+
+test("preview failures remain inline and unsafe capability responses fail closed", async () => {
+  const failed = fixture({ previewError: "preview unavailable" });
+  const failedController = vehicleSetup.createController(failed);
+  await failedController.refresh();
+  failedController.setDraft("vehicle", "custom:my-seat");
+  await assert.rejects(failedController.reviewDraft(), /preview unavailable/);
+  assert.match(failedController.template(), /data-testid="vehicle-setup-preview-error"/);
+  assert.match(failedController.template(), /preview unavailable/);
+
+  const unsafe = fixture({ preview: { ...previewPayload(), apply_available: true } });
+  const unsafeController = vehicleSetup.createController(unsafe);
+  await unsafeController.refresh();
+  unsafeController.setDraft("vehicle", "custom:my-seat");
+  await assert.rejects(unsafeController.reviewDraft(), /not safely available/);
+  assert.equal(unsafeController.preview(), null);
+  assert.match(unsafeController.template(), /not safely available/);
 });
 
 test("endpoint failures stay inside the vehicle setup panel", async () => {
@@ -145,5 +262,7 @@ test("endpoint failures stay inside the vehicle setup panel", async () => {
 test("identity helpers never accept path-shaped input", () => {
   assert.equal(vehicleSetup.identityKey({ source: "maintained", id: "seat_1p" }), "maintained:seat_1p");
   assert.equal(vehicleSetup.identityKey({ source: "maintained", id: "../../tmp" }), "");
+  assert.deepEqual(vehicleSetup.identityFromKey("custom:my_controls"), { source: "custom", id: "my_controls" });
+  assert.equal(vehicleSetup.identityFromKey("custom:../../tmp"), null);
   assert.equal(vehicleSetup.escapeHtml('../../tmp/<script>'), "../../tmp/&lt;script&gt;");
 });

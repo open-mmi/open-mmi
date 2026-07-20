@@ -10,12 +10,14 @@ vehicle-control actions.
 
 ## Current contained slice
 
-The first contained implementation is intentionally read-only. It displays the active
+The contained implementation remains intentionally read-only. It displays the active
 configuration, maintained/custom catalogue, selected bus and detected-adapter state.
 Changing the profile or bindings selector creates an in-memory draft and shows
 `Changes not applied`; it does not persist, provision hardware or restart the CAN
-service. **Review and apply** remains disabled until the preview and privileged apply
-contracts are implemented and qualified.
+service. **Review current setup** or **Review changes** submits the allowlisted draft
+to the fixed preview route and renders its normalized changes, warnings, interface
+health and proposed effects inline. **Apply setup** remains disabled until the
+privileged apply contract is implemented and qualified.
 
 ## Main panel
 
@@ -31,7 +33,7 @@ CAN adapter        can0                            connected
 Expected bitrate   100 kbit/s
 Runtime            active configuration loaded
 
-[Review and apply]        [Advanced]
+[Review changes]          [Advanced]
 ```
 
 The action area includes its own inline status region. Success, warning and failure
@@ -122,6 +124,12 @@ permits it.
 
 ## Review screen
 
+The read-only review screen is implemented. It is produced only from the backend
+preview response; the browser does not invent filesystem paths, commands, services or
+revisions. Changing either selector or refreshing active status invalidates the prior
+review. A preview response that does not explicitly report `read_only: true`,
+`apply_available: false` and `state: ready` is rejected by the browser.
+
 Review shows only changed values first, followed by an expandable complete plan:
 
 ```text
@@ -134,8 +142,11 @@ Provisioning can0 / 100 kbit/s     ->  can1 / 100 kbit/s
 
 The CAN service will restart. Open MMI will not transmit CAN messages.
 
-[Cancel] [Apply setup]
+[Back to selection] [Apply setup — disabled]
 ```
+
+The current slice stops here. It does not expose the proposed apply route and does not
+write the canonical descriptor, systemd drop-in or udev rules.
 
 ## Progress and results
 

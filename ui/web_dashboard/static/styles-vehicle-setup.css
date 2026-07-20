@@ -63,6 +63,93 @@
   margin: -.1rem .15rem .15rem;
 }
 
+.openmmi-vehicle-setup-preview {
+  display: grid;
+  gap: .5rem;
+  padding: .72rem;
+  border: 1px solid rgba(100, 190, 245, .3);
+  border-radius: 9px;
+  background: rgba(5, 24, 39, .72);
+}
+
+.openmmi-vehicle-preview-changes,
+.openmmi-vehicle-preview-block,
+.openmmi-vehicle-preview-effects {
+  display: grid;
+  gap: .38rem;
+}
+
+.openmmi-vehicle-preview-change {
+  display: grid;
+  grid-template-columns: minmax(110px, .55fr) minmax(0, 1.45fr);
+  gap: .55rem;
+  align-items: start;
+  padding: .48rem .55rem;
+  border-radius: 7px;
+  background: rgba(4, 18, 30, .62);
+}
+
+.openmmi-vehicle-preview-change > span,
+.openmmi-vehicle-preview-block,
+.openmmi-vehicle-preview-effects,
+.openmmi-vehicle-preview-empty,
+.openmmi-vehicle-preview-ok {
+  color: var(--muted);
+  font-size: .74rem;
+}
+
+.openmmi-vehicle-preview-change strong {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: .38rem;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: .76rem;
+  font-weight: 650;
+}
+
+.openmmi-vehicle-preview-change b {
+  color: var(--accent);
+}
+
+.openmmi-vehicle-preview-block > strong {
+  color: var(--text);
+}
+
+.openmmi-vehicle-preview-warnings,
+.openmmi-vehicle-preview-effects ul {
+  display: grid;
+  gap: .25rem;
+  margin: 0;
+  padding-left: 1.15rem;
+}
+
+.openmmi-vehicle-preview-warnings {
+  color: var(--warning, #f0c36a);
+}
+
+.openmmi-vehicle-preview-empty,
+.openmmi-vehicle-preview-ok,
+.openmmi-vehicle-preview-effects p {
+  margin: 0;
+}
+
+.openmmi-vehicle-preview-effects {
+  padding: .48rem .55rem;
+  border: 1px solid rgba(176, 215, 245, .12);
+  border-radius: 7px;
+}
+
+.openmmi-vehicle-preview-effects summary {
+  cursor: pointer;
+  color: var(--text);
+  font-weight: 650;
+}
+
+.openmmi-vehicle-preview-effects[open] summary {
+  margin-bottom: .35rem;
+}
+
 .openmmi-vehicle-setup-technical {
   padding-top: .55rem;
   border-top: 1px solid rgba(255, 255, 255, .09);
@@ -92,5 +179,9 @@
   .openmmi-vehicle-setup-selectors label {
     grid-template-columns: 1fr;
     gap: .4rem;
+  }
+
+  .openmmi-vehicle-preview-change {
+    grid-template-columns: 1fr;
   }
 }

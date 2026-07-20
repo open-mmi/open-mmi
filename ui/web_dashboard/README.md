@@ -344,7 +344,7 @@ The browser loads small platform modules before the main dashboard application:
 - `static/dashboard-connection.js` owns shared dashboard reachability and bounded same-build recovery.
 - `static/frontend-version.js` owns loaded/server build comparison, safe one-shot reloads, visibility-aware checking, and the update-ready notice.
 - `static/system-settings.js` owns local System/Jellyfin configuration rendering and the read-only software-update panel.
-- `static/vehicle-setup-settings.js` owns the read-only Vehicle setup overview and its unapplied, in-memory profile and bindings draft.
+- `static/vehicle-setup-settings.js` owns the read-only Vehicle setup overview, its unapplied in-memory draft, and the fixed preview/review flow.
 - `static/runtime-diagnostics.js` owns the three-second, Diagnostics-only system-runtime polling lifecycle and conservative clock/thermal state derivation.
 - `static/preferences.js` owns safe JSON persistence and the dashboard settings key.
 - `static/clock.js` owns the persistent header clock, minute-boundary scheduling, and clock-specific Display preferences.
@@ -437,15 +437,20 @@ and same-origin only, accepts no caller-selected filesystem path or source, and 
 not apply or restart vehicle configuration.
 
 **Settings → Vehicle setup** displays the active configuration and catalogue. Profile
-and bindings selectors create a page-local draft so the next workflow can be reviewed,
-but the draft is not persisted and **Review and apply** remains disabled.
+and bindings selectors create a page-local draft. **Review current setup** or
+**Review changes** sends only the
+selected maintained/custom identities and one bus/interface assignment to the fixed
+preview route, then renders changed values, compatibility warnings, interface health
+and proposed system effects inline. The draft and preview are not persisted, and
+**Apply setup** remains disabled.
 
 `POST /api/system/vehicle-setup/preview` is a fixed, same-origin, non-mutating backend
 contract. It accepts only maintained/custom identifiers plus one declared bus/interface
 assignment, then returns a normalized canonical target, compatibility warnings and
-deterministic systemd/udev/restart effects. The current page does not call preview yet;
-activation remains unavailable until the separate coordinator boundary is implemented
-and qualified. The same planner can be inspected from a terminal without mutation:
+deterministic systemd/udev/restart effects. The page fails closed unless the response
+explicitly remains a read-only preview with apply unavailable. Activation remains
+unavailable until the separate coordinator boundary is implemented and qualified. The
+same planner can be inspected from a terminal without mutation:
 
 ```bash
 open-mmi-config vehicle-setup preview seat_1p default \
