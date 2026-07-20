@@ -1,6 +1,6 @@
 # V1 vehicle setup management
 
-Status: implementation in progress — core apply, custom copy and revision-safe JSON editing complete
+Status: implementation in progress — core apply, custom copy, editing and lifecycle management complete
 
 This design defines a local, explicit setup path for selecting an Open MMI vehicle
 profile, bindings and SocketCAN input without editing systemd or udev files by hand.
@@ -21,8 +21,9 @@ A user should be able to:
 6. apply the setup explicitly;
 7. see whether the configuration loaded and whether the interface is present;
 8. create a named custom copy from a maintained template;
-9. edit and validate that custom copy without changing the active runtime; and
-10. return to a maintained profile without leaving a custom path override active.
+9. edit and validate that custom copy without changing the active runtime;
+10. duplicate, rename or delete inactive custom entries explicitly; and
+11. return to a maintained profile without leaving a custom path override active.
 
 The normal path must not require a terminal. Existing management commands remain an
 administrator and recovery interface over the same backend contract.
@@ -42,6 +43,7 @@ The V1 setup-management scope includes:
 - preview, validation, apply, verification and automatic restoration;
 - creation of custom copies from installed maintained templates;
 - draft editing with atomic saves and revision checks;
+- revision-bound duplicate, rename and inactive-only deletion for custom entries;
 - machine-readable active configuration and CAN health status; and
 - an 800×480 Settings workflow with inline feedback.
 
@@ -154,7 +156,7 @@ Settings UI
 5. Qualify maintained selection through CLI and `vcan` before exposing writes in UI.
 6. Add the Vehicle setup selector and review screen.
 7. Add custom copy, revision-safe JSON editing, validation and activation.
-8. Add last-known-good user revisions plus rename, duplicate and protected deletion.
+8. Add rename, duplicate and protected deletion, then last-known-good user revisions.
 9. Add bindings editing through an explicit action registry.
 10. Add broader structured profile editing only after rule schemas are complete.
 11. Treat simultaneous multi-CAN as its own reviewed beta milestone.

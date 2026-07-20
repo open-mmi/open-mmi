@@ -227,6 +227,17 @@
   gap: .3rem;
 }
 
+.openmmi-vehicle-custom-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem .55rem;
+  align-items: center;
+}
+
+.openmmi-vehicle-custom-delete {
+  color: var(--warning, #f0c36a);
+}
+
 .openmmi-vehicle-edit-custom {
   text-align: left;
 }

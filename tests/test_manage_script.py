@@ -55,6 +55,73 @@ class ManageScriptLifecycleTests(unittest.TestCase):
             "exec",
         )
 
+    def transaction_locks_program(self) -> str:
+        marker = "<<'PY_OPEN_MMI_TRANSACTION_LOCKS'\n"
+        start = self.text.index(marker) + len(marker)
+        end = self.text.index("\nPY_OPEN_MMI_TRANSACTION_LOCKS", start)
+        return self.text[start:end]
+
+    def test_transaction_locks_python_has_valid_syntax(self) -> None:
+        compile(
+            self.transaction_locks_program(),
+            "manage.sh:PY_OPEN_MMI_TRANSACTION_LOCKS",
+            "exec",
+        )
+
+    def test_transaction_locks_are_created_private_without_replacement(self) -> None:
+        program = self.transaction_locks_program()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "run" / "open-mmi"
+            root.mkdir(parents=True)
+            root.chmod(0o755)
+            existing = root / "lifecycle.lock"
+            existing.write_text("held\n", encoding="utf-8")
+            inode = existing.stat().st_ino
+            existing.chmod(0o666)
+            unrelated = root / "coordinator.sock.fixture"
+            unrelated.write_text("unchanged\n", encoding="utf-8")
+
+            completed = subprocess.run(
+                [
+                    "python3", "-c", program, str(root),
+                    str(root.stat().st_uid), str(root.stat().st_gid),
+                ],
+                text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            for name in (
+                "lifecycle.lock", "update.lock", "vehicle-configuration.lock"
+            ):
+                path = root / name
+                self.assertTrue(path.is_file())
+                self.assertEqual(path.stat().st_mode & 0o777, 0o644)
+                self.assertEqual(path.stat().st_nlink, 1)
+            self.assertEqual(existing.stat().st_ino, inode)
+            self.assertEqual(existing.read_text(encoding="utf-8"), "held\n")
+            self.assertEqual(unrelated.read_text(encoding="utf-8"), "unchanged\n")
+
+    def test_transaction_locks_reject_symlink_before_creating_siblings(self) -> None:
+        program = self.transaction_locks_program()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "run" / "open-mmi"
+            outside = Path(temporary) / "outside"
+            root.mkdir(parents=True)
+            root.chmod(0o755)
+            outside.write_text("outside\n", encoding="utf-8")
+            (root / "lifecycle.lock").symlink_to(outside)
+            completed = subprocess.run(
+                [
+                    "python3", "-c", program, str(root),
+                    str(root.stat().st_uid), str(root.stat().st_gid),
+                ],
+                text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+            )
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("untrusted", completed.stderr.lower())
+            self.assertFalse((root / "update.lock").exists())
+            self.assertFalse((root / "vehicle-configuration.lock").exists())
+            self.assertEqual(outside.read_text(encoding="utf-8"), "outside\n")
+
     def custom_catalogue_permissions_program(self) -> str:
         marker = "<<'PY_CUSTOM_CATALOGUE_PERMISSIONS'\n"
         start = self.text.index(marker) + len(marker)
@@ -631,6 +698,11 @@ sleep() {{ :; }}
         self.assertIn("wait_for_vehicle_config_coordinator", block)
         self.assertIn("write_vehicle_config_coordinator_environment", block)
         self.assertIn("write_vehicle_config_coordinator_sandbox", block)
+        self.assertIn("install_open_mmi_transaction_locks", block)
+        self.assertLess(
+            block.index("install_open_mmi_transaction_locks"),
+            block.index('systemctl restart "$VEHICLE_CONFIG_COORDINATOR_UNIT"'),
+        )
         environment_end = self.text.index("\nPY_VEHICLE_CONFIG_COORDINATOR_ENV")
         sandbox_definition = self.text.index(
             "write_vehicle_config_coordinator_sandbox() {"

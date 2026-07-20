@@ -242,6 +242,32 @@ function fixture(options = {}) {
           applied: false,
         };
       }
+      if (path === vehicleSetup.MANAGE_CUSTOM_ENDPOINT) {
+        if (options.manageError) throw options.manageError;
+        const collection = statusPayload.catalogue[body.kind === "profile" ? "profiles" : "bindings"];
+        const index = collection.findIndex((item) => item.source === "custom" && item.id === body.id);
+        if (index < 0) throw new Error("Custom item not found");
+        const source = collection[index];
+        if (body.action === "delete") {
+          collection.splice(index, 1);
+          return options.manage || {
+            ok: true, api_version: 1, action: "manage-custom-item", operation: "delete", kind: body.kind,
+            deleted: { source: "custom", id: body.id, revision: source.revision }, applied: false,
+          };
+        }
+        const managed = {
+          ...source,
+          id: body.new_id,
+          display_name: body.new_id.replaceAll(/[-_]/g, " "),
+        };
+        if (body.action === "rename") collection.splice(index, 1, managed);
+        else collection.push(managed);
+        return options.manage || {
+          ok: true, api_version: 1, action: "manage-custom-item", operation: body.action, kind: body.kind,
+          source: { source: "custom", id: body.id, revision: source.revision },
+          custom: { source: "custom", id: body.new_id, revision: source.revision }, applied: false,
+        };
+      }
       if (path === vehicleSetup.COPY_ENDPOINT) {
         if (options.copyError) throw options.copyError;
         const kind = body.kind === "profile" ? "profiles" : "bindings";
@@ -333,6 +359,78 @@ test("maintained items create revision-bound custom copies in the user catalogue
 });
 
 
+test("custom lifecycle controls are custom-only and active items stay protected", async () => {
+  const status = payload();
+  status.active.vehicle = { source: "custom", id: "my-seat", revision: "sha256:custom-profile" };
+  const state = fixture({ status });
+  const controller = vehicleSetup.createController(state);
+  await controller.refresh();
+  controller.setDraft("vehicle", "custom:my-seat");
+  let html = controller.template();
+  assert.match(html, /data-testid="vehicle-setup-duplicate-vehicle"/);
+  assert.match(html, /data-testid="vehicle-setup-rename-vehicle" disabled/);
+  assert.match(html, /data-testid="vehicle-setup-delete-vehicle" disabled/);
+  assert.match(html, /Active custom items can be duplicated or edited/);
+  assert.equal(await controller.manageCustomItem("delete", "vehicle"), null);
+  assert.equal(state.calls.some((call) => call[1] === vehicleSetup.MANAGE_CUSTOM_ENDPOINT), false);
+
+  controller.setDraft("bindings", "custom:my-controls");
+  html = controller.template();
+  assert.match(html, /data-testid="vehicle-setup-rename-bindings"/);
+  assert.doesNotMatch(html, /data-testid="vehicle-setup-rename-bindings" disabled/);
+  assert.doesNotMatch(controller.template(), /Rename maintained|Delete maintained/);
+});
+
+test("custom duplicate and rename are exact-revision operations and remain unapplied", async () => {
+  const state = fixture({ promptResult: "my-seat-copy" });
+  const controller = vehicleSetup.createController(state);
+  await controller.refresh();
+  controller.setDraft("vehicle", "custom:my-seat");
+
+  const duplicated = await controller.manageCustomItem("duplicate", "vehicle");
+  assert.equal(duplicated.operation, "duplicate");
+  assert.deepEqual(state.calls.find((call) => call[1] === vehicleSetup.MANAGE_CUSTOM_ENDPOINT), [
+    "POST", vehicleSetup.MANAGE_CUSTOM_ENDPOINT,
+    {
+      action: "duplicate", kind: "profile", source: "custom", id: "my-seat",
+      expected_revision: "sha256:custom-profile", new_id: "my-seat-copy",
+    },
+  ]);
+  assert.equal(controller.draft().vehicle, "custom:my-seat-copy");
+  assert.equal(state.calls.some((call) => call[1] === vehicleSetup.APPLY_ENDPOINT), false);
+
+  state.window.prompt = () => "renamed-controls";
+  controller.setDraft("bindings", "custom:my-controls");
+  const renamed = await controller.manageCustomItem("rename", "bindings");
+  assert.equal(renamed.operation, "rename");
+  assert.equal(controller.draft().bindings, "custom:renamed-controls");
+  const calls = state.calls.filter((call) => call[1] === vehicleSetup.MANAGE_CUSTOM_ENDPOINT);
+  assert.deepEqual(calls[1][2], {
+    action: "rename", kind: "bindings", source: "custom", id: "my-controls",
+    expected_revision: "sha256:custom-bindings", new_id: "renamed-controls",
+  });
+  assert.equal(state.calls.some((call) => call[1] === vehicleSetup.APPLY_ENDPOINT), false);
+});
+
+test("inactive custom delete requires confirmation and resets the draft safely", async () => {
+  const state = fixture();
+  const controller = vehicleSetup.createController(state);
+  await controller.refresh();
+  controller.setDraft("bindings", "custom:my-controls");
+  const deleted = await controller.manageCustomItem("delete", "bindings");
+  assert.equal(deleted.operation, "delete");
+  assert.match(state.confirmations.at(-1), /cannot be undone/);
+  assert.deepEqual(state.calls.find((call) => call[1] === vehicleSetup.MANAGE_CUSTOM_ENDPOINT), [
+    "POST", vehicleSetup.MANAGE_CUSTOM_ENDPOINT,
+    {
+      action: "delete", kind: "bindings", source: "custom", id: "my-controls",
+      expected_revision: "sha256:custom-bindings",
+    },
+  ]);
+  assert.equal(controller.draft().bindings, "maintained:default");
+  assert.equal(state.calls.some((call) => call[1] === vehicleSetup.APPLY_ENDPOINT), false);
+});
+
 test("only custom items expose the revision-safe JSON editor", async () => {
   const state = fixture();
   const controller = vehicleSetup.createController(state);
@@ -344,7 +442,7 @@ test("only custom items expose the revision-safe JSON editor", async () => {
   assert.equal(controller.setDraft("vehicle", "custom:my-seat"), true);
   html = controller.template();
   assert.match(html, /data-testid="vehicle-setup-edit-vehicle"/);
-  assert.match(html, /Saving does not apply or restart/);
+  assert.match(html, /Lifecycle changes do not apply or restart/);
   assert.doesNotMatch(html, /data-testid="vehicle-setup-copy-vehicle"/);
 
   await controller.openCustomEditor("vehicle");

@@ -746,6 +746,80 @@ install_update_coordinator() {
     fi
 }
 
+install_open_mmi_transaction_locks() {
+    install -d -m 0755 -o root -g root "$UPDATE_COORDINATOR_RUNTIME_DIR"
+    python3 - "$UPDATE_COORDINATOR_RUNTIME_DIR" 0 0 <<'PY_OPEN_MMI_TRANSACTION_LOCKS'
+import os
+import stat
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+expected_uid = int(sys.argv[2])
+expected_gid = int(sys.argv[3])
+names = (
+    "lifecycle.lock",
+    "update.lock",
+    "vehicle-configuration.lock",
+)
+
+root_metadata = root.lstat()
+if (
+    not stat.S_ISDIR(root_metadata.st_mode)
+    or root_metadata.st_uid != expected_uid
+    or root_metadata.st_gid != expected_gid
+    or root_metadata.st_mode & (stat.S_IWGRP | stat.S_IWOTH)
+):
+    raise SystemExit("Open MMI runtime directory is untrusted")
+
+existing = []
+for name in names:
+    path = root / name
+    try:
+        metadata = path.lstat()
+    except FileNotFoundError:
+        continue
+    if (
+        not stat.S_ISREG(metadata.st_mode)
+        or metadata.st_uid != expected_uid
+        or metadata.st_gid != expected_gid
+        or metadata.st_nlink != 1
+    ):
+        raise SystemExit(f"Open MMI transaction lock is untrusted: {path}")
+    existing.append(path)
+
+for path in existing:
+    os.chmod(path, 0o644, follow_symlinks=False)
+
+for name in names:
+    path = root / name
+    if path in existing:
+        continue
+    descriptor = os.open(
+        path,
+        os.O_WRONLY
+        | os.O_CREAT
+        | os.O_EXCL
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0),
+        0o644,
+    )
+    try:
+        os.fchown(descriptor, expected_uid, expected_gid)
+        os.fchmod(descriptor, 0o644)
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+directory_fd = os.open(root, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+try:
+    os.fsync(directory_fd)
+finally:
+    os.close(directory_fd)
+PY_OPEN_MMI_TRANSACTION_LOCKS
+}
+
+
 write_vehicle_config_coordinator_environment() {
     local runtime_dropin status_path
     runtime_dropin="$REAL_HOME/.config/systemd/user/canbusd.service.d/10-can-runtime.conf"
@@ -854,6 +928,7 @@ install_vehicle_config_coordinator() {
     fi
     write_vehicle_config_coordinator_environment
     write_vehicle_config_coordinator_sandbox
+    install_open_mmi_transaction_locks
     install -d -m 0755 -o root -g root /etc/systemd/system
     install -m 0644 -o root -g root \
         "$REPO_ROOT/systemd/system/$VEHICLE_CONFIG_COORDINATOR_UNIT" \

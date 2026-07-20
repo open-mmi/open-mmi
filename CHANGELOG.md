@@ -14,6 +14,7 @@
 - Local same-origin custom-copy creation for profiles and bindings. A maintained catalogue item is accepted only as an exact revision-bound template, the new file is written privately beneath the service user's custom catalogue, and the UI immediately selects the new custom copy without activating it.
 - Private custom-copy provenance sidecars recording the template identity, template revision, Open MMI build identity, display name and creation time without exposing those files to `canbusd`.
 - Custom-only JSON loading and editing in **Settings → Vehicle setup**. Loads return exact content plus its revision; saves require that revision, validate before writing, atomically replace only the user-owned file and remain explicitly unapplied until a separate review and confirmation.
+- Revision-bound custom lifecycle controls for duplicate, rename and delete. Maintained items expose no lifecycle actions; active custom items can be duplicated but cannot be renamed or deleted until another item is applied. Provenance follows duplicates and renames, and every lifecycle result remains unapplied.
 
 ### Security
 - Privileged rendering reopens catalogue files through descriptor-relative no-follow traversal, verifies maintained/custom ownership and non-writable modes, and rechecks the reviewed content revisions immediately before installation.
@@ -23,6 +24,7 @@
 - Apply rejects duplicate/non-finite HTTP JSON, additional runtime drop-ins that override coordinator-owned keys, existing selected network interfaces that are not kernel SocketCAN devices, absent non-`canN` interface names, and all `vcanN` targets. Virtual CAN remains available only through the root-only one-shot qualification boundary.
 - Custom-copy requests accept no paths or content, require `template_source: maintained`, bind to the maintained file revision, reject existing destinations, validate the source document, reject unsafe user catalogue directories and write new content and provenance as private no-overwrite files. No route edits or deletes maintained content.
 - Custom editor routes accept only `source: custom`, fixed kind/id identities, an expected SHA-256 revision and bounded JSON text. They reject maintained identities, symlinks, hard links, non-private ownership or modes, stale revisions, duplicate keys, non-finite values and invalid profile/bindings schemas before atomic replacement.
+- Custom lifecycle mutations acquire the shared Open MMI lifecycle lock, recheck the exact source revision, reject path-shaped or maintained identities, refuse overwrite, preserve private ownership and provenance, and fail closed when rename or delete targets the active custom identity. Managed installation pre-creates the root-owned lock files without replacing live inodes.
 
 ### Fixed
 - Coordinator-managed `canbusd` runtimes now pin the exact successfully parsed profile and bindings revisions until process restart. Legacy periodic and SIGHUP reloads remain available only outside managed Vehicle Setup, preventing an active custom editor save from silently becoming loaded before reviewed Apply.

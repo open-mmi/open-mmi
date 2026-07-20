@@ -52,7 +52,10 @@ User-facing terms:
 | daemon | CAN service, except in technical details |
 | default_bus | Active CAN bus / profile default |
 
-Full paths, revisions and generated files belong under **Technical details**.
+Full paths, revisions and generated files belong under **Technical details**. Final UI
+polish must keep SHA-256 values from widening either the disclosure or its parent cards:
+show a compact/shortened value by default, allow the exact value to be copied or revealed,
+and retain `overflow-wrap` as a narrow-screen fallback.
 
 ## Profile selection
 

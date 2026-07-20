@@ -154,6 +154,28 @@ parsed profile and bindings revisions until restart; periodic and SIGHUP reloads
 activate a saved draft. Activation remains a separate reviewed operation. Last-known-good
 user revision archives remain a later slice.
 
+## Custom lifecycle operations
+
+Duplicate, rename and delete are available only for fixed `custom` identities and
+require the exact current content revision. They never accept a path or document body.
+All three operations acquire the shared lifecycle lock so they cannot race a reviewed
+apply or managed update.
+
+- Duplicate is allowed for active or inactive custom items because it leaves the source
+  untouched and creates a new private destination.
+- Rename is allowed only for inactive custom items. It moves the exact profile directory
+  or bindings file, moves and updates provenance, and never changes the content revision.
+- Delete is allowed only for inactive custom items and requires explicit browser
+  confirmation. The backend hides the exact item under a private temporary name before
+  removing its content and provenance.
+- Existing destination identifiers, stale revisions, unsafe permissions, symlinks, hard
+  links, unsupported profile-directory contents and active identities fail closed.
+- Lifecycle operations return `applied: false`; selection and activation remain a
+  separate reviewed workflow.
+
+Maintained entries never expose Edit, Duplicate, Rename or Delete. Their only custom
+entry point remains **Use maintained … as template**, which creates a separate copy.
+
 ## Editor delivery order
 
 1. Advanced JSON text editing with syntax and semantic validation.

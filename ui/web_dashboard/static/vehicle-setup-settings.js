@@ -11,6 +11,7 @@
   const COPY_ENDPOINT = "/api/system/vehicle-custom/create";
   const LOAD_CUSTOM_ENDPOINT = "/api/system/vehicle-custom/load";
   const SAVE_CUSTOM_ENDPOINT = "/api/system/vehicle-custom/save";
+  const MANAGE_CUSTOM_ENDPOINT = "/api/system/vehicle-custom/manage";
   const COORDINATOR_ENDPOINT = "/api/system/vehicle-setup/coordinator";
   const ACTIVE_APPLY_STATES = new Set(["validating", "applying", "reloading", "verifying", "restoring"]);
   const TERMINAL_APPLY_STATES = new Set(["idle", "complete", "failed"]);
@@ -117,6 +118,7 @@
     let editorBusy = false;
     let editorMessage = "";
     let editorMessageKind = "";
+    let lifecycleBusyKind = "";
 
     function activeSection() {
       return documentRef.querySelector("[data-openmmi-settings-section].active")
@@ -245,22 +247,37 @@
       const label = kind === "vehicle" ? "profile" : "bindings";
       if (entry?.source === "custom") {
         const editing = editor?.kind === kind && editor?.id === entry.id;
+        const active = identityKey(activeIdentity(kind)) === identityKey(entry);
         const disabled = loading || previewLoading || applyBusy || Boolean(copyBusyKind)
-          || editorBusy || Boolean(editor) || entry.valid === false;
+          || Boolean(lifecycleBusyKind) || editorBusy || Boolean(editor) || entry.valid === false;
+        const destructiveDisabled = disabled || active;
+        const busy = lifecycleBusyKind === kind;
         return `
           <div class="openmmi-vehicle-custom-controls">
-            <button type="button" class="openmmi-settings-link openmmi-vehicle-edit-custom" data-openmmi-vehicle-custom-edit="${escapeHtml(kind)}" data-testid="vehicle-setup-edit-${escapeHtml(kind)}" ${disabled ? "disabled" : ""}>${editing ? "Editing custom " + label + "…" : "Edit custom " + label}</button>
-            <small class="openmmi-vehicle-custom-location">Stored in your user catalogue. Saving does not apply or restart the CAN service.</small>
+            <div class="openmmi-vehicle-custom-actions">
+              <button type="button" class="openmmi-settings-link openmmi-vehicle-edit-custom" data-openmmi-vehicle-custom-edit="${escapeHtml(kind)}" data-testid="vehicle-setup-edit-${escapeHtml(kind)}" ${disabled ? "disabled" : ""}>${editing ? "Editing custom " + label + "…" : "Edit"}</button>
+              <button type="button" class="openmmi-settings-link" data-openmmi-vehicle-custom-manage="duplicate" data-openmmi-vehicle-custom-kind="${escapeHtml(kind)}" data-testid="vehicle-setup-duplicate-${escapeHtml(kind)}" ${disabled ? "disabled" : ""}>${busy ? "Working…" : "Duplicate"}</button>
+              <button type="button" class="openmmi-settings-link" data-openmmi-vehicle-custom-manage="rename" data-openmmi-vehicle-custom-kind="${escapeHtml(kind)}" data-testid="vehicle-setup-rename-${escapeHtml(kind)}" ${destructiveDisabled ? "disabled" : ""}>Rename</button>
+              <button type="button" class="openmmi-settings-link openmmi-vehicle-custom-delete" data-openmmi-vehicle-custom-manage="delete" data-openmmi-vehicle-custom-kind="${escapeHtml(kind)}" data-testid="vehicle-setup-delete-${escapeHtml(kind)}" ${destructiveDisabled ? "disabled" : ""}>Delete</button>
+            </div>
+            <small class="openmmi-vehicle-custom-location">${active ? "Active custom items can be duplicated or edited, but not renamed or deleted. Switch and apply another item first." : "Stored in your user catalogue. Lifecycle changes do not apply or restart the CAN service."}</small>
           </div>`;
       }
       if (entry?.source !== "maintained") return "";
       const busy = copyBusyKind === kind;
       const disabled = loading || previewLoading || applyBusy || Boolean(copyBusyKind)
-        || editorBusy || Boolean(editor)
+        || Boolean(lifecycleBusyKind) || editorBusy || Boolean(editor)
         || entry.valid === false
         || typeof entry.revision !== "string"
         || !entry.revision;
       return `<button type="button" class="openmmi-settings-link openmmi-vehicle-copy-template" data-openmmi-vehicle-setup-copy="${escapeHtml(kind)}" data-testid="vehicle-setup-copy-${escapeHtml(kind)}" ${disabled ? "disabled" : ""}>${busy ? "Creating custom copy…" : `Use maintained ${label} as template`}</button>`;
+    }
+
+    function suggestedDuplicateId(identifier) {
+      const base = `${String(identifier || "custom")}-copy`;
+      if (base.length <= 64 && IDENTIFIER_RE.test(base)) return base;
+      const shortened = `${String(identifier || "item").slice(0, 58)}-copy`;
+      return IDENTIFIER_RE.test(shortened) ? shortened : "custom-copy";
     }
 
     function suggestedCustomId(identifier) {
@@ -478,6 +495,107 @@
         throw error;
       } finally {
         copyBusyKind = "";
+        render();
+      }
+    }
+
+    async function manageCustomItem(action, kind) {
+      if (loading || previewLoading || applyBusy || copyBusyKind || lifecycleBusyKind
+        || editor || editorBusy) return null;
+      const entry = selectedEntry(kind);
+      const label = editorKind(kind);
+      if (!entry || entry.source !== "custom" || entry.valid === false
+        || typeof entry.revision !== "string" || !entry.revision) {
+        throw new Error(`Select a valid custom ${label} to manage`);
+      }
+      if (!['duplicate', 'rename', 'delete'].includes(action)) {
+        throw new Error("Custom catalogue lifecycle action is invalid");
+      }
+      const active = identityKey(activeIdentity(kind)) === identityKey(entry);
+      if (active && action !== "duplicate") {
+        setCopyMessage(`The active custom ${label} cannot be ${action === "rename" ? "renamed" : "deleted"}. Apply another ${label} first.`, "warning");
+        render();
+        return null;
+      }
+      let newId = "";
+      if (action === "duplicate" || action === "rename") {
+        if (typeof windowRef.prompt !== "function") throw new Error("Custom catalogue naming is unavailable");
+        const response = windowRef.prompt(
+          `${action === "duplicate" ? "Choose an id for the duplicate" : "Choose the new id"}. Use lowercase letters, numbers, hyphens or underscores.`,
+          action === "duplicate" ? suggestedDuplicateId(entry.id) : entry.id,
+        );
+        if (response === null) return null;
+        newId = String(response || "").trim();
+        if (!IDENTIFIER_RE.test(newId) || newId === entry.id) {
+          setCopyMessage("Choose a different valid id using lowercase letters, numbers, hyphens or underscores.", "error");
+          render();
+          return null;
+        }
+      }
+      if (action === "delete") {
+        if (typeof windowRef.confirm !== "function"
+          || !windowRef.confirm(`Delete custom ${label} ${entry.id}? This cannot be undone.`)) return null;
+      }
+
+      lifecycleBusyKind = kind;
+      setCopyMessage(`${action === "duplicate" ? "Duplicating" : action === "rename" ? "Renaming" : "Deleting"} custom ${label}…`, "warning");
+      clearPreview();
+      render();
+      try {
+        const request = {
+          action,
+          kind: label,
+          source: "custom",
+          id: entry.id,
+          expected_revision: entry.revision,
+        };
+        if (newId) request.new_id = newId;
+        const result = await api.postJson(MANAGE_CUSTOM_ENDPOINT, request, { usePayloadError: true });
+        if (result?.operation !== action || result?.applied !== false) {
+          throw new Error("The custom catalogue lifecycle response was unsafe");
+        }
+        if ((action === "duplicate" || action === "rename")
+          && (result?.custom?.source !== "custom" || result?.custom?.id !== newId
+            || typeof result?.custom?.revision !== "string")) {
+          throw new Error("The custom catalogue lifecycle response was unsafe");
+        }
+        if (action === "delete"
+          && (result?.deleted?.source !== "custom" || result?.deleted?.id !== entry.id)) {
+          throw new Error("The custom catalogue lifecycle response was unsafe");
+        }
+        const previousDraft = draft ? { ...draft } : null;
+        snapshot = await api.getJson(ENDPOINT, { usePayloadError: true });
+        if (!previousDraft) seedDraft();
+        else draft = previousDraft;
+        if (action === "delete") {
+          if (draft?.[kind] === identityKey(entry)) draft[kind] = identityKey(activeIdentity(kind));
+        } else {
+          const newKey = identityKey(result.custom);
+          if (!entryFor(catalogue(kind), newKey)) {
+            throw new Error("The managed custom catalogue item could not be reloaded");
+          }
+          draft[kind] = newKey;
+        }
+        draftDirty = draftDiffers();
+        const verb = action === "duplicate" ? "duplicated" : action === "rename" ? "renamed" : "deleted";
+        setCopyMessage(`Custom ${label} ${verb}. Review and Apply separately if the draft selection changed.`, "success");
+        return result;
+      } catch (error) {
+        const code = String(error?.payload?.code || "");
+        if (code === "custom-stale") {
+          setCopyMessage("This custom item changed. Refresh Vehicle Setup and try again.", "warning");
+        } else if (code === "custom-active") {
+          setCopyMessage(`The active custom ${label} cannot be renamed or deleted. Apply another ${label} first.`, "warning");
+        } else if (code === "custom-exists") {
+          setCopyMessage("That custom id already exists. Choose a different id.", "warning");
+        } else if (code === "lifecycle-busy") {
+          setCopyMessage("Another Open MMI lifecycle operation is active. Try again after it completes.", "warning");
+        } else {
+          setCopyMessage(error?.message || `Could not ${action} the custom ${label}`, "error");
+        }
+        throw error;
+      } finally {
+        lifecycleBusyKind = "";
         render();
       }
     }
@@ -858,7 +976,8 @@
       const bindings = selectedEntry("bindings");
       const bus = selectedBus();
       const changed = draftDiffers();
-      const canReview = Boolean(previewRequest()) && !loading && !previewLoading && !applyBusy && !copyBusyKind && !editor && !editorBusy;
+      const canReview = Boolean(previewRequest()) && !loading && !previewLoading && !applyBusy
+        && !copyBusyKind && !lifecycleBusyKind && !editor && !editorBusy;
       const activeReady = active.state === "ready";
       const statusText = preview
         ? changed
@@ -897,7 +1016,7 @@
             <div class="openmmi-vehicle-setup-selector">
               <label for="openMmiVehicleProfile"><strong>Vehicle profile</strong><small>${escapeHtml(validationNote(profile, "Choose a valid profile"))}</small></label>
               <div class="openmmi-vehicle-setup-selection-control">
-                <select id="openMmiVehicleProfile" data-openmmi-vehicle-setup-select="vehicle" data-testid="vehicle-setup-profile" ${loading || previewLoading || applyBusy || copyBusyKind || editor || editorBusy ? "disabled" : ""}>
+                <select id="openMmiVehicleProfile" data-openmmi-vehicle-setup-select="vehicle" data-testid="vehicle-setup-profile" ${loading || previewLoading || applyBusy || copyBusyKind || lifecycleBusyKind || editor || editorBusy ? "disabled" : ""}>
                   ${optionGroups(catalogue("vehicle"), draft.vehicle, activeVehicle)}
                 </select>
                 ${customCopyControl("vehicle", profile)}
@@ -906,7 +1025,7 @@
             <div class="openmmi-vehicle-setup-selector">
               <label for="openMmiVehicleBindings"><strong>Bindings</strong><small>${escapeHtml(validationNote(bindings, "Choose valid bindings"))}</small></label>
               <div class="openmmi-vehicle-setup-selection-control">
-                <select id="openMmiVehicleBindings" data-openmmi-vehicle-setup-select="bindings" data-testid="vehicle-setup-bindings" ${loading || previewLoading || applyBusy || copyBusyKind || editor || editorBusy ? "disabled" : ""}>
+                <select id="openMmiVehicleBindings" data-openmmi-vehicle-setup-select="bindings" data-testid="vehicle-setup-bindings" ${loading || previewLoading || applyBusy || copyBusyKind || lifecycleBusyKind || editor || editorBusy ? "disabled" : ""}>
                   ${optionGroups(catalogue("bindings"), draft.bindings, activeBindings)}
                 </select>
                 ${customCopyControl("bindings", bindings)}
@@ -925,7 +1044,7 @@
           </div>
 
           <div class="openmmi-config-actions openmmi-vehicle-setup-actions">
-            <button type="button" class="openmmi-settings-link" data-openmmi-vehicle-setup-refresh="true" data-testid="vehicle-setup-refresh" ${loading || previewLoading || applyBusy || copyBusyKind || editor || editorBusy ? "disabled" : ""}>Refresh status</button>
+            <button type="button" class="openmmi-settings-link" data-openmmi-vehicle-setup-refresh="true" data-testid="vehicle-setup-refresh" ${loading || previewLoading || applyBusy || copyBusyKind || lifecycleBusyKind || editor || editorBusy ? "disabled" : ""}>Refresh status</button>
             <button type="button" class="openmmi-setting-pill" data-openmmi-vehicle-setup-review="true" data-testid="vehicle-setup-review" ${canReview ? "" : "disabled"}>${previewLoading ? "Checking setup…" : preview ? "Refresh review" : changed ? "Review changes" : "Review current setup"}</button>
           </div>
           <p class="openmmi-vehicle-setup-note">Applying requires this exact review and an explicit confirmation. The coordinator verifies the loaded runtime and restores the previous setup after a failed mutation.</p>
@@ -1006,6 +1125,14 @@
         copyTemplate(copyButton.dataset.openmmiVehicleSetupCopy).catch(() => {});
         return;
       }
+      const manageButton = event.target?.closest?.("[data-openmmi-vehicle-custom-manage]");
+      if (manageButton && !manageButton.disabled) {
+        manageCustomItem(
+          manageButton.dataset.openmmiVehicleCustomManage,
+          manageButton.dataset.openmmiVehicleCustomKind,
+        ).catch(() => {});
+        return;
+      }
       const editButton = event.target?.closest?.("[data-openmmi-vehicle-custom-edit]");
       if (editButton && !editButton.disabled) {
         openCustomEditor(editButton.dataset.openmmiVehicleCustomEdit).catch(() => {});
@@ -1059,6 +1186,7 @@
       applyDraft,
       copyTemplate,
       openCustomEditor,
+      manageCustomItem,
       saveCustomEditor,
       closeCustomEditor,
       setEditorContent,
@@ -1096,6 +1224,7 @@
     COPY_ENDPOINT,
     LOAD_CUSTOM_ENDPOINT,
     SAVE_CUSTOM_ENDPOINT,
+    MANAGE_CUSTOM_ENDPOINT,
     COORDINATOR_ENDPOINT,
     createController,
     escapeHtml,

@@ -7,12 +7,14 @@ accepted solely as a revision-bound starting template.
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
 import os
 import stat
 import threading
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Optional, Sequence
@@ -24,6 +26,9 @@ API_VERSION = 1
 COPY_ACTION = "copy-maintained-template"
 LOAD_ACTION = "load-custom-item"
 SAVE_ACTION = "save-custom-item"
+MANAGE_ACTION = "manage-custom-item"
+DEFAULT_LIFECYCLE_LOCK = Path("/run/open-mmi/lifecycle.lock")
+MAX_PROVENANCE_BYTES = 64 * 1024
 _CATALOGUE_WRITE_LOCK = threading.Lock()
 _KIND_LIMITS = {
     "profile": vehicle_setup.MAX_PROFILE_BYTES,
@@ -89,6 +94,36 @@ def _normalize_copy_request(payload: object) -> tuple[str, dict[str, str], str]:
         "id": template_id,
         "revision": revision,
     }, custom_id
+
+
+def _normalize_lifecycle_request(
+    payload: object,
+) -> tuple[str, str, str, str, Optional[str]]:
+    if not isinstance(payload, Mapping):
+        raise VehicleCatalogueError("Invalid custom catalogue lifecycle schema")
+    action = payload.get("action")
+    if action not in {"duplicate", "rename", "delete"}:
+        raise VehicleCatalogueError("Custom catalogue lifecycle action is invalid")
+    required = {"action", "kind", "source", "id", "expected_revision"}
+    if action in {"duplicate", "rename"}:
+        required.add("new_id")
+    if set(payload) != required:
+        raise VehicleCatalogueError("Invalid custom catalogue lifecycle schema")
+    kind = payload.get("kind")
+    if kind not in _KIND_LIMITS:
+        raise VehicleCatalogueError("Custom catalogue kind must be profile or bindings")
+    if payload.get("source") != "custom":
+        raise VehicleCatalogueError("Only custom catalogue items may be managed")
+    identifier = _validate_identifier(payload.get("id"), field="Custom catalogue id")
+    revision = payload.get("expected_revision")
+    if not isinstance(revision, str) or not vehicle_configuration.REVISION_RE.fullmatch(revision):
+        raise VehicleCatalogueError("Expected custom catalogue revision is invalid")
+    new_id: Optional[str] = None
+    if action in {"duplicate", "rename"}:
+        new_id = _validate_identifier(payload.get("new_id"), field="New custom catalogue id")
+        if new_id == identifier:
+            raise VehicleCatalogueError("New custom catalogue id must be different")
+    return str(action), str(kind), identifier, revision, new_id
 
 
 def _normalize_custom_request(payload: object, *, save: bool) -> tuple[str, str, Optional[str], Optional[str]]:
@@ -707,3 +742,628 @@ def save_custom_item(
         "validation": validation,
         "applied": False,
     }
+
+
+def _metadata_token(metadata: os.stat_result) -> tuple[int, ...]:
+    return (
+        metadata.st_dev,
+        metadata.st_ino,
+        metadata.st_size,
+        metadata.st_mtime_ns,
+        metadata.st_ctime_ns,
+        metadata.st_uid,
+        metadata.st_nlink,
+        stat.S_IMODE(metadata.st_mode),
+    )
+
+
+def _verify_token_at(directory_fd: int, name: str, expected: tuple[int, ...]) -> None:
+    try:
+        metadata = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+    except FileNotFoundError as exc:
+        raise VehicleCatalogueConflictError(
+            "Custom catalogue item changed; refresh Vehicle Setup and try again",
+            "custom-stale",
+        ) from exc
+    except OSError as exc:
+        raise VehicleCatalogueError("Custom catalogue item cannot be inspected") from exc
+    if _metadata_token(metadata) != expected:
+        raise VehicleCatalogueConflictError(
+            "Custom catalogue item changed; refresh Vehicle Setup and try again",
+            "custom-stale",
+        )
+
+
+def _read_private_file_at(
+    directory_fd: int,
+    name: str,
+    *,
+    maximum_bytes: int,
+    missing_ok: bool = False,
+) -> tuple[Optional[bytes], Optional[tuple[int, ...]]]:
+    descriptor = -1
+    try:
+        descriptor = os.open(
+            name,
+            os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0),
+            dir_fd=directory_fd,
+        )
+        metadata = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_uid != os.geteuid()
+            or metadata.st_nlink != 1
+            or stat.S_IMODE(metadata.st_mode) != 0o600
+        ):
+            raise VehicleCatalogueError("Custom catalogue provenance is untrusted")
+        if metadata.st_size > maximum_bytes:
+            raise VehicleCatalogueError("Custom catalogue provenance exceeds the size limit")
+        chunks: list[bytes] = []
+        remaining = maximum_bytes + 1
+        while remaining:
+            chunk = os.read(descriptor, min(remaining, 65536))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        content = b"".join(chunks)
+    except FileNotFoundError:
+        if missing_ok:
+            return None, None
+        raise VehicleCatalogueError("Custom catalogue provenance was not found")
+    except VehicleCatalogueError:
+        raise
+    except OSError as exc:
+        raise VehicleCatalogueError("Custom catalogue provenance cannot be read") from exc
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+    if len(content) > maximum_bytes:
+        raise VehicleCatalogueError("Custom catalogue provenance exceeds the size limit")
+    return content, _metadata_token(metadata)
+
+
+def _provenance_directory_optional(
+    root: Path,
+    kind: str,
+) -> Optional[Path]:
+    provenance_root = root / ".open-mmi-provenance"
+    kind_directory = provenance_root / kind
+    if not _path_present(provenance_root):
+        return None
+    _ensure_user_directory(provenance_root, create=False)
+    if not _path_present(kind_directory):
+        return None
+    _ensure_user_directory(kind_directory, create=False)
+    return kind_directory
+
+
+def _read_provenance_optional(
+    root: Path,
+    kind: str,
+    identifier: str,
+) -> tuple[Optional[dict[str, Any]], Optional[tuple[int, ...]]]:
+    directory = _provenance_directory_optional(root, kind)
+    if directory is None:
+        return None, None
+    directory_fd = _open_user_directory(directory)
+    try:
+        content, token = _read_private_file_at(
+            directory_fd,
+            f"{identifier}.json",
+            maximum_bytes=MAX_PROVENANCE_BYTES,
+            missing_ok=True,
+        )
+    finally:
+        os.close(directory_fd)
+    if content is None:
+        return None, None
+    try:
+        value = json.loads(
+            content.decode("utf-8"),
+            object_pairs_hook=_unique_json_object,
+            parse_constant=_reject_json_constant,
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise VehicleCatalogueError("Custom catalogue provenance is invalid") from exc
+    if not isinstance(value, Mapping):
+        raise VehicleCatalogueError("Custom catalogue provenance is invalid")
+    return dict(value), token
+
+
+def _lifecycle_provenance(
+    kind: str,
+    identifier: str,
+    *,
+    source_id: str,
+    source_revision: str,
+    existing: Optional[Mapping[str, Any]],
+    action: str,
+) -> bytes:
+    now = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    payload = dict(existing or {})
+    payload.update(
+        {
+            "schema_version": 1,
+            "kind": kind,
+            "id": identifier,
+            "display_name": _display_name(identifier),
+        }
+    )
+    if action == "duplicate":
+        payload["created_at"] = now
+        payload["derived_from"] = {
+            "source": "custom",
+            "id": source_id,
+            "revision": source_revision,
+        }
+        payload.pop("renamed_at", None)
+        payload.pop("previous_ids", None)
+    elif action == "rename":
+        previous = payload.get("previous_ids")
+        previous_ids = [item for item in previous if isinstance(item, str)] if isinstance(previous, list) else []
+        if source_id not in previous_ids:
+            previous_ids.append(source_id)
+        payload["previous_ids"] = previous_ids[-16:]
+        payload["renamed_at"] = now
+    return (json.dumps(payload, indent=2, sort_keys=True) + "\n").encode("utf-8")
+
+
+@contextmanager
+def _lifecycle_transaction(path: Path):
+    descriptor = -1
+    try:
+        descriptor = os.open(
+            path,
+            os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0),
+        )
+        metadata = os.fstat(descriptor)
+    except OSError as exc:
+        if descriptor >= 0:
+            os.close(descriptor)
+        raise VehicleCatalogueError("Open MMI lifecycle lock is unavailable") from exc
+    require_root = path == DEFAULT_LIFECYCLE_LOCK
+    trusted_owner = metadata.st_uid == 0 if require_root else metadata.st_uid in {0, os.geteuid()}
+    if (
+        not stat.S_ISREG(metadata.st_mode)
+        or metadata.st_nlink != 1
+        or not trusted_owner
+        or metadata.st_mode & 0o022
+    ):
+        os.close(descriptor)
+        raise VehicleCatalogueError("Open MMI lifecycle lock is untrusted")
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError as exc:
+        os.close(descriptor)
+        raise VehicleCatalogueConflictError(
+            "Another Open MMI lifecycle operation is active",
+            "lifecycle-busy",
+        ) from exc
+    try:
+        yield
+    finally:
+        fcntl.flock(descriptor, fcntl.LOCK_UN)
+        os.close(descriptor)
+
+
+def _active_catalogue_identity(
+    kind: str,
+    roots: vehicle_setup.CatalogueRoots,
+    active: Optional[Mapping[str, Any]],
+) -> dict[str, str]:
+    value: Mapping[str, Any]
+    if active is None:
+        status = vehicle_setup.status_payload(roots)
+        candidate = status.get("active")
+        if not isinstance(candidate, Mapping):
+            raise VehicleCatalogueError("Active vehicle setup cannot be verified")
+        value = candidate
+    else:
+        value = active
+    key = "vehicle" if kind == "profile" else "bindings"
+    identity = value.get(key)
+    if not isinstance(identity, Mapping):
+        raise VehicleCatalogueError("Active vehicle setup cannot be verified")
+    source = identity.get("source")
+    identifier = identity.get("id")
+    if not isinstance(source, str) or not isinstance(identifier, str):
+        raise VehicleCatalogueError("Active vehicle setup cannot be verified")
+    return {"source": source, "id": identifier}
+
+
+def _assert_inactive(
+    kind: str,
+    identifier: str,
+    roots: vehicle_setup.CatalogueRoots,
+    active: Optional[Mapping[str, Any]],
+) -> None:
+    identity = _active_catalogue_identity(kind, roots, active)
+    if identity == {"source": "custom", "id": identifier}:
+        raise VehicleCatalogueConflictError(
+            "Active custom catalogue items cannot be renamed or deleted",
+            "custom-active",
+        )
+
+
+def _assert_profile_directory_exact(directory_fd: int) -> None:
+    try:
+        names = sorted(os.listdir(directory_fd))
+    except OSError as exc:
+        raise VehicleCatalogueError("Custom profile directory cannot be inspected") from exc
+    if names != ["config.json"]:
+        raise VehicleCatalogueError("Custom profile directory contains unsupported files")
+
+
+def _custom_destination_exists(
+    roots: vehicle_setup.CatalogueRoots,
+    kind: str,
+    identifier: str,
+) -> bool:
+    if kind == "profile":
+        destination = roots.custom / "vehicles" / identifier
+    else:
+        destination = roots.custom / "bindings" / f"{identifier}.json"
+    provenance = roots.custom / ".open-mmi-provenance" / kind / f"{identifier}.json"
+    return _path_present(destination) or _path_present(provenance)
+
+
+def _duplicate_custom_item(
+    roots: vehicle_setup.CatalogueRoots,
+    kind: str,
+    identifier: str,
+    new_id: str,
+    content: bytes,
+    revision: str,
+    provenance: Optional[Mapping[str, Any]],
+) -> None:
+    if _custom_destination_exists(roots, kind, new_id):
+        raise VehicleCatalogueConflictError(
+            "A custom catalogue item with that id already exists",
+            "custom-exists",
+        )
+    provenance_content = _lifecycle_provenance(
+        kind,
+        new_id,
+        source_id=identifier,
+        source_revision=revision,
+        existing=provenance,
+        action="duplicate",
+    )
+    provenance_directory = _provenance_destination(roots.custom, kind)
+    provenance_name = f"{new_id}.json"
+    if kind == "profile":
+        profiles = roots.custom / "vehicles"
+        _ensure_user_directory(profiles)
+        destination = profiles / new_id
+        try:
+            destination.mkdir(mode=0o700)
+            destination.chmod(0o700)
+        except FileExistsError as exc:
+            raise VehicleCatalogueConflictError(
+                "A custom catalogue item with that id already exists",
+                "custom-exists",
+            ) from exc
+        except OSError as exc:
+            raise VehicleCatalogueError("Custom profile directory could not be created") from exc
+        try:
+            _ensure_user_directory(destination, create=False)
+            _write_new_file(destination, "config.json", content)
+            _write_new_file(provenance_directory, provenance_name, provenance_content)
+        except BaseException:
+            _remove_new_file(destination, "config.json")
+            _remove_new_file(provenance_directory, provenance_name)
+            try:
+                destination.rmdir()
+            except OSError:
+                pass
+            raise
+    else:
+        bindings = roots.custom / "bindings"
+        _ensure_user_directory(bindings)
+        binding_name = f"{new_id}.json"
+        try:
+            _write_new_file(bindings, binding_name, content)
+            _write_new_file(provenance_directory, provenance_name, provenance_content)
+        except BaseException:
+            _remove_new_file(bindings, binding_name)
+            _remove_new_file(provenance_directory, provenance_name)
+            raise
+
+
+def _rename_custom_item(
+    roots: vehicle_setup.CatalogueRoots,
+    kind: str,
+    identifier: str,
+    new_id: str,
+    token: tuple[int, ...],
+    provenance: Optional[Mapping[str, Any]],
+) -> None:
+    if _custom_destination_exists(roots, kind, new_id):
+        raise VehicleCatalogueConflictError(
+            "A custom catalogue item with that id already exists",
+            "custom-exists",
+        )
+    if kind == "profile":
+        source_directory = roots.custom / "vehicles" / identifier
+        source_fd = _open_user_directory(source_directory)
+        parent = roots.custom / "vehicles"
+        old_name = identifier
+        new_name = new_id
+        content_name = "config.json"
+    else:
+        source_fd = -1
+        parent = roots.custom / "bindings"
+        old_name = f"{identifier}.json"
+        new_name = f"{new_id}.json"
+        content_name = old_name
+    parent_fd = _open_user_directory(parent)
+    provenance_directory = _provenance_directory_optional(roots.custom, kind)
+    provenance_fd = _open_user_directory(provenance_directory) if provenance_directory else -1
+    item_moved = False
+    provenance_moved = False
+    try:
+        if kind == "profile":
+            _assert_profile_directory_exact(source_fd)
+            _verify_token_at(source_fd, content_name, token)
+        else:
+            _verify_token_at(parent_fd, content_name, token)
+        try:
+            os.stat(new_name, dir_fd=parent_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            pass
+        else:
+            raise VehicleCatalogueConflictError(
+                "A custom catalogue item with that id already exists",
+                "custom-exists",
+            )
+        os.rename(old_name, new_name, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
+        item_moved = True
+        os.fsync(parent_fd)
+
+        if provenance is not None:
+            assert provenance_fd >= 0
+            old_provenance = f"{identifier}.json"
+            new_provenance = f"{new_id}.json"
+            os.rename(
+                old_provenance,
+                new_provenance,
+                src_dir_fd=provenance_fd,
+                dst_dir_fd=provenance_fd,
+            )
+            provenance_moved = True
+            os.fsync(provenance_fd)
+            updated = _lifecycle_provenance(
+                kind,
+                new_id,
+                source_id=identifier,
+                source_revision="",
+                existing=provenance,
+                action="rename",
+            )
+            _current, provenance_token = _read_private_file_at(
+                provenance_fd,
+                new_provenance,
+                maximum_bytes=MAX_PROVENANCE_BYTES,
+            )
+            assert provenance_token is not None
+            _write_replacement_at(provenance_fd, new_provenance, updated, provenance_token)
+    except BaseException:
+        if provenance_moved and provenance_fd >= 0:
+            try:
+                os.rename(
+                    f"{new_id}.json",
+                    f"{identifier}.json",
+                    src_dir_fd=provenance_fd,
+                    dst_dir_fd=provenance_fd,
+                )
+                os.fsync(provenance_fd)
+            except OSError:
+                pass
+        if item_moved:
+            try:
+                os.rename(new_name, old_name, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
+                os.fsync(parent_fd)
+            except OSError:
+                pass
+        raise
+    finally:
+        if source_fd >= 0:
+            os.close(source_fd)
+        if provenance_fd >= 0:
+            os.close(provenance_fd)
+        os.close(parent_fd)
+
+
+def _delete_custom_item(
+    roots: vehicle_setup.CatalogueRoots,
+    kind: str,
+    identifier: str,
+    token: tuple[int, ...],
+    provenance: Optional[Mapping[str, Any]],
+) -> None:
+    suffix = uuid.uuid4().hex
+    if kind == "profile":
+        source_directory = roots.custom / "vehicles" / identifier
+        source_fd = _open_user_directory(source_directory)
+        parent = roots.custom / "vehicles"
+        old_name = identifier
+        hidden_name = f".open-mmi-delete-{suffix}"
+        content_name = "config.json"
+    else:
+        source_fd = -1
+        parent = roots.custom / "bindings"
+        old_name = f"{identifier}.json"
+        hidden_name = f".open-mmi-delete-{suffix}.json"
+        content_name = old_name
+    parent_fd = _open_user_directory(parent)
+    provenance_directory = _provenance_directory_optional(roots.custom, kind)
+    provenance_fd = _open_user_directory(provenance_directory) if provenance_directory else -1
+    item_moved = False
+    provenance_moved = False
+    hidden_provenance = f".open-mmi-delete-{suffix}.json"
+    try:
+        if kind == "profile":
+            _assert_profile_directory_exact(source_fd)
+            _verify_token_at(source_fd, content_name, token)
+        else:
+            _verify_token_at(parent_fd, content_name, token)
+        os.rename(old_name, hidden_name, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
+        item_moved = True
+        os.fsync(parent_fd)
+        if provenance is not None:
+            assert provenance_fd >= 0
+            os.rename(
+                f"{identifier}.json",
+                hidden_provenance,
+                src_dir_fd=provenance_fd,
+                dst_dir_fd=provenance_fd,
+            )
+            provenance_moved = True
+            os.fsync(provenance_fd)
+    except BaseException:
+        if provenance_moved and provenance_fd >= 0:
+            try:
+                os.rename(
+                    hidden_provenance,
+                    f"{identifier}.json",
+                    src_dir_fd=provenance_fd,
+                    dst_dir_fd=provenance_fd,
+                )
+                os.fsync(provenance_fd)
+            except OSError:
+                pass
+        if item_moved:
+            try:
+                os.rename(hidden_name, old_name, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
+                os.fsync(parent_fd)
+            except OSError:
+                pass
+        raise
+
+    try:
+        if kind == "profile":
+            os.unlink("config.json", dir_fd=source_fd)
+            os.fsync(source_fd)
+            os.close(source_fd)
+            source_fd = -1
+            os.rmdir(hidden_name, dir_fd=parent_fd)
+        else:
+            os.unlink(hidden_name, dir_fd=parent_fd)
+        os.fsync(parent_fd)
+        if provenance_moved and provenance_fd >= 0:
+            os.unlink(hidden_provenance, dir_fd=provenance_fd)
+            os.fsync(provenance_fd)
+    except OSError as exc:
+        raise VehicleCatalogueError("Custom catalogue item could not be deleted") from exc
+    finally:
+        if source_fd >= 0:
+            os.close(source_fd)
+        if provenance_fd >= 0:
+            os.close(provenance_fd)
+        os.close(parent_fd)
+
+
+def manage_custom_item(
+    payload: object,
+    *,
+    roots: Optional[vehicle_setup.CatalogueRoots] = None,
+    active: Optional[Mapping[str, Any]] = None,
+    lifecycle_lock: Path = DEFAULT_LIFECYCLE_LOCK,
+) -> dict[str, Any]:
+    """Duplicate, rename or delete one exact-revision custom catalogue item."""
+
+    action, kind, identifier, expected_revision, new_id = _normalize_lifecycle_request(payload)
+    selected_roots = roots or vehicle_setup.default_roots()
+    with _CATALOGUE_WRITE_LOCK, _lifecycle_transaction(lifecycle_lock):
+        directory, name = _custom_location(selected_roots, kind, identifier, create=False)
+        directory_fd = _open_user_directory(directory)
+        try:
+            content, revision, validation, token = _read_custom_at(directory_fd, name, kind)
+            if kind == "profile":
+                _assert_profile_directory_exact(directory_fd)
+        finally:
+            os.close(directory_fd)
+        if revision != expected_revision:
+            raise VehicleCatalogueConflictError(
+                "Custom catalogue item changed; refresh Vehicle Setup and try again",
+                "custom-stale",
+            )
+        if validation.get("valid") is not True:
+            _raise_invalid_custom(kind, validation)
+        provenance, _provenance_token = _read_provenance_optional(
+            selected_roots.custom,
+            kind,
+            identifier,
+        )
+
+        if action == "duplicate":
+            assert new_id is not None
+            verify_directory, verify_name = _custom_location(
+                selected_roots, kind, identifier, create=False
+            )
+            verify_fd = _open_user_directory(verify_directory)
+            try:
+                if kind == "profile":
+                    _assert_profile_directory_exact(verify_fd)
+                _verify_token_at(verify_fd, verify_name, token)
+            finally:
+                os.close(verify_fd)
+            _duplicate_custom_item(
+                selected_roots,
+                kind,
+                identifier,
+                new_id,
+                content,
+                revision,
+                provenance,
+            )
+            return {
+                "ok": True,
+                "api_version": API_VERSION,
+                "action": MANAGE_ACTION,
+                "operation": "duplicate",
+                "kind": kind,
+                "source": {"source": "custom", "id": identifier, "revision": revision},
+                "custom": {"source": "custom", "id": new_id, "revision": revision},
+                "applied": False,
+            }
+
+        _assert_inactive(kind, identifier, selected_roots, active)
+        if action == "rename":
+            assert new_id is not None
+            _rename_custom_item(
+                selected_roots,
+                kind,
+                identifier,
+                new_id,
+                token,
+                provenance,
+            )
+            return {
+                "ok": True,
+                "api_version": API_VERSION,
+                "action": MANAGE_ACTION,
+                "operation": "rename",
+                "kind": kind,
+                "source": {"source": "custom", "id": identifier, "revision": revision},
+                "custom": {"source": "custom", "id": new_id, "revision": revision},
+                "applied": False,
+            }
+
+        _delete_custom_item(
+            selected_roots,
+            kind,
+            identifier,
+            token,
+            provenance,
+        )
+        return {
+            "ok": True,
+            "api_version": API_VERSION,
+            "action": MANAGE_ACTION,
+            "operation": "delete",
+            "kind": kind,
+            "deleted": {"source": "custom", "id": identifier, "revision": revision},
+            "applied": False,
+        }

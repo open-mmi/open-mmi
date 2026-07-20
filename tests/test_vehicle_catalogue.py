@@ -21,6 +21,9 @@ class VehicleCatalogueTests(unittest.TestCase):
             maintained=self.maintained,
             custom=self.custom,
         )
+        self.lifecycle_lock = self.root / "lifecycle.lock"
+        self.lifecycle_lock.write_text("", encoding="utf-8")
+        self.lifecycle_lock.chmod(0o644)
         self.profile_document = {
             "default_bus": "comfort",
             "can_buses": {
@@ -104,6 +107,32 @@ class VehicleCatalogueTests(unittest.TestCase):
             "id": identifier,
             "expected_revision": revision,
             "content": content,
+        }
+
+    def lifecycle_request(
+        self,
+        action: str,
+        kind: str,
+        identifier: str,
+        revision: str,
+        new_id: str | None = None,
+    ) -> dict[str, str]:
+        payload = {
+            "action": action,
+            "kind": kind,
+            "source": "custom",
+            "id": identifier,
+            "expected_revision": revision,
+        }
+        if new_id is not None:
+            payload["new_id"] = new_id
+        return payload
+
+    @staticmethod
+    def inactive_setup() -> dict[str, dict[str, str]]:
+        return {
+            "vehicle": {"source": "maintained", "id": "seat_1p"},
+            "bindings": {"source": "maintained", "id": "default"},
         }
 
     def test_profile_copy_preserves_maintained_bytes_and_writes_only_user_catalogue(self):
@@ -321,6 +350,222 @@ class VehicleCatalogueTests(unittest.TestCase):
         ):
             vehicle_catalogue.load_custom_item(request, roots=self.roots)
         self.assertEqual(outside.read_text(encoding="utf-8"), "{}\n")
+
+
+    def test_custom_duplicate_preserves_source_and_records_exact_derivation(self):
+        source = self._copy_custom("profile", "my-seat")
+        source_before = source.read_bytes()
+        source_provenance = (
+            self.custom / ".open-mmi-provenance" / "profile" / "my-seat.json"
+        ).read_bytes()
+
+        result = vehicle_catalogue.manage_custom_item(
+            self.lifecycle_request(
+                "duplicate",
+                "profile",
+                "my-seat",
+                self._revision(source),
+                "my-seat-copy",
+            ),
+            roots=self.roots,
+            active=self.inactive_setup(),
+            lifecycle_lock=self.lifecycle_lock,
+        )
+
+        destination = self.custom / "vehicles" / "my-seat-copy" / "config.json"
+        provenance_path = (
+            self.custom
+            / ".open-mmi-provenance"
+            / "profile"
+            / "my-seat-copy.json"
+        )
+        provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+        self.assertEqual(source.read_bytes(), source_before)
+        self.assertEqual(destination.read_bytes(), source_before)
+        self.assertEqual(stat.S_IMODE(destination.parent.stat().st_mode), 0o700)
+        self.assertEqual(stat.S_IMODE(destination.stat().st_mode), 0o600)
+        self.assertEqual(stat.S_IMODE(provenance_path.stat().st_mode), 0o600)
+        self.assertEqual(provenance["derived_from"], {
+            "source": "custom",
+            "id": "my-seat",
+            "revision": self._revision(source),
+        })
+        self.assertEqual(provenance["template"]["id"], "seat_1p")
+        self.assertEqual(
+            (self.custom / ".open-mmi-provenance" / "profile" / "my-seat.json").read_bytes(),
+            source_provenance,
+        )
+        self.assertEqual(result["operation"], "duplicate")
+        self.assertFalse(result["applied"])
+        self.assertEqual(result["custom"]["id"], "my-seat-copy")
+
+    def test_custom_rename_moves_exact_inactive_item_and_provenance(self):
+        source = self._copy_custom("bindings", "my-controls")
+        revision = self._revision(source)
+        result = vehicle_catalogue.manage_custom_item(
+            self.lifecycle_request(
+                "rename",
+                "bindings",
+                "my-controls",
+                revision,
+                "driver-controls",
+            ),
+            roots=self.roots,
+            active=self.inactive_setup(),
+            lifecycle_lock=self.lifecycle_lock,
+        )
+
+        destination = self.custom / "bindings" / "driver-controls.json"
+        old_provenance = (
+            self.custom / ".open-mmi-provenance" / "bindings" / "my-controls.json"
+        )
+        new_provenance = (
+            self.custom / ".open-mmi-provenance" / "bindings" / "driver-controls.json"
+        )
+        provenance = json.loads(new_provenance.read_text(encoding="utf-8"))
+        self.assertFalse(source.exists())
+        self.assertTrue(destination.exists())
+        self.assertEqual(self._revision(destination), revision)
+        self.assertFalse(old_provenance.exists())
+        self.assertEqual(provenance["id"], "driver-controls")
+        self.assertIn("my-controls", provenance["previous_ids"])
+        self.assertTrue(provenance["renamed_at"])
+        self.assertEqual(result["operation"], "rename")
+        self.assertEqual(result["custom"]["id"], "driver-controls")
+        self.assertFalse(result["applied"])
+
+    def test_custom_delete_removes_exact_inactive_item_and_provenance(self):
+        source = self._copy_custom("profile", "old-seat")
+        provenance = (
+            self.custom / ".open-mmi-provenance" / "profile" / "old-seat.json"
+        )
+        result = vehicle_catalogue.manage_custom_item(
+            self.lifecycle_request(
+                "delete", "profile", "old-seat", self._revision(source)
+            ),
+            roots=self.roots,
+            active=self.inactive_setup(),
+            lifecycle_lock=self.lifecycle_lock,
+        )
+        self.assertFalse(source.parent.exists())
+        self.assertFalse(provenance.exists())
+        self.assertEqual(result["operation"], "delete")
+        self.assertEqual(result["deleted"]["id"], "old-seat")
+        self.assertFalse(result["applied"])
+        self.assertEqual(
+            list((self.custom / "vehicles").glob(".open-mmi-delete-*")), []
+        )
+
+    def test_active_custom_items_cannot_be_renamed_or_deleted(self):
+        profile = self._copy_custom("profile", "active-seat")
+        bindings = self._copy_custom("bindings", "active-controls")
+        active = {
+            "vehicle": {"source": "custom", "id": "active-seat"},
+            "bindings": {"source": "custom", "id": "active-controls"},
+        }
+        operations = (
+            ("rename", "profile", "active-seat", profile, "renamed-seat"),
+            ("delete", "bindings", "active-controls", bindings, None),
+        )
+        for action, kind, identifier, path, new_id in operations:
+            before = path.read_bytes()
+            with self.subTest(action=action), self.assertRaises(
+                vehicle_catalogue.VehicleCatalogueConflictError
+            ) as raised:
+                vehicle_catalogue.manage_custom_item(
+                    self.lifecycle_request(
+                        action, kind, identifier, self._revision(path), new_id
+                    ),
+                    roots=self.roots,
+                    active=active,
+                    lifecycle_lock=self.lifecycle_lock,
+                )
+            self.assertEqual(raised.exception.code, "custom-active")
+            self.assertEqual(path.read_bytes(), before)
+
+    def test_lifecycle_stale_revision_and_existing_destination_never_mutate(self):
+        source = self._copy_custom("bindings", "my-controls")
+        before = source.read_bytes()
+        with self.assertRaises(
+            vehicle_catalogue.VehicleCatalogueConflictError
+        ) as stale:
+            vehicle_catalogue.manage_custom_item(
+                self.lifecycle_request(
+                    "delete",
+                    "bindings",
+                    "my-controls",
+                    "sha256:" + "0" * 64,
+                ),
+                roots=self.roots,
+                active=self.inactive_setup(),
+                lifecycle_lock=self.lifecycle_lock,
+            )
+        self.assertEqual(stale.exception.code, "custom-stale")
+        self.assertEqual(source.read_bytes(), before)
+
+        existing = self._copy_custom("bindings", "existing")
+        with self.assertRaises(
+            vehicle_catalogue.VehicleCatalogueConflictError
+        ) as conflict:
+            vehicle_catalogue.manage_custom_item(
+                self.lifecycle_request(
+                    "rename",
+                    "bindings",
+                    "my-controls",
+                    self._revision(source),
+                    "existing",
+                ),
+                roots=self.roots,
+                active=self.inactive_setup(),
+                lifecycle_lock=self.lifecycle_lock,
+            )
+        self.assertEqual(conflict.exception.code, "custom-exists")
+        self.assertEqual(source.read_bytes(), before)
+        self.assertTrue(existing.exists())
+
+    def test_lifecycle_rejects_maintained_path_shaped_and_busy_requests(self):
+        source = self._copy_custom("profile", "my-seat")
+        invalid = self.lifecycle_request(
+            "delete", "profile", "my-seat", self._revision(source)
+        )
+        invalid["source"] = "maintained"
+        with self.assertRaises(vehicle_catalogue.VehicleCatalogueError):
+            vehicle_catalogue.manage_custom_item(
+                invalid,
+                roots=self.roots,
+                active=self.inactive_setup(),
+                lifecycle_lock=self.lifecycle_lock,
+            )
+        invalid = self.lifecycle_request(
+            "rename", "profile", "my-seat", self._revision(source), "../bad"
+        )
+        with self.assertRaises(vehicle_catalogue.VehicleCatalogueError):
+            vehicle_catalogue.manage_custom_item(
+                invalid,
+                roots=self.roots,
+                active=self.inactive_setup(),
+                lifecycle_lock=self.lifecycle_lock,
+            )
+
+        import fcntl
+        with self.lifecycle_lock.open("r", encoding="utf-8") as lock:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            with self.assertRaises(
+                vehicle_catalogue.VehicleCatalogueConflictError
+            ) as busy:
+                vehicle_catalogue.manage_custom_item(
+                    self.lifecycle_request(
+                        "duplicate",
+                        "profile",
+                        "my-seat",
+                        self._revision(source),
+                        "copy",
+                    ),
+                    roots=self.roots,
+                    active=self.inactive_setup(),
+                    lifecycle_lock=self.lifecycle_lock,
+                )
+            self.assertEqual(busy.exception.code, "lifecycle-busy")
 
     def test_copy_rejects_custom_or_incomplete_source_identity(self):
         revision = self._revision(self.profile_path)

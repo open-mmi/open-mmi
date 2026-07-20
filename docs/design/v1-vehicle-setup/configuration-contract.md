@@ -355,6 +355,7 @@ Custom operations remain fixed routes rather than path-shaped routes:
 POST /api/system/vehicle-custom/create
 POST /api/system/vehicle-custom/load
 POST /api/system/vehicle-custom/save
+POST /api/system/vehicle-custom/manage
 ```
 
 Creation accepts only this exact small body:
@@ -402,8 +403,26 @@ pins the successfully parsed profile and bindings revisions until process restar
 Legacy periodic and SIGHUP reloads are disabled in that managed mode so a save cannot
 become an implicit activation.
 
-The browser supplies no path and creation supplies no document content. Maintained content has no save,
-rename or delete route. The route also writes a private provenance sidecar beneath
+Lifecycle management accepts one of three exact action schemas:
+
+```json
+{"action":"duplicate","kind":"profile","source":"custom","id":"my-seat","expected_revision":"sha256:…","new_id":"my-seat-copy"}
+{"action":"rename","kind":"profile","source":"custom","id":"my-seat-copy","expected_revision":"sha256:…","new_id":"driver-seat"}
+{"action":"delete","kind":"profile","source":"custom","id":"driver-seat","expected_revision":"sha256:…"}
+```
+
+Managed installation creates the shared root-owned transaction lock files before the
+dashboard is enabled. The server acquires the lifecycle lock without replacing its inode
+before re-reading the fixed custom path and expected revision. Duplicate writes a new private item and provenance
+sidecar without changing the source. Rename moves the exact inactive item and updates
+its provenance without changing its content revision. Delete first verifies that the
+custom identity is not active, then removes only that exact item and its sidecar.
+Existing destinations are `custom-exists` conflicts, stale source revisions are
+`custom-stale`, active rename/delete requests are `custom-active`, and an active
+apply/update lifecycle transaction is `lifecycle-busy`. Every successful response
+returns `applied: false`.
+
+The browser supplies no path and creation supplies no document content. Maintained content has no save, lifecycle or delete route. The route also writes a private provenance sidecar beneath
 `~/.config/open-mmi/.open-mmi-provenance/`.
 
 Draft save content uses a separate bounded request limit large enough for existing

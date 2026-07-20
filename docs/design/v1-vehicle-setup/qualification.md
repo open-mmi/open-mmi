@@ -60,6 +60,9 @@ and adapter hotplug.
 - [x] installer/update ownership hardening scoped to the custom catalogue only;
 - [x] safe custom-only load/save with revision tokens, validation and atomic replacement;
 - [x] managed daemon revisions remain pinned across editor saves until reviewed Apply restarts it;
+- [x] revision-bound custom duplicate, inactive rename and inactive deletion with lifecycle-lock exclusion;
+- [x] active custom identities are protected from rename/delete in both UI and backend;
+- [x] install/update pre-creates trusted transaction locks without replacing held lock inodes;
 - [x] qualify maintained/custom activation switching through the existing reviewed apply flow;
 - [ ] qualify explicit return-to-maintained through the existing source-labelled selector; and
 - [ ] last-known-good user revision for editor saves.
@@ -138,6 +141,9 @@ Playwright coverage includes:
 - coordinator unavailable;
 - restored failure;
 - custom identifier conflict;
+- stale custom lifecycle revision and existing lifecycle destination;
+- active custom rename/delete rejection;
+- lifecycle-lock contention during duplicate, rename or delete;
 - unsaved editor navigation warning;
 - active custom save leaves loaded runtime revisions and PID unchanged beyond the legacy reload interval;
 - focus preservation across status refresh;

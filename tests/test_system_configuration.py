@@ -497,6 +497,82 @@ class SystemConfigurationTests(unittest.TestCase):
         load.assert_not_called()
         self.assertEqual(handler.sent[1], 403)
 
+    def test_vehicle_custom_manage_route_is_local_and_revision_bound(self):
+        request = {
+            "action": "rename",
+            "kind": "profile",
+            "source": "custom",
+            "id": "my-seat",
+            "expected_revision": "sha256:" + "a" * 64,
+            "new_id": "driver-seat",
+        }
+        body = json.dumps(request).encode("utf-8")
+
+        class Handler:
+            client_address = ("127.0.0.1", 1234)
+            headers = {
+                "Host": "127.0.0.1:8765",
+                "Origin": "http://127.0.0.1:8765",
+                "Content-Type": "application/json",
+                "Content-Length": str(len(body)),
+            }
+
+            def __init__(self):
+                self.sent = None
+                self.rfile = io.BytesIO(body)
+
+            def _send_json(self, payload, status=200):
+                self.sent = (payload, status)
+
+        result = {
+            "ok": True,
+            "action": "manage-custom-item",
+            "operation": "rename",
+            "custom": {
+                "source": "custom",
+                "id": "driver-seat",
+                "revision": "sha256:" + "a" * 64,
+            },
+            "applied": False,
+        }
+        handler = Handler()
+        with patch.object(
+            system_settings.vehicle_catalogue,
+            "manage_custom_item",
+            return_value=result,
+        ) as manage:
+            self.assertTrue(system_settings._handle_post(
+                handler, "/api/system/vehicle-custom/manage"
+            ))
+        manage.assert_called_once_with(request)
+        self.assertEqual(handler.sent, (result, 200))
+
+        handler = Handler()
+        with patch.object(
+            system_settings.vehicle_catalogue,
+            "manage_custom_item",
+            side_effect=system_settings.vehicle_catalogue.VehicleCatalogueConflictError(
+                "Active custom catalogue items cannot be renamed or deleted",
+                "custom-active",
+            ),
+        ):
+            system_settings._handle_post(
+                handler, "/api/system/vehicle-custom/manage"
+            )
+        self.assertEqual(handler.sent[1], 409)
+        self.assertEqual(handler.sent[0]["code"], "custom-active")
+
+        handler = Handler()
+        handler.client_address = ("192.0.2.10", 1234)
+        with patch.object(
+            system_settings.vehicle_catalogue, "manage_custom_item"
+        ) as manage:
+            system_settings._handle_post(
+                handler, "/api/system/vehicle-custom/manage"
+            )
+        manage.assert_not_called()
+        self.assertEqual(handler.sent[1], 403)
+
     def test_vehicle_custom_save_has_a_bounded_larger_body_limit(self):
         content = " " * (system_settings.SYSTEM_MAX_BODY_BYTES + 1)
         request = {

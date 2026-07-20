@@ -237,6 +237,7 @@ def _handle_post(handler: Any, path: str) -> bool:
         "/api/system/vehicle-custom/create",
         "/api/system/vehicle-custom/load",
         "/api/system/vehicle-custom/save",
+        "/api/system/vehicle-custom/manage",
         "/api/system/update-check",
         "/api/system/update-prepare",
         "/api/system/update-install",
@@ -264,6 +265,8 @@ def _handle_post(handler: Any, path: str) -> bool:
             result = vehicle_catalogue.save_custom_item(
                 _json_body(handler, maximum_bytes=SYSTEM_CUSTOM_EDIT_MAX_BODY_BYTES)
             )
+        elif path == "/api/system/vehicle-custom/manage":
+            result = vehicle_catalogue.manage_custom_item(_json_body(handler))
         elif path == "/api/system/update-check":
             payload = _json_body(handler)
             if payload not in ({}, {"confirm": True}):
