@@ -415,6 +415,14 @@ async function loadDashboard(page, options = {}) {
     window.__openMmiVehicleSetupApplyBodies = [];
     window.__openMmiVehicleSetupCopyRequests = 0;
     window.__openMmiVehicleSetupCopyBodies = [];
+    window.__openMmiVehicleSetupLoadRequests = 0;
+    window.__openMmiVehicleSetupLoadBodies = [];
+    window.__openMmiVehicleSetupSaveRequests = 0;
+    window.__openMmiVehicleSetupSaveBodies = [];
+    window.__openMmiVehicleSetupCustomContents = {
+      "profile:my-seat": '{\n  "default_bus": "comfort",\n  "can_buses": {"comfort": {"interface": "can1", "bitrate": 100000}},\n  "rules": [],\n  "presence": [],\n  "status": []\n}\n',
+      "bindings:my-controls": '{}\n',
+    };
     window.__openMmiUpdateStatusRequests = 0;
     window.__openMmiUpdateCheckRequests = 0;
     window.__openMmiUpdateCoordinatorRequests = 0;
@@ -447,6 +455,45 @@ async function loadDashboard(page, options = {}) {
       if (url.includes("/api/system/diagnostics/runtime")) {
         window.__openMmiRuntimeDiagnosticsRequests += 1;
         return json(window.__openMmiRuntimeDiagnosticsFixture);
+      }
+      if (url.includes("/api/system/vehicle-custom/load")) {
+        const body = JSON.parse(init.body || "{}");
+        window.__openMmiVehicleSetupLoadRequests += 1;
+        window.__openMmiVehicleSetupLoadBodies.push(body);
+        const collection = body.kind === "profile" ? "profiles" : "bindings";
+        const entry = window.__openMmiVehicleSetupFixture.catalogue[collection].find((item) =>
+          item.source === "custom" && item.id === body.id
+        );
+        const content = window.__openMmiVehicleSetupCustomContents[`${body.kind}:${body.id}`];
+        if (!entry || typeof content !== "string") {
+          return json({ ok: false, error: "Custom item not found" }, 400);
+        }
+        return json({
+          ok: true, api_version: 1, action: "load-custom-item", kind: body.kind,
+          custom: { source: "custom", id: body.id, revision: entry.revision },
+          content,
+          validation: { valid: true, errors: [], warnings: [] },
+        });
+      }
+      if (url.includes("/api/system/vehicle-custom/save")) {
+        const body = JSON.parse(init.body || "{}");
+        window.__openMmiVehicleSetupSaveRequests += 1;
+        window.__openMmiVehicleSetupSaveBodies.push(body);
+        const collection = body.kind === "profile" ? "profiles" : "bindings";
+        const entry = window.__openMmiVehicleSetupFixture.catalogue[collection].find((item) =>
+          item.source === "custom" && item.id === body.id
+        );
+        if (!entry || entry.revision !== body.expected_revision) {
+          return json({ ok: false, code: "custom-stale", error: "Custom item changed" }, 409);
+        }
+        window.__openMmiVehicleSetupCustomContents[`${body.kind}:${body.id}`] = body.content;
+        entry.revision = "sha256:saved-custom";
+        return json({
+          ok: true, api_version: 1, action: "save-custom-item", kind: body.kind,
+          custom: { source: "custom", id: body.id, revision: entry.revision },
+          validation: { valid: true, errors: [], warnings: [] },
+          applied: false,
+        });
       }
       if (url.includes("/api/system/vehicle-custom/create")) {
         const body = JSON.parse(init.body || "{}");
@@ -686,6 +733,12 @@ async function loadDashboard(page, options = {}) {
     },
     async vehicleSetupCopyBodies() {
       return page.evaluate(() => window.__openMmiVehicleSetupCopyBodies);
+    },
+    async vehicleSetupLoadBodies() {
+      return page.evaluate(() => window.__openMmiVehicleSetupLoadBodies);
+    },
+    async vehicleSetupSaveBodies() {
+      return page.evaluate(() => window.__openMmiVehicleSetupSaveBodies);
     },
     async setDashboardOnline(online) {
       await page.evaluate((value) => { window.__openMmiDashboardOnline = Boolean(value); }, online);
@@ -1258,7 +1311,7 @@ test("vehicle setup copies maintained templates into the user catalogue", async 
   await expect(page.getByTestId("vehicle-setup-copy-feedback")).toContainText("created in your user catalogue");
   await expect(page.getByTestId("vehicle-setup-copy-feedback")).toContainText("maintained template was not changed");
   await expect(page.getByTestId("vehicle-setup-copy-vehicle")).toHaveCount(0);
-  await expect(page.getByText("Stored in your user catalogue. Maintained files remain unchanged.")).toBeVisible();
+  await expect(page.getByText("Stored in your user catalogue. Saving does not apply or restart the CAN service.")).toBeVisible();
 
   expect(await dashboard.vehicleSetupCopyRequests()).toBe(1);
   expect(await dashboard.vehicleSetupCopyBodies()).toEqual([{
@@ -1269,6 +1322,44 @@ test("vehicle setup copies maintained templates into the user catalogue", async 
     template_revision: "sha256:profile",
   }]);
   expect(await dashboard.vehicleSetupApplyRequests()).toBe(0);
+  await expectNoRuntimeFailures(failures);
+});
+
+
+test("vehicle setup edits only custom JSON and leaves it unapplied", async ({ page }) => {
+  const failures = captureRuntimeFailures(page);
+  const dashboard = await loadDashboard(page);
+  await openSettings(page);
+  await page.locator('[data-openmmi-settings-section="vehicle-setup"]').click();
+  await expect(page.locator('[data-openmmi-vehicle-setup-ready="true"]')).toBeVisible();
+
+  await page.getByTestId("vehicle-setup-profile").selectOption("custom:my-seat");
+  await expect(page.getByTestId("vehicle-setup-edit-vehicle")).toBeEnabled();
+  await expect(page.getByTestId("vehicle-setup-copy-vehicle")).toHaveCount(0);
+  await page.getByTestId("vehicle-setup-edit-vehicle").click();
+
+  const editor = page.getByTestId("vehicle-custom-editor-content");
+  await expect(editor).toBeVisible();
+  await expect(editor).toContainText('"default_bus": "comfort"');
+  await expect(page.getByTestId("vehicle-setup-review")).toBeDisabled();
+  const updated = '{\n  "default_bus": "comfort",\n  "can_buses": {"comfort": {"interface": "can1", "bitrate": 100000}},\n  "rules": [],\n  "presence": [],\n  "status": [],\n  "editor_qualification": true\n}\n';
+  await editor.fill(updated);
+  await page.getByTestId("vehicle-custom-editor-save").click();
+
+  await expect(page.getByTestId("vehicle-custom-editor-feedback")).toContainText("saved");
+  await expect(page.getByTestId("vehicle-custom-editor-feedback")).toContainText("apply the new revision");
+  expect(await dashboard.vehicleSetupLoadBodies()).toEqual([
+    { kind: "profile", source: "custom", id: "my-seat" },
+  ]);
+  expect(await dashboard.vehicleSetupSaveBodies()).toEqual([{
+    kind: "profile", source: "custom", id: "my-seat",
+    expected_revision: "sha256:custom-profile", content: updated,
+  }]);
+  expect(await dashboard.vehicleSetupApplyRequests()).toBe(0);
+  await expect(page.getByTestId("vehicle-custom-editor-close")).toBeEnabled();
+  await page.getByTestId("vehicle-custom-editor-close").click();
+  await expect(page.getByTestId("vehicle-custom-editor")).toHaveCount(0);
+  await expect(page.getByTestId("vehicle-setup-review")).toBeEnabled();
   await expectNoRuntimeFailures(failures);
 });
 

@@ -1,7 +1,7 @@
-"""User-owned vehicle catalogue creation from immutable maintained templates.
+"""User-owned vehicle catalogue creation and revision-safe JSON editing.
 
-The dashboard may create a new custom profile or bindings document only beneath
-its fixed user catalogue root. Maintained catalogue content is read-only and is
+The dashboard may create or edit only custom profiles and bindings beneath its
+fixed user catalogue root. Maintained catalogue content is immutable and is
 accepted solely as a revision-bound starting template.
 """
 
@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 import stat
+import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -21,6 +22,9 @@ from ui import vehicle_configuration, vehicle_setup
 
 API_VERSION = 1
 COPY_ACTION = "copy-maintained-template"
+LOAD_ACTION = "load-custom-item"
+SAVE_ACTION = "save-custom-item"
+_CATALOGUE_WRITE_LOCK = threading.Lock()
 _KIND_LIMITS = {
     "profile": vehicle_setup.MAX_PROFILE_BYTES,
     "bindings": vehicle_setup.MAX_BINDINGS_BYTES,
@@ -85,6 +89,235 @@ def _normalize_copy_request(payload: object) -> tuple[str, dict[str, str], str]:
         "id": template_id,
         "revision": revision,
     }, custom_id
+
+
+def _normalize_custom_request(payload: object, *, save: bool) -> tuple[str, str, Optional[str], Optional[str]]:
+    required = {"kind", "source", "id"}
+    if save:
+        required |= {"expected_revision", "content"}
+    if not isinstance(payload, Mapping) or set(payload) != required:
+        action = "save" if save else "load"
+        raise VehicleCatalogueError(f"Invalid custom catalogue {action} schema")
+    kind = payload.get("kind")
+    if kind not in _KIND_LIMITS:
+        raise VehicleCatalogueError("Custom catalogue kind must be profile or bindings")
+    if payload.get("source") != "custom":
+        raise VehicleCatalogueError("Only custom catalogue items may be edited")
+    identifier = _validate_identifier(payload.get("id"), field="Custom catalogue id")
+    if not save:
+        return str(kind), identifier, None, None
+    revision = payload.get("expected_revision")
+    if not isinstance(revision, str) or not vehicle_configuration.REVISION_RE.fullmatch(revision):
+        raise VehicleCatalogueError("Expected custom catalogue revision is invalid")
+    content = payload.get("content")
+    if not isinstance(content, str):
+        raise VehicleCatalogueError("Custom catalogue content must be text")
+    return str(kind), identifier, revision, content
+
+
+def _parse_catalogue_content(kind: str, content: bytes) -> tuple[Any, dict[str, Any]]:
+    if len(content) > _KIND_LIMITS[kind]:
+        raise VehicleCatalogueError("Custom catalogue content exceeds the size limit")
+    try:
+        document = json.loads(
+            content.decode("utf-8"),
+            object_pairs_hook=_unique_json_object,
+            parse_constant=_reject_json_constant,
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise VehicleCatalogueError("Custom catalogue content is not valid UTF-8 JSON") from exc
+    validation = (
+        vehicle_setup.validate_profile(document)
+        if kind == "profile"
+        else vehicle_setup.validate_bindings(document)
+    )
+    return document, validation
+
+
+def _raise_invalid_custom(kind: str, validation: Mapping[str, Any]) -> None:
+    errors = validation.get("errors")
+    first = errors[0] if isinstance(errors, list) and errors else {}
+    path = str(first.get("path") or "$") if isinstance(first, Mapping) else "$"
+    message = str(first.get("message") or "validation failed") if isinstance(first, Mapping) else "validation failed"
+    label = "profile" if kind == "profile" else "bindings"
+    raise VehicleCatalogueError(f"Custom {label} is not valid at {path}: {message}")
+
+
+def _custom_location(
+    roots: vehicle_setup.CatalogueRoots,
+    kind: str,
+    identifier: str,
+    *,
+    create: bool,
+) -> tuple[Path, str]:
+    # Resolve first so every existing component is checked for symlinks beneath
+    # the fixed custom root before a file descriptor is opened.
+    vehicle_setup.resolve_catalogue_path(roots, kind, "custom", identifier)
+    _ensure_user_directory(roots.custom, create=create)
+    if kind == "profile":
+        profiles = roots.custom / "vehicles"
+        _ensure_user_directory(profiles, create=create)
+        directory = profiles / identifier
+        _ensure_user_directory(directory, create=create)
+        return directory, "config.json"
+    directory = roots.custom / "bindings"
+    _ensure_user_directory(directory, create=create)
+    return directory, f"{identifier}.json"
+
+
+def _open_user_directory(path: Path) -> int:
+    _ensure_user_directory(path, create=False)
+    descriptor = -1
+    try:
+        descriptor = os.open(
+            path,
+            os.O_RDONLY
+            | getattr(os, "O_DIRECTORY", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+        metadata = os.fstat(descriptor)
+    except OSError as exc:
+        if descriptor >= 0:
+            os.close(descriptor)
+        raise VehicleCatalogueError("Custom catalogue directory cannot be opened") from exc
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or metadata.st_uid != os.geteuid()
+        or stat.S_IMODE(metadata.st_mode) != 0o700
+    ):
+        os.close(descriptor)
+        raise VehicleCatalogueError("Custom catalogue directory is untrusted")
+    return descriptor
+
+
+def _read_custom_at(
+    directory_fd: int,
+    name: str,
+    kind: str,
+) -> tuple[bytes, str, dict[str, Any], tuple[int, int, int, int]]:
+    descriptor = -1
+    try:
+        descriptor = os.open(
+            name,
+            os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0),
+            dir_fd=directory_fd,
+        )
+        metadata = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_uid != os.geteuid()
+            or metadata.st_nlink != 1
+            or stat.S_IMODE(metadata.st_mode) != 0o600
+        ):
+            raise VehicleCatalogueError("Custom catalogue item is untrusted")
+        if metadata.st_size > _KIND_LIMITS[kind]:
+            raise VehicleCatalogueError("Custom catalogue item exceeds the size limit")
+        chunks: list[bytes] = []
+        remaining = _KIND_LIMITS[kind] + 1
+        while remaining:
+            chunk = os.read(descriptor, min(remaining, 65536))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        content = b"".join(chunks)
+    except FileNotFoundError as exc:
+        raise VehicleCatalogueError("Custom catalogue item was not found") from exc
+    except VehicleCatalogueError:
+        raise
+    except OSError as exc:
+        raise VehicleCatalogueError("Custom catalogue item cannot be read") from exc
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+    if len(content) > _KIND_LIMITS[kind]:
+        raise VehicleCatalogueError("Custom catalogue item exceeds the size limit")
+    _document, validation = _parse_catalogue_content(kind, content)
+    revision = "sha256:" + hashlib.sha256(content).hexdigest()
+    token = (
+        metadata.st_dev,
+        metadata.st_ino,
+        metadata.st_size,
+        metadata.st_mtime_ns,
+        metadata.st_ctime_ns,
+        metadata.st_uid,
+        metadata.st_nlink,
+        stat.S_IMODE(metadata.st_mode),
+    )
+    return content, revision, validation, token
+
+
+def _write_replacement_at(
+    directory_fd: int,
+    name: str,
+    content: bytes,
+    expected_token: tuple[int, ...],
+) -> None:
+    temporary_name = f".open-mmi-save-{uuid.uuid4().hex}.tmp"
+    descriptor = -1
+    try:
+        descriptor = os.open(
+            temporary_name,
+            os.O_WRONLY
+            | os.O_CREAT
+            | os.O_EXCL
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+            dir_fd=directory_fd,
+        )
+        os.fchmod(descriptor, 0o600)
+        view = memoryview(content)
+        while view:
+            written = os.write(descriptor, view)
+            if written <= 0:
+                raise OSError("short custom catalogue write")
+            view = view[written:]
+        os.fsync(descriptor)
+        os.close(descriptor)
+        descriptor = -1
+
+        try:
+            current = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+        except FileNotFoundError as exc:
+            raise VehicleCatalogueConflictError(
+                "Custom catalogue item changed; reload it before saving",
+                "custom-stale",
+            ) from exc
+        current_token = (
+            current.st_dev,
+            current.st_ino,
+            current.st_size,
+            current.st_mtime_ns,
+            current.st_ctime_ns,
+            current.st_uid,
+            current.st_nlink,
+            stat.S_IMODE(current.st_mode),
+        )
+        if current_token != expected_token:
+            raise VehicleCatalogueConflictError(
+                "Custom catalogue item changed; reload it before saving",
+                "custom-stale",
+            )
+        os.replace(
+            temporary_name,
+            name,
+            src_dir_fd=directory_fd,
+            dst_dir_fd=directory_fd,
+        )
+        os.fsync(directory_fd)
+    except VehicleCatalogueError:
+        raise
+    except OSError as exc:
+        raise VehicleCatalogueError("Custom catalogue item could not be saved") from exc
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        try:
+            os.unlink(temporary_name, dir_fd=directory_fd)
+        except OSError:
+            pass
 
 
 def _read_template(
@@ -159,14 +392,17 @@ def _ensure_user_directory(path: Path, *, create: bool = True) -> None:
         raise VehicleCatalogueError("Custom catalogue root must be absolute")
     try:
         if create:
+            existed = path.exists()
             path.mkdir(parents=True, exist_ok=True, mode=0o700)
+            if not existed:
+                path.chmod(0o700)
         metadata = path.lstat()
     except OSError as exc:
         raise VehicleCatalogueError("Custom catalogue directory is unavailable") from exc
     if (
         not stat.S_ISDIR(metadata.st_mode)
         or metadata.st_uid != os.geteuid()
-        or metadata.st_mode & 0o022
+        or stat.S_IMODE(metadata.st_mode) != 0o700
     ):
         raise VehicleCatalogueError("Custom catalogue directory is untrusted")
 
@@ -275,6 +511,7 @@ def _write_new_file(directory: Path, name: str, content: bytes) -> None:
             dir_fd=directory_fd,
         )
         try:
+            os.fchmod(descriptor, 0o600)
             view = memoryview(content)
             while view:
                 written = os.write(descriptor, view)
@@ -354,6 +591,7 @@ def copy_maintained_template(
         destination = profiles / custom_id
         try:
             destination.mkdir(mode=0o700)
+            destination.chmod(0o700)
         except FileExistsError as exc:
             raise VehicleCatalogueConflictError(
                 "A custom catalogue item with that id already exists",
@@ -396,4 +634,76 @@ def copy_maintained_template(
             "id": custom_id,
             "revision": revision,
         },
+    }
+
+
+def load_custom_item(
+    payload: object,
+    *,
+    roots: Optional[vehicle_setup.CatalogueRoots] = None,
+) -> dict[str, Any]:
+    """Load exact user-owned JSON for editing; maintained items are never exposed."""
+
+    kind, identifier, _revision, _content = _normalize_custom_request(payload, save=False)
+    selected_roots = roots or vehicle_setup.default_roots()
+    directory, name = _custom_location(selected_roots, kind, identifier, create=False)
+    directory_fd = _open_user_directory(directory)
+    try:
+        content, revision, validation, _token = _read_custom_at(directory_fd, name, kind)
+    finally:
+        os.close(directory_fd)
+    return {
+        "ok": True,
+        "api_version": API_VERSION,
+        "action": LOAD_ACTION,
+        "kind": kind,
+        "custom": {"source": "custom", "id": identifier, "revision": revision},
+        "content": content.decode("utf-8"),
+        "validation": validation,
+    }
+
+
+def save_custom_item(
+    payload: object,
+    *,
+    roots: Optional[vehicle_setup.CatalogueRoots] = None,
+) -> dict[str, Any]:
+    """Validate and atomically save one exact-revision custom catalogue item."""
+
+    kind, identifier, expected_revision, text = _normalize_custom_request(payload, save=True)
+    assert expected_revision is not None and text is not None
+    try:
+        content = text.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise VehicleCatalogueError("Custom catalogue content is not valid UTF-8") from exc
+    _document, validation = _parse_catalogue_content(kind, content)
+    if validation.get("valid") is not True:
+        _raise_invalid_custom(kind, validation)
+
+    selected_roots = roots or vehicle_setup.default_roots()
+    directory, name = _custom_location(selected_roots, kind, identifier, create=False)
+    with _CATALOGUE_WRITE_LOCK:
+        directory_fd = _open_user_directory(directory)
+        try:
+            _current, current_revision, _current_validation, token = _read_custom_at(
+                directory_fd, name, kind
+            )
+            if current_revision != expected_revision:
+                raise VehicleCatalogueConflictError(
+                    "Custom catalogue item changed; reload it before saving",
+                    "custom-stale",
+                )
+            _write_replacement_at(directory_fd, name, content, token)
+        finally:
+            os.close(directory_fd)
+
+    revision = "sha256:" + hashlib.sha256(content).hexdigest()
+    return {
+        "ok": True,
+        "api_version": API_VERSION,
+        "action": SAVE_ACTION,
+        "kind": kind,
+        "custom": {"source": "custom", "id": identifier, "revision": revision},
+        "validation": validation,
+        "applied": False,
     }

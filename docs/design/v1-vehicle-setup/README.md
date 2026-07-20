@@ -1,6 +1,6 @@
 # V1 vehicle setup management
 
-Status: implementation in progress — core apply and maintained-template custom copy complete
+Status: implementation in progress — core apply, custom copy and revision-safe JSON editing complete
 
 This design defines a local, explicit setup path for selecting an Open MMI vehicle
 profile, bindings and SocketCAN input without editing systemd or udev files by hand.
@@ -151,7 +151,8 @@ Settings UI
 4. Add the canonical descriptor and privileged apply transaction.
 5. Qualify maintained selection through CLI and `vcan` before exposing writes in UI.
 6. Add the Vehicle setup selector and review screen.
-7. Add custom copy, draft validation and activation.
-8. Add bindings editing through an explicit action registry.
-9. Add broader profile editing only after rule schemas are complete.
-10. Treat simultaneous multi-CAN as its own reviewed beta milestone.
+7. Add custom copy, revision-safe JSON editing, validation and activation.
+8. Add last-known-good user revisions plus rename, duplicate and protected deletion.
+9. Add bindings editing through an explicit action registry.
+10. Add broader structured profile editing only after rule schemas are complete.
+11. Treat simultaneous multi-CAN as its own reviewed beta milestone.

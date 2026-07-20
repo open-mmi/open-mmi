@@ -129,10 +129,9 @@ remains under `bindings/<id>.json`. Maintained files are never opened for writin
 Loading returns:
 
 - kind and identifier;
-- content;
-- content revision;
-- validation result; and
-- provenance summary.
+- exact UTF-8 JSON content;
+- content revision; and
+- validation result.
 
 Saving requires the revision returned by load. A changed revision produces a conflict
 instead of overwriting another browser or terminal edit.
@@ -143,13 +142,15 @@ Save sequence:
 2. reject symlinks and non-regular targets;
 3. compare expected content revision;
 4. parse and validate submitted JSON;
-5. write and flush a temporary sibling file;
-6. preserve the previous valid content as the last-known-good user revision;
-7. atomically replace the draft; and
-8. return the new revision and validation result.
+5. verify the target identity has not changed during the save;
+6. write and flush a private temporary sibling file;
+7. atomically replace the draft and flush its directory; and
+8. return the new revision, validation result and `applied: false`.
 
-Saving an invalid draft may be allowed only when the UI and API label it invalid and the
-active runtime is not changed. Activation always requires zero validation errors.
+The current editor rejects invalid JSON and semantic validation errors before writing.
+Saving never restarts `canbusd` and never changes maintained content or provenance.
+Activation remains a separate reviewed operation. Last-known-good user revision archives
+remain a later slice.
 
 ## Editor delivery order
 

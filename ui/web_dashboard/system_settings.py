@@ -46,6 +46,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover - direct script fallback
     from ui.web_dashboard import jellyfin, update_status
 
 SYSTEM_MAX_BODY_BYTES = 16 * 1024
+SYSTEM_CUSTOM_EDIT_MAX_BODY_BYTES = vehicle_setup.MAX_PROFILE_BYTES * 6 + SYSTEM_MAX_BODY_BYTES
 
 
 def _unique_json_object(pairs: list[tuple[str, Any]]) -> Dict[str, Any]:
@@ -92,7 +93,7 @@ def _request_allowed(handler: Any) -> bool:
     )
 
 
-def _json_body(handler: Any) -> Dict[str, Any]:
+def _json_body(handler: Any, *, maximum_bytes: int = SYSTEM_MAX_BODY_BYTES) -> Dict[str, Any]:
     content_type = str(handler.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
     if content_type != "application/json":
         raise ValueError("Configuration requests require application/json")
@@ -100,7 +101,7 @@ def _json_body(handler: Any) -> Dict[str, Any]:
         length = int(handler.headers.get("Content-Length") or "0")
     except (TypeError, ValueError) as exc:
         raise ValueError("Invalid request length") from exc
-    if length <= 0 or length > SYSTEM_MAX_BODY_BYTES:
+    if length <= 0 or length > maximum_bytes:
         raise ValueError("Invalid request length")
     try:
         payload = json.loads(
@@ -234,6 +235,8 @@ def _handle_post(handler: Any, path: str) -> bool:
         "/api/system/vehicle-setup/preview",
         "/api/system/vehicle-setup/apply",
         "/api/system/vehicle-custom/create",
+        "/api/system/vehicle-custom/load",
+        "/api/system/vehicle-custom/save",
         "/api/system/update-check",
         "/api/system/update-prepare",
         "/api/system/update-install",
@@ -255,6 +258,12 @@ def _handle_post(handler: Any, path: str) -> bool:
             result = vehicle_config_coordinator.client_apply(_json_body(handler))
         elif path == "/api/system/vehicle-custom/create":
             result = vehicle_catalogue.copy_maintained_template(_json_body(handler))
+        elif path == "/api/system/vehicle-custom/load":
+            result = vehicle_catalogue.load_custom_item(_json_body(handler))
+        elif path == "/api/system/vehicle-custom/save":
+            result = vehicle_catalogue.save_custom_item(
+                _json_body(handler, maximum_bytes=SYSTEM_CUSTOM_EDIT_MAX_BODY_BYTES)
+            )
         elif path == "/api/system/update-check":
             payload = _json_body(handler)
             if payload not in ({}, {"confirm": True}):

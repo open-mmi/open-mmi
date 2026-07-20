@@ -154,6 +154,10 @@ function fixture(options = {}) {
   const confirmations = [];
   const prompts = [];
   const statusPayload = options.status || payload();
+  const customDocuments = {
+    "profile:my-seat": options.profileContent || '{\n  "rules": [],\n  "note": "<custom>"\n}\n',
+    "bindings:my-controls": options.bindingsContent || '{}\n',
+  };
   const timers = [];
   const coordinatorResponses = Array.isArray(options.coordinators)
     ? [...options.coordinators]
@@ -210,6 +214,34 @@ function fixture(options = {}) {
         if (options.applyError) throw options.applyError;
         return options.apply || applyResult();
       }
+      if (path === vehicleSetup.LOAD_CUSTOM_ENDPOINT) {
+        if (options.loadError) throw options.loadError;
+        const key = `${body.kind}:${body.id}`;
+        const entry = statusPayload.catalogue[body.kind === "profile" ? "profiles" : "bindings"]
+          .find((item) => item.source === "custom" && item.id === body.id);
+        if (!entry || !(key in customDocuments)) throw new Error("Custom item not found");
+        return options.load || {
+          ok: true, api_version: 1, action: "load-custom-item", kind: body.kind,
+          custom: { source: "custom", id: body.id, revision: entry.revision },
+          content: customDocuments[key],
+          validation: { valid: true, errors: [], warnings: [] },
+        };
+      }
+      if (path === vehicleSetup.SAVE_CUSTOM_ENDPOINT) {
+        if (options.saveError) throw options.saveError;
+        const key = `${body.kind}:${body.id}`;
+        customDocuments[key] = body.content;
+        const entry = statusPayload.catalogue[body.kind === "profile" ? "profiles" : "bindings"]
+          .find((item) => item.source === "custom" && item.id === body.id);
+        if (!entry) throw new Error("Custom item not found");
+        entry.revision = options.savedRevision || "sha256:saved-custom";
+        return options.save || {
+          ok: true, api_version: 1, action: "save-custom-item", kind: body.kind,
+          custom: { source: "custom", id: body.id, revision: entry.revision },
+          validation: { valid: true, errors: [], warnings: [] },
+          applied: false,
+        };
+      }
       if (path === vehicleSetup.COPY_ENDPOINT) {
         if (options.copyError) throw options.copyError;
         const kind = body.kind === "profile" ? "profiles" : "bindings";
@@ -237,7 +269,7 @@ function fixture(options = {}) {
       throw new Error("Unexpected vehicle setup POST");
     },
   };
-  return { active, api, calls, confirmations, document, listeners, panel, prompts, timers, window };
+  return { active, api, calls, confirmations, customDocuments, document, listeners, panel, prompts, timers, window };
 }
 
 test("vehicle setup renders maintained and custom draft choices before review", async () => {
@@ -298,6 +330,98 @@ test("maintained items create revision-bound custom copies in the user catalogue
   assert.match(html, /Stored in your user catalogue/);
   assert.match(html, /maintained template was not changed/);
   assert.doesNotMatch(html, /data-testid="vehicle-setup-copy-vehicle"/);
+});
+
+
+test("only custom items expose the revision-safe JSON editor", async () => {
+  const state = fixture();
+  const controller = vehicleSetup.createController(state);
+  await controller.refresh();
+  let html = controller.template();
+  assert.doesNotMatch(html, /Edit maintained/);
+  assert.doesNotMatch(html, /data-testid="vehicle-setup-edit-vehicle"/);
+
+  assert.equal(controller.setDraft("vehicle", "custom:my-seat"), true);
+  html = controller.template();
+  assert.match(html, /data-testid="vehicle-setup-edit-vehicle"/);
+  assert.match(html, /Saving does not apply or restart/);
+  assert.doesNotMatch(html, /data-testid="vehicle-setup-copy-vehicle"/);
+
+  await controller.openCustomEditor("vehicle");
+  assert.deepEqual(state.calls.find((call) => call[1] === vehicleSetup.LOAD_CUSTOM_ENDPOINT), [
+    "POST", vehicleSetup.LOAD_CUSTOM_ENDPOINT,
+    { kind: "profile", source: "custom", id: "my-seat" },
+  ]);
+  assert.equal(controller.editor().revision, "sha256:custom-profile");
+  assert.equal(controller.editorDirty(), false);
+  html = controller.template();
+  assert.match(html, /data-testid="vehicle-custom-editor"/);
+  assert.match(html, /&lt;custom&gt;/);
+  assert.doesNotMatch(html, /<custom>/);
+  assert.match(html, /does not update the maintained template/);
+  assert.match(html, /data-testid="vehicle-setup-review" disabled/);
+});
+
+test("closing a typed custom edit requires discard confirmation", async () => {
+  const state = fixture({ confirm: false });
+  const controller = vehicleSetup.createController(state);
+  await controller.refresh();
+  controller.setDraft("vehicle", "custom:my-seat");
+  await controller.openCustomEditor("vehicle");
+  state.listeners.input({
+    target: {
+      closest(selector) {
+        return selector === "[data-openmmi-vehicle-custom-editor-content]"
+          ? { value: '{"rules":[]}\n' }
+          : null;
+      },
+    },
+  });
+  assert.equal(controller.editorDirty(), true);
+  assert.equal(controller.closeCustomEditor(), false);
+  assert.ok(controller.editor());
+  assert.match(state.confirmations[0], /Discard the unsaved/);
+});
+
+test("custom saves require the loaded revision and remain unapplied", async () => {
+  const state = fixture({ savedRevision: "sha256:next-custom" });
+  const controller = vehicleSetup.createController(state);
+  await controller.refresh();
+  controller.setDraft("bindings", "custom:my-controls");
+  await controller.openCustomEditor("bindings");
+  const content = '{\n  "play_pause": {"module": "audio", "func": "play_pause", "args": []}\n}\n';
+  assert.equal(controller.setEditorContent(content), true);
+  assert.equal(controller.editorDirty(), true);
+
+  const result = await controller.saveCustomEditor();
+  assert.equal(result.applied, false);
+  assert.deepEqual(state.calls.find((call) => call[1] === vehicleSetup.SAVE_CUSTOM_ENDPOINT), [
+    "POST", vehicleSetup.SAVE_CUSTOM_ENDPOINT,
+    {
+      kind: "bindings", source: "custom", id: "my-controls",
+      expected_revision: "sha256:custom-bindings", content,
+    },
+  ]);
+  assert.equal(controller.editor().revision, "sha256:next-custom");
+  assert.equal(controller.editorDirty(), false);
+  assert.match(controller.template(), /Close the editor, review the setup, and apply the new revision/);
+  assert.equal(state.calls.some((call) => call[1] === vehicleSetup.APPLY_ENDPOINT), false);
+});
+
+test("stale custom saves preserve editor text and require reload", async () => {
+  const error = new Error("Custom catalogue item changed");
+  error.status = 409;
+  error.payload = { ok: false, code: "custom-stale", error: error.message };
+  const state = fixture({ saveError: error });
+  const controller = vehicleSetup.createController(state);
+  await controller.refresh();
+  controller.setDraft("vehicle", "custom:my-seat");
+  await controller.openCustomEditor("vehicle");
+  controller.setEditorContent('{"rules":[]}\n');
+  await assert.rejects(controller.saveCustomEditor(), /changed/);
+  assert.equal(controller.editor().content, '{"rules":[]}\n');
+  assert.match(controller.template(), /Your text was not written/);
+  assert.equal(state.calls.some((call) => call[1] === vehicleSetup.APPLY_ENDPOINT), false);
 });
 
 test("invalid custom ids are rejected before a copy request", async () => {

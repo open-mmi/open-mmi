@@ -393,6 +393,149 @@ class SystemConfigurationTests(unittest.TestCase):
             "error": "Maintained template changed",
         }, 409))
 
+    def test_vehicle_custom_load_and_save_routes_are_local_revision_bound(self):
+        load_request = {
+            "kind": "profile",
+            "source": "custom",
+            "id": "my-seat",
+        }
+        save_request = {
+            **load_request,
+            "expected_revision": "sha256:" + "a" * 64,
+            "content": '{"rules":[]}\n',
+        }
+
+        class Handler:
+            client_address = ("127.0.0.1", 1234)
+
+            def __init__(self, request):
+                body = json.dumps(request).encode("utf-8")
+                self.headers = {
+                    "Host": "127.0.0.1:8765",
+                    "Origin": "http://127.0.0.1:8765",
+                    "Content-Type": "application/json",
+                    "Content-Length": str(len(body)),
+                }
+                self.sent = None
+                self.rfile = io.BytesIO(body)
+
+            def _send_json(self, payload, status=200):
+                self.sent = (payload, status)
+
+        loaded = {
+            "ok": True,
+            "api_version": 1,
+            "action": "load-custom-item",
+            "kind": "profile",
+            "custom": {
+                "source": "custom",
+                "id": "my-seat",
+                "revision": "sha256:" + "a" * 64,
+            },
+            "content": save_request["content"],
+            "validation": {"valid": True, "errors": [], "warnings": []},
+        }
+        handler = Handler(load_request)
+        with patch.object(
+            system_settings.vehicle_catalogue,
+            "load_custom_item",
+            return_value=loaded,
+        ) as load:
+            self.assertTrue(system_settings._handle_post(
+                handler, "/api/system/vehicle-custom/load"
+            ))
+        load.assert_called_once_with(load_request)
+        self.assertEqual(handler.sent, (loaded, 200))
+
+        saved = {
+            "ok": True,
+            "api_version": 1,
+            "action": "save-custom-item",
+            "kind": "profile",
+            "custom": {
+                "source": "custom",
+                "id": "my-seat",
+                "revision": "sha256:" + "b" * 64,
+            },
+            "validation": {"valid": True, "errors": [], "warnings": []},
+            "applied": False,
+        }
+        handler = Handler(save_request)
+        with patch.object(
+            system_settings.vehicle_catalogue,
+            "save_custom_item",
+            return_value=saved,
+        ) as save:
+            self.assertTrue(system_settings._handle_post(
+                handler, "/api/system/vehicle-custom/save"
+            ))
+        save.assert_called_once_with(save_request)
+        self.assertEqual(handler.sent, (saved, 200))
+
+        handler = Handler(save_request)
+        with patch.object(
+            system_settings.vehicle_catalogue,
+            "save_custom_item",
+            side_effect=system_settings.vehicle_catalogue.VehicleCatalogueConflictError(
+                "Custom catalogue item changed", "custom-stale"
+            ),
+        ):
+            system_settings._handle_post(
+                handler, "/api/system/vehicle-custom/save"
+            )
+        self.assertEqual(handler.sent[1], 409)
+        self.assertEqual(handler.sent[0]["code"], "custom-stale")
+
+        handler = Handler(load_request)
+        handler.client_address = ("192.0.2.10", 1234)
+        with patch.object(
+            system_settings.vehicle_catalogue, "load_custom_item"
+        ) as load:
+            system_settings._handle_post(
+                handler, "/api/system/vehicle-custom/load"
+            )
+        load.assert_not_called()
+        self.assertEqual(handler.sent[1], 403)
+
+    def test_vehicle_custom_save_has_a_bounded_larger_body_limit(self):
+        content = " " * (system_settings.SYSTEM_MAX_BODY_BYTES + 1)
+        request = {
+            "kind": "profile",
+            "source": "custom",
+            "id": "my-seat",
+            "expected_revision": "sha256:" + "a" * 64,
+            "content": content,
+        }
+        body = json.dumps(request).encode("utf-8")
+
+        class Handler:
+            client_address = ("127.0.0.1", 1234)
+            headers = {
+                "Host": "127.0.0.1:8765",
+                "Origin": "http://127.0.0.1:8765",
+                "Content-Type": "application/json",
+                "Content-Length": str(len(body)),
+            }
+
+            def __init__(self):
+                self.sent = None
+                self.rfile = io.BytesIO(body)
+
+            def _send_json(self, payload, status=200):
+                self.sent = (payload, status)
+
+        handler = Handler()
+        with patch.object(
+            system_settings.vehicle_catalogue,
+            "save_custom_item",
+            return_value={"ok": True},
+        ) as save:
+            system_settings._handle_post(
+                handler, "/api/system/vehicle-custom/save"
+            )
+        save.assert_called_once_with(request)
+        self.assertEqual(handler.sent, ({"ok": True}, 200))
+
     def test_vehicle_setup_apply_route_maps_conflict_failure_and_unavailable(self):
         body = b'{"confirm":true}'
 

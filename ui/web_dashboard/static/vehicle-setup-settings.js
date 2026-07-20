@@ -9,6 +9,8 @@
   const PREVIEW_ENDPOINT = "/api/system/vehicle-setup/preview";
   const APPLY_ENDPOINT = "/api/system/vehicle-setup/apply";
   const COPY_ENDPOINT = "/api/system/vehicle-custom/create";
+  const LOAD_CUSTOM_ENDPOINT = "/api/system/vehicle-custom/load";
+  const SAVE_CUSTOM_ENDPOINT = "/api/system/vehicle-custom/save";
   const COORDINATOR_ENDPOINT = "/api/system/vehicle-setup/coordinator";
   const ACTIVE_APPLY_STATES = new Set(["validating", "applying", "reloading", "verifying", "restoring"]);
   const TERMINAL_APPLY_STATES = new Set(["idle", "complete", "failed"]);
@@ -111,6 +113,10 @@
     let copyBusyKind = "";
     let copyMessage = "";
     let copyMessageKind = "";
+    let editor = null;
+    let editorBusy = false;
+    let editorMessage = "";
+    let editorMessageKind = "";
 
     function activeSection() {
       return documentRef.querySelector("[data-openmmi-settings-section].active")
@@ -236,13 +242,21 @@
     }
 
     function customCopyControl(kind, entry) {
+      const label = kind === "vehicle" ? "profile" : "bindings";
       if (entry?.source === "custom") {
-        return `<small class="openmmi-vehicle-custom-location">Stored in your user catalogue. Maintained files remain unchanged.</small>`;
+        const editing = editor?.kind === kind && editor?.id === entry.id;
+        const disabled = loading || previewLoading || applyBusy || Boolean(copyBusyKind)
+          || editorBusy || Boolean(editor) || entry.valid === false;
+        return `
+          <div class="openmmi-vehicle-custom-controls">
+            <button type="button" class="openmmi-settings-link openmmi-vehicle-edit-custom" data-openmmi-vehicle-custom-edit="${escapeHtml(kind)}" data-testid="vehicle-setup-edit-${escapeHtml(kind)}" ${disabled ? "disabled" : ""}>${editing ? "Editing custom " + label + "…" : "Edit custom " + label}</button>
+            <small class="openmmi-vehicle-custom-location">Stored in your user catalogue. Saving does not apply or restart the CAN service.</small>
+          </div>`;
       }
       if (entry?.source !== "maintained") return "";
-      const label = kind === "vehicle" ? "profile" : "bindings";
       const busy = copyBusyKind === kind;
       const disabled = loading || previewLoading || applyBusy || Boolean(copyBusyKind)
+        || editorBusy || Boolean(editor)
         || entry.valid === false
         || typeof entry.revision !== "string"
         || !entry.revision;
@@ -254,6 +268,157 @@
       if (base.length <= 64 && IDENTIFIER_RE.test(base)) return base;
       const shortened = `custom-${String(identifier || "item").slice(0, 56)}`;
       return IDENTIFIER_RE.test(shortened) ? shortened : "custom-item";
+    }
+
+    function editorKind(kind) {
+      return kind === "vehicle" ? "profile" : "bindings";
+    }
+
+    function editorDirty() {
+      return Boolean(editor) && editor.content !== editor.originalContent;
+    }
+
+    function setEditorMessage(text, kind = "") {
+      editorMessage = String(text || "");
+      editorMessageKind = String(kind || "");
+    }
+
+    function setEditorContent(content) {
+      if (!editor || editorBusy) return false;
+      editor.content = String(content ?? "");
+      setEditorMessage("", "");
+      return true;
+    }
+
+    async function openCustomEditor(kind) {
+      const entry = selectedEntry(kind);
+      if (entry?.source !== "custom" || entry.valid === false) {
+        throw new Error("Select a valid custom catalogue item to edit");
+      }
+      if (editor || editorBusy) return null;
+      const label = editorKind(kind);
+      editorBusy = true;
+      setCopyMessage(`Loading custom ${label}…`, "warning");
+      clearPreview();
+      render();
+      try {
+        const result = await api.postJson(LOAD_CUSTOM_ENDPOINT, {
+          kind: label,
+          source: "custom",
+          id: entry.id,
+        }, { usePayloadError: true });
+        if (result?.custom?.source !== "custom"
+          || result?.custom?.id !== entry.id
+          || typeof result?.custom?.revision !== "string"
+          || typeof result?.content !== "string") {
+          throw new Error("The custom catalogue editor received an unsafe response");
+        }
+        editor = {
+          kind,
+          id: entry.id,
+          revision: result.custom.revision,
+          content: result.content,
+          originalContent: result.content,
+          validation: result.validation || null,
+        };
+        setCopyMessage("", "");
+        setEditorMessage(`Editing custom ${label} ${entry.id}.`, "warning");
+        return result;
+      } catch (error) {
+        setCopyMessage(error?.message || `Could not load the custom ${label}`, "error");
+        throw error;
+      } finally {
+        editorBusy = false;
+        render();
+      }
+    }
+
+    function editorTemplate() {
+      if (!editor) return "";
+      const label = editorKind(editor.kind);
+      const message = editorMessage
+        ? `<div class="openmmi-config-message ${escapeHtml(editorMessageKind || "warning")}" role="status" aria-live="polite" data-testid="vehicle-custom-editor-feedback">${escapeHtml(editorMessage)}</div>`
+        : "";
+      return `
+        <section class="openmmi-vehicle-custom-editor" data-testid="vehicle-custom-editor" aria-label="Custom ${escapeHtml(label)} editor">
+          <div class="openmmi-settings-subhead"><span>Edit custom ${escapeHtml(label)}</span><small>${escapeHtml(editor.id)}</small></div>
+          <textarea class="openmmi-vehicle-custom-editor-content" data-openmmi-vehicle-custom-editor-content="true" data-testid="vehicle-custom-editor-content" spellcheck="false" ${editorBusy ? "disabled" : ""}>${escapeHtml(editor.content)}</textarea>
+          <div class="openmmi-vehicle-custom-editor-meta">Expected revision: <code>${escapeHtml(editor.revision)}</code></div>
+          ${message}
+          <div class="openmmi-config-actions openmmi-vehicle-custom-editor-actions">
+            <button type="button" class="openmmi-setting-pill" data-openmmi-vehicle-custom-save="true" data-testid="vehicle-custom-editor-save" ${editorBusy ? "disabled" : ""}>${editorBusy ? "Saving…" : "Save custom " + escapeHtml(label)}</button>
+            <button type="button" class="openmmi-settings-link" data-openmmi-vehicle-custom-close="true" data-testid="vehicle-custom-editor-close" ${editorBusy ? "disabled" : ""}>Close editor</button>
+          </div>
+          <p class="openmmi-vehicle-setup-note">Saving validates and replaces only this user-owned file. It does not update the maintained template, apply the revision, or restart canbusd.</p>
+        </section>`;
+    }
+
+    async function saveCustomEditor() {
+      if (!editor || editorBusy) return null;
+      const textarea = documentRef.querySelector?.("[data-openmmi-vehicle-custom-editor-content]");
+      if (textarea && typeof textarea.value === "string") editor.content = textarea.value;
+      const editing = { ...editor };
+      const label = editorKind(editing.kind);
+      editorBusy = true;
+      setEditorMessage(`Validating and saving custom ${label}…`, "warning");
+      render();
+      try {
+        const result = await api.postJson(SAVE_CUSTOM_ENDPOINT, {
+          kind: label,
+          source: "custom",
+          id: editing.id,
+          expected_revision: editing.revision,
+          content: editing.content,
+        }, { usePayloadError: true });
+        if (result?.custom?.source !== "custom"
+          || result?.custom?.id !== editing.id
+          || typeof result?.custom?.revision !== "string"
+          || result?.applied !== false) {
+          throw new Error("The custom catalogue save response was unsafe");
+        }
+        const previousDraft = draft ? { ...draft } : null;
+        snapshot = await api.getJson(ENDPOINT, { usePayloadError: true });
+        if (!previousDraft) seedDraft();
+        else draft = previousDraft;
+        const key = identityKey(result.custom);
+        if (!entryFor(catalogue(editing.kind), key)) {
+          throw new Error("The saved custom catalogue item could not be reloaded");
+        }
+        editor = {
+          ...editing,
+          revision: result.custom.revision,
+          originalContent: editing.content,
+          content: editing.content,
+          validation: result.validation || null,
+        };
+        draftDirty = draftDiffers();
+        clearPreview();
+        setEditorMessage(`Custom ${label} saved. Close the editor, review the setup, and apply the new revision when ready.`, "success");
+        return result;
+      } catch (error) {
+        const code = String(error?.payload?.code || "");
+        if (code === "custom-stale") {
+          setEditorMessage("This custom item changed after it was opened. Your text was not written; close and reload before saving again.", "warning");
+        } else {
+          setEditorMessage(error?.message || `Could not save the custom ${label}`, "error");
+        }
+        throw error;
+      } finally {
+        editorBusy = false;
+        render();
+      }
+    }
+
+    function closeCustomEditor() {
+      if (!editor || editorBusy) return false;
+      if (editorDirty() && typeof windowRef.confirm === "function"
+        && !windowRef.confirm("Discard the unsaved custom catalogue changes?")) {
+        return false;
+      }
+      editor = null;
+      setEditorMessage("", "");
+      render();
+      return true;
     }
 
     async function copyTemplate(kind) {
@@ -490,6 +655,7 @@
     }
 
     function setDraft(kind, key) {
+      if (editor || editorBusy) return false;
       if (!SOURCES.some((source) => String(key).startsWith(`${source}:`))) return false;
       const entry = entryFor(catalogue(kind), key);
       if (!entry || entry.valid === false) return false;
@@ -692,7 +858,7 @@
       const bindings = selectedEntry("bindings");
       const bus = selectedBus();
       const changed = draftDiffers();
-      const canReview = Boolean(previewRequest()) && !loading && !previewLoading && !applyBusy && !copyBusyKind;
+      const canReview = Boolean(previewRequest()) && !loading && !previewLoading && !applyBusy && !copyBusyKind && !editor && !editorBusy;
       const activeReady = active.state === "ready";
       const statusText = preview
         ? changed
@@ -731,7 +897,7 @@
             <div class="openmmi-vehicle-setup-selector">
               <label for="openMmiVehicleProfile"><strong>Vehicle profile</strong><small>${escapeHtml(validationNote(profile, "Choose a valid profile"))}</small></label>
               <div class="openmmi-vehicle-setup-selection-control">
-                <select id="openMmiVehicleProfile" data-openmmi-vehicle-setup-select="vehicle" data-testid="vehicle-setup-profile" ${loading || previewLoading || applyBusy || copyBusyKind ? "disabled" : ""}>
+                <select id="openMmiVehicleProfile" data-openmmi-vehicle-setup-select="vehicle" data-testid="vehicle-setup-profile" ${loading || previewLoading || applyBusy || copyBusyKind || editor || editorBusy ? "disabled" : ""}>
                   ${optionGroups(catalogue("vehicle"), draft.vehicle, activeVehicle)}
                 </select>
                 ${customCopyControl("vehicle", profile)}
@@ -740,7 +906,7 @@
             <div class="openmmi-vehicle-setup-selector">
               <label for="openMmiVehicleBindings"><strong>Bindings</strong><small>${escapeHtml(validationNote(bindings, "Choose valid bindings"))}</small></label>
               <div class="openmmi-vehicle-setup-selection-control">
-                <select id="openMmiVehicleBindings" data-openmmi-vehicle-setup-select="bindings" data-testid="vehicle-setup-bindings" ${loading || previewLoading || applyBusy || copyBusyKind ? "disabled" : ""}>
+                <select id="openMmiVehicleBindings" data-openmmi-vehicle-setup-select="bindings" data-testid="vehicle-setup-bindings" ${loading || previewLoading || applyBusy || copyBusyKind || editor || editorBusy ? "disabled" : ""}>
                   ${optionGroups(catalogue("bindings"), draft.bindings, activeBindings)}
                 </select>
                 ${customCopyControl("bindings", bindings)}
@@ -748,6 +914,7 @@
             </div>
           </div>
           ${copyFeedbackTemplate()}
+          ${editorTemplate()}
 
           <div class="openmmi-settings-subhead"><span>CAN input</span><small>profile summary</small></div>
           <div class="openmmi-vehicle-setup-summary">
@@ -758,7 +925,7 @@
           </div>
 
           <div class="openmmi-config-actions openmmi-vehicle-setup-actions">
-            <button type="button" class="openmmi-settings-link" data-openmmi-vehicle-setup-refresh="true" data-testid="vehicle-setup-refresh" ${loading || previewLoading || applyBusy || copyBusyKind ? "disabled" : ""}>Refresh status</button>
+            <button type="button" class="openmmi-settings-link" data-openmmi-vehicle-setup-refresh="true" data-testid="vehicle-setup-refresh" ${loading || previewLoading || applyBusy || copyBusyKind || editor || editorBusy ? "disabled" : ""}>Refresh status</button>
             <button type="button" class="openmmi-setting-pill" data-openmmi-vehicle-setup-review="true" data-testid="vehicle-setup-review" ${canReview ? "" : "disabled"}>${previewLoading ? "Checking setup…" : preview ? "Refresh review" : changed ? "Review changes" : "Review current setup"}</button>
           </div>
           <p class="openmmi-vehicle-setup-note">Applying requires this exact review and an explicit confirmation. The coordinator verifies the loaded runtime and restores the previous setup after a failed mutation.</p>
@@ -815,6 +982,13 @@
       if (!attempted && !loading) refresh().catch(() => {});
     }
 
+    function inputHandler(event) {
+      const textarea = event.target?.closest?.("[data-openmmi-vehicle-custom-editor-content]");
+      if (!textarea || !editor || editorBusy) return;
+      editor.content = String(textarea.value ?? "");
+      setEditorMessage("", "");
+    }
+
     function changeHandler(event) {
       const select = event.target?.closest?.("[data-openmmi-vehicle-setup-select]");
       if (!select) return;
@@ -830,6 +1004,21 @@
       const copyButton = event.target?.closest?.("[data-openmmi-vehicle-setup-copy]");
       if (copyButton && !copyButton.disabled) {
         copyTemplate(copyButton.dataset.openmmiVehicleSetupCopy).catch(() => {});
+        return;
+      }
+      const editButton = event.target?.closest?.("[data-openmmi-vehicle-custom-edit]");
+      if (editButton && !editButton.disabled) {
+        openCustomEditor(editButton.dataset.openmmiVehicleCustomEdit).catch(() => {});
+        return;
+      }
+      const saveButton = event.target?.closest?.("[data-openmmi-vehicle-custom-save]");
+      if (saveButton && !saveButton.disabled) {
+        saveCustomEditor().catch(() => {});
+        return;
+      }
+      const closeEditorButton = event.target?.closest?.("[data-openmmi-vehicle-custom-close]");
+      if (closeEditorButton && !closeEditorButton.disabled) {
+        closeCustomEditor();
         return;
       }
       const reviewButton = event.target?.closest?.("[data-openmmi-vehicle-setup-review]");
@@ -849,6 +1038,7 @@
       }
     }
 
+    documentRef.addEventListener("input", inputHandler);
     documentRef.addEventListener("change", changeHandler);
     documentRef.addEventListener("click", clickHandler);
     documentRef.addEventListener("visibilitychange", scheduleApplyPoll);
@@ -868,6 +1058,11 @@
       activeSection,
       applyDraft,
       copyTemplate,
+      openCustomEditor,
+      saveCustomEditor,
+      closeCustomEditor,
+      setEditorContent,
+      editorDirty,
       applyPayload,
       applyStateLabel,
       coordinatorApplyReady,
@@ -885,6 +1080,7 @@
       preview: () => preview,
       coordinator: () => coordinator,
       applyState: () => coordinatorState(),
+      editor: () => editor ? { ...editor } : null,
       template,
     });
   }
@@ -898,6 +1094,8 @@
     PREVIEW_ENDPOINT,
     APPLY_ENDPOINT,
     COPY_ENDPOINT,
+    LOAD_CUSTOM_ENDPOINT,
+    SAVE_CUSTOM_ENDPOINT,
     COORDINATOR_ENDPOINT,
     createController,
     escapeHtml,

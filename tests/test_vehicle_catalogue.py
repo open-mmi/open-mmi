@@ -75,6 +75,37 @@ class VehicleCatalogueTests(unittest.TestCase):
             "template_revision": revision,
         }
 
+
+    def _copy_custom(self, kind: str, identifier: str) -> Path:
+        if kind == "profile":
+            template_id = "seat_1p"
+            template_path = self.profile_path
+            destination = self.custom / "vehicles" / identifier / "config.json"
+        else:
+            template_id = "default"
+            template_path = self.bindings_path
+            destination = self.custom / "bindings" / f"{identifier}.json"
+        vehicle_catalogue.copy_maintained_template(
+            self.request(kind, template_id, self._revision(template_path), identifier),
+            roots=self.roots,
+        )
+        return destination
+
+    def edit_request(
+        self,
+        kind: str,
+        identifier: str,
+        revision: str,
+        content: str,
+    ) -> dict[str, str]:
+        return {
+            "kind": kind,
+            "source": "custom",
+            "id": identifier,
+            "expected_revision": revision,
+            "content": content,
+        }
+
     def test_profile_copy_preserves_maintained_bytes_and_writes_only_user_catalogue(self):
         maintained_before = self.profile_path.read_bytes()
         result = vehicle_catalogue.copy_maintained_template(
@@ -144,6 +175,152 @@ class VehicleCatalogueTests(unittest.TestCase):
         provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
         self.assertEqual(provenance["template"]["id"], "default")
         self.assertEqual(stat.S_IMODE(provenance_path.stat().st_mode), 0o600)
+
+
+    def test_custom_profile_load_returns_exact_private_content_and_revision(self):
+        destination = self._copy_custom("profile", "my-seat")
+        result = vehicle_catalogue.load_custom_item(
+            {"kind": "profile", "source": "custom", "id": "my-seat"},
+            roots=self.roots,
+        )
+        self.assertEqual(result["action"], "load-custom-item")
+        self.assertEqual(result["content"].encode("utf-8"), destination.read_bytes())
+        self.assertEqual(result["custom"], {
+            "source": "custom",
+            "id": "my-seat",
+            "revision": self._revision(destination),
+        })
+        self.assertTrue(result["validation"]["valid"])
+        self.assertEqual(stat.S_IMODE(destination.stat().st_mode), 0o600)
+
+    def test_custom_save_is_revision_bound_validated_atomic_and_unapplied(self):
+        destination = self._copy_custom("profile", "my-seat")
+        provenance = self.custom / ".open-mmi-provenance" / "profile" / "my-seat.json"
+        maintained_before = self.profile_path.read_bytes()
+        provenance_before = provenance.read_bytes()
+        previous_inode = destination.stat().st_ino
+        updated = dict(self.profile_document)
+        updated["rules"] = [
+            {"id": "0x100", "byte": 0, "value": 2, "event": "play_pause"}
+        ]
+        content = json.dumps(updated, indent=2) + "\n"
+
+        result = vehicle_catalogue.save_custom_item(
+            self.edit_request(
+                "profile",
+                "my-seat",
+                self._revision(destination),
+                content,
+            ),
+            roots=self.roots,
+        )
+
+        self.assertEqual(destination.read_text(encoding="utf-8"), content)
+        self.assertNotEqual(destination.stat().st_ino, previous_inode)
+        self.assertEqual(stat.S_IMODE(destination.stat().st_mode), 0o600)
+        self.assertEqual(self.profile_path.read_bytes(), maintained_before)
+        self.assertEqual(provenance.read_bytes(), provenance_before)
+        self.assertEqual(result["action"], "save-custom-item")
+        self.assertFalse(result["applied"] )
+        self.assertEqual(result["custom"]["revision"], self._revision(destination))
+        self.assertTrue(result["validation"]["valid"])
+        self.assertEqual(
+            list(destination.parent.glob(".open-mmi-save-*.tmp")),
+            [],
+        )
+
+    def test_stale_custom_save_is_a_conflict_without_overwrite(self):
+        destination = self._copy_custom("bindings", "my-controls")
+        stale_revision = self._revision(destination)
+        external = {
+            "play_pause": {"module": "audio", "func": "stop", "args": []}
+        }
+        destination.write_text(json.dumps(external) + "\n", encoding="utf-8")
+        destination.chmod(0o600)
+        before = destination.read_bytes()
+
+        with self.assertRaises(
+            vehicle_catalogue.VehicleCatalogueConflictError
+        ) as raised:
+            vehicle_catalogue.save_custom_item(
+                self.edit_request(
+                    "bindings",
+                    "my-controls",
+                    stale_revision,
+                    json.dumps(self.bindings_document) + "\n",
+                ),
+                roots=self.roots,
+            )
+        self.assertEqual(raised.exception.code, "custom-stale")
+        self.assertEqual(destination.read_bytes(), before)
+
+    def test_invalid_custom_content_is_never_written(self):
+        destination = self._copy_custom("profile", "my-seat")
+        revision = self._revision(destination)
+        before = destination.read_bytes()
+        for content, message in (
+            ('{"rules":[', "valid UTF-8 JSON"),
+            ('{"rules":[{"id":"bad"}]}\n', "not valid"),
+            ('{"rules":[],"rules":[]}\n', "Duplicate"),
+        ):
+            with self.subTest(content=content), self.assertRaisesRegex(
+                vehicle_catalogue.VehicleCatalogueError,
+                message,
+            ):
+                vehicle_catalogue.save_custom_item(
+                    self.edit_request(
+                        "profile", "my-seat", revision, content
+                    ),
+                    roots=self.roots,
+                )
+            self.assertEqual(destination.read_bytes(), before)
+
+    def test_custom_edit_routes_never_accept_maintained_or_path_shaped_identity(self):
+        for payload in (
+            {"kind": "profile", "source": "maintained", "id": "seat_1p"},
+            {"kind": "profile", "source": "custom", "id": "../seat"},
+        ):
+            with self.subTest(payload=payload), self.assertRaises(
+                vehicle_catalogue.VehicleCatalogueError
+            ):
+                vehicle_catalogue.load_custom_item(payload, roots=self.roots)
+        self.assertFalse(self.custom.exists())
+
+    def test_custom_edit_rejects_hardlinks_and_nonprivate_directories(self):
+        destination = self._copy_custom("bindings", "my-controls")
+        alias = destination.parent / "alias.json"
+        os.link(destination, alias)
+        request = {"kind": "bindings", "source": "custom", "id": "my-controls"}
+        with self.assertRaisesRegex(
+            vehicle_catalogue.VehicleCatalogueError, "untrusted"
+        ):
+            vehicle_catalogue.load_custom_item(request, roots=self.roots)
+        alias.unlink()
+        self.custom.chmod(0o755)
+        with self.assertRaisesRegex(
+            vehicle_catalogue.VehicleCatalogueError, "untrusted"
+        ):
+            vehicle_catalogue.load_custom_item(request, roots=self.roots)
+
+    def test_untrusted_custom_file_is_not_loaded_or_saved(self):
+        destination = self._copy_custom("bindings", "my-controls")
+        destination.chmod(0o644)
+        request = {"kind": "bindings", "source": "custom", "id": "my-controls"}
+        with self.assertRaisesRegex(
+            vehicle_catalogue.VehicleCatalogueError, "untrusted"
+        ):
+            vehicle_catalogue.load_custom_item(request, roots=self.roots)
+        destination.chmod(0o600)
+        outside = self.root / "outside.json"
+        outside.write_text("{}\n", encoding="utf-8")
+        outside.chmod(0o600)
+        destination.unlink()
+        destination.symlink_to(outside)
+        with self.assertRaises(
+            (vehicle_catalogue.VehicleCatalogueError, vehicle_setup.VehicleSetupError)
+        ):
+            vehicle_catalogue.load_custom_item(request, roots=self.roots)
+        self.assertEqual(outside.read_text(encoding="utf-8"), "{}\n")
 
     def test_copy_rejects_custom_or_incomplete_source_identity(self):
         revision = self._revision(self.profile_path)

@@ -349,13 +349,12 @@ result handling are connected in the frontend.
 
 ## Custom-file routes
 
-Custom operations remain fixed routes rather than path-shaped routes. The first route is
-implemented; load and save remain later custom-editor slices:
+Custom operations remain fixed routes rather than path-shaped routes:
 
 ```text
 POST /api/system/vehicle-custom/create
-POST /api/system/vehicle-custom/load    # planned
-POST /api/system/vehicle-custom/save    # planned
+POST /api/system/vehicle-custom/load
+POST /api/system/vehicle-custom/save
 ```
 
 Creation accepts only this exact small body:
@@ -376,10 +375,34 @@ root, verifies the exact content revision, parses and validates it, and creates 
 private file under the fixed custom root. Existing custom identifiers are conflicts and
 are never replaced. Creation does not activate the new item.
 
-The browser supplies no path and no document content. Maintained content has no save,
+Load accepts only:
+
+```json
+{"kind":"profile","source":"custom","id":"my-seat"}
+```
+
+Save accepts only:
+
+```json
+{
+  "kind": "profile",
+  "source": "custom",
+  "id": "my-seat",
+  "expected_revision": "sha256:…",
+  "content": "{\n  …\n}\n"
+}
+```
+
+The server resolves the fixed custom path, requires user ownership, exact private
+`0700` directories and `0600` single-link regular files, validates the submitted JSON,
+compares the expected revision and atomically replaces the file. A stale revision is a
+`custom-stale` conflict. A successful save returns `applied: false`; review and apply
+remain a separate operation.
+
+The browser supplies no path and creation supplies no document content. Maintained content has no save,
 rename or delete route. The route also writes a private provenance sidecar beneath
 `~/.config/open-mmi/.open-mmi-provenance/`.
 
-Draft load/save content will use a separate bounded request limit large enough for
-existing profiles. Existing small configuration routes retain their current lower
-limit.
+Draft save content uses a separate bounded request limit large enough for existing
+profiles and JSON string escaping. Existing small configuration routes retain their
+current lower limit.

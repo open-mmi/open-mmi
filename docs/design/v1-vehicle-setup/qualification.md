@@ -58,7 +58,7 @@ and adapter hotplug.
 - [x] create from an installed, revision-bound maintained template;
 - [x] private provenance sidecars outside the daemon catalogue;
 - [x] installer/update ownership hardening scoped to the custom catalogue only;
-- [ ] safe load/save with revision tokens;
+- [x] safe custom-only load/save with revision tokens, validation and atomic replacement;
 - [x] qualify maintained/custom activation switching through the existing reviewed apply flow;
 - [ ] qualify explicit return-to-maintained through the existing source-labelled selector; and
 - [ ] last-known-good user revision for editor saves.
@@ -67,11 +67,11 @@ Gate: sacred custom files survive update, apply, switching and failed activation
 
 ### Slice 5: editors
 
-- action registry;
-- bindings matrix;
-- JSON validation editor;
-- structured bus metadata; and
-- later rule-specific forms.
+- [x] advanced custom-only JSON validation editor;
+- [ ] action registry;
+- [ ] bindings matrix;
+- [ ] structured bus metadata; and
+- [ ] later rule-specific forms.
 
 Gate: UI cannot create an action outside the registry and invalid drafts never reach the
 active runtime.

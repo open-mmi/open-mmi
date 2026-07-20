@@ -220,3 +220,49 @@
     grid-template-columns: 1fr;
   }
 }
+
+.openmmi-vehicle-custom-controls {
+  display: grid;
+  justify-items: start;
+  gap: .3rem;
+}
+
+.openmmi-vehicle-edit-custom {
+  text-align: left;
+}
+
+.openmmi-vehicle-custom-editor {
+  display: grid;
+  gap: .5rem;
+  padding: .68rem;
+  border: 1px solid rgba(100, 190, 245, .34);
+  border-radius: 9px;
+  background: rgba(5, 24, 39, .78);
+}
+
+.openmmi-vehicle-custom-editor-content {
+  width: 100%;
+  min-height: min(40vh, 360px);
+  resize: vertical;
+  padding: .62rem;
+  border: 1px solid rgba(176, 215, 245, .28);
+  border-radius: 7px;
+  color: var(--text);
+  background: rgba(2, 13, 23, .96);
+  font: 500 .72rem/1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  tab-size: 2;
+}
+
+.openmmi-vehicle-custom-editor-meta {
+  color: var(--muted);
+  font-size: .68rem;
+  overflow-wrap: anywhere;
+}
+
+.openmmi-vehicle-custom-editor-meta code {
+  color: var(--text);
+}
+
+.openmmi-vehicle-custom-editor-actions {
+  align-items: center;
+}

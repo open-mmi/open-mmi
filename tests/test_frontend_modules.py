@@ -184,6 +184,8 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
         self.assertIn('const PREVIEW_ENDPOINT = "/api/system/vehicle-setup/preview";', source)
         self.assertIn('const APPLY_ENDPOINT = "/api/system/vehicle-setup/apply";', source)
         self.assertIn('const COPY_ENDPOINT = "/api/system/vehicle-custom/create";', source)
+        self.assertIn('const LOAD_CUSTOM_ENDPOINT = "/api/system/vehicle-custom/load";', source)
+        self.assertIn('const SAVE_CUSTOM_ENDPOINT = "/api/system/vehicle-custom/save";', source)
         self.assertIn(
             'const COORDINATOR_ENDPOINT = "/api/system/vehicle-setup/coordinator";',
             source,
@@ -192,8 +194,13 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
         self.assertIn("api.postJson(PREVIEW_ENDPOINT, request", source)
         self.assertIn("api.postJson(APPLY_ENDPOINT, body", source)
         self.assertIn("api.postJson(COPY_ENDPOINT", source)
+        self.assertIn("api.postJson(LOAD_CUSTOM_ENDPOINT", source)
+        self.assertIn("api.postJson(SAVE_CUSTOM_ENDPOINT", source)
         self.assertIn("Use maintained ${label} as template", source)
         self.assertIn("Stored in your user catalogue", source)
+        self.assertIn('"Edit custom " + label', source)
+        self.assertIn("expected_revision", source)
+        self.assertIn("Saving does not apply or restart", source)
         self.assertNotIn("Edit maintained", source)
         self.assertNotIn("Delete maintained", source)
         self.assertIn("expected_configuration_revision", source)
