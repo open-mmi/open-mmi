@@ -263,6 +263,12 @@ async function loadDashboard(page, options = {}) {
       errors: [],
       warnings: [{ code: "bindings-unused", message: "1 binding is not emitted by the profile" }],
     },
+    coordinator: {
+      previewed: true,
+      read_only: true,
+      locks: { configuration_active: false, lifecycle_active: false, update_active: false },
+      apply_blocked: false,
+    },
     plan: {
       changes: [
         {
@@ -281,6 +287,30 @@ async function loadDashboard(page, options = {}) {
         reload_udev: true,
         restart_can_service: true,
       },
+    },
+  };
+
+  const vehicleSetupCoordinatorPayload = options.vehicleSetupCoordinatorPayload || {
+    ok: true,
+    api_version: 1,
+    read_only: false,
+    preview_enabled: true,
+    apply_enabled: true,
+    restore_enabled: false,
+    locks: { configuration_active: false, lifecycle_active: false, update_active: false },
+    state: {
+      state: "idle", stage: "idle", error: "", restoration_attempted: false,
+      restoration_verified: false,
+    },
+  };
+  const vehicleSetupApplyPayload = options.vehicleSetupApplyPayload || {
+    ok: true,
+    api_version: 1,
+    action: "apply",
+    state: {
+      state: "complete", stage: "complete", error: "", restoration_attempted: false,
+      restoration_verified: false, transaction_id: "configuration-browser-test",
+      target: { interface: "can1" },
     },
   };
 
@@ -343,7 +373,7 @@ async function loadDashboard(page, options = {}) {
   };
 
   await page.setContent(ASSETS.documentHtml, { waitUntil: "domcontentloaded" });
-  await page.evaluate(({ initialPayload, initialStorage, initialBluetoothPayload, initialSystemPayload, initialVehicleSetupPayload, initialVehicleSetupPreviewPayload, initialUpdateStatusPayload, initialUpdateCheckPayload, initialUpdateReadinessPayload, initialUpdateCoordinatorPayload, initialVersionPayload, initialJellyfinStatusPayload, initialJellyfinSearchPayload, initialRuntimeDiagnosticsPayload, runtimeDiagnosticsIntervalMs, dashboardRetryDelaysMs }) => {
+  await page.evaluate(({ initialPayload, initialStorage, initialBluetoothPayload, initialSystemPayload, initialVehicleSetupPayload, initialVehicleSetupPreviewPayload, initialVehicleSetupCoordinatorPayload, initialVehicleSetupApplyPayload, initialUpdateStatusPayload, initialUpdateCheckPayload, initialUpdateReadinessPayload, initialUpdateCoordinatorPayload, initialVersionPayload, initialJellyfinStatusPayload, initialJellyfinSearchPayload, initialRuntimeDiagnosticsPayload, runtimeDiagnosticsIntervalMs, dashboardRetryDelaysMs }) => {
     const values = Object.assign({}, initialStorage);
     const localStorageMock = {
       get length() { return Object.keys(values).length; },
@@ -360,6 +390,8 @@ async function loadDashboard(page, options = {}) {
     window.__openMmiSystemFixture = initialSystemPayload;
     window.__openMmiVehicleSetupFixture = initialVehicleSetupPayload;
     window.__openMmiVehicleSetupPreviewFixture = initialVehicleSetupPreviewPayload;
+    window.__openMmiVehicleSetupCoordinatorFixture = initialVehicleSetupCoordinatorPayload;
+    window.__openMmiVehicleSetupApplyFixture = initialVehicleSetupApplyPayload;
     window.__openMmiUpdateStatusFixture = initialUpdateStatusPayload;
     window.__openMmiUpdateCheckFixture = initialUpdateCheckPayload;
     window.__openMmiUpdateReadinessFixture = initialUpdateReadinessPayload;
@@ -378,6 +410,9 @@ async function loadDashboard(page, options = {}) {
     window.__openMmiVehicleSetupRequests = 0;
     window.__openMmiVehicleSetupPreviewRequests = 0;
     window.__openMmiVehicleSetupPreviewBodies = [];
+    window.__openMmiVehicleSetupCoordinatorRequests = 0;
+    window.__openMmiVehicleSetupApplyRequests = 0;
+    window.__openMmiVehicleSetupApplyBodies = [];
     window.__openMmiUpdateStatusRequests = 0;
     window.__openMmiUpdateCheckRequests = 0;
     window.__openMmiUpdateCoordinatorRequests = 0;
@@ -411,13 +446,27 @@ async function loadDashboard(page, options = {}) {
         window.__openMmiRuntimeDiagnosticsRequests += 1;
         return json(window.__openMmiRuntimeDiagnosticsFixture);
       }
+      if (url.includes("/api/system/vehicle-setup/apply")) {
+        const body = JSON.parse(init.body || "{}");
+        window.__openMmiVehicleSetupApplyRequests += 1;
+        window.__openMmiVehicleSetupApplyBodies.push(body);
+        window.__openMmiVehicleSetupCoordinatorFixture = {
+          ...window.__openMmiVehicleSetupCoordinatorFixture,
+          state: window.__openMmiVehicleSetupApplyFixture.state,
+        };
+        return json(window.__openMmiVehicleSetupApplyFixture);
+      }
       if (url.includes("/api/system/vehicle-setup/preview")) {
         const body = JSON.parse(init.body || "{}");
         window.__openMmiVehicleSetupPreviewRequests += 1;
         window.__openMmiVehicleSetupPreviewBodies.push(body);
         return json(window.__openMmiVehicleSetupPreviewFixture);
       }
-      if (url.includes("/api/system/vehicle-setup")) {
+      if (url.includes("/api/system/vehicle-setup/coordinator")) {
+        window.__openMmiVehicleSetupCoordinatorRequests += 1;
+        return json(window.__openMmiVehicleSetupCoordinatorFixture);
+      }
+      if (url.endsWith("/api/system/vehicle-setup")) {
         window.__openMmiVehicleSetupRequests += 1;
         return json(window.__openMmiVehicleSetupFixture);
       }
@@ -537,6 +586,8 @@ async function loadDashboard(page, options = {}) {
     initialSystemPayload: systemPayload,
     initialVehicleSetupPayload: vehicleSetupPayload,
     initialVehicleSetupPreviewPayload: vehicleSetupPreviewPayload,
+    initialVehicleSetupCoordinatorPayload: vehicleSetupCoordinatorPayload,
+    initialVehicleSetupApplyPayload: vehicleSetupApplyPayload,
     initialUpdateStatusPayload: updateStatusPayload,
     initialUpdateCheckPayload: updateCheckPayload,
     initialUpdateReadinessPayload: updateReadinessPayload,
@@ -593,6 +644,15 @@ async function loadDashboard(page, options = {}) {
     },
     async vehicleSetupPreviewBodies() {
       return page.evaluate(() => window.__openMmiVehicleSetupPreviewBodies);
+    },
+    async vehicleSetupCoordinatorRequests() {
+      return page.evaluate(() => window.__openMmiVehicleSetupCoordinatorRequests);
+    },
+    async vehicleSetupApplyRequests() {
+      return page.evaluate(() => window.__openMmiVehicleSetupApplyRequests);
+    },
+    async vehicleSetupApplyBodies() {
+      return page.evaluate(() => window.__openMmiVehicleSetupApplyBodies);
     },
     async setDashboardOnline(online) {
       await page.evaluate((value) => { window.__openMmiDashboardOnline = Boolean(value); }, online);
@@ -1143,7 +1203,7 @@ test("shared clock persists display preferences and survives page navigation", a
 });
 
 
-test("vehicle setup reviews an unapplied draft without exposing apply", async ({ page }) => {
+test("vehicle setup reviews and applies an exact confirmed draft", async ({ page }) => {
   const failures = captureRuntimeFailures(page);
   const dashboard = await loadDashboard(page);
   await openSettings(page);
@@ -1159,6 +1219,7 @@ test("vehicle setup reviews an unapplied draft without exposing apply", async ({
   await expect(page.getByTestId("vehicle-setup-review")).toBeEnabled();
   await expect(page.getByTestId("vehicle-setup-technical")).not.toHaveAttribute("open", "");
   expect(await dashboard.vehicleSetupRequests()).toBe(1);
+  expect(await dashboard.vehicleSetupCoordinatorRequests()).toBe(1);
 
   await page.getByTestId("vehicle-setup-profile").selectOption("custom:my-seat");
   await page.getByTestId("vehicle-setup-bindings").selectOption("custom:my-controls");
@@ -1168,6 +1229,7 @@ test("vehicle setup reviews an unapplied draft without exposing apply", async ({
   await expect(page.getByTestId("vehicle-setup-interface")).toHaveText("can1 · not detected");
   await expect(page.getByTestId("vehicle-setup-review")).toBeEnabled();
   expect(await dashboard.vehicleSetupRequests()).toBe(1);
+  expect(await dashboard.vehicleSetupCoordinatorRequests()).toBe(1);
   expect(await dashboard.vehicleSetupPreviewRequests()).toBe(0);
 
   await page.getByTestId("vehicle-setup-review").click();
@@ -1175,20 +1237,38 @@ test("vehicle setup reviews an unapplied draft without exposing apply", async ({
   await expect(page.getByTestId("vehicle-setup-status")).toContainText("Review ready");
   await expect(page.getByTestId("vehicle-setup-preview-interface")).toHaveText("can1 · not detected");
   await expect(page.getByTestId("vehicle-setup-preview")).toContainText("1 binding is not emitted by the profile");
-  await expect(page.getByTestId("vehicle-setup-apply")).toBeDisabled();
+  await expect(page.getByTestId("vehicle-setup-apply")).toBeEnabled();
   expect(await dashboard.vehicleSetupPreviewRequests()).toBe(1);
+  expect(await dashboard.vehicleSetupCoordinatorRequests()).toBe(2);
   expect(await dashboard.vehicleSetupPreviewBodies()).toEqual([{
     vehicle: { source: "custom", id: "my-seat" },
     bindings: { source: "custom", id: "my-controls" },
     runtime: { active_bus: "comfort", buses: { comfort: { interface: "can1" } } },
   }]);
 
-  await page.getByTestId("vehicle-setup-refresh").click();
-  await expect.poll(() => dashboard.vehicleSetupRequests()).toBe(2);
-  await expect(page.getByTestId("vehicle-setup-profile")).toHaveValue("custom:my-seat");
+  page.once("dialog", async (dialog) => {
+    expect(dialog.type()).toBe("confirm");
+    expect(dialog.message()).toContain("Apply My Seat · Custom with My controls · Custom on can1?");
+    await dialog.accept();
+  });
+  await page.getByTestId("vehicle-setup-apply").click();
+  await expect(page.getByTestId("vehicle-setup-apply-feedback")).toHaveText("Vehicle setup applied and verified.");
+  await expect(page.getByTestId("vehicle-setup-preview")).toHaveCount(0);
+  expect(await dashboard.vehicleSetupApplyRequests()).toBe(1);
+  expect(await dashboard.vehicleSetupApplyBodies()).toEqual([{
+    target: {
+      vehicle: { source: "custom", id: "my-seat", revision: "sha256:custom-profile" },
+      bindings: { source: "custom", id: "my-controls", revision: "sha256:custom-bindings" },
+      runtime: { mode: "single", active_bus: "comfort", buses: { comfort: { interface: "can1" } } },
+    },
+    expected_configuration_revision: "sha256:configuration",
+    target_configuration_revision: "sha256:target",
+    confirm: true,
+  }]);
+  expect(await dashboard.vehicleSetupRequests()).toBe(2);
+  expect(await dashboard.vehicleSetupCoordinatorRequests()).toBe(3);
   await expectNoRuntimeFailures(failures);
 });
-
 
 test("system settings and Jellyfin setup use the shared local configuration API", async ({ page }) => {
   const failures = captureRuntimeFailures(page);
