@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import fcntl
+import io
 import json
 import os
 import socket
@@ -473,6 +474,109 @@ class VehicleConfigurationCoordinatorTests(unittest.TestCase):
             with self.assertRaisesRegex(coordinator.CoordinatorError, "unavailable"):
                 coordinator.client_status(Path(temporary) / "missing.sock")
 
+    def test_qualification_gate_is_root_style_one_shot_consent(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            root.chmod(0o700)
+            gate = root / "qualification"
+            gate.write_bytes(coordinator.QUALIFICATION_GATE_CONTENT)
+            gate.chmod(0o600)
+            coordinator.consume_qualification_gate(gate)
+            self.assertFalse(gate.exists())
+
+            victim = root / "victim"
+            victim.write_bytes(coordinator.QUALIFICATION_GATE_CONTENT)
+            victim.chmod(0o600)
+            gate.symlink_to(victim)
+            with self.assertRaises(coordinator.CoordinatorError):
+                coordinator.consume_qualification_gate(gate)
+            self.assertTrue(victim.exists())
+
+    def test_vcan_validation_requires_an_up_virtual_can_device(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "sys"
+            class_net = root / "class" / "net"
+            virtual = root / "devices" / "virtual" / "net" / "vcan0"
+            class_net.mkdir(parents=True)
+            virtual.mkdir(parents=True)
+            (virtual / "type").write_text("280\n", encoding="ascii")
+            (virtual / "flags").write_text("0x1\n", encoding="ascii")
+            (class_net / "vcan0").symlink_to(
+                os.path.relpath(virtual, class_net)
+            )
+            coordinator.validate_vcan_interface("vcan0", sys_class_net=class_net)
+
+            (virtual / "flags").write_text("0x0\n", encoding="ascii")
+            with self.assertRaisesRegex(coordinator.CoordinatorError, "up vcan"):
+                coordinator.validate_vcan_interface("vcan0", sys_class_net=class_net)
+            with self.assertRaisesRegex(coordinator.CoordinatorError, "vcan"):
+                coordinator.validate_vcan_interface("can0", sys_class_net=class_net)
+
+    def test_qualification_preview_reader_rejects_duplicate_json_fields(self) -> None:
+        with self.assertRaisesRegex(coordinator.CoordinatorError, "JSON"):
+            coordinator.read_qualification_preview(
+                io.BytesIO(b'{"api_version":1,"api_version":1}')
+            )
+
+    def test_direct_command_environment_loader_requires_exact_trusted_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            root.chmod(0o700)
+            environment = root / "coordinator.env"
+            values = {
+                "OPEN_MMI_INSTALL_DIR": str(root / "opt"),
+                "OPEN_MMI_CONFIG_DIR": str(root / "home" / "config"),
+                "OPEN_MMI_RUNTIME_DROPIN": str(root / "home" / "dropin.conf"),
+                "OPEN_MMI_STATUS_PATH": str(root / "run" / "status.json"),
+            }
+            environment.write_text(
+                "".join(
+                    f"{key}={json.dumps(value)}\n"
+                    for key, value in values.items()
+                ),
+                encoding="utf-8",
+            )
+            environment.chmod(0o644)
+            with patch.dict(os.environ, {}, clear=False):
+                self.assertEqual(
+                    coordinator.load_coordinator_environment(environment), values
+                )
+                for key, value in values.items():
+                    self.assertEqual(os.environ[key], value)
+
+            environment.write_text(
+                environment.read_text(encoding="utf-8") + "UNEXPECTED=\"/tmp\"\n",
+                encoding="utf-8",
+            )
+            environment.chmod(0o644)
+            with self.assertRaisesRegex(coordinator.CoordinatorError, "schema"):
+                coordinator.load_coordinator_environment(environment)
+
+    def test_idle_server_start_does_not_require_apply_paths(self) -> None:
+        class Server:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return None
+
+            def serve_forever(self):
+                return None
+
+        with patch.object(coordinator.os, "geteuid", return_value=0), patch.object(
+            coordinator, "load_coordinator_environment"
+        ), patch.object(
+            coordinator, "read_state", return_value=coordinator.initial_state()
+        ), patch.object(
+            coordinator, "root_apply_operations", side_effect=AssertionError("unused")
+        ), patch.object(
+            coordinator, "CoordinatorServer", Server
+        ):
+            self.assertEqual(coordinator.main(["serve"]), 0)
+
 
 class ApplyTransactionTests(unittest.TestCase):
     class Operations:
@@ -499,6 +603,9 @@ class ApplyTransactionTests(unittest.TestCase):
                 raise AssertionError("invalid transaction identifier")
             self._call("load_snapshot")
             return {"previous": True}
+
+        def discard_snapshot(self, snapshot):
+            self._call("discard_snapshot")
 
         def install(self, target):
             self.assert_safe_target(target)
@@ -593,6 +700,169 @@ class ApplyTransactionTests(unittest.TestCase):
             )
             self.assertFalse(state["restoration_attempted"])
 
+    def test_vcan_qualification_restores_before_releasing_the_transaction(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            target = self.target()
+            target["runtime"]["buses"]["comfort"]["interface"] = "vcan0"
+            operations = self.Operations(target)
+            observed_at_discard = {}
+
+            def discard_snapshot(snapshot):
+                operations._call("discard_snapshot")
+                observed_at_discard.update(
+                    coordinator.read_state(root / "state.json")
+                )
+
+            operations.discard_snapshot = discard_snapshot
+            preview = self.preview(target)
+            with patch.object(coordinator, "coordinator_preview", return_value=preview):
+                state = coordinator.run_apply_transaction(
+                    {},
+                    reviewed_target=target,
+                    expected_configuration_revision="sha256:" + "c" * 64,
+                    confirm=True,
+                    operations=operations,
+                    state_path=root / "state.json",
+                    configuration_lock=root / "configuration.lock",
+                    lifecycle_lock=root / "lifecycle.lock",
+                    update_lock=root / "update.lock",
+                    qualification_restore_on_success=True,
+                )
+            self.assertEqual(state["state"], "complete")
+            self.assertEqual(state["stage"], "qualification-restored")
+            self.assertTrue(state["restoration_attempted"])
+            self.assertTrue(state["restoration_verified"])
+            self.assertEqual(observed_at_discard["state"], "complete")
+            self.assertEqual(
+                observed_at_discard["stage"], "qualification-restored"
+            )
+            self.assertEqual(
+                operations.calls,
+                [
+                    "snapshot",
+                    "install",
+                    "reload",
+                    "restart",
+                    "loaded_runtime",
+                    "restore",
+                    "restart",
+                    "loaded_runtime",
+                    "restoration_verified",
+                    "discard_snapshot",
+                ],
+            )
+
+    def test_one_shot_vcan_qualification_consumes_gate_and_round_trips(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            root.chmod(0o700)
+            target = self.target()
+            target["runtime"]["buses"]["comfort"]["interface"] = "vcan0"
+            preview = {
+                "api_version": 1,
+                "read_only": True,
+                "apply_available": False,
+                "state": "ready",
+                "expected_configuration_revision": "sha256:" + "c" * 64,
+                "target_configuration_revision": coordinator.vehicle_configuration.selection_revision(target),
+                "target": target,
+                "coordinator": {
+                    "previewed": True,
+                    "read_only": True,
+                    "locks": {
+                        "configuration_active": False,
+                        "lifecycle_active": False,
+                        "update_active": False,
+                    },
+                    "apply_blocked": False,
+                },
+            }
+            gate = root / "qualification"
+            gate.write_bytes(coordinator.QUALIFICATION_GATE_CONTENT)
+            gate.chmod(0o600)
+            class_net = root / "sys" / "class" / "net"
+            virtual = root / "sys" / "devices" / "virtual" / "net" / "vcan0"
+            class_net.mkdir(parents=True)
+            virtual.mkdir(parents=True)
+            (virtual / "type").write_text("280\n", encoding="ascii")
+            (virtual / "flags").write_text("0x1\n", encoding="ascii")
+            (class_net / "vcan0").symlink_to(os.path.relpath(virtual, class_net))
+            dropin = root / "home" / "10-can-runtime.conf"
+            dropin.parent.mkdir(mode=0o700)
+            operations = self.Operations(target)
+            with patch.object(coordinator, "coordinator_preview", return_value=preview):
+                state = coordinator.run_vcan_qualification(
+                    preview,
+                    operations=operations,
+                    gate_path=gate,
+                    state_path=root / "state.json",
+                    dropin_path=dropin,
+                    sys_class_net=class_net,
+                    configuration_lock=root / "configuration.lock",
+                    lifecycle_lock=root / "lifecycle.lock",
+                    update_lock=root / "update.lock",
+                )
+            self.assertFalse(gate.exists())
+            self.assertEqual(state["stage"], "qualification-restored")
+
+    def test_vcan_qualification_rejects_a_conflicting_later_dropin_before_consent(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            root.chmod(0o700)
+            target = self.target()
+            target["runtime"]["buses"]["comfort"]["interface"] = "vcan0"
+            preview = {
+                "api_version": 1,
+                "read_only": True,
+                "apply_available": False,
+                "state": "ready",
+                "expected_configuration_revision": "sha256:" + "c" * 64,
+                "target_configuration_revision": coordinator.vehicle_configuration.selection_revision(target),
+                "target": target,
+                "coordinator": {
+                    "previewed": True,
+                    "read_only": True,
+                    "locks": {
+                        "configuration_active": False,
+                        "lifecycle_active": False,
+                        "update_active": False,
+                    },
+                    "apply_blocked": False,
+                },
+            }
+            gate = root / "qualification"
+            gate.write_bytes(coordinator.QUALIFICATION_GATE_CONTENT)
+            gate.chmod(0o600)
+            class_net = root / "sys" / "class" / "net"
+            virtual = root / "sys" / "devices" / "virtual" / "net" / "vcan0"
+            class_net.mkdir(parents=True)
+            virtual.mkdir(parents=True)
+            (virtual / "type").write_text("280\n", encoding="ascii")
+            (virtual / "flags").write_text("0x1\n", encoding="ascii")
+            (class_net / "vcan0").symlink_to(os.path.relpath(virtual, class_net))
+            dropin = root / "home" / "10-can-runtime.conf"
+            dropin.parent.mkdir(mode=0o700)
+            conflict = dropin.parent / "99-local.conf"
+            conflict.write_text(
+                '[Service]\nEnvironment="OPEN_MMI_CAN_INTERFACE=can0"\n',
+                encoding="utf-8",
+            )
+            conflict.chmod(0o644)
+            with self.assertRaisesRegex(coordinator.CoordinatorError, "99-local"):
+                coordinator.run_vcan_qualification(
+                    preview,
+                    operations=self.Operations(target),
+                    gate_path=gate,
+                    state_path=root / "state.json",
+                    dropin_path=dropin,
+                    sys_class_net=class_net,
+                    configuration_lock=root / "configuration.lock",
+                    lifecycle_lock=root / "lifecycle.lock",
+                    update_lock=root / "update.lock",
+                )
+            self.assertTrue(gate.exists())
+
     def test_stale_or_unconfirmed_apply_mutates_nothing(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -640,6 +910,25 @@ class ApplyTransactionTests(unittest.TestCase):
             self.assertTrue(state["restoration_verified"])
             self.assertIn("restore", operations.calls)
             self.assertIn("restoration_verified", operations.calls)
+
+    def test_keyboard_interrupt_after_mutation_still_restores(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            operations = self.Operations(self.target())
+
+            def interrupted_reload(target):
+                operations.assert_safe_target(target)
+                operations.calls.append("reload")
+                raise KeyboardInterrupt()
+
+            operations.reload = interrupted_reload
+            with self.assertRaisesRegex(
+                coordinator.CoordinatorError, "during reloading"
+            ):
+                self.execute(operations, root)
+            state = coordinator.read_state(root / "state.json")
+            self.assertEqual(state["stage"], "restored")
+            self.assertTrue(state["restoration_verified"])
 
     def test_multiline_operation_error_is_not_exposed_and_cannot_block_restore(self):
         with tempfile.TemporaryDirectory() as temporary:

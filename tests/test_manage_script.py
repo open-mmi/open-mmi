@@ -35,6 +35,16 @@ class ManageScriptLifecycleTests(unittest.TestCase):
         end = self.text.index("\nPY_UPDATE_SOURCE", start)
         compile(self.text[start:end], "manage.sh:PY_UPDATE_SOURCE", "exec")
 
+    def test_vehicle_coordinator_sandbox_python_has_valid_syntax(self) -> None:
+        marker = "<<'PY_VEHICLE_CONFIG_COORDINATOR_SANDBOX'\n"
+        start = self.text.index(marker) + len(marker)
+        end = self.text.index("\nPY_VEHICLE_CONFIG_COORDINATOR_SANDBOX", start)
+        compile(
+            self.text[start:end],
+            "manage.sh:PY_VEHICLE_CONFIG_COORDINATOR_SANDBOX",
+            "exec",
+        )
+
     def test_update_source_writer_migrates_and_preserves_named_channel_policy(self) -> None:
         marker = "<<'PY_UPDATE_SOURCE'\n"
         start = self.text.index(marker) + len(marker)
@@ -433,7 +443,7 @@ sleep() {{ :; }}
         self.assertNotIn("%i", unit)
         self.assertIn("ProtectSystem=strict", unit)
 
-    def test_vehicle_configuration_coordinator_is_read_only_and_hardened(self) -> None:
+    def test_vehicle_configuration_coordinator_is_publicly_read_only_and_hardened(self) -> None:
         unit = (ROOT / "systemd/system/open-mmi-vehicle-config-coordinator.service").read_text(encoding="utf-8")
         self.assertIn("ExecStart=/opt/open-mmi/venv/bin/open-mmi-vehicle-config-coordinator serve", unit)
         self.assertIn("ProtectHome=read-only", unit)
@@ -444,9 +454,11 @@ sleep() {{ :; }}
         self.assertIn("PrivateNetwork=true", unit)
         self.assertIn("RestrictAddressFamilies=AF_UNIX", unit)
         self.assertIn("ProtectSystem=strict", unit)
-        self.assertIn("ReadWritePaths=/var/lib/open-mmi /run/open-mmi", unit)
+        self.assertIn(
+            "ReadWritePaths=/var/lib/open-mmi /run/open-mmi /etc/open-mmi /etc/udev/rules.d",
+            unit,
+        )
         self.assertIn("RuntimeDirectoryPreserve=yes", unit)
-        self.assertNotIn("ReadWritePaths=/etc/open-mmi", unit)
         start = self.text.index("install_vehicle_config_coordinator() {")
         end = self.text.index("remove_login_autostart() {", start)
         block = self.text[start:end]
@@ -455,9 +467,18 @@ sleep() {{ :; }}
         self.assertIn('systemctl restart "$VEHICLE_CONFIG_COORDINATOR_UNIT"', block)
         self.assertIn("wait_for_vehicle_config_coordinator", block)
         self.assertIn("write_vehicle_config_coordinator_environment", block)
+        self.assertIn("write_vehicle_config_coordinator_sandbox", block)
+        self.assertIn("vehicle-config-coordinator-sandbox.conf", self.text)
+        self.assertIn("ReadWritePaths=\"-", self.text)
         self.assertIn('"$USER_CONFIG_DIR"', self.text)
         self.assertIn('"/run/user/$USER_ID/open-mmi/status.json"', self.text)
         self.assertNotIn('${OPEN_MMI_PREPARED_DEPLOYMENT:-0}', block)
+        profile_reload = self.text.index('reload_profile_provisioning')
+        coordinator_restart = self.text.index(
+            'systemctl restart "$VEHICLE_CONFIG_COORDINATOR_UNIT"',
+            profile_reload,
+        )
+        self.assertGreater(coordinator_restart, profile_reload)
 
     def test_coordinator_can_read_the_managed_checkout_and_is_restarted(self) -> None:
         unit = (ROOT / "systemd/system/open-mmi-update-coordinator.service").read_text(encoding="utf-8")

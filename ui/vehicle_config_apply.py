@@ -141,7 +141,11 @@ def _runtime_dropin_text(
 
 
 def _udev_rules_text(
-    target: Mapping[str, Any], profile_path: Path, bus: Mapping[str, Any]
+    target: Mapping[str, Any],
+    profile_path: Path,
+    bus: Mapping[str, Any],
+    *,
+    suppress_can_provisioning: bool = False,
 ) -> str:
     active_bus = target["runtime"]["active_bus"]
     interface = target["runtime"]["buses"][active_bus]["interface"]
@@ -155,7 +159,14 @@ def _udev_rules_text(
     ]
     provisioning = bus.get("provisioning")
     bitrate = bus.get("bitrate")
-    if provisioning == "udev" and isinstance(bitrate, int) and bitrate > 0:
+    if suppress_can_provisioning:
+        lines.extend(
+            [
+                f"# CAN bus {active_bus}: vcan qualification; no hardware rule generated.",
+                "",
+            ]
+        )
+    elif provisioning == "udev" and isinstance(bitrate, int) and bitrate > 0:
         lines.extend(
             [
                 f"# CAN bus {active_bus}",
@@ -219,6 +230,7 @@ def render_artifacts(
     applied_at: Optional[str] = None,
     maintained_uid: Optional[int] = None,
     custom_uid: Optional[int] = None,
+    suppress_can_provisioning: bool = False,
 ) -> RenderedArtifacts:
     """Resolve, revalidate and render all generated configuration bytes."""
 
@@ -287,7 +299,12 @@ def render_artifacts(
         runtime_dropin=_runtime_dropin_text(normalized, profile_path, bindings_path).encode(
             "utf-8"
         ),
-        udev_rules=_udev_rules_text(normalized, profile_path, bus).encode("utf-8"),
+        udev_rules=_udev_rules_text(
+            normalized,
+            profile_path,
+            bus,
+            suppress_can_provisioning=suppress_can_provisioning,
+        ).encode("utf-8"),
     )
 
 
@@ -579,6 +596,7 @@ class RootApplyOperations:
         sleep: Callable[[float], None] = time.sleep,
         loaded_timeout: float = DEFAULT_LOADED_TIMEOUT,
         poll_interval: float = DEFAULT_POLL_INTERVAL,
+        suppress_can_provisioning: bool = False,
     ):
         if not _SAFE_USER_RE.fullmatch(service_user):
             raise ApplyOperationError("Service account is invalid")
@@ -607,6 +625,7 @@ class RootApplyOperations:
         self.sleep = sleep
         self.loaded_timeout = loaded_timeout
         self.poll_interval = poll_interval
+        self.suppress_can_provisioning = suppress_can_provisioning
         self._restart_started_at: Optional[float] = None
 
     def _run(self, argv: Sequence[str], as_user: bool = False) -> None:
@@ -819,6 +838,7 @@ class RootApplyOperations:
             self.roots,
             maintained_uid=0 if os.geteuid() == 0 else os.geteuid(),
             custom_uid=self.service_uid,
+            suppress_can_provisioning=self.suppress_can_provisioning,
         )
         _atomic_replace(
             self.paths.runtime_dropin,
@@ -845,6 +865,8 @@ class RootApplyOperations:
     def reload(self, target: Mapping[str, Any]) -> None:
         vehicle_configuration.normalize_selection(target)
         self._run(("systemctl", "--user", "daemon-reload"), True)
+        if self.suppress_can_provisioning:
+            return
         self._run(("udevadm", "control", "--reload-rules"), False)
         self._run(("udevadm", "trigger", "--subsystem-match=net"), False)
 
@@ -896,8 +918,9 @@ class RootApplyOperations:
             else:
                 _remove_file(destination)
         self._run(("systemctl", "--user", "daemon-reload"), True)
-        self._run(("udevadm", "control", "--reload-rules"), False)
-        self._run(("udevadm", "trigger", "--subsystem-match=net"), False)
+        if not self.suppress_can_provisioning:
+            self._run(("udevadm", "control", "--reload-rules"), False)
+            self._run(("udevadm", "trigger", "--subsystem-match=net"), False)
 
     def restoration_verified(
         self, snapshot: object, loaded: Mapping[str, Any]
@@ -915,3 +938,10 @@ class RootApplyOperations:
             return current == dict(snapshot.files)
         except (ApplyOperationError, OSError):
             return False
+
+    def discard_snapshot(self, snapshot: object) -> None:
+        """Remove a verified rollback snapshot after a qualification round trip."""
+
+        if not isinstance(snapshot, ApplySnapshot):
+            raise ApplyOperationError("Rollback snapshot is invalid")
+        _safe_remove_tree(snapshot.directory, self.paths.rollback_root)

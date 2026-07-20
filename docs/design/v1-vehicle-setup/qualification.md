@@ -159,6 +159,37 @@ Before exposing apply, unit and integration tests must prove:
 
 These tests do not enable the public socket action or browser button.
 
+## Root-only vcan round-trip qualification
+
+Before enabling any public apply route, the reference tablet qualifies the concrete
+operation layer through the coordinator binary's local `qualify-vcan` command. This is
+not a general administrative apply path:
+
+- it runs only as root and is not available over either coordinator socket or HTTP;
+- it accepts one bounded strict preview object on standard input, not a path;
+- the reviewed target must use an existing, up kernel virtual CAN device named
+  `vcanN` under `/sys/devices/virtual/net` with the SocketCAN link type;
+- an exact root-owned mode-`0600` one-shot marker under `/etc/open-mmi` must exist and
+  is consumed before the transaction starts;
+- active and target revisions are rebuilt and compared again under the shared
+  lifecycle/update/configuration locks;
+- additional canbusd drop-ins that set or unset coordinator-owned runtime keys are
+  rejected before the consent marker is consumed;
+- hardware udev provisioning is suppressed and the temporary qualification rules are
+  never reloaded or triggered;
+- the previous generated files and loaded runtime are restored and verified before
+  the locks are released; and
+- the durable snapshot is deleted only after that restoration succeeds.
+
+Success is reported as `state=complete`, `stage=qualification-restored`, with both
+restoration flags true. Any target-apply or restoration failure remains a failed
+transaction and retains enough root-owned rollback material for interrupted recovery.
+
+The coordinator service receives only the exact generated-file and runtime-drop-in
+writable paths required to recover an interrupted qualification after process or tablet
+restart. The browser button and public socket `apply` action remain disabled throughout
+this stage.
+
 ## Device qualification
 
 On the reference tablet and Seat 1P profile verify:

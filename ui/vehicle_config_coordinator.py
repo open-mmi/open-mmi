@@ -1,9 +1,9 @@
-"""Read-only privileged vehicle configuration coordination.
+"""Privileged vehicle configuration coordination.
 
 The coordinator owns a fixed local Unix-socket boundary, persistent public
-transaction state, and independent non-mutating preview validation. Apply and
-restore remain unavailable until atomic activation and verified restoration are
-implemented.
+transaction state, and independent non-mutating preview validation.  The
+public socket remains read-only.  A separate root-only, one-shot vcan round-trip
+command exists solely to qualify the internal apply and restoration engine.
 """
 
 from __future__ import annotations
@@ -13,10 +13,13 @@ import fcntl
 import grp
 import json
 import os
+import pwd
 import re
+import signal
 import socket
 import socketserver
 import stat
+import sys
 import tempfile
 import uuid
 from contextlib import AbstractContextManager, ExitStack
@@ -39,8 +42,14 @@ DEFAULT_INSTALL_ROOT = Path("/opt/open-mmi")
 DEFAULT_CONFIG_ROOT = Path("/var/lib/open-mmi/custom-catalogue-unconfigured")
 DEFAULT_RUNTIME_DROPIN = Path("/etc/open-mmi/canbusd-runtime-unconfigured.conf")
 DEFAULT_RUNTIME_STATUS = Path("/run/open-mmi/canbusd-status-unconfigured.json")
+DEFAULT_COORDINATOR_ENV = Path("/etc/open-mmi/vehicle-config-coordinator.env")
+DEFAULT_QUALIFICATION_GATE = Path(
+    "/etc/open-mmi/enable-vcan-vehicle-configuration-qualification"
+)
+QUALIFICATION_GATE_CONTENT = b"OPEN_MMI_ALLOW_VCAN_CONFIGURATION_APPLY=1\n"
 MAX_REQUEST_BYTES = 4096
 MAX_RESPONSE_BYTES = 256 * 1024
+MAX_QUALIFICATION_PREVIEW_BYTES = 256 * 1024
 MAX_CONFIGURED_PATH_LENGTH = 4096
 MAX_ERROR_LENGTH = 512
 ACTIVE_STATES = {"validating", "applying", "reloading", "verifying", "restoring"}
@@ -48,6 +57,22 @@ TERMINAL_STATES = {"idle", "complete", "failed"}
 ALLOWED_STATES = ACTIVE_STATES | TERMINAL_STATES
 _TRANSACTION_RE = re.compile(r"^configuration-[0-9a-f]{32}$")
 _STAGE_RE = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
+_VCAN_INTERFACE_RE = re.compile(r"^vcan[0-9]{1,3}$")
+_DROPIN_NAME_RE = re.compile(r"^[A-Za-z0-9_.-]{1,128}\.conf$")
+_COORDINATOR_ENV_KEYS = {
+    "OPEN_MMI_INSTALL_DIR",
+    "OPEN_MMI_CONFIG_DIR",
+    "OPEN_MMI_RUNTIME_DROPIN",
+    "OPEN_MMI_STATUS_PATH",
+}
+_MANAGED_RUNTIME_KEYS = {
+    "OPEN_MMI_VEHICLE",
+    "OPEN_MMI_BINDINGS",
+    "OPEN_MMI_VEHICLE_CONFIG",
+    "OPEN_MMI_BINDINGS_FILE",
+    "OPEN_MMI_CAN_BUS",
+    "OPEN_MMI_CAN_INTERFACE",
+}
 
 
 class CoordinatorError(RuntimeError):
@@ -481,6 +506,12 @@ class RecoverableApplyOperations(ApplyOperations, Protocol):
     def load_snapshot(self, transaction_id: str) -> object: ...
 
 
+class QualificationApplyOperations(RecoverableApplyOperations, Protocol):
+    """Apply operations used by the one-shot vcan qualification command."""
+
+    def discard_snapshot(self, snapshot: object) -> None: ...
+
+
 def _state_update(path: Path, payload: Dict[str, Any], **changes: Any) -> Dict[str, Any]:
     payload.update(changes)
     payload["updated_at"] = _timestamp()
@@ -544,6 +575,7 @@ def run_apply_transaction(
     configuration_lock: Path = DEFAULT_LOCK,
     lifecycle_lock: Path = DEFAULT_LIFECYCLE_LOCK,
     update_lock: Path = DEFAULT_UPDATE_LOCK,
+    qualification_restore_on_success: bool = False,
 ) -> Dict[str, Any]:
     """Execute the fail-closed apply state machine behind the disabled API.
 
@@ -621,6 +653,42 @@ def run_apply_transaction(
             loaded = operations.loaded_runtime()
             if not _loaded_matches_target(loaded, target):
                 raise CoordinatorError("Applied vehicle configuration could not be verified")
+            if qualification_restore_on_success:
+                stage = "qualification-restoring"
+                state = _state_update(
+                    state_path,
+                    state,
+                    state="restoring",
+                    stage=stage,
+                    restoration_attempted=True,
+                )
+                operations.restore(snapshot)
+                operations.restart()
+                restored_loaded = operations.loaded_runtime()
+                if not operations.restoration_verified(snapshot, restored_loaded):
+                    raise CoordinatorError(
+                        "Vehicle configuration qualification restoration could not be verified"
+                    )
+                completed = _state_update(
+                    state_path,
+                    state,
+                    state="complete",
+                    stage="qualification-restored",
+                    completed_at=_timestamp(),
+                    error="",
+                    restoration_attempted=True,
+                    restoration_verified=True,
+                )
+                # Persist the terminal state before deleting the only durable
+                # snapshot. A process interruption may leave an extra snapshot,
+                # but can never leave an active state with no recovery material.
+                discard = getattr(operations, "discard_snapshot", None)
+                if callable(discard):
+                    try:
+                        discard(snapshot)
+                    except Exception:
+                        pass
+                return completed
             now = _timestamp()
             return _state_update(
                 state_path,
@@ -632,7 +700,7 @@ def run_apply_transaction(
                 restoration_attempted=False,
                 restoration_verified=False,
             )
-        except Exception as exc:
+        except BaseException as exc:
             error = _sanitized_failure(stage, exc)
             if mutation_started:
                 state = _best_effort_state_update(
@@ -649,7 +717,7 @@ def run_apply_transaction(
                     operations.restart()
                     restored_loaded = operations.loaded_runtime()
                     restoration_verified = operations.restoration_verified(snapshot, restored_loaded)
-                except Exception:
+                except BaseException:
                     restoration_verified = False
                 now = _timestamp()
                 _best_effort_state_update(
@@ -967,16 +1035,449 @@ def client_preview(
     return dict(preview)
 
 
+def _read_no_follow_file(
+    path: Path,
+    maximum_bytes: int,
+    *,
+    exact_mode: Optional[int] = None,
+) -> bytes:
+    """Read a trusted fixed file without following a final-component symlink."""
+
+    expected_uid = 0 if path in {DEFAULT_COORDINATOR_ENV, DEFAULT_QUALIFICATION_GATE} else os.geteuid()
+    expected_gid = 0 if path in {DEFAULT_COORDINATOR_ENV, DEFAULT_QUALIFICATION_GATE} else os.getegid()
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        raise CoordinatorError(f"Required coordinator file is unavailable: {path.name}") from exc
+    try:
+        metadata = os.fstat(descriptor)
+        mode = stat.S_IMODE(metadata.st_mode)
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_uid != expected_uid
+            or metadata.st_gid != expected_gid
+            or metadata.st_nlink != 1
+            or (exact_mode is not None and mode != exact_mode)
+            or (exact_mode is None and mode & 0o022)
+            or metadata.st_size > maximum_bytes
+        ):
+            raise CoordinatorError(f"Required coordinator file is untrusted: {path.name}")
+        chunks = []
+        remaining = maximum_bytes + 1
+        while remaining:
+            chunk = os.read(descriptor, min(remaining, 65536))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        content = b"".join(chunks)
+        if len(content) > maximum_bytes:
+            raise CoordinatorError(f"Required coordinator file is too large: {path.name}")
+        return content
+    finally:
+        os.close(descriptor)
+
+
+def load_coordinator_environment(path: Path = DEFAULT_COORDINATOR_ENV) -> Dict[str, str]:
+    """Load the root-owned fixed-path environment for direct root commands."""
+
+    try:
+        text = _read_no_follow_file(path, 16 * 1024).decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise CoordinatorError("Coordinator environment is not valid UTF-8") from exc
+    values: Dict[str, str] = {}
+    for line in text.splitlines():
+        if not line or "=" not in line:
+            raise CoordinatorError("Coordinator environment schema is invalid")
+        key, encoded = line.split("=", 1)
+        if key not in _COORDINATOR_ENV_KEYS or key in values:
+            raise CoordinatorError("Coordinator environment schema is invalid")
+        try:
+            value = json.loads(encoded)
+        except json.JSONDecodeError as exc:
+            raise CoordinatorError("Coordinator environment schema is invalid") from exc
+        if not isinstance(value, str):
+            raise CoordinatorError("Coordinator environment schema is invalid")
+        candidate = Path(value)
+        if (
+            not value
+            or not candidate.is_absolute()
+            or ".." in candidate.parts
+            or any(ord(character) < 32 for character in value)
+            or len(value) > MAX_CONFIGURED_PATH_LENGTH
+        ):
+            raise CoordinatorError("Coordinator environment path is invalid")
+        values[key] = value
+    if set(values) != _COORDINATOR_ENV_KEYS:
+        raise CoordinatorError("Coordinator environment schema is invalid")
+    os.environ.update(values)
+    return values
+
+
+def _service_account_from_runtime_dropin(dropin_path: Path) -> pwd.struct_passwd:
+    """Resolve the fixed desktop service account from its owned drop-in directory."""
+
+    try:
+        directory = dropin_path.parent
+        metadata = directory.lstat()
+    except OSError as exc:
+        raise CoordinatorError("Vehicle service account cannot be resolved") from exc
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or metadata.st_mode & 0o022
+        or metadata.st_uid == 0
+    ):
+        raise CoordinatorError("Vehicle service account directory is untrusted")
+    try:
+        account = pwd.getpwuid(metadata.st_uid)
+    except KeyError as exc:
+        raise CoordinatorError("Vehicle service account cannot be resolved") from exc
+    home = Path(account.pw_dir)
+    try:
+        dropin_path.relative_to(home)
+    except ValueError as exc:
+        raise CoordinatorError("Vehicle runtime drop-in is outside the service home") from exc
+    return account
+
+
+def root_apply_operations(*, suppress_can_provisioning: bool = False) -> QualificationApplyOperations:
+    """Construct the fixed concrete operation layer from the trusted environment."""
+
+    from ui import vehicle_config_apply
+
+    roots, dropin_path, status_path = _preview_context()
+    account = _service_account_from_runtime_dropin(dropin_path)
+    return vehicle_config_apply.RootApplyOperations(
+        roots=roots,
+        paths=vehicle_config_apply.ApplyPaths(
+            descriptor=vehicle_config_apply.DEFAULT_DESCRIPTOR_PATH,
+            runtime_dropin=dropin_path,
+            udev_rules=vehicle_config_apply.DEFAULT_UDEV_RULE_PATH,
+            runtime_status=status_path,
+            rollback_root=vehicle_config_apply.DEFAULT_ROLLBACK_ROOT,
+        ),
+        service_user=account.pw_name,
+        service_uid=account.pw_uid,
+        service_gid=account.pw_gid,
+        service_home=Path(account.pw_dir),
+        suppress_can_provisioning=suppress_can_provisioning,
+    )
+
+
+def _qualification_request(preview: object) -> tuple[Dict[str, Any], Dict[str, Any], str]:
+    """Extract only the reviewed allowlisted target from a preview response."""
+
+    if not isinstance(preview, dict) or (
+        preview.get("api_version") != API_VERSION
+        or preview.get("read_only") is not True
+        or preview.get("apply_available") is not False
+        or preview.get("state") != "ready"
+    ):
+        raise CoordinatorError("Qualification preview is invalid")
+    try:
+        target = vehicle_configuration.normalize_selection(preview.get("target"))
+    except vehicle_configuration.VehicleConfigurationError as exc:
+        raise CoordinatorError("Qualification preview target is invalid") from exc
+    expected_revision = preview.get("expected_configuration_revision")
+    target_revision = preview.get("target_configuration_revision")
+    if (
+        not isinstance(expected_revision, str)
+        or not vehicle_configuration.REVISION_RE.fullmatch(expected_revision)
+        or not isinstance(target_revision, str)
+        or target_revision != vehicle_configuration.selection_revision(target)
+    ):
+        raise CoordinatorError("Qualification preview revisions are invalid")
+    metadata = preview.get("coordinator")
+    locks = metadata.get("locks") if isinstance(metadata, dict) else None
+    if (
+        not isinstance(metadata, dict)
+        or metadata.get("previewed") is not True
+        or metadata.get("read_only") is not True
+        or metadata.get("apply_blocked") is not False
+        or not isinstance(locks, dict)
+        or set(locks) != {"configuration_active", "lifecycle_active", "update_active"}
+        or any(value is not False for value in locks.values())
+    ):
+        raise CoordinatorError("Qualification preview is blocked")
+    active_bus = target["runtime"]["active_bus"]
+    interface = target["runtime"]["buses"][active_bus]["interface"]
+    if not _VCAN_INTERFACE_RE.fullmatch(interface):
+        raise CoordinatorError("Qualification target must use a vcan interface")
+    request = {
+        "vehicle": {
+            "source": target["vehicle"]["source"],
+            "id": target["vehicle"]["id"],
+        },
+        "bindings": {
+            "source": target["bindings"]["source"],
+            "id": target["bindings"]["id"],
+        },
+        "runtime": {
+            "active_bus": active_bus,
+            "buses": {active_bus: {"interface": interface}},
+        },
+    }
+    return request, target, expected_revision
+
+
+def validate_vcan_interface(
+    interface: str,
+    *,
+    sys_class_net: Path = Path("/sys/class/net"),
+) -> None:
+    """Require an up kernel vcan device, not merely a caller-chosen name."""
+
+    if not isinstance(interface, str) or not _VCAN_INTERFACE_RE.fullmatch(interface):
+        raise CoordinatorError("Qualification target must use a vcan interface")
+    entry = sys_class_net / interface
+    virtual_root = sys_class_net.parent.parent / "devices" / "virtual" / "net"
+    try:
+        resolved = entry.resolve(strict=True)
+        resolved_virtual_root = virtual_root.resolve(strict=True)
+        interface_type = int((entry / "type").read_text(encoding="ascii").strip(), 10)
+        flags = int((entry / "flags").read_text(encoding="ascii").strip(), 0)
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise CoordinatorError("Qualification vcan interface is unavailable") from exc
+    if (
+        resolved.parent != resolved_virtual_root
+        or resolved.name != interface
+        or interface_type != 280
+        or not flags & 0x1
+    ):
+        raise CoordinatorError("Qualification interface is not an up vcan device")
+
+
+def validate_no_conflicting_runtime_dropins(managed_dropin: Path) -> None:
+    """Reject additional drop-ins that can override the reviewed target."""
+
+    directory = managed_dropin.parent
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        directory_fd = os.open(directory, flags)
+    except OSError as exc:
+        raise CoordinatorError("Runtime drop-in directory is unavailable") from exc
+    try:
+        metadata = os.fstat(directory_fd)
+        if not stat.S_ISDIR(metadata.st_mode) or metadata.st_mode & 0o022:
+            raise CoordinatorError("Runtime drop-in directory is untrusted")
+        try:
+            names = os.listdir(directory_fd)
+        except OSError as exc:
+            raise CoordinatorError("Runtime drop-in directory cannot be inspected") from exc
+        for name in names:
+            if name == managed_dropin.name or not name.endswith(".conf"):
+                continue
+            if not _DROPIN_NAME_RE.fullmatch(name):
+                raise CoordinatorError("Additional runtime drop-in name is invalid")
+            try:
+                descriptor = os.open(
+                    name,
+                    os.O_RDONLY
+                    | getattr(os, "O_CLOEXEC", 0)
+                    | getattr(os, "O_NOFOLLOW", 0),
+                    dir_fd=directory_fd,
+                )
+            except OSError as exc:
+                raise CoordinatorError("Additional runtime drop-in is invalid") from exc
+            try:
+                item = os.fstat(descriptor)
+                if (
+                    not stat.S_ISREG(item.st_mode)
+                    or item.st_uid != metadata.st_uid
+                    or item.st_gid != metadata.st_gid
+                    or item.st_nlink != 1
+                    or item.st_mode & 0o022
+                    or item.st_size > 64 * 1024
+                ):
+                    raise CoordinatorError("Additional runtime drop-in is untrusted")
+                chunks = []
+                remaining = 64 * 1024 + 1
+                while remaining:
+                    chunk = os.read(descriptor, min(remaining, 65536))
+                    if not chunk:
+                        break
+                    chunks.append(chunk)
+                    remaining -= len(chunk)
+                content = b"".join(chunks)
+                if len(content) > 64 * 1024:
+                    raise CoordinatorError("Additional runtime drop-in is too large")
+                try:
+                    text = content.decode("utf-8")
+                except UnicodeDecodeError as exc:
+                    raise CoordinatorError("Additional runtime drop-in is invalid") from exc
+            finally:
+                os.close(descriptor)
+            for line in text.splitlines():
+                stripped = line.strip()
+                if not stripped or stripped.startswith("#"):
+                    continue
+                if (
+                    (
+                        stripped.startswith("Environment=")
+                        or stripped.startswith("UnsetEnvironment=")
+                    )
+                    and any(key in stripped for key in _MANAGED_RUNTIME_KEYS)
+                ):
+                    raise CoordinatorError(
+                        f"Conflicting canbusd runtime drop-in: {name}"
+                    )
+    finally:
+        os.close(directory_fd)
+
+
+def consume_qualification_gate(path: Path = DEFAULT_QUALIFICATION_GATE) -> None:
+    """Consume the one-shot root-owned qualification consent marker."""
+
+    expected_uid = 0 if path == DEFAULT_QUALIFICATION_GATE else os.geteuid()
+    expected_gid = 0 if path == DEFAULT_QUALIFICATION_GATE else os.getegid()
+    try:
+        parent = path.parent.lstat()
+    except OSError as exc:
+        raise CoordinatorError("Qualification gate directory is unavailable") from exc
+    if (
+        not stat.S_ISDIR(parent.st_mode)
+        or parent.st_uid != expected_uid
+        or parent.st_gid != expected_gid
+        or parent.st_mode & 0o022
+    ):
+        raise CoordinatorError("Qualification gate directory is untrusted")
+    content = _read_no_follow_file(
+        path,
+        len(QUALIFICATION_GATE_CONTENT),
+        exact_mode=0o600,
+    )
+    if content != QUALIFICATION_GATE_CONTENT:
+        raise CoordinatorError("Qualification gate content is invalid")
+    try:
+        path.unlink()
+        descriptor = os.open(path.parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+    except OSError as exc:
+        raise CoordinatorError("Qualification gate could not be consumed") from exc
+
+
+def read_qualification_preview(stream: Any = None) -> Dict[str, Any]:
+    """Read one bounded strict preview object from standard input."""
+
+    source = stream if stream is not None else sys.stdin.buffer
+    raw = source.read(MAX_QUALIFICATION_PREVIEW_BYTES + 1)
+    if not raw or len(raw) > MAX_QUALIFICATION_PREVIEW_BYTES:
+        raise CoordinatorError("Qualification preview size is invalid")
+    try:
+        payload = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=_unique_json_object,
+            parse_constant=_reject_json_constant,
+        )
+    except (UnicodeError, json.JSONDecodeError, CoordinatorError) as exc:
+        raise CoordinatorError("Qualification preview JSON is invalid") from exc
+    if not isinstance(payload, dict):
+        raise CoordinatorError("Qualification preview is invalid")
+    return payload
+
+
+def run_vcan_qualification(
+    preview: Mapping[str, Any],
+    *,
+    operations: Optional[QualificationApplyOperations] = None,
+    gate_path: Path = DEFAULT_QUALIFICATION_GATE,
+    state_path: Path = DEFAULT_STATE_FILE,
+    roots: Optional[vehicle_setup.CatalogueRoots] = None,
+    dropin_path: Optional[Path] = None,
+    status_path: Optional[Path] = None,
+    sys_class_net: Path = Path("/sys/class/net"),
+    configuration_lock: Path = DEFAULT_LOCK,
+    lifecycle_lock: Path = DEFAULT_LIFECYCLE_LOCK,
+    update_lock: Path = DEFAULT_UPDATE_LOCK,
+) -> Dict[str, Any]:
+    """Apply a reviewed vcan target and restore the previous setup under one lock."""
+
+    request, target, expected_revision = _qualification_request(preview)
+    active_bus = target["runtime"]["active_bus"]
+    interface = target["runtime"]["buses"][active_bus]["interface"]
+    validate_vcan_interface(interface, sys_class_net=sys_class_net)
+    if dropin_path is None:
+        _roots, dropin_path, _status = _preview_context()
+    validate_no_conflicting_runtime_dropins(dropin_path)
+    consume_qualification_gate(gate_path)
+    selected_operations = operations or root_apply_operations(
+        suppress_can_provisioning=True
+    )
+    return run_apply_transaction(
+        request,
+        reviewed_target=target,
+        expected_configuration_revision=expected_revision,
+        confirm=True,
+        operations=selected_operations,
+        state_path=state_path,
+        roots=roots,
+        dropin_path=dropin_path,
+        status_path=status_path,
+        sys_class_net=sys_class_net,
+        configuration_lock=configuration_lock,
+        lifecycle_lock=lifecycle_lock,
+        update_lock=update_lock,
+        qualification_restore_on_success=True,
+    )
+
+
+def _interrupted_vcan_qualification(state: Mapping[str, Any]) -> bool:
+    target = state.get("target")
+    return bool(
+        state.get("state") in ACTIVE_STATES
+        and isinstance(target, Mapping)
+        and isinstance(target.get("interface"), str)
+        and _VCAN_INTERFACE_RE.fullmatch(target["interface"])
+    )
+
+
+def _interrupt_qualification(_signum: int, _frame: object) -> None:
+    raise KeyboardInterrupt()
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Open MMI vehicle configuration coordinator")
-    parser.add_argument("command", choices=("serve", "status"))
+    parser.add_argument("command", choices=("serve", "status", "qualify-vcan"))
     args = parser.parse_args(argv)
     if args.command == "status":
         print(json.dumps(client_status(), indent=2, sort_keys=True))
         return 0
     if os.geteuid() != 0:
-        raise SystemExit("open-mmi-vehicle-config-coordinator: serve requires root")
-    recover_interrupted_state()
+        raise SystemExit(
+            f"open-mmi-vehicle-config-coordinator: {args.command} requires root"
+        )
+    try:
+        load_coordinator_environment()
+        persisted = read_state(DEFAULT_STATE_FILE)
+        if args.command == "qualify-vcan":
+            operations = root_apply_operations(suppress_can_provisioning=True)
+            previous_sigterm = signal.signal(
+                signal.SIGTERM,
+                _interrupt_qualification,
+            )
+            try:
+                state = run_vcan_qualification(
+                    read_qualification_preview(),
+                    operations=operations,
+                )
+            finally:
+                signal.signal(signal.SIGTERM, previous_sigterm)
+            print(json.dumps(state, indent=2, sort_keys=True))
+            return 0
+        if persisted["state"] in ACTIVE_STATES:
+            operations = root_apply_operations(
+                suppress_can_provisioning=_interrupted_vcan_qualification(
+                    persisted
+                )
+            )
+            recover_interrupted_transaction(operations)
+    except CoordinatorError as exc:
+        print(f"open-mmi-vehicle-config-coordinator: {exc}", file=sys.stderr)
+        return 1
     with CoordinatorServer(DEFAULT_SOCKET, DEFAULT_STATE_FILE) as server:
         server.serve_forever()
     return 0

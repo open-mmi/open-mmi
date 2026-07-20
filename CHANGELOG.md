@@ -8,14 +8,17 @@
 - Local-only `GET /api/system/vehicle-setup/coordinator`, `POST /api/system/vehicle-setup/preview`, and matching `open-mmi-config vehicle-setup` clients. Apply and restoration remain explicitly disabled.
 - Hardened `open-mmi-vehicle-config-coordinator.service` with an AF_UNIX-only, network-isolated, read-only system sandbox and a root-owned fixed-path environment file for the installed service user.
 - Internal concrete apply operations for deterministic canonical/systemd/udev rendering, no-follow catalogue reads, durable root-owned rollback snapshots, atomic sibling replacement, fixed systemd/udev commands, refreshed loaded-runtime polling, exact restoration verification, and interrupted-transaction recovery. The public apply action remains disabled.
+- Root-only one-shot `qualify-vcan` round-trip command that accepts a previously reviewed preview on standard input, requires an up kernel `vcan` device plus an exact root-owned consent marker, verifies the temporary activation, restores the previous setup under the same transaction locks, and leaves the public socket/UI apply paths disabled.
 
 ### Security
 - Privileged rendering reopens catalogue files through descriptor-relative no-follow traversal, verifies maintained/custom ownership and non-writable modes, and rechecks the reviewed content revisions immediately before installation.
 - Generated destinations reject symlinks and non-regular files; rollback manifests and payloads are checksum-validated, root-only, bounded, and retained in a bounded archive.
+- The qualification command consumes its `0600` consent marker before mutation, accepts no paths or commands from the caller, binds to the reviewed target and revisions, suppresses hardware udev provisioning, and removes its rollback snapshot only after restoration is verified.
 
 ### Fixed
 - Managed installs now require a live coordinator socket and successful status round trip before reporting success, and prepared-update rollback preserves the previous coordinator unit and environment file.
 - The update and vehicle-configuration coordinators preserve their shared `/run/open-mmi` runtime directory across service restarts, preventing one coordinator restart from deleting the other coordinator's live Unix socket.
+- Managed installation writes an exact per-user systemd writable-path override so interrupted vcan qualification can be restored by the hardened coordinator service without granting write access to the rest of the service user's home directory.
 
 
 ## Unreleased — V1 update management

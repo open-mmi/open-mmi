@@ -18,6 +18,8 @@ UPDATE_INSTALLER_UNIT="open-mmi-update-installer.service"
 VEHICLE_CONFIG_COORDINATOR_GROUP="open-mmi-config"
 VEHICLE_CONFIG_COORDINATOR_UNIT="open-mmi-vehicle-config-coordinator.service"
 VEHICLE_CONFIG_COORDINATOR_ENV="/etc/open-mmi/vehicle-config-coordinator.env"
+VEHICLE_CONFIG_COORDINATOR_OVERRIDE_DIR="/etc/systemd/system/$VEHICLE_CONFIG_COORDINATOR_UNIT.d"
+VEHICLE_CONFIG_COORDINATOR_SANDBOX="$VEHICLE_CONFIG_COORDINATOR_OVERRIDE_DIR/10-write-paths.conf"
 VEHICLE_CONFIG_COORDINATOR_SOCKET="/run/open-mmi/vehicle-configuration-coordinator.sock"
 UPDATE_COORDINATOR_STATE_DIR="/var/lib/open-mmi"
 UPDATE_COORDINATOR_RUNTIME_DIR="/run/open-mmi"
@@ -597,6 +599,38 @@ values = {
     "OPEN_MMI_RUNTIME_DROPIN": sys.argv[4],
     "OPEN_MMI_STATUS_PATH": sys.argv[5],
 }
+
+write_vehicle_config_coordinator_sandbox() {
+    local runtime_directory
+    runtime_directory="$REAL_HOME/.config/systemd/user/canbusd.service.d"
+    install -d -m 0755 -o root -g root "$VEHICLE_CONFIG_COORDINATOR_OVERRIDE_DIR"
+    python3 - "$VEHICLE_CONFIG_COORDINATOR_SANDBOX" "$runtime_directory" <<'PY_VEHICLE_CONFIG_COORDINATOR_SANDBOX'
+import os
+import sys
+from pathlib import Path
+
+destination = Path(sys.argv[1])
+runtime_directory = sys.argv[2]
+path = Path(runtime_directory)
+if (
+    not path.is_absolute()
+    or ".." in path.parts
+    or any(ord(character) < 32 for character in runtime_directory)
+):
+    raise SystemExit("invalid coordinator writable path")
+quoted = runtime_directory.replace("\\", "\\\\").replace('"', '\\"')
+temporary = destination.with_name(f".{destination.name}.tmp")
+temporary.write_text(
+    "[Service]\n"
+    f'ReadWritePaths="-{quoted}"\n',
+    encoding="utf-8",
+)
+os.chmod(temporary, 0o644)
+os.replace(temporary, destination)
+PY_VEHICLE_CONFIG_COORDINATOR_SANDBOX
+    chown root:root "$VEHICLE_CONFIG_COORDINATOR_SANDBOX"
+    chmod 0644 "$VEHICLE_CONFIG_COORDINATOR_SANDBOX"
+}
 for key, value in values.items():
     if not value.startswith("/") or "\n" in value or "\r" in value or "\x00" in value:
         raise SystemExit(f"invalid coordinator path for {key}")
@@ -645,6 +679,7 @@ install_vehicle_config_coordinator() {
         authorization_added=true
     fi
     write_vehicle_config_coordinator_environment
+    write_vehicle_config_coordinator_sandbox
     install -d -m 0755 -o root -g root /etc/systemd/system
     install -m 0644 -o root -g root \
         "$REPO_ROOT/systemd/system/$VEHICLE_CONFIG_COORDINATOR_UNIT" \
@@ -815,6 +850,11 @@ cmd_install() {
     # and generates udev rules from the selected vehicle profile metadata.
     apply_profile_provisioning "seat_1p" "default"
     reload_profile_provisioning
+    # The generated runtime drop-in directory may not have existed when the
+    # coordinator first started. Restart once so its mount namespace receives
+    # the now-present exact writable-path exception used only for recovery.
+    systemctl restart "$VEHICLE_CONFIG_COORDINATOR_UNIT"
+    wait_for_vehicle_config_coordinator
     
     # Set permissions
     log_info "Configuring user permissions..."
@@ -1019,6 +1059,12 @@ cmd_deploy_prepared() {
     else
         : > "$rollback_root/system-files/vehicle-config-coordinator.env.absent"
     fi
+    if [ -e "$VEHICLE_CONFIG_COORDINATOR_SANDBOX" ]; then
+        cp -a -- "$VEHICLE_CONFIG_COORDINATOR_SANDBOX" \
+            "$rollback_root/system-files/vehicle-config-coordinator-sandbox.conf"
+    else
+        : > "$rollback_root/system-files/vehicle-config-coordinator-sandbox.conf.absent"
+    fi
     for unit in canbusd.service open-mmi-dashboard.service; do
         if [ -e "$REAL_HOME/.config/systemd/user/$unit" ]; then
             cp -a -- "$REAL_HOME/.config/systemd/user/$unit" "$rollback_root/user-units/$unit"
@@ -1061,6 +1107,13 @@ cmd_deploy_prepared() {
                 "$VEHICLE_CONFIG_COORDINATOR_ENV"
         elif [ -e "$rollback_root/system-files/vehicle-config-coordinator.env.absent" ]; then
             rm -f -- "$VEHICLE_CONFIG_COORDINATOR_ENV"
+        fi
+        if [ -e "$rollback_root/system-files/vehicle-config-coordinator-sandbox.conf" ]; then
+            install -d -m 0755 -o root -g root "$VEHICLE_CONFIG_COORDINATOR_OVERRIDE_DIR"
+            cp -a -- "$rollback_root/system-files/vehicle-config-coordinator-sandbox.conf" \
+                "$VEHICLE_CONFIG_COORDINATOR_SANDBOX"
+        elif [ -e "$rollback_root/system-files/vehicle-config-coordinator-sandbox.conf.absent" ]; then
+            rm -f -- "$VEHICLE_CONFIG_COORDINATOR_SANDBOX"
         fi
         for unit in canbusd.service open-mmi-dashboard.service; do
             if [ -e "$rollback_root/user-units/$unit" ]; then
@@ -1217,7 +1270,9 @@ cmd_uninstall() {
         "/etc/systemd/system/$UPDATE_COORDINATOR_UNIT" \
         "/etc/systemd/system/$UPDATE_INSTALLER_UNIT" \
         "/etc/systemd/system/$VEHICLE_CONFIG_COORDINATOR_UNIT" \
-        "$VEHICLE_CONFIG_COORDINATOR_ENV"
+        "$VEHICLE_CONFIG_COORDINATOR_ENV" \
+        "$VEHICLE_CONFIG_COORDINATOR_SANDBOX"
+    rmdir "$VEHICLE_CONFIG_COORDINATOR_OVERRIDE_DIR" >/dev/null 2>&1 || true
     systemctl daemon-reload
     rm -rf "$UPDATE_COORDINATOR_RUNTIME_DIR" "$UPDATE_COORDINATOR_STATE_DIR"
 

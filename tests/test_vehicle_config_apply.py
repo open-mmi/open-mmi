@@ -160,6 +160,19 @@ class VehicleConfigurationApplyOperationsTests(unittest.TestCase):
         with self.assertRaisesRegex(apply.ApplyOperationError, "changed"):
             apply.render_artifacts(changed, self.roots)
 
+    def test_vcan_qualification_suppresses_hardware_udev_provisioning(self) -> None:
+        target = json.loads(json.dumps(self.target))
+        target["runtime"]["buses"]["comfort"]["interface"] = "vcan0"
+        rendered = apply.render_artifacts(
+            target,
+            self.roots,
+            suppress_can_provisioning=True,
+        )
+        rules = rendered.udev_rules.decode("utf-8")
+        self.assertIn("vcan qualification", rules)
+        self.assertNotIn("type can bitrate", rules)
+        self.assertNotIn('KERNEL=="vcan0"', rules)
+
     def test_install_uses_atomic_fixed_destinations_and_expected_ownership(self) -> None:
         self.operations.install(self.target)
         descriptor = json.loads(self.paths.descriptor.read_text(encoding="utf-8"))
@@ -231,6 +244,16 @@ class VehicleConfigurationApplyOperationsTests(unittest.TestCase):
         with self.assertRaisesRegex(apply.ApplyOperationError, "checksum"):
             self.operations.load_snapshot(transaction_id)
 
+    def test_verified_snapshot_can_be_discarded(self) -> None:
+        self._write_trusted(self.paths.descriptor, "old descriptor\n")
+        self._write_trusted(self.paths.runtime_dropin, "old dropin\n")
+        self._write_trusted(self.paths.udev_rules, "old udev\n")
+        self.write_status()
+        snapshot = self.operations.snapshot("configuration-" + "9" * 32)
+        self.assertTrue(snapshot.directory.exists())
+        self.operations.discard_snapshot(snapshot)
+        self.assertFalse(snapshot.directory.exists())
+
     def test_snapshot_preserves_absent_files_and_restore_removes_new_files(self) -> None:
         self.write_status()
         snapshot = self.operations.snapshot("configuration-" + "b" * 32)
@@ -251,6 +274,37 @@ class VehicleConfigurationApplyOperationsTests(unittest.TestCase):
                 (("udevadm", "control", "--reload-rules"), False),
                 (("udevadm", "trigger", "--subsystem-match=net"), False),
                 (("systemctl", "--user", "restart", "canbusd.service"), True),
+            ],
+        )
+
+    def test_vcan_qualification_does_not_reload_or_trigger_udev(self) -> None:
+        operations = apply.RootApplyOperations(
+            roots=self.roots,
+            paths=self.paths,
+            service_user="open-mmi",
+            service_uid=os.getuid(),
+            service_gid=os.getgid(),
+            service_home=self.root / "home" / "user",
+            command_runner=lambda argv, as_user: self.commands.append((tuple(argv), as_user)),
+            suppress_can_provisioning=True,
+        )
+        operations.reload(self.target)
+        snapshot = apply.ApplySnapshot(
+            "configuration-" + "8" * 32,
+            self.paths.rollback_root / ("configuration-" + "8" * 32),
+            {
+                "descriptor": apply.FileSnapshot(False, b"", 0, 0, 0),
+                "runtime-dropin": apply.FileSnapshot(False, b"", 0, 0, 0),
+                "udev-rules": apply.FileSnapshot(False, b"", 0, 0, 0),
+            },
+            {},
+        )
+        operations.restore(snapshot)
+        self.assertEqual(
+            self.commands,
+            [
+                (("systemctl", "--user", "daemon-reload"), True),
+                (("systemctl", "--user", "daemon-reload"), True),
             ],
         )
 
@@ -339,6 +393,65 @@ class VehicleConfigurationApplyOperationsTests(unittest.TestCase):
         self.assertEqual(state["state"], "complete")
         descriptor = json.loads(self.paths.descriptor.read_text(encoding="utf-8"))
         self.assertEqual(descriptor["runtime"]["buses"]["comfort"]["interface"], "can1")
+
+    def test_concrete_vcan_qualification_applies_then_restores_and_discards_snapshot(self) -> None:
+        previous = json.loads(json.dumps(self.target))
+        target = json.loads(json.dumps(self.target))
+        target["runtime"]["buses"]["comfort"]["interface"] = "vcan0"
+        originals = {
+            self.paths.descriptor: "old descriptor\n",
+            self.paths.runtime_dropin: "old dropin\n",
+            self.paths.udev_rules: "old udev\n",
+        }
+        for path, content in originals.items():
+            self._write_trusted(path, content)
+        self._write_loaded_target(previous, 1.0)
+        restarts = 0
+
+        def runner(argv, as_user):
+            nonlocal restarts
+            command = tuple(argv)
+            self.commands.append((command, as_user))
+            if command == ("systemctl", "--user", "restart", "canbusd.service"):
+                restarts += 1
+                self._write_loaded_target(target if restarts == 1 else previous, 1.0 + restarts)
+
+        operations = apply.RootApplyOperations(
+            roots=self.roots,
+            paths=self.paths,
+            service_user="open-mmi",
+            service_uid=os.getuid(),
+            service_gid=os.getgid(),
+            service_home=self.root / "home" / "user",
+            command_runner=runner,
+            wall_clock=lambda: 1.5,
+            sleep=lambda delay: None,
+            suppress_can_provisioning=True,
+        )
+        preview = {
+            "expected_configuration_revision": "sha256:" + "c" * 64,
+            "target_configuration_revision": coordinator.vehicle_configuration.selection_revision(target),
+            "target": target,
+        }
+        with patch.object(coordinator, "coordinator_preview", return_value=preview):
+            state = coordinator.run_apply_transaction(
+                {},
+                reviewed_target=target,
+                expected_configuration_revision="sha256:" + "c" * 64,
+                confirm=True,
+                operations=operations,
+                state_path=self.root / "state.json",
+                configuration_lock=self.root / "configuration.lock",
+                lifecycle_lock=self.root / "lifecycle.lock",
+                update_lock=self.root / "update.lock",
+                qualification_restore_on_success=True,
+            )
+        self.assertEqual(state["stage"], "qualification-restored")
+        self.assertTrue(state["restoration_verified"])
+        for path, content in originals.items():
+            self.assertEqual(path.read_text(encoding="utf-8"), content)
+        self.assertEqual(list(self.paths.rollback_root.iterdir()), [])
+        self.assertFalse(any(command[0][0] == "udevadm" for command in self.commands))
 
     def test_concrete_operation_failure_restores_files_and_previous_runtime(self) -> None:
         previous = json.loads(json.dumps(self.target))

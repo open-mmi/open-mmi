@@ -121,6 +121,32 @@ The internal state machine can reopen a durable snapshot after an interrupted mu
 The socket still rejects `apply`, so these operations cannot yet be triggered by the CLI
 or browser.
 
+## Vcan qualification boundary
+
+The only executable mutation path at this stage is a root-only, local round-trip
+qualification command. It is deliberately separate from `open-mmi-config`, the
+dashboard server and the group-readable coordinator socket.
+
+The command consumes an exact root-owned `0600` one-shot marker, reads one bounded JSON
+preview from standard input, and accepts no caller-provided path, command, service name
+or generated content. The target must resolve to an up kernel `vcanN` interface under
+the virtual network-device tree. Additional user-service drop-ins that could override a
+coordinator-owned runtime environment key are rejected through directory-relative,
+no-follow reads before consent is consumed. The coordinator then regenerates the preview under all
+three transaction locks, including the reviewed profile and bindings content revisions.
+
+Qualification suppresses hardware CAN provisioning and does not reload or trigger the
+temporary udev rules. After the vcan target is loaded and verified, the previous files
+and runtime are restored and verified before the transaction locks are released. A
+successful round trip removes its snapshot and records
+`stage=qualification-restored`; a failed or interrupted transaction remains available
+to the root-owned recovery path.
+
+The system service sandbox is widened only to `/etc/open-mmi`, `/etc/udev/rules.d`, the
+coordinator state/runtime directories, and the generated per-user canbusd drop-in
+directory. It remains network-isolated and the public protocol continues to reject
+`apply` and `restore`.
+
 ## Apply sequence
 
 1. Acquire the configuration transaction lock.
