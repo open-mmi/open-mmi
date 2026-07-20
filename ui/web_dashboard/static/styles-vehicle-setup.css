@@ -15,7 +15,7 @@
   gap: .55rem;
 }
 
-.openmmi-vehicle-setup-selectors label {
+.openmmi-vehicle-setup-selector {
   display: grid;
   grid-template-columns: minmax(150px, .8fr) minmax(190px, 1.2fr);
   align-items: center;
@@ -26,7 +26,7 @@
   background: rgba(5, 21, 35, .42);
 }
 
-.openmmi-vehicle-setup-selectors label > span {
+.openmmi-vehicle-setup-selector > label {
   display: grid;
   gap: .18rem;
 }
@@ -38,6 +38,12 @@
   line-height: 1.35;
 }
 
+.openmmi-vehicle-setup-selection-control {
+  display: grid;
+  gap: .38rem;
+  min-width: 0;
+}
+
 .openmmi-vehicle-setup-selectors select {
   width: 100%;
   min-height: 42px;
@@ -47,6 +53,16 @@
   border-radius: 7px;
   color: inherit;
   background: rgba(4, 18, 30, .92);
+}
+
+.openmmi-vehicle-copy-template {
+  justify-self: start;
+  text-align: left;
+}
+
+.openmmi-vehicle-custom-location {
+  display: block;
+  padding-inline: .12rem;
 }
 
 .openmmi-vehicle-setup-actions {
@@ -195,7 +211,7 @@
     grid-template-columns: 1fr;
   }
 
-  .openmmi-vehicle-setup-selectors label {
+  .openmmi-vehicle-setup-selector {
     grid-template-columns: 1fr;
     gap: .4rem;
   }

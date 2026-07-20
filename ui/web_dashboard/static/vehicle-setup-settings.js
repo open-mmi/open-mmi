@@ -8,6 +8,7 @@
   const ENDPOINT = "/api/system/vehicle-setup";
   const PREVIEW_ENDPOINT = "/api/system/vehicle-setup/preview";
   const APPLY_ENDPOINT = "/api/system/vehicle-setup/apply";
+  const COPY_ENDPOINT = "/api/system/vehicle-custom/create";
   const COORDINATOR_ENDPOINT = "/api/system/vehicle-setup/coordinator";
   const ACTIVE_APPLY_STATES = new Set(["validating", "applying", "reloading", "verifying", "restoring"]);
   const TERMINAL_APPLY_STATES = new Set(["idle", "complete", "failed"]);
@@ -107,6 +108,9 @@
     let applyState = null;
     let applyPollTimer = null;
     let applyPollDeadline = 0;
+    let copyBusyKind = "";
+    let copyMessage = "";
+    let copyMessageKind = "";
 
     function activeSection() {
       return documentRef.querySelector("[data-openmmi-settings-section].active")
@@ -218,6 +222,99 @@
     function setApplyMessage(text, kind = "") {
       applyMessage = String(text || "");
       applyMessageKind = String(kind || "");
+    }
+
+    function setCopyMessage(text, kind = "") {
+      copyMessage = String(text || "");
+      copyMessageKind = String(kind || "");
+    }
+
+    function copyFeedbackTemplate() {
+      if (!copyMessage) return "";
+      const kind = copyMessageKind || "warning";
+      return `<div class="openmmi-config-message ${escapeHtml(kind)}" role="status" aria-live="polite" data-testid="vehicle-setup-copy-feedback">${escapeHtml(copyMessage)}</div>`;
+    }
+
+    function customCopyControl(kind, entry) {
+      if (entry?.source === "custom") {
+        return `<small class="openmmi-vehicle-custom-location">Stored in your user catalogue. Maintained files remain unchanged.</small>`;
+      }
+      if (entry?.source !== "maintained") return "";
+      const label = kind === "vehicle" ? "profile" : "bindings";
+      const busy = copyBusyKind === kind;
+      const disabled = loading || previewLoading || applyBusy || Boolean(copyBusyKind)
+        || entry.valid === false
+        || typeof entry.revision !== "string"
+        || !entry.revision;
+      return `<button type="button" class="openmmi-settings-link openmmi-vehicle-copy-template" data-openmmi-vehicle-setup-copy="${escapeHtml(kind)}" data-testid="vehicle-setup-copy-${escapeHtml(kind)}" ${disabled ? "disabled" : ""}>${busy ? "Creating custom copy…" : `Use maintained ${label} as template`}</button>`;
+    }
+
+    function suggestedCustomId(identifier) {
+      const base = `${String(identifier || "custom")}-custom`;
+      if (base.length <= 64 && IDENTIFIER_RE.test(base)) return base;
+      const shortened = `custom-${String(identifier || "item").slice(0, 56)}`;
+      return IDENTIFIER_RE.test(shortened) ? shortened : "custom-item";
+    }
+
+    async function copyTemplate(kind) {
+      const entry = selectedEntry(kind);
+      if (entry?.source !== "maintained" || entry.valid === false || typeof entry.revision !== "string") {
+        throw new Error("Select a valid maintained catalogue item to use as a template");
+      }
+      if (typeof windowRef.prompt !== "function") {
+        throw new Error("Custom catalogue naming is unavailable");
+      }
+      const label = kind === "vehicle" ? "profile" : "bindings";
+      const response = windowRef.prompt(
+        `Choose an id for the new custom ${label}. Use lowercase letters, numbers, hyphens or underscores.`,
+        suggestedCustomId(entry.id),
+      );
+      if (response === null) return null;
+      const customId = String(response || "").trim();
+      if (!IDENTIFIER_RE.test(customId)) {
+        setCopyMessage("Custom ids must start with a lowercase letter or number and use only lowercase letters, numbers, hyphens or underscores.", "error");
+        render();
+        return null;
+      }
+
+      copyBusyKind = kind;
+      setCopyMessage(`Creating custom ${label}…`, "warning");
+      clearPreview();
+      render();
+      try {
+        const result = await api.postJson(COPY_ENDPOINT, {
+          kind: kind === "vehicle" ? "profile" : "bindings",
+          id: customId,
+          template_source: "maintained",
+          template_id: entry.id,
+          template_revision: entry.revision,
+        }, { usePayloadError: true });
+        const previousDraft = draft ? { ...draft } : null;
+        snapshot = await api.getJson(ENDPOINT, { usePayloadError: true });
+        if (!previousDraft) seedDraft();
+        else draft = previousDraft;
+        const customKey = identityKey(result?.custom || { source: "custom", id: customId });
+        if (!entryFor(catalogue(kind), customKey)) {
+          throw new Error("The custom catalogue copy was created but could not be loaded");
+        }
+        draft[kind] = customKey;
+        draftDirty = draftDiffers();
+        setCopyMessage(`Custom ${label} ${customId} was created in your user catalogue. The maintained template was not changed.`, "success");
+        return result;
+      } catch (error) {
+        const code = String(error?.payload?.code || "");
+        if (code === "template-stale") {
+          setCopyMessage("The maintained template changed. Refresh Vehicle Setup and copy it again.", "warning");
+        } else if (code === "custom-exists") {
+          setCopyMessage("That custom id already exists. Choose a different id.", "warning");
+        } else {
+          setCopyMessage(error?.message || `Could not create the custom ${label}`, "error");
+        }
+        throw error;
+      } finally {
+        copyBusyKind = "";
+        render();
+      }
     }
 
     function applyFeedbackTemplate() {
@@ -595,7 +692,7 @@
       const bindings = selectedEntry("bindings");
       const bus = selectedBus();
       const changed = draftDiffers();
-      const canReview = Boolean(previewRequest()) && !loading && !previewLoading && !applyBusy;
+      const canReview = Boolean(previewRequest()) && !loading && !previewLoading && !applyBusy && !copyBusyKind;
       const activeReady = active.state === "ready";
       const statusText = preview
         ? changed
@@ -631,19 +728,26 @@
 
           <div class="openmmi-settings-subhead"><span>Draft selection</span><small>not applied</small></div>
           <div class="openmmi-vehicle-setup-selectors">
-            <label>
-              <span><strong>Vehicle profile</strong><small>${escapeHtml(validationNote(profile, "Choose a valid profile"))}</small></span>
-              <select data-openmmi-vehicle-setup-select="vehicle" data-testid="vehicle-setup-profile" ${loading || previewLoading || applyBusy ? "disabled" : ""}>
-                ${optionGroups(catalogue("vehicle"), draft.vehicle, activeVehicle)}
-              </select>
-            </label>
-            <label>
-              <span><strong>Bindings</strong><small>${escapeHtml(validationNote(bindings, "Choose valid bindings"))}</small></span>
-              <select data-openmmi-vehicle-setup-select="bindings" data-testid="vehicle-setup-bindings" ${loading || previewLoading || applyBusy ? "disabled" : ""}>
-                ${optionGroups(catalogue("bindings"), draft.bindings, activeBindings)}
-              </select>
-            </label>
+            <div class="openmmi-vehicle-setup-selector">
+              <label for="openMmiVehicleProfile"><strong>Vehicle profile</strong><small>${escapeHtml(validationNote(profile, "Choose a valid profile"))}</small></label>
+              <div class="openmmi-vehicle-setup-selection-control">
+                <select id="openMmiVehicleProfile" data-openmmi-vehicle-setup-select="vehicle" data-testid="vehicle-setup-profile" ${loading || previewLoading || applyBusy || copyBusyKind ? "disabled" : ""}>
+                  ${optionGroups(catalogue("vehicle"), draft.vehicle, activeVehicle)}
+                </select>
+                ${customCopyControl("vehicle", profile)}
+              </div>
+            </div>
+            <div class="openmmi-vehicle-setup-selector">
+              <label for="openMmiVehicleBindings"><strong>Bindings</strong><small>${escapeHtml(validationNote(bindings, "Choose valid bindings"))}</small></label>
+              <div class="openmmi-vehicle-setup-selection-control">
+                <select id="openMmiVehicleBindings" data-openmmi-vehicle-setup-select="bindings" data-testid="vehicle-setup-bindings" ${loading || previewLoading || applyBusy || copyBusyKind ? "disabled" : ""}>
+                  ${optionGroups(catalogue("bindings"), draft.bindings, activeBindings)}
+                </select>
+                ${customCopyControl("bindings", bindings)}
+              </div>
+            </div>
           </div>
+          ${copyFeedbackTemplate()}
 
           <div class="openmmi-settings-subhead"><span>CAN input</span><small>profile summary</small></div>
           <div class="openmmi-vehicle-setup-summary">
@@ -654,7 +758,7 @@
           </div>
 
           <div class="openmmi-config-actions openmmi-vehicle-setup-actions">
-            <button type="button" class="openmmi-settings-link" data-openmmi-vehicle-setup-refresh="true" data-testid="vehicle-setup-refresh" ${loading || previewLoading || applyBusy ? "disabled" : ""}>Refresh status</button>
+            <button type="button" class="openmmi-settings-link" data-openmmi-vehicle-setup-refresh="true" data-testid="vehicle-setup-refresh" ${loading || previewLoading || applyBusy || copyBusyKind ? "disabled" : ""}>Refresh status</button>
             <button type="button" class="openmmi-setting-pill" data-openmmi-vehicle-setup-review="true" data-testid="vehicle-setup-review" ${canReview ? "" : "disabled"}>${previewLoading ? "Checking setup…" : preview ? "Refresh review" : changed ? "Review changes" : "Review current setup"}</button>
           </div>
           <p class="openmmi-vehicle-setup-note">Applying requires this exact review and an explicit confirmation. The coordinator verifies the loaded runtime and restores the previous setup after a failed mutation.</p>
@@ -723,6 +827,11 @@
         refresh().catch(() => {});
         return;
       }
+      const copyButton = event.target?.closest?.("[data-openmmi-vehicle-setup-copy]");
+      if (copyButton && !copyButton.disabled) {
+        copyTemplate(copyButton.dataset.openmmiVehicleSetupCopy).catch(() => {});
+        return;
+      }
       const reviewButton = event.target?.closest?.("[data-openmmi-vehicle-setup-review]");
       if (reviewButton && !reviewButton.disabled) {
         reviewDraft().catch(() => {});
@@ -758,6 +867,7 @@
     return Object.freeze({
       activeSection,
       applyDraft,
+      copyTemplate,
       applyPayload,
       applyStateLabel,
       coordinatorApplyReady,
@@ -787,6 +897,7 @@
     ENDPOINT,
     PREVIEW_ENDPOINT,
     APPLY_ENDPOINT,
+    COPY_ENDPOINT,
     COORDINATOR_ENDPOINT,
     createController,
     escapeHtml,

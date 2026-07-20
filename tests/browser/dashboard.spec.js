@@ -413,6 +413,8 @@ async function loadDashboard(page, options = {}) {
     window.__openMmiVehicleSetupCoordinatorRequests = 0;
     window.__openMmiVehicleSetupApplyRequests = 0;
     window.__openMmiVehicleSetupApplyBodies = [];
+    window.__openMmiVehicleSetupCopyRequests = 0;
+    window.__openMmiVehicleSetupCopyBodies = [];
     window.__openMmiUpdateStatusRequests = 0;
     window.__openMmiUpdateCheckRequests = 0;
     window.__openMmiUpdateCoordinatorRequests = 0;
@@ -445,6 +447,31 @@ async function loadDashboard(page, options = {}) {
       if (url.includes("/api/system/diagnostics/runtime")) {
         window.__openMmiRuntimeDiagnosticsRequests += 1;
         return json(window.__openMmiRuntimeDiagnosticsFixture);
+      }
+      if (url.includes("/api/system/vehicle-custom/create")) {
+        const body = JSON.parse(init.body || "{}");
+        window.__openMmiVehicleSetupCopyRequests += 1;
+        window.__openMmiVehicleSetupCopyBodies.push(body);
+        const collection = body.kind === "profile" ? "profiles" : "bindings";
+        const template = window.__openMmiVehicleSetupFixture.catalogue[collection].find((entry) =>
+          entry.source === "maintained" && entry.id === body.template_id
+        );
+        const custom = {
+          ...template,
+          source: "custom",
+          id: body.id,
+          display_name: body.id.split(/[-_]/).map((part) => part ? part[0].toUpperCase() + part.slice(1) : "").join(" "),
+          revision: body.template_revision,
+        };
+        window.__openMmiVehicleSetupFixture.catalogue[collection].push(custom);
+        return json({
+          ok: true,
+          api_version: 1,
+          action: "copy-maintained-template",
+          kind: body.kind,
+          template: { source: "maintained", id: body.template_id, revision: body.template_revision },
+          custom: { source: "custom", id: body.id, revision: body.template_revision },
+        });
       }
       if (url.includes("/api/system/vehicle-setup/apply")) {
         const body = JSON.parse(init.body || "{}");
@@ -653,6 +680,12 @@ async function loadDashboard(page, options = {}) {
     },
     async vehicleSetupApplyBodies() {
       return page.evaluate(() => window.__openMmiVehicleSetupApplyBodies);
+    },
+    async vehicleSetupCopyRequests() {
+      return page.evaluate(() => window.__openMmiVehicleSetupCopyRequests);
+    },
+    async vehicleSetupCopyBodies() {
+      return page.evaluate(() => window.__openMmiVehicleSetupCopyBodies);
     },
     async setDashboardOnline(online) {
       await page.evaluate((value) => { window.__openMmiDashboardOnline = Boolean(value); }, online);
@@ -1202,6 +1235,42 @@ test("shared clock persists display preferences and survives page navigation", a
   await rebuilt.close();
 });
 
+
+test("vehicle setup copies maintained templates into the user catalogue", async ({ page }) => {
+  const failures = captureRuntimeFailures(page);
+  const dashboard = await loadDashboard(page);
+  await openSettings(page);
+
+  await page.locator('[data-openmmi-settings-section="vehicle-setup"]').click();
+  await expect(page.locator('[data-openmmi-vehicle-setup-ready="true"]')).toBeVisible();
+  await expect(page.getByTestId("vehicle-setup-copy-vehicle")).toBeEnabled();
+  await expect(page.getByTestId("vehicle-setup-copy-bindings")).toBeEnabled();
+  await expect(page.getByTestId("vehicle-setup-copy-vehicle")).toHaveText("Use maintained profile as template");
+
+  page.once("dialog", async (dialog) => {
+    expect(dialog.type()).toBe("prompt");
+    expect(dialog.defaultValue()).toBe("seat_1p-custom");
+    await dialog.accept("seat-template");
+  });
+  await page.getByTestId("vehicle-setup-copy-vehicle").click();
+
+  await expect(page.getByTestId("vehicle-setup-profile")).toHaveValue("custom:seat-template");
+  await expect(page.getByTestId("vehicle-setup-copy-feedback")).toContainText("created in your user catalogue");
+  await expect(page.getByTestId("vehicle-setup-copy-feedback")).toContainText("maintained template was not changed");
+  await expect(page.getByTestId("vehicle-setup-copy-vehicle")).toHaveCount(0);
+  await expect(page.getByText("Stored in your user catalogue. Maintained files remain unchanged.")).toBeVisible();
+
+  expect(await dashboard.vehicleSetupCopyRequests()).toBe(1);
+  expect(await dashboard.vehicleSetupCopyBodies()).toEqual([{
+    kind: "profile",
+    id: "seat-template",
+    template_source: "maintained",
+    template_id: "seat_1p",
+    template_revision: "sha256:profile",
+  }]);
+  expect(await dashboard.vehicleSetupApplyRequests()).toBe(0);
+  await expectNoRuntimeFailures(failures);
+});
 
 test("vehicle setup reviews and applies an exact confirmed draft", async ({ page }) => {
   const failures = captureRuntimeFailures(page);

@@ -1,6 +1,6 @@
 # V1 vehicle setup management
 
-Status: design proposal
+Status: implementation in progress — core apply and maintained-template custom copy complete
 
 This design defines a local, explicit setup path for selecting an Open MMI vehicle
 profile, bindings and SocketCAN input without editing systemd or udev files by hand.

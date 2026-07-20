@@ -119,6 +119,11 @@ Store provenance in a sidecar file which the daemon does not parse:
 
 The sidecar supports later comparison. It does not authorize automatic merging.
 
+The implemented copy route stores these private sidecars under
+`~/.config/open-mmi/.open-mmi-provenance/<kind>/<id>.json`. The daemon never scans this
+hidden tree. Profile data remains under `vehicles/<id>/config.json`; bindings data
+remains under `bindings/<id>.json`. Maintained files are never opened for writing.
+
 ## Draft loading and saving
 
 Loading returns:

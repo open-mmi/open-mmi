@@ -17,7 +17,7 @@ from urllib.parse import urlparse
 
 try:
     from ui import launcher, update_coordinator, update_readiness
-    from ui import vehicle_config_coordinator, vehicle_setup
+    from ui import vehicle_catalogue, vehicle_config_coordinator, vehicle_setup
     from ui.configuration import (
         ConfigurationError,
         client_is_loopback,
@@ -33,7 +33,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover - direct script fallback
         raise
     sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[2]))
     from ui import launcher, update_coordinator, update_readiness
-    from ui import vehicle_config_coordinator, vehicle_setup
+    from ui import vehicle_catalogue, vehicle_config_coordinator, vehicle_setup
     from ui.configuration import (
         ConfigurationError,
         client_is_loopback,
@@ -233,6 +233,7 @@ def _handle_post(handler: Any, path: str) -> bool:
         "/api/system/dashboard/restart",
         "/api/system/vehicle-setup/preview",
         "/api/system/vehicle-setup/apply",
+        "/api/system/vehicle-custom/create",
         "/api/system/update-check",
         "/api/system/update-prepare",
         "/api/system/update-install",
@@ -252,6 +253,8 @@ def _handle_post(handler: Any, path: str) -> bool:
             result = vehicle_config_coordinator.client_preview(_json_body(handler))
         elif path == "/api/system/vehicle-setup/apply":
             result = vehicle_config_coordinator.client_apply(_json_body(handler))
+        elif path == "/api/system/vehicle-custom/create":
+            result = vehicle_catalogue.copy_maintained_template(_json_body(handler))
         elif path == "/api/system/update-check":
             payload = _json_body(handler)
             if payload not in ({}, {"confirm": True}):
@@ -276,6 +279,11 @@ def _handle_post(handler: Any, path: str) -> bool:
         else:
             result = routes[path](_json_body(handler))
         handler._send_json(result)
+    except vehicle_catalogue.VehicleCatalogueConflictError as exc:
+        handler._send_json(
+            {"ok": False, "code": exc.code, "error": str(exc)},
+            409,
+        )
     except vehicle_config_coordinator.CoordinatorConflictError as exc:
         handler._send_json(
             {"ok": False, "code": exc.code, "error": str(exc)},
@@ -300,6 +308,7 @@ def _handle_post(handler: Any, path: str) -> bool:
         update_coordinator.CoordinatorError,
         vehicle_config_coordinator.CoordinatorError,
         update_status.UpdateStatusError,
+        vehicle_catalogue.VehicleCatalogueError,
         vehicle_setup.VehicleSetupError,
     ) as exc:
         handler._send_json({"ok": False, "error": str(exc)}, 400)

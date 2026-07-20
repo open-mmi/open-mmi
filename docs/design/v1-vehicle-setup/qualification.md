@@ -55,12 +55,12 @@ and adapter hotplug.
 
 ### Slice 4: custom copies
 
-- create from installed template;
-- provenance sidecars;
-- safe load/save with revision tokens;
-- maintained/custom activation switching;
-- explicit return-to-maintained flow; and
-- last-known-good user revision.
+- [x] create from an installed, revision-bound maintained template;
+- [x] private provenance sidecars outside the daemon catalogue;
+- [ ] safe load/save with revision tokens;
+- [ ] qualify maintained/custom activation switching through the existing reviewed apply flow;
+- [ ] qualify explicit return-to-maintained through the existing source-labelled selector; and
+- [ ] last-known-good user revision for editor saves.
 
 Gate: sacred custom files survive update, apply, switching and failed activation.
 

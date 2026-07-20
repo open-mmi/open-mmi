@@ -25,12 +25,12 @@ function payload() {
       issues: [],
       profiles: [
         {
-          source: "maintained", id: "seat_1p", display_name: "Seat 1P", valid: true,
+          source: "maintained", id: "seat_1p", display_name: "Seat 1P", valid: true, revision: "sha256:profile",
           default_bus: "comfort", buses: [{ name: "comfort", interface: "can0", bitrate: 100000 }],
           validation: { valid: true, errors: [], warnings: [] },
         },
         {
-          source: "custom", id: "my-seat", display_name: "My <Seat>", valid: true,
+          source: "custom", id: "my-seat", display_name: "My <Seat>", valid: true, revision: "sha256:custom-profile",
           default_bus: "comfort", buses: [{ name: "comfort", interface: "can1", bitrate: 100000 }],
           validation: { valid: true, errors: [], warnings: [] },
         },
@@ -41,12 +41,12 @@ function payload() {
       ],
       bindings: [
         {
-          source: "maintained", id: "default", display_name: "Default", valid: true,
+          source: "maintained", id: "default", display_name: "Default", valid: true, revision: "sha256:bindings",
           binding_count: 12,
           validation: { valid: true, errors: [], warnings: [{ code: "legacy-action-schema" }] },
         },
         {
-          source: "custom", id: "my-controls", display_name: "My controls", valid: true,
+          source: "custom", id: "my-controls", display_name: "My controls", valid: true, revision: "sha256:custom-bindings",
           binding_count: 11,
           validation: { valid: true, errors: [], warnings: [] },
         },
@@ -152,6 +152,8 @@ function fixture(options = {}) {
   const listeners = {};
   const calls = [];
   const confirmations = [];
+  const prompts = [];
+  const statusPayload = options.status || payload();
   const timers = [];
   const coordinatorResponses = Array.isArray(options.coordinators)
     ? [...options.coordinators]
@@ -173,6 +175,12 @@ function fixture(options = {}) {
       confirmations.push(message);
       return options.confirm !== false;
     },
+    prompt(message, defaultValue) {
+      prompts.push([message, defaultValue]);
+      return Object.prototype.hasOwnProperty.call(options, "promptResult")
+        ? options.promptResult
+        : defaultValue;
+    },
     requestAnimationFrame(callback) { callback(); },
     setTimeout(callback) {
       timers.push(callback);
@@ -184,7 +192,7 @@ function fixture(options = {}) {
     async getJson(path) {
       calls.push(["GET", path]);
       if (options.error) throw new Error(options.error);
-      if (path === vehicleSetup.ENDPOINT) return options.status || payload();
+      if (path === vehicleSetup.ENDPOINT) return statusPayload;
       if (path === vehicleSetup.COORDINATOR_ENDPOINT) {
         if (options.coordinatorError) throw new Error(options.coordinatorError);
         if (coordinatorResponses?.length) return coordinatorResponses.shift();
@@ -202,10 +210,34 @@ function fixture(options = {}) {
         if (options.applyError) throw options.applyError;
         return options.apply || applyResult();
       }
+      if (path === vehicleSetup.COPY_ENDPOINT) {
+        if (options.copyError) throw options.copyError;
+        const kind = body.kind === "profile" ? "profiles" : "bindings";
+        const custom = {
+          source: "custom",
+          id: body.id,
+          display_name: body.id.replaceAll(/[-_]/g, " "),
+          valid: true,
+          revision: body.template_revision,
+          validation: { valid: true, errors: [], warnings: [] },
+        };
+        if (kind === "profiles") {
+          custom.default_bus = "comfort";
+          custom.buses = [{ name: "comfort", interface: "can0", bitrate: 100000 }];
+        } else {
+          custom.binding_count = 12;
+        }
+        statusPayload.catalogue[kind].push(custom);
+        return options.copy || {
+          ok: true, api_version: 1, action: "copy-maintained-template",
+          kind: body.kind, template: { source: "maintained", id: body.template_id, revision: body.template_revision },
+          custom: { source: "custom", id: body.id, revision: body.template_revision },
+        };
+      }
       throw new Error("Unexpected vehicle setup POST");
     },
   };
-  return { active, api, calls, confirmations, document, listeners, panel, timers, window };
+  return { active, api, calls, confirmations, document, listeners, panel, prompts, timers, window };
 }
 
 test("vehicle setup renders maintained and custom draft choices before review", async () => {
@@ -231,6 +263,50 @@ test("vehicle setup renders maintained and custom draft choices before review", 
     ["GET", "/api/system/vehicle-setup/coordinator"],
   ]);
   assert.equal(state.calls.some((call) => call[0] === "POST"), false);
+});
+
+test("maintained items create revision-bound custom copies in the user catalogue", async () => {
+  const state = fixture({ promptResult: "seat-track" });
+  const controller = vehicleSetup.createController(state);
+  await controller.refresh();
+
+  let html = controller.template();
+  assert.match(html, /Use maintained profile as template/);
+  assert.match(html, /Use maintained bindings as template/);
+  assert.doesNotMatch(html, /Edit maintained|Delete maintained/);
+
+  const result = await controller.copyTemplate("vehicle");
+  assert.equal(result.custom.id, "seat-track");
+  assert.deepEqual(state.prompts, [[
+    "Choose an id for the new custom profile. Use lowercase letters, numbers, hyphens or underscores.",
+    "seat_1p-custom",
+  ]]);
+  assert.deepEqual(state.calls.find((call) => call[0] === "POST"), [
+    "POST",
+    "/api/system/vehicle-custom/create",
+    {
+      kind: "profile",
+      id: "seat-track",
+      template_source: "maintained",
+      template_id: "seat_1p",
+      template_revision: "sha256:profile",
+    },
+  ]);
+  assert.equal(controller.draft().vehicle, "custom:seat-track");
+  assert.equal(controller.draftDiffers(), true);
+  html = controller.template();
+  assert.match(html, /Stored in your user catalogue/);
+  assert.match(html, /maintained template was not changed/);
+  assert.doesNotMatch(html, /data-testid="vehicle-setup-copy-vehicle"/);
+});
+
+test("invalid custom ids are rejected before a copy request", async () => {
+  const state = fixture({ promptResult: "../seat" });
+  const controller = vehicleSetup.createController(state);
+  await controller.refresh();
+  assert.equal(await controller.copyTemplate("vehicle"), null);
+  assert.equal(state.calls.some((call) => call[0] === "POST"), false);
+  assert.match(controller.template(), /Custom ids must start/);
 });
 
 test("the current setup can be reviewed when no alternative catalogue entry exists", async () => {

@@ -309,6 +309,90 @@ class SystemConfigurationTests(unittest.TestCase):
         apply.assert_not_called()
         self.assertEqual(handler.sent[1], 403)
 
+    def test_vehicle_setup_custom_copy_route_is_local_exact_and_maps_conflicts(self):
+        request = {
+            "kind": "profile",
+            "id": "my-seat",
+            "template_source": "maintained",
+            "template_id": "seat_1p",
+            "template_revision": "sha256:" + "a" * 64,
+        }
+        body = json.dumps(request).encode("utf-8")
+
+        class Handler:
+            client_address = ("127.0.0.1", 1234)
+            headers = {
+                "Host": "127.0.0.1:8765",
+                "Origin": "http://127.0.0.1:8765",
+                "Content-Type": "application/json",
+                "Content-Length": str(len(body)),
+            }
+
+            def __init__(self):
+                self.sent = None
+                self.rfile = io.BytesIO(body)
+
+            def _send_json(self, payload, status=200):
+                self.sent = (payload, status)
+
+        result = {
+            "ok": True,
+            "api_version": 1,
+            "action": "copy-maintained-template",
+            "kind": "profile",
+            "custom": {
+                "source": "custom",
+                "id": "my-seat",
+                "revision": "sha256:" + "a" * 64,
+            },
+        }
+        handler = Handler()
+        with patch.object(
+            system_settings.vehicle_catalogue,
+            "copy_maintained_template",
+            return_value=result,
+        ) as copy:
+            self.assertTrue(
+                system_settings._handle_post(
+                    handler,
+                    "/api/system/vehicle-custom/create",
+                )
+            )
+        copy.assert_called_once_with(request)
+        self.assertEqual(handler.sent, (result, 200))
+
+        handler = Handler()
+        handler.client_address = ("192.0.2.10", 1234)
+        with patch.object(
+            system_settings.vehicle_catalogue,
+            "copy_maintained_template",
+        ) as copy:
+            system_settings._handle_post(
+                handler,
+                "/api/system/vehicle-custom/create",
+            )
+        copy.assert_not_called()
+        self.assertEqual(handler.sent[1], 403)
+
+        handler = Handler()
+        with patch.object(
+            system_settings.vehicle_catalogue,
+            "copy_maintained_template",
+            side_effect=system_settings.vehicle_catalogue.VehicleCatalogueConflictError(
+                "Maintained template changed",
+                "template-stale",
+            ),
+        ):
+            system_settings._handle_post(
+                handler,
+                "/api/system/vehicle-custom/create",
+            )
+        self.assertEqual(handler.sent, ({
+            "ok": False,
+            "code": "template-stale",
+            "error": "Maintained template changed",
+        }, 409))
+
     def test_vehicle_setup_apply_route_maps_conflict_failure_and_unavailable(self):
         body = b'{"confirm":true}'
 

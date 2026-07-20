@@ -349,16 +349,37 @@ result handling are connected in the frontend.
 
 ## Custom-file routes
 
-Custom operations remain fixed routes rather than path-shaped routes:
+Custom operations remain fixed routes rather than path-shaped routes. The first route is
+implemented; load and save remain later custom-editor slices:
 
 ```text
 POST /api/system/vehicle-custom/create
-POST /api/system/vehicle-custom/load
-POST /api/system/vehicle-custom/save
+POST /api/system/vehicle-custom/load    # planned
+POST /api/system/vehicle-custom/save    # planned
 ```
 
-Each payload names `kind`, `id`, `template_source` and `template_id` where applicable.
-Only `profile` and `bindings` are accepted kinds.
+Creation accepts only this exact small body:
 
-Draft content requires a separate bounded request limit large enough for existing
-profiles. Existing small configuration routes should retain their current lower limit.
+```json
+{
+  "kind": "profile",
+  "id": "my-seat",
+  "template_source": "maintained",
+  "template_id": "seat_1p",
+  "template_revision": "sha256:…"
+}
+```
+
+Only `profile` and `bindings` are accepted kinds. `template_source` must be
+`maintained`; the server resolves the installed template under the fixed maintained
+root, verifies the exact content revision, parses and validates it, and creates a new
+private file under the fixed custom root. Existing custom identifiers are conflicts and
+are never replaced. Creation does not activate the new item.
+
+The browser supplies no path and no document content. Maintained content has no save,
+rename or delete route. The route also writes a private provenance sidecar beneath
+`~/.config/open-mmi/.open-mmi-provenance/`.
+
+Draft load/save content will use a separate bounded request limit large enough for
+existing profiles. Existing small configuration routes retain their current lower
+limit.

@@ -11,6 +11,8 @@
 - Root-only one-shot `qualify-vcan` round-trip command that accepts a previously reviewed preview on standard input, requires an up kernel `vcan` device plus an exact root-owned consent marker, verifies the temporary activation, restores the previous setup under the same transaction locks, and qualified the transaction before the fixed public apply protocol was enabled.
 - Fixed coordinator apply action that accepts only the exact normalized reviewed target, active and target revision tokens, and `confirm: true`; rebuilds the request and plan under all transaction locks; and returns machine-readable stale/busy or restored-failure results. Preview remains read-only and Settings enables Apply only from separate coordinator capability state.
 - Root-only, one-shot UI qualification commands that arm either a pre-mutation stale-review response or a post-restart verification failure. The restored-failure mode exercises the real snapshot restoration and verification path while reapplying only the already-active ready setup.
+- Local same-origin custom-copy creation for profiles and bindings. A maintained catalogue item is accepted only as an exact revision-bound template, the new file is written privately beneath the service user's custom catalogue, and the UI immediately selects the new custom copy without activating it.
+- Private custom-copy provenance sidecars recording the template identity, template revision, Open MMI build identity, display name and creation time without exposing those files to `canbusd`.
 
 ### Security
 - Privileged rendering reopens catalogue files through descriptor-relative no-follow traversal, verifies maintained/custom ownership and non-writable modes, and rechecks the reviewed content revisions immediately before installation.
@@ -18,6 +20,7 @@
 - The qualification command consumes its `0600` consent marker before mutation, accepts no paths or commands from the caller, binds to the reviewed target and revisions, suppresses hardware udev provisioning, and removes its rollback snapshot only after restoration is verified.
 - UI failure qualification is armed only by root through a fixed-path `0600` marker with one of two exact contents. The coordinator consumes it inside all transaction locks, requires a no-change preview of the current ready setup, and never exposes a browser-selectable qualification mode or an unverified-restoration injection.
 - Apply rejects duplicate/non-finite HTTP JSON, additional runtime drop-ins that override coordinator-owned keys, existing selected network interfaces that are not kernel SocketCAN devices, absent non-`canN` interface names, and all `vcanN` targets. Virtual CAN remains available only through the root-only one-shot qualification boundary.
+- Custom-copy requests accept no paths or content, require `template_source: maintained`, bind to the maintained file revision, reject existing destinations, validate the source document, reject unsafe user catalogue directories and write new content and provenance as private no-overwrite files. No route edits or deletes maintained content.
 
 ### Fixed
 - Managed installs now require a live coordinator socket and successful status round trip before reporting success, and prepared-update rollback preserves the previous coordinator unit and environment file.
