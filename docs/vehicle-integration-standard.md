@@ -4,6 +4,18 @@ This standard keeps vehicle integrations interchangeable, reviewable and reusabl
 A vehicle profile describes how manufacturer-specific CAN signals map into Open MMI's
 canonical vocabulary. It does not describe which Python function should run.
 
+> **The registry is a continuity checkpoint, not a walled garden.**
+
+Anyone may research a CAN signal, share provisional findings and propose a new concept.
+The checkpoint applies when a signal enters a maintained profile: reuse an existing shared
+human meaning when one fits, or add a genuinely new universal descriptor in the same pull
+request as the mapping. No separate permission request is required.
+
+Open MMI is where hexadecimal vehicle data meets human form. Canonical names must be
+clearer than the CAN data they replace, not a second layer of obscure machine terminology.
+See [`vehicle-contribution-workflow.md`](vehicle-contribution-workflow.md) for the complete
+discovery, reuse and proposal workflow.
+
 ## The three layers
 
 ```text
@@ -112,15 +124,23 @@ contract.
 
 Presence transitions do not carry payloads and therefore may emit only no-payload events.
 
-## Universal before vendor-specific
+## Reuse or propose; do not invent a private dialect
 
-Before proposing a new event, an integration author must check whether an existing event
-already expresses the same intent. Differences in CAN ID, byte, value, button label or
-vehicle terminology do not justify a new event.
+Before proposing a new event, an integration author checks whether an existing event already
+expresses the same intent. Differences in CAN ID, byte, value, button label or vehicle
+terminology do not justify a second name.
+
+When no existing event accurately describes the confirmed human concept, the contributor
+may add a new universal entry to the registry in the same pull request as the profile. The
+review checks clarity, event-versus-status classification, payload semantics and reuse across
+manufacturers. It is not an approval gate for CAN research.
+
+Raw captures, unknown bytes, manufacturer abbreviations and provisional names remain valid
+in discovery notes. Ad hoc unregistered names are rejected only at the maintained profile
+and binding boundary, where continuity becomes part of Open MMI's public interface.
 
 A vendor extension may be proposed only when the underlying capability is genuinely not
-universal. It still requires a registry entry, documentation and tests. Ad hoc unregistered
-names are rejected.
+universal. It still requires a registry entry, documentation and tests.
 
 ## Review checklist for a new profile
 
@@ -145,13 +165,27 @@ Inspect the complete event registry:
 open-mmi-config vehicle-setup events
 ```
 
-Inspect one event:
+Search by ordinary human wording:
+
+```bash
+open-mmi-config vehicle-setup events --search mute
+open-mmi-config vehicle-setup events --search "audio volume"
+```
+
+Check whether to reuse or propose an identifier:
+
+```bash
+open-mmi-config vehicle-setup events --check mute_toggle
+open-mmi-config vehicle-setup events --check pdc_signal
+```
+
+Inspect one exact event:
 
 ```bash
 open-mmi-config vehicle-setup events mute_toggle
 ```
 
-Regenerate the event reference after an approved registry change:
+Regenerate the event reference after a registry change:
 
 ```bash
 python tools/generate_vehicle_event_docs.py

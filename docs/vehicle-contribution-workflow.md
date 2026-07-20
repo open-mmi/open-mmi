@@ -1,0 +1,243 @@
+# Vehicle signal contribution workflow
+
+> **The registry is a continuity checkpoint, not a walled garden.**
+
+Open MMI exists to turn vehicle-specific hexadecimal data into shared human meaning.
+The project does not require every contributor to ask permission before researching a CAN
+signal, and it does not reserve new vehicle concepts for maintainers. Anyone may discover,
+document, test and propose support for a signal.
+
+The registry checkpoint exists for one reason: two vehicles that express the same human
+concept should use the same Open MMI name. Without that checkpoint, the project would
+slowly develop hundreds of private dialects for common controls and states.
+
+```text
+Vehicle-specific hexadecimal data
+        ↓ profile decoding
+Shared human-readable meaning
+        ↓ bindings and status consumers
+Application behaviour
+```
+
+Open MMI is where hex meets human form. It must not become a place where hex is merely
+renamed into another obscure machine vocabulary.
+
+## What remains open during discovery
+
+Raw CAN research is intentionally unrestricted. A contributor may record and share:
+
+- CAN identifiers, bytes, masks and observed values;
+- timestamps and the physical actions performed;
+- manufacturer terminology such as PDC, BCM or MFSW;
+- provisional names and uncertain interpretations;
+- captures, replay files, spreadsheets and decoder notes; and
+- signals that are not yet understood well enough to become a maintained mapping.
+
+An observation does not need a finished canonical name before it can be discussed. Issue
+and capture submissions may use labels such as `suspected PDC byte` or `unknown 0x431
+change` while investigation continues. Uncertainty must be stated clearly rather than
+hidden behind a confident-looking name.
+
+The canonical requirement begins when a signal is proposed for a maintained or
+distributable profile.
+
+## The maintained-profile checkpoint
+
+Before merge, each decoded signal must answer three questions:
+
+1. **What does this mean to a person?**
+2. **Is it a momentary event or persistent vehicle status?**
+3. **Does the shared registry already describe that meaning?**
+
+If an existing descriptor fits, reuse it and change only the vehicle-specific CAN mapping.
+If none fits, propose a new universal descriptor in the same pull request as the profile.
+No separate permission request is required.
+
+The pull request is the review point where contributors and maintainers confirm that the
+name is understandable, reusable and technically complete.
+
+## Reuse: different CAN data, same human meaning
+
+Seat may encode a steering-wheel mute request like this:
+
+```json
+{
+  "id": "0x5C1",
+  "byte": 0,
+  "value": 43,
+  "event": "mute_toggle"
+}
+```
+
+Another vehicle may encode the same request like this:
+
+```json
+{
+  "id": "0x431",
+  "byte": 2,
+  "value": 17,
+  "event": "mute_toggle"
+}
+```
+
+Only the CAN ID, byte and value change. The human meaning stays `mute_toggle`.
+A contributor should be able to find the Seat example, recognise the same physical intent,
+and substitute the CAN details discovered in their own vehicle.
+
+The binding remains independent of both vehicles:
+
+```json
+{
+  "mute_toggle": {
+    "module": "audio",
+    "func": "mute_toggle"
+  }
+}
+```
+
+The profile says what happened in human terms. The binding says what Open MMI should do.
+
+## Propose: genuinely new human meaning
+
+A name such as `PDC_signal` is useful as a discovery note, but it is not yet a complete
+canonical contract. It preserves an abbreviation and does not reveal whether the frame
+represents a button press, a distance, an enabled state or a warning.
+
+Further evidence might show that the signal is:
+
+- an event such as `parking_assist_toggle`;
+- a persistent distance such as an illustrative `parking.distance.rear_left` value;
+- a warning state such as an illustrative `parking.proximity.rear.status`; or
+- several separate signals rather than one concept.
+
+Status path examples in this document are illustrative until the canonical status registry
+is introduced. The naming test is still the same: an English-speaking reader should
+understand the human concept without knowing the source CAN ID or manufacturer acronym.
+
+A genuinely new event may be added to `canbusd/data/vehicle-events.v1.json` in the same
+pull request as its first vehicle mapping. That pull request should include:
+
+- a clear title and plain-English description;
+- event versus persistent-status classification;
+- payload type, range and unit where applicable;
+- delivery behaviour such as edge, repeatable or value;
+- an explanation of why no existing descriptor fits;
+- the vehicle-specific CAN rule;
+- tests and regenerated documentation; and
+- real-vehicle or replay evidence, with uncertainties stated.
+
+## Human-readable naming test
+
+A canonical name should be understandable without knowledge of:
+
+- the vehicle manufacturer or model;
+- the original CAN identifier, byte or value;
+- an ECU/module abbreviation;
+- a Python module or function;
+- the action chosen by one user; or
+- the reverse-engineering history of the signal.
+
+Good event names express universal intent:
+
+```text
+mute_toggle
+volume_up
+next_track
+parking_assist_toggle
+```
+
+Good status names should express a human-readable subject and state. A discovery label such
+as `door.status.right` already communicates more human meaning than a CAN ID; the future
+status registry will choose one consistent grammar for position, state, type and units.
+Until then, names should be as clear as concepts such as:
+
+```text
+door.front_right.status
+parking.distance.rear_left
+climate.temperature.driver
+vehicle.speed
+```
+
+Names that remain machine- or vendor-specific are not ready for the maintained boundary:
+
+```text
+PDC_signal
+vauxhall_door_byte_3
+seat_5c1_value_43
+BCM_status_2
+sound_module_off
+```
+
+This is a naming and continuity review, not a judgement on the value of the discovery.
+
+## Event or status?
+
+Use an **event** for a momentary request or transition that consumers react to:
+
+```text
+mute_toggle
+volume_up
+parking_assist_toggle
+```
+
+Use **status** for a value that remains meaningful between frames and can be read by a
+dashboard or another consumer:
+
+```text
+vehicle speed
+door position
+parking distance
+outside temperature
+```
+
+Do not force a persistent value into an event merely because the first proof of concept used
+a button/action pipeline. Likewise, do not model a one-shot button request as persistent
+state unless there is a clear state contract.
+
+## Search, check, then map
+
+Search the registry using ordinary human terms:
+
+```bash
+open-mmi-config vehicle-setup events --search mute
+open-mmi-config vehicle-setup events --search "audio volume"
+```
+
+Check a proposed identifier:
+
+```bash
+open-mmi-config vehicle-setup events --check mute_toggle
+open-mmi-config vehicle-setup events --check pdc_signal
+```
+
+The check command does not grant or deny permission. It explains whether to reuse an
+existing event, migrate a deprecated alias, improve an invalid identifier, or propose a new
+universal concept.
+
+Inspect an exact canonical event:
+
+```bash
+open-mmi-config vehicle-setup events mute_toggle
+```
+
+## Contribution sequence
+
+```text
+Capture raw CAN evidence
+        ↓
+Record provisional observations openly
+        ↓
+Confirm the human meaning
+        ↓
+Classify event versus persistent status
+        ↓
+Search the canonical vocabulary
+        ↓
+Reuse an existing descriptor
+        or propose a new universal descriptor
+        ↓
+Submit mapping, registry change if needed, tests and evidence together
+```
+
+The registry protects continuity across vehicles. It does not restrict who may expand the
+project.

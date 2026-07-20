@@ -6,6 +6,41 @@ Open vehicle MMI integration framework for Linux.
 
 > Where hex meets human form.
 
+## One shared human language for every vehicle
+
+Open MMI's canonical registries are **continuity checkpoints, not a walled garden**.
+Anyone may investigate CAN data, share provisional findings and propose support for a new
+vehicle concept. Before a signal enters a maintained profile, it is translated into a
+human-readable meaning shared by every vehicle.
+
+Different cars may use different CAN IDs, bytes and values for the same control:
+
+```json
+{
+  "id": "0x5C1",
+  "byte": 0,
+  "value": 43,
+  "event": "mute_toggle"
+}
+```
+
+```json
+{
+  "id": "0x431",
+  "byte": 2,
+  "value": 17,
+  "event": "mute_toggle"
+}
+```
+
+Only the hexadecimal mapping changes. The human meaning remains `mute_toggle`.
+When no existing descriptor fits a genuinely new concept, the contributor adds a universal
+registry entry in the same pull request as the vehicle mapping—no separate permission gate.
+
+Read the [vehicle signal contribution workflow](docs/vehicle-contribution-workflow.md) and
+[vehicle integration standard](docs/vehicle-integration-standard.md) before promoting raw
+CAN observations into a maintained profile.
+
 ---
 
 ## Current status

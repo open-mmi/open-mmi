@@ -359,3 +359,166 @@ def event_definition(name: str) -> dict[str, Any]:
         "requested_status": status,
         **copy.deepcopy(selected["events"][canonical]),
     }
+
+
+def _search_tokens(query: Any) -> tuple[str, list[str]]:
+    if not isinstance(query, str):
+        raise VehicleEventRegistryError("event search query must be text")
+    normalized = query.strip().lower()
+    if (
+        not normalized
+        or len(normalized.encode("utf-8")) > 256
+        or any(ord(character) < 32 for character in normalized)
+    ):
+        raise VehicleEventRegistryError("event search query must be bounded text")
+    tokens = re.findall(r"[a-z0-9]+", normalized)
+    if not tokens:
+        raise VehicleEventRegistryError("event search query has no searchable terms")
+    return normalized, tokens
+
+
+def search_events(
+    query: Any,
+    *,
+    limit: int = 20,
+    registry: Optional[Mapping[str, Any]] = None,
+) -> dict[str, Any]:
+    """Search canonical events by human wording, identifier, category or alias."""
+
+    normalized_query, tokens = _search_tokens(query)
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 100:
+        raise VehicleEventRegistryError("event search limit must be between 1 and 100")
+    selected = (
+        normalize_registry(registry)
+        if registry is not None
+        else _default_registry()
+    )
+    aliases_by_event: dict[str, list[str]] = {}
+    for alias, definition in selected["aliases"].items():
+        aliases_by_event.setdefault(definition["event"], []).append(alias)
+
+    matches: list[tuple[int, str, dict[str, Any]]] = []
+    for event, definition in selected["events"].items():
+        aliases = sorted(aliases_by_event.get(event, []))
+        fields = {
+            "event": event.lower(),
+            "title": definition["title"].lower(),
+            "category": definition["category"].lower(),
+            "description": definition["description"].lower(),
+            "aliases": " ".join(aliases).lower(),
+        }
+        combined = " ".join(fields.values()).replace("_", " ").replace(":", " ")
+        if not all(token in combined for token in tokens):
+            continue
+        matched_on = sorted(
+            field
+            for field, value in fields.items()
+            if any(token in value.replace("_", " ").replace(":", " ") for token in tokens)
+        )
+        score = 0
+        if normalized_query == event.lower():
+            score += 100
+        elif event.lower().startswith(normalized_query):
+            score += 70
+        for token in tokens:
+            if token in event.lower().replace("_", " ").replace(":", " "):
+                score += 20
+            if token in definition["title"].lower():
+                score += 12
+            if token in definition["description"].lower():
+                score += 6
+            if token == definition["category"].lower():
+                score += 4
+            if any(token in alias.lower() for alias in aliases):
+                score += 8
+        matches.append(
+            (
+                -score,
+                event,
+                {
+                    "event": event,
+                    "matched_on": matched_on,
+                    "aliases": aliases,
+                    **copy.deepcopy(definition),
+                },
+            )
+        )
+
+    ordered = [item for _, _, item in sorted(matches)[:limit]]
+    return {
+        "query": query.strip(),
+        "count": len(ordered),
+        "matches": ordered,
+        "guidance": (
+            "The registry is a continuity checkpoint, not a walled garden. Reuse a "
+            "matching canonical event. If no result describes the confirmed human "
+            "meaning, propose a new universal event in the same pull request as the "
+            "vehicle mapping."
+        ),
+    }
+
+
+def contribution_check(
+    name: Any,
+    *,
+    registry: Optional[Mapping[str, Any]] = None,
+) -> dict[str, Any]:
+    """Explain whether to reuse, migrate or propose an event identifier."""
+
+    selected = (
+        normalize_registry(registry)
+        if registry is not None
+        else _default_registry()
+    )
+    status, canonical = _event_status(name, selected)
+    principles = [
+        "The registry is a continuity checkpoint, not a walled garden.",
+        "CAN IDs, bytes and values are vehicle-specific; canonical names express shared human meaning.",
+        "Unregistered names are allowed in discovery notes, but maintained profiles use registered canonical events.",
+    ]
+    if status == "canonical" and canonical is not None:
+        return {
+            "requested_event": name,
+            "status": status,
+            "decision": "reuse",
+            "event": canonical,
+            "definition": copy.deepcopy(selected["events"][canonical]),
+            "message": "Reuse this canonical event and change only the vehicle-specific CAN mapping.",
+            "principles": principles,
+        }
+    if status == "alias" and canonical is not None:
+        return {
+            "requested_event": name,
+            "status": status,
+            "decision": "use_canonical",
+            "event": canonical,
+            "definition": copy.deepcopy(selected["events"][canonical]),
+            "message": f"Use canonical event {canonical!r}; the requested name is a deprecated alias.",
+            "principles": principles,
+        }
+    if status == "invalid":
+        return {
+            "requested_event": name,
+            "status": status,
+            "decision": "rename_before_proposal",
+            "message": (
+                "Choose a lowercase human-readable identifier before searching or proposing it. "
+                "Do not encode a manufacturer, CAN ID, byte, module or function name."
+            ),
+            "principles": principles,
+        }
+
+    search_query = str(name).replace("_", " ").replace(":", " ").replace(".", " ")
+    candidates = search_events(search_query, registry=selected)["matches"]
+    return {
+        "requested_event": name,
+        "status": "unknown",
+        "decision": "reuse_or_propose",
+        "candidates": candidates,
+        "message": (
+            "No canonical event has this identifier. Reuse a candidate when its meaning matches. "
+            "If the confirmed human concept is genuinely new, add a universal registry entry, "
+            "documentation and tests in the same pull request as the vehicle mapping."
+        ),
+        "principles": principles,
+    }

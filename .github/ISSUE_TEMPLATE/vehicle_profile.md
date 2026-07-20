@@ -34,6 +34,23 @@ Example:
 0x621 byte 0 -> handbrake
 ```
 
+## Shared human meaning
+
+The registry is a continuity checkpoint, not a walled garden. Raw findings may use
+provisional labels. For a maintained mapping, search for an existing human-readable event
+or explain the genuinely new concept you want to propose.
+
+- Existing canonical descriptor reused:
+- Or proposed new human meaning:
+- Event or persistent status:
+- Why no existing descriptor fits:
+
+Useful search:
+
+```bash
+open-mmi-config vehicle-setup events --search "<human meaning>"
+```
+
 ## Config snippet
 
 Paste profile snippets if available.

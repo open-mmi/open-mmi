@@ -214,7 +214,69 @@ class VehicleEventRegistryTests(unittest.TestCase):
         self.assertTrue(vehicle_setup.validate_profile(profile)["valid"])
         self.assertTrue(vehicle_setup.validate_bindings(bindings)["valid"])
 
-    def test_cli_exposes_registry_and_one_definition(self):
+    def test_search_uses_human_wording_and_returns_canonical_events(self):
+        payload = vehicle_events.search_events("audio mute")
+        self.assertEqual(payload["count"], 1)
+        self.assertEqual(payload["matches"][0]["event"], "mute_toggle")
+        self.assertIn("description", payload["matches"][0]["matched_on"])
+        self.assertIn("continuity", payload["guidance"])
+
+        media = vehicle_events.search_events("media")
+        self.assertIn(
+            "volume_up",
+            {entry["event"] for entry in media["matches"]},
+        )
+
+    def test_contribution_check_guides_reuse_alias_and_new_proposal(self):
+        reuse = vehicle_events.contribution_check("mute_toggle")
+        self.assertEqual(reuse["decision"], "reuse")
+        self.assertIn("change only", reuse["message"])
+        self.assertIn("not a walled garden", reuse["principles"][0])
+
+        proposal = vehicle_events.contribution_check("pdc_signal")
+        self.assertEqual(proposal["decision"], "reuse_or_propose")
+        self.assertEqual(proposal["status"], "unknown")
+        self.assertIn("same pull request", proposal["message"])
+
+        invalid = vehicle_events.contribution_check("PDC_signal")
+        self.assertEqual(invalid["decision"], "rename_before_proposal")
+        self.assertIn("manufacturer", invalid["message"])
+
+        registry = vehicle_events.registry_payload()
+        registry["aliases"]["legacy_mute"] = {
+            "event": "mute_toggle",
+            "description": "Historical private synonym.",
+            "status": "deprecated",
+        }
+        alias = vehicle_events.contribution_check(
+            "legacy_mute",
+            registry=registry,
+        )
+        self.assertEqual(alias["decision"], "use_canonical")
+        self.assertEqual(alias["event"], "mute_toggle")
+
+    def test_unknown_validation_explains_reuse_or_propose_workflow(self):
+        validation = vehicle_setup.validate_profile(
+            {
+                "rules": [
+                    {
+                        "id": "0x431",
+                        "byte": 2,
+                        "value": 17,
+                        "event": "private_mute_name",
+                    }
+                ]
+            }
+        )
+        issue = next(
+            item
+            for item in validation["errors"]
+            if item["code"] == "unregistered-event"
+        )
+        self.assertIn("--search <meaning>", issue["message"])
+        self.assertIn("same pull request", issue["message"])
+
+    def test_cli_exposes_registry_search_check_and_one_definition(self):
         output = io.StringIO()
         with contextlib.redirect_stdout(output):
             result = config_cli.main(["vehicle-setup", "events", "mute_toggle"])
@@ -222,6 +284,39 @@ class VehicleEventRegistryTests(unittest.TestCase):
         payload = json.loads(output.getvalue())
         self.assertEqual(payload["event"], "mute_toggle")
         self.assertEqual(payload["payload"], {"type": "none"})
+
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            result = config_cli.main(
+                ["vehicle-setup", "events", "--search", "audio mute"]
+            )
+        self.assertEqual(result, 0)
+        payload = json.loads(output.getvalue())
+        self.assertEqual(payload["matches"][0]["event"], "mute_toggle")
+
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            result = config_cli.main(
+                ["vehicle-setup", "events", "--check", "pdc_signal"]
+            )
+        self.assertEqual(result, 0)
+        payload = json.loads(output.getvalue())
+        self.assertEqual(payload["decision"], "reuse_or_propose")
+
+    def test_cli_rejects_conflicting_event_lookup_modes(self):
+        error = io.StringIO()
+        with contextlib.redirect_stderr(error):
+            result = config_cli.main(
+                [
+                    "vehicle-setup",
+                    "events",
+                    "mute_toggle",
+                    "--search",
+                    "mute",
+                ]
+            )
+        self.assertEqual(result, 1)
+        self.assertIn("choose one event", error.getvalue())
 
     def test_generated_documentation_matches_registry(self):
         root = Path(__file__).resolve().parents[1]

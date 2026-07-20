@@ -283,7 +283,12 @@ def _validate_event_reference(
             "error",
             "unregistered-event",
             path,
-            "must be declared by the Open MMI vehicle-event registry",
+            (
+                "is not yet registered; search the shared human vocabulary with "
+                "'open-mmi-config vehicle-setup events --search <meaning>' and, "
+                "when no existing event fits, propose a universal registry entry "
+                "in the same pull request"
+            ),
         )
     )
     return None

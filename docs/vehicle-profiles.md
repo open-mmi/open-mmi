@@ -249,20 +249,31 @@ Avoid turning guesses into core behaviour.
 
 ## Adding a new profile
 
-A new vehicle profile should start small.
+A new vehicle profile should start small. The registry is a continuity checkpoint, not a
+walled garden: raw research and provisional observations are welcome, while maintained
+profiles translate confirmed signals into one shared human-readable vocabulary.
+
+Read [`vehicle-contribution-workflow.md`](vehicle-contribution-workflow.md) before promoting
+an observation into a maintained rule.
 
 Recommended process:
 
-1. Read the vehicle integration standard and canonical event registry.
-2. Copy an existing profile only if the platform is genuinely related.
-3. Record the vehicle, platform, model year, and tested CAN bus.
-4. Document named bus metadata and capture point.
-5. Map each control to an existing canonical event before proposing a new one.
-6. Add one signal at a time.
-7. Test against replay data where possible.
-8. Test on a real vehicle only when safe.
-9. Keep uncertain mappings clearly marked.
-10. Do not modify core logic unless the rule type is genuinely reusable.
+1. Record raw CAN evidence, physical actions and uncertainty without waiting for a final name.
+2. Read the vehicle integration standard and canonical event registry.
+3. Copy an existing profile only if the platform is genuinely related.
+4. Record the vehicle, platform, model year, and tested CAN bus.
+5. Document named bus metadata and capture point.
+6. Confirm what each signal means to a person and classify it as event or persistent status.
+7. Search the registry and reuse an existing canonical event when its meaning matches.
+8. When the human concept is genuinely new, add a universal registry proposal in the same pull request.
+9. Add one signal at a time and test against replay data where possible.
+10. Test on a real vehicle only when safe and keep uncertain mappings clearly marked.
+11. Do not modify core logic unless the rule type is genuinely reusable.
+
+A contributor who finds the same mute control in another vehicle should normally copy the
+canonical `mute_toggle` meaning and replace only the CAN ID, byte and value. Names such as
+`PDC_signal` remain acceptable discovery labels, but need a clear event or status meaning
+before they cross the maintained-profile boundary.
 
 ---
 

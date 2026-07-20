@@ -114,6 +114,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="inspect the canonical vehicle-event registry",
     )
     vehicle_events_parser.add_argument("event", nargs="?")
+    vehicle_events_parser.add_argument(
+        "--search",
+        metavar="TEXT",
+        help="search canonical events by human wording",
+    )
+    vehicle_events_parser.add_argument(
+        "--check",
+        metavar="EVENT",
+        help="explain whether to reuse, migrate or propose an event",
+    )
     vehicle_setup_commands.add_parser(
         "coordinator",
         help="inspect the privileged vehicle configuration coordinator",
@@ -200,11 +210,22 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             elif args.command == "catalogue":
                 _print(vehicle_setup.catalogue_payload())
             elif args.command == "events":
-                _print(
-                    vehicle_events.event_definition(args.event)
-                    if args.event
-                    else vehicle_events.registry_payload()
+                selected = sum(
+                    value is not None
+                    for value in (args.event, args.search, args.check)
                 )
+                if selected > 1:
+                    raise ValueError(
+                        "choose one event, --search query, or --check event"
+                    )
+                if args.search is not None:
+                    _print(vehicle_events.search_events(args.search))
+                elif args.check is not None:
+                    _print(vehicle_events.contribution_check(args.check))
+                elif args.event:
+                    _print(vehicle_events.event_definition(args.event))
+                else:
+                    _print(vehicle_events.registry_payload())
             elif args.command == "preview":
                 _print(
                     vehicle_config_coordinator.client_preview(

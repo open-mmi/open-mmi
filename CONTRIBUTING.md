@@ -59,6 +59,43 @@ Good contributions usually improve one of these areas:
 
 The goal is to make vehicle integration knowledge reusable, not to hardcode one car into the daemon.
 
+## The registry is not a walled garden
+
+The canonical event and future status registries are continuity checkpoints. They do not
+reserve vehicle discovery or new concepts for maintainers.
+
+You may freely submit raw CAN captures, unknown bytes, manufacturer terminology, provisional
+names and partial interpretations. A signal only needs a canonical descriptor when it is
+being promoted into a maintained or distributable profile.
+
+At that boundary:
+
+1. confirm what the signal means to a person;
+2. decide whether it is a momentary event or persistent status;
+3. search for an existing canonical descriptor;
+4. reuse it when the meaning matches; or
+5. add a genuinely new universal descriptor in the same pull request as the mapping.
+
+No separate permission request is required to propose a registry entry. Review exists to
+keep Seat, Vauxhall and every future vehicle speaking one understandable language rather
+than hundreds of private dialects.
+
+For example, if another vehicle emits mute from CAN ID `0x431`, the contributor should reuse
+`mute_toggle` and replace only the CAN ID, byte and value. A discovery label such as
+`PDC_signal` is welcome in research notes, but it needs a clear human meaning—button event,
+parking distance, warning state, or something else—before it becomes maintained vocabulary.
+
+Read [`docs/vehicle-contribution-workflow.md`](docs/vehicle-contribution-workflow.md) for the
+complete workflow and naming test.
+
+Useful commands:
+
+```bash
+open-mmi-config vehicle-setup events --search mute
+open-mmi-config vehicle-setup events --check mute_toggle
+open-mmi-config vehicle-setup events --check pdc_signal
+```
+
 ---
 
 ## Branch workflow
@@ -152,6 +189,15 @@ Please avoid posting sensitive vehicle data such as full VINs, private locations
 ---
 
 ## Before opening a pull request
+
+For a maintained vehicle mapping, complete the **reuse or propose** checkpoint:
+
+- [ ] The human meaning is confirmed rather than guessed.
+- [ ] Event versus persistent status is identified.
+- [ ] The canonical vocabulary was searched using ordinary human terms.
+- [ ] An existing descriptor is reused where its meaning matches.
+- [ ] Any genuinely new descriptor is included with its contract, docs and tests in this pull request.
+- [ ] Manufacturer names, CAN IDs, ECU abbreviations and action implementation names do not leak into the canonical name.
 
 Please check:
 

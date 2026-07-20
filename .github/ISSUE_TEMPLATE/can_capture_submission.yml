@@ -8,6 +8,8 @@ body:
       value: |
         Use this to submit CAN observations or logs.
 
+        Discovery is open: provisional names, manufacturer terms and unknown bytes are welcome when uncertainty is stated clearly. The canonical registry checkpoint applies later, when a confirmed signal is proposed for a maintained profile.
+
         Please avoid posting sensitive data. CAN logs may reveal vehicle details, installed modules, coding, and usage patterns.
 
   - type: input
@@ -61,7 +63,7 @@ body:
     id: observed_changes
     attributes:
       label: Observed CAN changes
-      description: Add any IDs/bytes you noticed changing.
+      description: Add any IDs/bytes you noticed changing. Provisional labels such as "suspected PDC byte" are fine; mark guesses clearly.
       placeholder: "Example: 0x531 byte 0 changed from 0x00 to 0xC3 when dipped beam was enabled."
     validations:
       required: false

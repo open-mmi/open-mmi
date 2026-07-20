@@ -6,6 +6,13 @@ Vehicle profiles translate manufacturer-specific CAN signals into these canonica
 Bindings map the same events to application actions. Event names describe universal intent
 or state transitions; they never describe a vehicle model, CAN address, Python module or function.
 
+> **The registry is a continuity checkpoint, not a walled garden.** Raw CAN discovery
+> remains open. Reuse an existing human meaning when it fits, or propose a genuinely new
+> universal event in the same pull request as its first maintained vehicle mapping.
+
+See [`vehicle-contribution-workflow.md`](vehicle-contribution-workflow.md) for the open
+discovery, reuse and proposal workflow.
+
 Registry: `open-mmi.vehicle-events` · schema version `1`
 
 | Event | Category | Payload | Delivery | Status | Meaning |
@@ -59,7 +66,8 @@ The binding is independent of both CAN layouts:
 ## Registry rules
 
 - Existing canonical names are immutable. Their meaning cannot be silently changed.
-- New universal concepts are added to the registry before a maintained profile uses them.
+- Raw discovery notes may use provisional names; the canonical requirement begins at the maintained-profile boundary.
+- New universal concepts may be added to the registry in the same pull request as their first maintained mapping.
 - Manufacturer, model, CAN ID, module and function names do not belong in canonical event names.
 - Deprecated aliases are migration diagnostics only; profiles and bindings must use the canonical name.
 - A rule using `value: "any"` forwards a value and therefore requires an event with a payload contract.
@@ -73,7 +81,21 @@ Print the complete registry:
 open-mmi-config vehicle-setup events
 ```
 
-Inspect one event:
+Search using ordinary human wording:
+
+```bash
+open-mmi-config vehicle-setup events --search mute
+open-mmi-config vehicle-setup events --search "audio volume"
+```
+
+Check whether to reuse or propose an identifier:
+
+```bash
+open-mmi-config vehicle-setup events --check mute_toggle
+open-mmi-config vehicle-setup events --check pdc_signal
+```
+
+Inspect one exact event:
 
 ```bash
 open-mmi-config vehicle-setup events mute_toggle

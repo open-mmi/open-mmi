@@ -42,6 +42,13 @@ The project should allow different levels of contribution:
 
 A contributor should not need to understand the whole daemon to help with one vehicle, one status mapping, or one UI consumer.
 
+The canonical registries are continuity checkpoints, not a walled garden. Contributors may
+share raw evidence and provisional interpretations freely. A confirmed signal only needs to
+cross into the shared human-readable vocabulary when it becomes part of a maintained
+profile, and a genuinely new concept may be proposed in that same pull request.
+
+See [`vehicle-contribution-workflow.md`](vehicle-contribution-workflow.md).
+
 ## Core and edges
 
 The core should be conservative.
