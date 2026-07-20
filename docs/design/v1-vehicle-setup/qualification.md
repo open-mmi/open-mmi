@@ -141,6 +141,24 @@ Playwright coverage includes:
 - no off-screen-only feedback; and
 - 800×480 containment with touch-sized controls.
 
+## Concrete apply-operation tests
+
+Before exposing apply, unit and integration tests must prove:
+
+- maintained/custom catalogue reads reject symlink traversal, unsafe ownership and writable files;
+- profile and bindings revisions are rechecked immediately before generation;
+- canonical, systemd and udev output is deterministic for one reviewed target;
+- existing generated files are snapshotted twice around stable loaded-runtime evidence;
+- rollback manifests and payload checksums reject tampering;
+- absent files are restored as absent and existing ownership/modes are preserved;
+- destination symlinks and non-regular files are rejected;
+- only fixed manager reload, udev reload/trigger and canbusd restart commands execute;
+- stale status evidence from before restart is not accepted;
+- an injected post-mutation failure restores both files and previous runtime evidence; and
+- interrupted mutation recovery reopens the durable snapshot and reports restored versus unverified restoration.
+
+These tests do not enable the public socket action or browser button.
+
 ## Device qualification
 
 On the reference tablet and Seat 1P profile verify:

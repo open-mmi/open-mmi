@@ -466,13 +466,19 @@ def coordinator_preview(
 class ApplyOperations(Protocol):
     """Fixed coordinator-owned system operations for one apply transaction."""
 
-    def snapshot(self) -> object: ...
+    def snapshot(self, transaction_id: str) -> object: ...
     def install(self, target: Mapping[str, Any]) -> None: ...
     def reload(self, target: Mapping[str, Any]) -> None: ...
     def restart(self) -> None: ...
     def loaded_runtime(self) -> Mapping[str, Any]: ...
     def restore(self, snapshot: object) -> None: ...
     def restoration_verified(self, snapshot: object, loaded: Mapping[str, Any]) -> bool: ...
+
+
+class RecoverableApplyOperations(ApplyOperations, Protocol):
+    """Apply operations able to reopen a durable rollback snapshot."""
+
+    def load_snapshot(self, transaction_id: str) -> object: ...
 
 
 def _state_update(path: Path, payload: Dict[str, Any], **changes: Any) -> Dict[str, Any]:
@@ -600,7 +606,7 @@ def run_apply_transaction(
         mutation_started = False
         stage = "snapshot"
         try:
-            snapshot = operations.snapshot()
+            snapshot = operations.snapshot(transaction_id)
             state = _state_update(state_path, state, state="applying", stage="installing")
             mutation_started = True
             stage = "installing"
@@ -667,6 +673,72 @@ def run_apply_transaction(
                     error=error,
                 )
             raise CoordinatorError(error) from exc
+
+
+def recover_interrupted_transaction(
+    operations: RecoverableApplyOperations,
+    *,
+    state_path: Path = DEFAULT_STATE_FILE,
+    configuration_lock: Path = DEFAULT_LOCK,
+    lifecycle_lock: Path = DEFAULT_LIFECYCLE_LOCK,
+    update_lock: Path = DEFAULT_UPDATE_LOCK,
+) -> Dict[str, Any]:
+    """Restore a durable snapshot after a coordinator process interruption.
+
+    Transactions interrupted before the snapshot completed are failed without
+    restoration.  Once mutation may have started, recovery is conservative:
+    reopen the root-owned snapshot, restore all generated files, reload/restart
+    the daemon, and report whether the previous loaded runtime was verified.
+    """
+
+    state = read_state(state_path) if state_path.exists() else initial_state()
+    if state["state"] not in ACTIVE_STATES:
+        return state
+    transaction_id = state.get("transaction_id")
+    if not isinstance(transaction_id, str) or not _TRANSACTION_RE.fullmatch(transaction_id):
+        raise CoordinatorError("Interrupted transaction identifier is invalid")
+    error = "Coordinator restarted during an active transaction"
+    if state["state"] == "validating":
+        return _best_effort_state_update(
+            state_path,
+            state,
+            state="failed",
+            stage="recovery",
+            completed_at=_timestamp(),
+            error=error,
+            recovered=True,
+        )
+
+    with ConfigurationTransactionLocks(configuration_lock, lifecycle_lock, update_lock):
+        state = _best_effort_state_update(
+            state_path,
+            state,
+            state="restoring",
+            stage="restoring",
+            restoration_attempted=True,
+            error=error,
+            recovered=True,
+        )
+        verified = False
+        try:
+            snapshot = operations.load_snapshot(transaction_id)
+            operations.restore(snapshot)
+            operations.restart()
+            loaded = operations.loaded_runtime()
+            verified = operations.restoration_verified(snapshot, loaded)
+        except Exception:
+            verified = False
+        return _best_effort_state_update(
+            state_path,
+            state,
+            state="failed",
+            stage="restored" if verified else "restore-unverified",
+            completed_at=_timestamp(),
+            restoration_attempted=True,
+            restoration_verified=verified,
+            error=error,
+            recovered=True,
+        )
 
 
 def response_for_request(

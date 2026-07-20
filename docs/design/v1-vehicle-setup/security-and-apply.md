@@ -103,6 +103,24 @@ It records only safe public detail:
 
 It does not expose temporary paths, commands or subprocess output to the browser.
 
+## Internal concrete operation layer
+
+The coordinator now has a concrete operation implementation behind the still-disabled
+public apply protocol. It:
+
+- securely reopens maintained and custom catalogue files without following symlinks;
+- verifies expected ownership, permissions, semantic validity and reviewed revisions;
+- renders canonical JSON, the canbusd systemd runtime drop-in and active-bus udev rules;
+- stores a durable root-owned rollback manifest plus checksummed file payloads;
+- atomically replaces each fixed destination through sibling files and directory fsync;
+- invokes only fixed `systemctl --user` and `udevadm` argument lists;
+- requires loaded-runtime evidence newer than the service restart; and
+- verifies both restored files and the exact previous loaded identities, revisions, bus and interface.
+
+The internal state machine can reopen a durable snapshot after an interrupted mutation.
+The socket still rejects `apply`, so these operations cannot yet be triggered by the CLI
+or browser.
+
 ## Apply sequence
 
 1. Acquire the configuration transaction lock.

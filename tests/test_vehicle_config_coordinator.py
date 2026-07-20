@@ -488,8 +488,16 @@ class ApplyTransactionTests(unittest.TestCase):
             if self.fail_at == name:
                 raise RuntimeError(self.failure_message or f"failed at {name}")
 
-        def snapshot(self):
+        def snapshot(self, transaction_id):
+            if not transaction_id.startswith("configuration-"):
+                raise AssertionError("invalid transaction identifier")
             self._call("snapshot")
+            return {"previous": True}
+
+        def load_snapshot(self, transaction_id):
+            if not transaction_id.startswith("configuration-"):
+                raise AssertionError("invalid transaction identifier")
+            self._call("load_snapshot")
             return {"previous": True}
 
         def install(self, target):
@@ -674,6 +682,82 @@ class ApplyTransactionTests(unittest.TestCase):
             state = coordinator.read_state(root / "state.json")
             self.assertFalse(state["restoration_attempted"])
             self.assertNotIn("restore", operations.calls)
+
+
+    def test_interrupted_mutation_uses_durable_snapshot_and_verifies_restore(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            operations = self.Operations(self.target())
+            state = coordinator.initial_state()
+            state.update(
+                {
+                    "state": "reloading",
+                    "stage": "reloading",
+                    "transaction_id": "configuration-" + "e" * 32,
+                    "started_at": state["updated_at"],
+                    "target": {
+                        "vehicle": self.target()["vehicle"],
+                        "bindings": self.target()["bindings"],
+                        "active_bus": "comfort",
+                        "interface": "can0",
+                    },
+                    "expected_configuration_revision": "sha256:" + "c" * 64,
+                }
+            )
+            coordinator.write_state(state, root / "state.json")
+            recovered = coordinator.recover_interrupted_transaction(
+                operations,
+                state_path=root / "state.json",
+                configuration_lock=root / "configuration.lock",
+                lifecycle_lock=root / "lifecycle.lock",
+                update_lock=root / "update.lock",
+            )
+            self.assertEqual(recovered["state"], "failed")
+            self.assertEqual(recovered["stage"], "restored")
+            self.assertTrue(recovered["recovered"])
+            self.assertTrue(recovered["restoration_verified"])
+            self.assertEqual(
+                operations.calls,
+                [
+                    "load_snapshot",
+                    "restore",
+                    "restart",
+                    "loaded_runtime",
+                    "restoration_verified",
+                ],
+            )
+
+    def test_interrupted_validation_does_not_restore(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            operations = self.Operations(self.target())
+            state = coordinator.initial_state()
+            state.update(
+                {
+                    "state": "validating",
+                    "stage": "validated",
+                    "transaction_id": "configuration-" + "f" * 32,
+                    "started_at": state["updated_at"],
+                    "target": {
+                        "vehicle": self.target()["vehicle"],
+                        "bindings": self.target()["bindings"],
+                        "active_bus": "comfort",
+                        "interface": "can0",
+                    },
+                    "expected_configuration_revision": "sha256:" + "c" * 64,
+                }
+            )
+            coordinator.write_state(state, root / "state.json")
+            recovered = coordinator.recover_interrupted_transaction(
+                operations,
+                state_path=root / "state.json",
+                configuration_lock=root / "configuration.lock",
+                lifecycle_lock=root / "lifecycle.lock",
+                update_lock=root / "update.lock",
+            )
+            self.assertEqual(recovered["stage"], "recovery")
+            self.assertTrue(recovered["recovered"])
+            self.assertEqual(operations.calls, [])
 
     def test_public_protocol_still_rejects_apply(self):
         with tempfile.TemporaryDirectory() as temporary:
