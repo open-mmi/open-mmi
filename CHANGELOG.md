@@ -3,9 +3,10 @@
 ## Unreleased — V1 vehicle setup coordinator
 
 ### Added
-- Dedicated root-owned vehicle configuration coordinator foundation with atomic persistent public state, interrupted-state recovery, fixed status-only Unix-socket protocol, dedicated group authorization, and configuration/update/lifecycle lock primitives.
-- Local-only `GET /api/system/vehicle-setup/coordinator` and `open-mmi-config vehicle-setup coordinator` status clients. Apply and restoration remain explicitly disabled.
-- Hardened `open-mmi-vehicle-config-coordinator.service` with an AF_UNIX-only, network-isolated, read-only system sandbox.
+- Dedicated root-owned vehicle configuration coordinator with atomic persistent public state, interrupted-state recovery, fixed status/preview Unix-socket actions, dedicated group authorization, and configuration/update/lifecycle lock primitives.
+- Coordinator-owned non-mutating vehicle setup preview that independently rereads fixed maintained/custom catalogue roots, the installed runtime drop-in, SocketCAN state, and the current configuration revision before returning a normalized plan.
+- Local-only `GET /api/system/vehicle-setup/coordinator`, `POST /api/system/vehicle-setup/preview`, and matching `open-mmi-config vehicle-setup` clients. Apply and restoration remain explicitly disabled.
+- Hardened `open-mmi-vehicle-config-coordinator.service` with an AF_UNIX-only, network-isolated, read-only system sandbox and a root-owned fixed-path environment file for the installed service user.
 
 
 ## Unreleased — V1 update management

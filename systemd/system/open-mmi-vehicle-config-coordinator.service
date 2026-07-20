@@ -5,6 +5,7 @@ After=local-fs.target
 
 [Service]
 Type=simple
+EnvironmentFile=/etc/open-mmi/vehicle-config-coordinator.env
 ExecStart=/opt/open-mmi/venv/bin/open-mmi-vehicle-config-coordinator serve
 Restart=on-failure
 RestartSec=2
@@ -19,7 +20,7 @@ PrivateNetwork=true
 PrivateTmp=true
 ProtectClock=true
 ProtectControlGroups=true
-ProtectHome=true
+ProtectHome=read-only
 ProtectKernelLogs=true
 ProtectKernelModules=true
 ProtectKernelTunables=true

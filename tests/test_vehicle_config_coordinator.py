@@ -11,6 +11,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from ui import vehicle_config_coordinator as coordinator
+from ui import vehicle_setup
 
 
 class VehicleConfigurationCoordinatorTests(unittest.TestCase):
@@ -122,7 +123,7 @@ class VehicleConfigurationCoordinatorTests(unittest.TestCase):
             )
             self.assertTrue(response["ok"])
             self.assertTrue(response["read_only"])
-            self.assertFalse(response["preview_enabled"])
+            self.assertTrue(response["preview_enabled"])
             self.assertFalse(response["apply_enabled"])
             self.assertFalse(response["restore_enabled"])
             self.assertEqual(
@@ -147,6 +148,215 @@ class VehicleConfigurationCoordinatorTests(unittest.TestCase):
                 ),
                 {"ok": False, "error": "Invalid coordinator request schema"},
             )
+
+    def test_preview_protocol_rebuilds_the_plan_inside_the_coordinator(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            maintained = root / "installed"
+            custom = root / "custom"
+            profile = maintained / "vehicles" / "seat_1p" / "config.json"
+            bindings = maintained / "bindings" / "default.json"
+            profile.parent.mkdir(parents=True)
+            bindings.parent.mkdir(parents=True)
+            profile.write_text(
+                json.dumps(
+                    {
+                        "default_bus": "comfort",
+                        "can_buses": {
+                            "comfort": {
+                                "interface": "can0",
+                                "bitrate": 100000,
+                                "provisioning": "udev",
+                            }
+                        },
+                        "rules": [
+                            {
+                                "id": "0x100",
+                                "byte": 0,
+                                "value": 1,
+                                "event": "play_pause",
+                            }
+                        ],
+                        "presence": [],
+                        "status": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            bindings.write_text(
+                json.dumps(
+                    {
+                        "play_pause": {
+                            "module": "audio",
+                            "func": "play_pause",
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            dropin = root / "10-can-runtime.conf"
+            dropin.write_text(
+                '[Service]\nEnvironment="OPEN_MMI_VEHICLE=seat_1p" '
+                '"OPEN_MMI_BINDINGS=default" '
+                '"OPEN_MMI_CAN_BUS=comfort" '
+                '"OPEN_MMI_CAN_INTERFACE=can0"\n',
+                encoding="utf-8",
+            )
+            request = {
+                "vehicle": {"source": "maintained", "id": "seat_1p"},
+                "bindings": {"source": "maintained", "id": "default"},
+                "runtime": {
+                    "active_bus": "comfort",
+                    "buses": {"comfort": {"interface": "can0"}},
+                },
+            }
+            response = coordinator.response_for_request(
+                {
+                    "api_version": 1,
+                    "action": "preview",
+                    "request": request,
+                },
+                root / "state.json",
+                root / "configuration.lock",
+                root / "lifecycle.lock",
+                root / "update.lock",
+                preview_roots=vehicle_setup.CatalogueRoots(maintained, custom),
+                preview_dropin_path=dropin,
+                preview_status_path=root / "missing-status.json",
+                preview_sys_class_net=root / "missing-sysfs",
+            )
+
+            self.assertTrue(response["ok"])
+            preview = response["preview"]
+            self.assertTrue(preview["read_only"])
+            self.assertFalse(preview["apply_available"])
+            self.assertEqual(preview["state"], "ready")
+            self.assertEqual(preview["plan"]["changes"], [])
+            self.assertRegex(
+                preview["expected_configuration_revision"],
+                r"^sha256:[0-9a-f]{64}$",
+            )
+            self.assertEqual(
+                preview["coordinator"],
+                {
+                    "previewed": True,
+                    "read_only": True,
+                    "locks": {
+                        "configuration_active": False,
+                        "lifecycle_active": False,
+                        "update_active": False,
+                    },
+                    "apply_blocked": False,
+                },
+            )
+            rendered = json.dumps(response)
+            self.assertNotIn(str(root), rendered)
+            self.assertNotIn("manage.sh", rendered)
+
+    def test_preview_reports_lock_conflicts_without_acquiring_a_mutation_lock(self) -> None:
+        request = {
+            "vehicle": {"source": "maintained", "id": "seat_1p"},
+            "bindings": {"source": "maintained", "id": "default"},
+            "runtime": {
+                "active_bus": "comfort",
+                "buses": {"comfort": {"interface": "can0"}},
+            },
+        }
+        preview = {
+            "api_version": 1,
+            "read_only": True,
+            "apply_available": False,
+            "state": "ready",
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            update_lock = root / "update.lock"
+            with coordinator.TransactionLock(update_lock, "busy"):
+                with patch.object(
+                    coordinator.vehicle_setup,
+                    "preview_payload",
+                    return_value=preview,
+                ), patch.object(
+                    coordinator.vehicle_setup,
+                    "status_payload",
+                    return_value={"active": {}, "interfaces": []},
+                ), patch.object(
+                    coordinator.vehicle_setup,
+                    "read_runtime_environment",
+                    return_value={},
+                ):
+                    result = coordinator.coordinator_preview(
+                        request,
+                        roots=vehicle_setup.CatalogueRoots(
+                            root / "installed", root / "custom"
+                        ),
+                        dropin_path=root / "dropin.conf",
+                        status_path=root / "status.json",
+                        sys_class_net=root / "sys",
+                        configuration_lock=root / "configuration.lock",
+                        lifecycle_lock=root / "lifecycle.lock",
+                        update_lock=update_lock,
+                    )
+            self.assertTrue(result["coordinator"]["apply_blocked"])
+            self.assertTrue(
+                result["coordinator"]["locks"]["update_active"]
+            )
+
+    def test_preview_protocol_rejects_paths_and_unknown_outer_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            state_path = root / "state.json"
+            coordinator.write_state(coordinator.initial_state(), state_path)
+            request = {
+                "vehicle": {"source": "maintained", "id": "../seat_1p"},
+                "bindings": {"source": "maintained", "id": "default"},
+                "runtime": {
+                    "active_bus": "comfort",
+                    "buses": {"comfort": {"interface": "can0"}},
+                },
+            }
+            response = coordinator.response_for_request(
+                {
+                    "api_version": 1,
+                    "action": "preview",
+                    "request": request,
+                },
+                state_path,
+                root / "configuration.lock",
+                root / "lifecycle.lock",
+                root / "update.lock",
+                preview_roots=vehicle_setup.CatalogueRoots(
+                    root / "installed", root / "custom"
+                ),
+                preview_dropin_path=root / "dropin.conf",
+                preview_status_path=root / "status.json",
+                preview_sys_class_net=root / "sys",
+            )
+            self.assertFalse(response["ok"])
+            self.assertIn("invalid", response["error"].lower())
+            self.assertEqual(
+                coordinator.response_for_request(
+                    {
+                        "api_version": 1,
+                        "action": "preview",
+                        "request": {},
+                        "path": "/etc/shadow",
+                    },
+                    state_path,
+                ),
+                {"ok": False, "error": "Invalid coordinator request schema"},
+            )
+
+    def test_preview_context_rejects_relative_root_configuration(self) -> None:
+        with patch.dict(
+            coordinator.os.environ,
+            {"OPEN_MMI_INSTALL_DIR": "relative/install"},
+            clear=False,
+        ):
+            with self.assertRaisesRegex(
+                coordinator.CoordinatorError, "absolute fixed path"
+            ):
+                coordinator._preview_context()
 
     def test_status_reports_an_active_update_lock(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -183,12 +393,71 @@ class VehicleConfigurationCoordinatorTests(unittest.TestCase):
                 thread.start()
                 try:
                     response = coordinator.client_status(socket_path)
+                    target = {
+                        "vehicle": {
+                            "source": "maintained",
+                            "id": "seat_1p",
+                            "revision": "sha256:" + "a" * 64,
+                        },
+                        "bindings": {
+                            "source": "maintained",
+                            "id": "default",
+                            "revision": "sha256:" + "b" * 64,
+                        },
+                        "runtime": {
+                            "mode": "single",
+                            "active_bus": "comfort",
+                            "buses": {"comfort": {"interface": "can0"}},
+                        },
+                    }
+                    expected_preview = {
+                        "api_version": 1,
+                        "read_only": True,
+                        "apply_available": False,
+                        "state": "ready",
+                        "expected_configuration_revision": "sha256:" + "c" * 64,
+                        "target_configuration_revision": coordinator.vehicle_configuration.selection_revision(target),
+                        "target": target,
+                        "coordinator": {
+                            "previewed": True,
+                            "read_only": True,
+                            "locks": {
+                                "configuration_active": False,
+                                "lifecycle_active": False,
+                                "update_active": False,
+                            },
+                            "apply_blocked": False,
+                        },
+                    }
+                    request = {
+                        "vehicle": {"source": "maintained", "id": "seat_1p"},
+                        "bindings": {"source": "maintained", "id": "default"},
+                        "runtime": {
+                            "active_bus": "comfort",
+                            "buses": {"comfort": {"interface": "can0"}},
+                        },
+                    }
+                    with patch.object(
+                        coordinator,
+                        "coordinator_preview",
+                        return_value=expected_preview,
+                    ):
+                        preview = coordinator.client_preview(request, socket_path)
+                    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+                        connection.connect(str(socket_path))
+                        connection.sendall(
+                            b'{"api_version":1,"api_version":1,"action":"status"}\n'
+                        )
+                        duplicate = json.loads(connection.makefile("rb").readline())
                 finally:
                     server.shutdown()
                     server.server_close()
                     thread.join(timeout=2)
             self.assertTrue(response["ok"])
             self.assertEqual(response["state"]["state"], "idle")
+            self.assertEqual(preview, expected_preview)
+            self.assertFalse(duplicate["ok"])
+            self.assertEqual(duplicate["error"], "Invalid coordinator request schema")
             self.assertFalse(socket_path.exists())
 
     def test_server_refuses_untrusted_existing_socket_path(self) -> None:

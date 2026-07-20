@@ -151,7 +151,7 @@ class DashboardModuleBoundaryTests(unittest.TestCase):
             post_routes_source,
         )
         self.assertIn(
-            "vehicle_setup.preview_payload(_json_body(handler))",
+            "vehicle_config_coordinator.client_preview(_json_body(handler))",
             post_routes_source,
         )
         self.assertFalse(hasattr(vehicle_setup, "DashboardHandler"))

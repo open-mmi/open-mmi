@@ -1,9 +1,9 @@
-"""Read-only foundation for privileged vehicle configuration coordination.
+"""Read-only privileged vehicle configuration coordination.
 
-The coordinator owns a fixed local Unix-socket boundary and persistent public
-transaction state.  This first slice intentionally enables only ``status``;
-preview remains in the unprivileged planning layer and apply/restore are not
-available until atomic activation and verified restoration are implemented.
+The coordinator owns a fixed local Unix-socket boundary, persistent public
+transaction state, and independent non-mutating preview validation. Apply and
+restore remain unavailable until atomic activation and verified restoration are
+implemented.
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, Sequence
 
-from ui import vehicle_configuration
+from ui import vehicle_configuration, vehicle_setup
 
 
 API_VERSION = 1
@@ -34,7 +34,13 @@ DEFAULT_LOCK = Path("/run/open-mmi/vehicle-configuration.lock")
 DEFAULT_LIFECYCLE_LOCK = Path("/run/open-mmi/lifecycle.lock")
 DEFAULT_UPDATE_LOCK = Path("/run/open-mmi/update.lock")
 DEFAULT_GROUP = "open-mmi-config"
+DEFAULT_INSTALL_ROOT = Path("/opt/open-mmi")
+DEFAULT_CONFIG_ROOT = Path("/var/lib/open-mmi/custom-catalogue-unconfigured")
+DEFAULT_RUNTIME_DROPIN = Path("/etc/open-mmi/canbusd-runtime-unconfigured.conf")
+DEFAULT_RUNTIME_STATUS = Path("/run/open-mmi/canbusd-status-unconfigured.json")
 MAX_REQUEST_BYTES = 4096
+MAX_RESPONSE_BYTES = 256 * 1024
+MAX_CONFIGURED_PATH_LENGTH = 4096
 MAX_ERROR_LENGTH = 512
 ACTIVE_STATES = {"validating", "applying", "reloading", "verifying", "restoring"}
 TERMINAL_STATES = {"idle", "complete", "failed"}
@@ -45,6 +51,19 @@ _STAGE_RE = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
 
 class CoordinatorError(RuntimeError):
     """A fail-closed coordinator boundary error."""
+
+
+def _unique_json_object(pairs: Sequence[tuple[str, Any]]) -> Dict[str, Any]:
+    value: Dict[str, Any] = {}
+    for key, item in pairs:
+        if key in value:
+            raise CoordinatorError(f"Duplicate coordinator JSON field: {key}")
+        value[key] = item
+    return value
+
+
+def _reject_json_constant(value: str) -> None:
+    raise CoordinatorError(f"Invalid coordinator JSON number: {value}")
 
 
 def _timestamp() -> str:
@@ -346,6 +365,18 @@ def _lock_active(path: Path) -> bool:
     return False
 
 
+def _lock_status(
+    configuration_lock: Path = DEFAULT_LOCK,
+    lifecycle_lock: Path = DEFAULT_LIFECYCLE_LOCK,
+    update_lock: Path = DEFAULT_UPDATE_LOCK,
+) -> Dict[str, bool]:
+    return {
+        "configuration_active": _lock_active(configuration_lock),
+        "lifecycle_active": _lock_active(lifecycle_lock),
+        "update_active": _lock_active(update_lock),
+    }
+
+
 def _public_response(
     state: Mapping[str, Any],
     configuration_lock: Path = DEFAULT_LOCK,
@@ -356,16 +387,79 @@ def _public_response(
         "ok": True,
         "api_version": API_VERSION,
         "read_only": True,
-        "preview_enabled": False,
+        "preview_enabled": True,
         "apply_enabled": False,
         "restore_enabled": False,
-        "locks": {
-            "configuration_active": _lock_active(configuration_lock),
-            "lifecycle_active": _lock_active(lifecycle_lock),
-            "update_active": _lock_active(update_lock),
-        },
+        "locks": _lock_status(configuration_lock, lifecycle_lock, update_lock),
         "state": dict(state),
     }
+
+
+def _configured_path(name: str, default: Path) -> Path:
+    raw = str(os.environ.get(name) or default)
+    if (
+        not _bounded_text(raw, MAX_CONFIGURED_PATH_LENGTH, allow_empty=False)
+        or "\x00" in raw
+    ):
+        raise CoordinatorError(f"{name} is invalid")
+    path = Path(raw)
+    if not path.is_absolute() or ".." in path.parts:
+        raise CoordinatorError(f"{name} must be an absolute fixed path")
+    return path
+
+
+def _preview_context() -> tuple[vehicle_setup.CatalogueRoots, Path, Path]:
+    roots = vehicle_setup.CatalogueRoots(
+        maintained=_configured_path("OPEN_MMI_INSTALL_DIR", DEFAULT_INSTALL_ROOT),
+        custom=_configured_path("OPEN_MMI_CONFIG_DIR", DEFAULT_CONFIG_ROOT),
+    )
+    return (
+        roots,
+        _configured_path("OPEN_MMI_RUNTIME_DROPIN", DEFAULT_RUNTIME_DROPIN),
+        _configured_path("OPEN_MMI_STATUS_PATH", DEFAULT_RUNTIME_STATUS),
+    )
+
+
+def coordinator_preview(
+    request: Mapping[str, Any],
+    *,
+    roots: Optional[vehicle_setup.CatalogueRoots] = None,
+    dropin_path: Optional[Path] = None,
+    status_path: Optional[Path] = None,
+    sys_class_net: Path = Path("/sys/class/net"),
+    configuration_lock: Path = DEFAULT_LOCK,
+    lifecycle_lock: Path = DEFAULT_LIFECYCLE_LOCK,
+    update_lock: Path = DEFAULT_UPDATE_LOCK,
+) -> Dict[str, Any]:
+    """Independently rebuild a non-mutating preview inside the root boundary."""
+
+    if roots is None or dropin_path is None or status_path is None:
+        configured_roots, configured_dropin, configured_status = _preview_context()
+        roots = roots or configured_roots
+        dropin_path = dropin_path or configured_dropin
+        status_path = status_path or configured_status
+
+    runtime_environment = vehicle_setup.read_runtime_environment(dropin_path)
+    current_status = vehicle_setup.status_payload(
+        roots,
+        environment=runtime_environment,
+        sys_class_net=sys_class_net,
+        status_path=status_path,
+    )
+    preview = vehicle_setup.preview_payload(
+        request,
+        roots,
+        current_status=current_status,
+        sys_class_net=sys_class_net,
+    )
+    locks = _lock_status(configuration_lock, lifecycle_lock, update_lock)
+    preview["coordinator"] = {
+        "previewed": True,
+        "read_only": True,
+        "locks": locks,
+        "apply_blocked": any(locks.values()),
+    }
+    return preview
 
 
 def response_for_request(
@@ -374,21 +468,56 @@ def response_for_request(
     configuration_lock: Path = DEFAULT_LOCK,
     lifecycle_lock: Path = DEFAULT_LIFECYCLE_LOCK,
     update_lock: Path = DEFAULT_UPDATE_LOCK,
+    *,
+    preview_roots: Optional[vehicle_setup.CatalogueRoots] = None,
+    preview_dropin_path: Optional[Path] = None,
+    preview_status_path: Optional[Path] = None,
+    preview_sys_class_net: Path = Path("/sys/class/net"),
 ) -> Dict[str, Any]:
-    if not isinstance(payload, dict) or set(payload) != {"api_version", "action"}:
+    if not isinstance(payload, dict):
         return {"ok": False, "error": "Invalid coordinator request schema"}
     if payload.get("api_version") != API_VERSION:
         return {"ok": False, "error": "Unsupported coordinator API version"}
-    if payload.get("action") != "status":
-        return {"ok": False, "error": "Coordinator action is not enabled"}
+
+    action = payload.get("action")
     try:
-        return _public_response(
-            read_state(state_path),
-            configuration_lock,
-            lifecycle_lock,
-            update_lock,
-        )
-    except CoordinatorError as exc:
+        if action == "status":
+            if set(payload) != {"api_version", "action"}:
+                return {"ok": False, "error": "Invalid coordinator request schema"}
+            return _public_response(
+                read_state(state_path),
+                configuration_lock,
+                lifecycle_lock,
+                update_lock,
+            )
+        if action == "preview":
+            if set(payload) != {"api_version", "action", "request"}:
+                return {"ok": False, "error": "Invalid coordinator request schema"}
+            request = payload.get("request")
+            if not isinstance(request, Mapping):
+                return {"ok": False, "error": "Invalid coordinator preview schema"}
+            preview = coordinator_preview(
+                request,
+                roots=preview_roots,
+                dropin_path=preview_dropin_path,
+                status_path=preview_status_path,
+                sys_class_net=preview_sys_class_net,
+                configuration_lock=configuration_lock,
+                lifecycle_lock=lifecycle_lock,
+                update_lock=update_lock,
+            )
+            return {
+                "ok": True,
+                "api_version": API_VERSION,
+                "action": "preview",
+                "preview": preview,
+            }
+        return {"ok": False, "error": "Coordinator action is not enabled"}
+    except (
+        CoordinatorError,
+        vehicle_configuration.VehicleConfigurationError,
+        vehicle_setup.VehicleSetupError,
+    ) as exc:
         return {"ok": False, "error": str(exc)}
 
 
@@ -399,12 +528,25 @@ class _Handler(socketserver.StreamRequestHandler):
             response = {"ok": False, "error": "Invalid coordinator request size"}
         else:
             try:
-                payload: object = json.loads(raw.decode("utf-8"))
-            except (UnicodeError, json.JSONDecodeError):
+                payload: object = json.loads(
+                    raw.decode("utf-8"),
+                    object_pairs_hook=_unique_json_object,
+                    parse_constant=_reject_json_constant,
+                )
+            except (UnicodeError, json.JSONDecodeError, CoordinatorError):
                 payload = None
             response = response_for_request(payload, self.server.state_path)  # type: ignore[attr-defined]
         try:
-            self.wfile.write((json.dumps(response, sort_keys=True) + "\n").encode("utf-8"))
+            encoded = (json.dumps(response, sort_keys=True) + "\n").encode("utf-8")
+            if len(encoded) > MAX_RESPONSE_BYTES:
+                encoded = (
+                    json.dumps(
+                        {"ok": False, "error": "Coordinator response exceeds the size limit"},
+                        sort_keys=True,
+                    )
+                    + "\n"
+                ).encode("utf-8")
+            self.wfile.write(encoded)
             self.wfile.flush()
         except (BrokenPipeError, ConnectionResetError, OSError):
             pass
@@ -451,14 +593,24 @@ def _client_request(
     socket_path: Path = DEFAULT_SOCKET,
     timeout: float = 3.0,
 ) -> Dict[str, Any]:
-    request = json.dumps(dict(payload)).encode("utf-8") + b"\n"
+    request = json.dumps(dict(payload), separators=(",", ":")).encode("utf-8") + b"\n"
+    if len(request) > MAX_REQUEST_BYTES:
+        raise CoordinatorError("Coordinator request exceeds the size limit")
     try:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
             connection.settimeout(timeout)
             connection.connect(str(socket_path))
             connection.sendall(request)
-            response = connection.makefile("rb").readline(MAX_REQUEST_BYTES + 1)
-        decoded = json.loads(response.decode("utf-8"))
+            response = connection.makefile("rb").readline(MAX_RESPONSE_BYTES + 1)
+        if not response or len(response) > MAX_RESPONSE_BYTES:
+            raise CoordinatorError("Coordinator returned an invalid response size")
+        decoded = json.loads(
+            response.decode("utf-8"),
+            object_pairs_hook=_unique_json_object,
+            parse_constant=_reject_json_constant,
+        )
+    except CoordinatorError:
+        raise
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise CoordinatorError("Vehicle configuration coordinator is unavailable") from exc
     if not isinstance(decoded, dict):
@@ -470,6 +622,70 @@ def _client_request(
 
 def client_status(socket_path: Path = DEFAULT_SOCKET) -> Dict[str, Any]:
     return _client_request({"api_version": API_VERSION, "action": "status"}, socket_path)
+
+
+def client_preview(
+    request: Mapping[str, Any],
+    socket_path: Path = DEFAULT_SOCKET,
+) -> Dict[str, Any]:
+    response = _client_request(
+        {
+            "api_version": API_VERSION,
+            "action": "preview",
+            "request": dict(request),
+        },
+        socket_path,
+    )
+    if (
+        response.get("api_version") != API_VERSION
+        or response.get("action") != "preview"
+    ):
+        raise CoordinatorError("Coordinator returned an invalid preview wrapper")
+    preview = response.get("preview")
+    if not isinstance(preview, dict) or (
+        preview.get("api_version") != API_VERSION
+        or preview.get("read_only") is not True
+        or preview.get("apply_available") is not False
+        or preview.get("state") != "ready"
+    ):
+        raise CoordinatorError("Coordinator returned an invalid preview")
+
+    expected_revision = preview.get("expected_configuration_revision")
+    target_revision = preview.get("target_configuration_revision")
+    try:
+        target = vehicle_configuration.normalize_selection(preview.get("target"))
+    except vehicle_configuration.VehicleConfigurationError as exc:
+        raise CoordinatorError("Coordinator returned an invalid preview target") from exc
+    if (
+        not isinstance(expected_revision, str)
+        or not vehicle_configuration.REVISION_RE.fullmatch(expected_revision)
+        or not isinstance(target_revision, str)
+        or not vehicle_configuration.REVISION_RE.fullmatch(target_revision)
+        or target_revision != vehicle_configuration.selection_revision(target)
+    ):
+        raise CoordinatorError("Coordinator returned invalid preview revisions")
+
+    metadata = preview.get("coordinator")
+    if not isinstance(metadata, dict) or set(metadata) != {
+        "previewed",
+        "read_only",
+        "locks",
+        "apply_blocked",
+    }:
+        raise CoordinatorError("Coordinator returned invalid preview metadata")
+    locks = metadata.get("locks")
+    if (
+        metadata.get("previewed") is not True
+        or metadata.get("read_only") is not True
+        or not isinstance(locks, dict)
+        or set(locks)
+        != {"configuration_active", "lifecycle_active", "update_active"}
+        or any(not isinstance(value, bool) for value in locks.values())
+        or not isinstance(metadata.get("apply_blocked"), bool)
+        or metadata["apply_blocked"] is not any(locks.values())
+    ):
+        raise CoordinatorError("Coordinator returned invalid preview metadata")
+    return dict(preview)
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:

@@ -194,7 +194,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 _print(vehicle_setup.catalogue_payload())
             elif args.command == "preview":
                 _print(
-                    vehicle_setup.preview_payload(
+                    vehicle_config_coordinator.client_preview(
                         {
                             "vehicle": {
                                 "source": args.vehicle_source,

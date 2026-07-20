@@ -625,7 +625,9 @@ class VehicleSetupTests(unittest.TestCase):
         output = io.StringIO()
         with (
             mock.patch.object(
-                vehicle_setup, "preview_payload", return_value=expected
+                config_cli.vehicle_config_coordinator,
+                "client_preview",
+                return_value=expected,
             ) as preview,
             contextlib.redirect_stdout(output),
         ):

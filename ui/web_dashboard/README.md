@@ -442,9 +442,9 @@ the daemon. This evidence is independent of adapter presence and recent CAN fram
 is the future coordinator's verification input after a service restart.
 
 `GET /api/system/vehicle-setup/coordinator` delegates to the dedicated root-owned
-status-only coordinator socket. It reports persistent public transaction state and
-configuration/update/lifecycle lock activity while explicitly keeping preview, apply
-and restoration coordinator actions disabled. The equivalent terminal command is
+coordinator socket. It reports persistent public transaction state and
+configuration/update/lifecycle lock activity while explicitly keeping apply and
+restoration disabled. Coordinator-owned preview is enabled and remains read-only. The equivalent terminal command is
 `open-mmi-config vehicle-setup coordinator`. A newly installed `open-mmi-config`
 authorization group requires one logout/login or reboot before the existing dashboard
 session can reach the socket.
@@ -458,9 +458,8 @@ and proposed system effects inline. The draft and preview are not persisted, and
 **Apply setup** remains disabled.
 
 `POST /api/system/vehicle-setup/preview` is a fixed, same-origin, non-mutating backend
-contract. It accepts only maintained/custom identifiers plus one declared bus/interface
-assignment, then returns a normalized canonical target, compatibility warnings and
-deterministic systemd/udev/restart effects. The page fails closed unless the response
+contract routed through the root-owned coordinator socket. It accepts only maintained/custom identifiers plus one declared bus/interface
+assignment. The coordinator rereads fixed catalogue/runtime paths, rebuilds the plan independently, and returns a normalized canonical target, compatibility warnings, lock activity and deterministic systemd/udev/restart effects. The page fails closed unless the response
 explicitly remains a read-only preview with apply unavailable. Activation remains unavailable until the coordinator gains atomic apply, verification
 and restoration actions and those paths are qualified. The same planner can be
 inspected from a terminal without mutation:

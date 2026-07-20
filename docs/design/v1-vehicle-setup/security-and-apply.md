@@ -27,15 +27,15 @@ paths, actions and failure modes.
 The coordinator socket is local, group-authorized and unavailable to remote clients.
 Its public protocol contains fixed actions and bounded JSON objects only.
 
-The first coordinator foundation exposes only `status`. It persists strict public transaction state, reports configuration/update/lifecycle lock ownership, and explicitly reports preview/apply/restore as disabled. The service has no writable access to `/etc/open-mmi` in this slice.
+The coordinator currently exposes `status` and non-mutating `preview`. It persists strict public transaction state, reports configuration/update/lifecycle lock ownership, and explicitly reports apply/restore as disabled. Preview rereads the fixed installed catalogue, the configured service user's custom catalogue and runtime drop-in inside the privileged boundary; it never accepts a path from the dashboard. The service still has no writable access to `/etc/open-mmi`.
 
-Planned actions after the transaction implementation is complete:
+Fixed protocol actions are staged as follows:
 
 ```text
-status
-preview
-apply
-restore
+status   implemented
+preview  implemented, read-only
+apply    gated
+restore  internal recovery, gated
 ```
 
 `restore` is an internal recovery action tied to coordinator-owned transaction state;

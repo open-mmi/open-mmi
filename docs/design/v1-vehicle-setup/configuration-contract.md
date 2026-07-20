@@ -220,7 +220,7 @@ not imply that activation is available. `loaded` is `null` until bounded daemon 
 is available. It reports the exact identities, content revisions, bus and interface
 successfully loaded by `canbusd`; it does not require an adapter or recent frames.
 Coordinator capability and transaction state are exposed separately through the
-status-only coordinator boundary described below.
+read-only coordinator boundary described below.
 
 Interface entries distinguish configuration from live health:
 
@@ -247,9 +247,9 @@ GET /api/system/vehicle-setup/coordinator
 ```
 
 The dashboard delegates this request to the dedicated root-owned Unix-socket service.
-The first response is deliberately read-only and reports strict persistent transaction
-state plus configuration, update and lifecycle lock activity. It explicitly returns
-`preview_enabled: false`, `apply_enabled: false` and `restore_enabled: false`; no
+The response is deliberately read-only and reports strict persistent transaction state
+plus configuration, update and lifecycle lock activity. It returns
+`preview_enabled: true`, `apply_enabled: false` and `restore_enabled: false`; no
 coordinator request can yet write the canonical descriptor, generated systemd content
 or udev rules.
 
@@ -266,6 +266,12 @@ Implemented fixed route:
 ```text
 POST /api/system/vehicle-setup/preview
 ```
+
+The same-origin dashboard passes the bounded identity request over the dedicated
+Unix socket. The root coordinator independently resolves the fixed maintained/custom
+roots, rereads the current runtime drop-in, discovers interfaces, rebuilds the shared
+plan, and returns lock activity. It does not acquire a mutation lock and cannot write
+the canonical descriptor, systemd runtime or udev configuration.
 
 Payload:
 

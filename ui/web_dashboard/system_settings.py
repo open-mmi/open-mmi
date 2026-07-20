@@ -231,7 +231,7 @@ def _handle_post(handler: Any, path: str) -> bool:
                 raise ValueError("Invalid clear request")
             result = _clear_jellyfin()
         elif path == "/api/system/vehicle-setup/preview":
-            result = vehicle_setup.preview_payload(_json_body(handler))
+            result = vehicle_config_coordinator.client_preview(_json_body(handler))
         elif path == "/api/system/update-check":
             payload = _json_body(handler)
             if payload not in ({}, {"confirm": True}):

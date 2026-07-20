@@ -17,6 +17,7 @@ UPDATE_COORDINATOR_UNIT="open-mmi-update-coordinator.service"
 UPDATE_INSTALLER_UNIT="open-mmi-update-installer.service"
 VEHICLE_CONFIG_COORDINATOR_GROUP="open-mmi-config"
 VEHICLE_CONFIG_COORDINATOR_UNIT="open-mmi-vehicle-config-coordinator.service"
+VEHICLE_CONFIG_COORDINATOR_ENV="/etc/open-mmi/vehicle-config-coordinator.env"
 UPDATE_COORDINATOR_STATE_DIR="/var/lib/open-mmi"
 UPDATE_COORDINATOR_RUNTIME_DIR="/run/open-mmi"
 
@@ -571,6 +572,47 @@ install_update_coordinator() {
     fi
 }
 
+write_vehicle_config_coordinator_environment() {
+    local runtime_dropin status_path
+    runtime_dropin="$REAL_HOME/.config/systemd/user/canbusd.service.d/10-can-runtime.conf"
+    status_path="/run/user/$USER_ID/open-mmi/status.json"
+
+    install -d -m 0755 -o root -g root "$(dirname "$VEHICLE_CONFIG_COORDINATOR_ENV")"
+    python3 - \
+        "$VEHICLE_CONFIG_COORDINATOR_ENV" \
+        "$INSTALL_DIR" \
+        "$USER_CONFIG_DIR" \
+        "$runtime_dropin" \
+        "$status_path" <<'PY_VEHICLE_CONFIG_COORDINATOR_ENV'
+import json
+import os
+import sys
+from pathlib import Path
+
+destination = Path(sys.argv[1])
+values = {
+    "OPEN_MMI_INSTALL_DIR": sys.argv[2],
+    "OPEN_MMI_CONFIG_DIR": sys.argv[3],
+    "OPEN_MMI_RUNTIME_DROPIN": sys.argv[4],
+    "OPEN_MMI_STATUS_PATH": sys.argv[5],
+}
+for key, value in values.items():
+    if not value.startswith("/") or "\n" in value or "\r" in value or "\x00" in value:
+        raise SystemExit(f"invalid coordinator path for {key}")
+
+temporary = destination.with_name(f".{destination.name}.tmp")
+temporary.write_text(
+    "".join(f"{key}={json.dumps(value)}\n" for key, value in values.items()),
+    encoding="utf-8",
+)
+os.chmod(temporary, 0o644)
+os.replace(temporary, destination)
+PY_VEHICLE_CONFIG_COORDINATOR_ENV
+    chown root:root "$VEHICLE_CONFIG_COORDINATOR_ENV"
+    chmod 0644 "$VEHICLE_CONFIG_COORDINATOR_ENV"
+}
+
+
 install_vehicle_config_coordinator() {
     local authorization_added=false
     if ! getent group "$VEHICLE_CONFIG_COORDINATOR_GROUP" >/dev/null 2>&1; then
@@ -580,6 +622,7 @@ install_vehicle_config_coordinator() {
         usermod -aG "$VEHICLE_CONFIG_COORDINATOR_GROUP" "$REAL_USER"
         authorization_added=true
     fi
+    write_vehicle_config_coordinator_environment
     install -d -m 0755 -o root -g root /etc/systemd/system
     install -m 0644 -o root -g root \
         "$REPO_ROOT/systemd/system/$VEHICLE_CONFIG_COORDINATOR_UNIT" \
@@ -1128,7 +1171,8 @@ cmd_uninstall() {
     rm -f \
         "/etc/systemd/system/$UPDATE_COORDINATOR_UNIT" \
         "/etc/systemd/system/$UPDATE_INSTALLER_UNIT" \
-        "/etc/systemd/system/$VEHICLE_CONFIG_COORDINATOR_UNIT"
+        "/etc/systemd/system/$VEHICLE_CONFIG_COORDINATOR_UNIT" \
+        "$VEHICLE_CONFIG_COORDINATOR_ENV"
     systemctl daemon-reload
     rm -rf "$UPDATE_COORDINATOR_RUNTIME_DIR" "$UPDATE_COORDINATOR_STATE_DIR"
 

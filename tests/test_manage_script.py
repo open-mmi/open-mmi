@@ -382,18 +382,25 @@ sudo() {{ printf '%s\\0' "$@"; }}
     def test_vehicle_configuration_coordinator_is_read_only_and_hardened(self) -> None:
         unit = (ROOT / "systemd/system/open-mmi-vehicle-config-coordinator.service").read_text(encoding="utf-8")
         self.assertIn("ExecStart=/opt/open-mmi/venv/bin/open-mmi-vehicle-config-coordinator serve", unit)
-        self.assertIn("ProtectHome=true", unit)
+        self.assertIn("ProtectHome=read-only", unit)
+        self.assertIn(
+            "EnvironmentFile=/etc/open-mmi/vehicle-config-coordinator.env",
+            unit,
+        )
         self.assertIn("PrivateNetwork=true", unit)
         self.assertIn("RestrictAddressFamilies=AF_UNIX", unit)
         self.assertIn("ProtectSystem=strict", unit)
         self.assertIn("ReadWritePaths=/var/lib/open-mmi /run/open-mmi", unit)
-        self.assertNotIn("/etc/open-mmi", unit)
+        self.assertNotIn("ReadWritePaths=/etc/open-mmi", unit)
         start = self.text.index("install_vehicle_config_coordinator() {")
         end = self.text.index("remove_login_autostart() {", start)
         block = self.text[start:end]
         self.assertIn('groupadd --system "$VEHICLE_CONFIG_COORDINATOR_GROUP"', block)
         self.assertIn('usermod -aG "$VEHICLE_CONFIG_COORDINATOR_GROUP" "$REAL_USER"', block)
         self.assertIn('systemctl restart "$VEHICLE_CONFIG_COORDINATOR_UNIT"', block)
+        self.assertIn("write_vehicle_config_coordinator_environment", block)
+        self.assertIn('"$USER_CONFIG_DIR"', self.text)
+        self.assertIn('"/run/user/$USER_ID/open-mmi/status.json"', self.text)
         self.assertNotIn('${OPEN_MMI_PREPARED_DEPLOYMENT:-0}', block)
 
     def test_coordinator_can_read_the_managed_checkout_and_is_restarted(self) -> None:

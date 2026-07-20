@@ -201,8 +201,8 @@ class SystemConfigurationTests(unittest.TestCase):
         }
         handler = Handler()
         with patch.object(
-            system_settings.vehicle_setup,
-            "preview_payload",
+            system_settings.vehicle_config_coordinator,
+            "client_preview",
             return_value=result,
         ) as preview:
             self.assertTrue(
@@ -217,8 +217,8 @@ class SystemConfigurationTests(unittest.TestCase):
         handler = Handler()
         handler.client_address = ("192.0.2.10", 1234)
         with patch.object(
-            system_settings.vehicle_setup,
-            "preview_payload",
+            system_settings.vehicle_config_coordinator,
+            "client_preview",
         ) as preview:
             self.assertTrue(
                 system_settings._handle_post(

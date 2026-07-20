@@ -105,6 +105,7 @@ open-mmi-config updates check
 open-mmi-config updates readiness
 open-mmi-config updates coordinator
 open-mmi-config vehicle-setup coordinator
+open-mmi-config vehicle-setup preview seat_1p default --bus comfort --interface can0
 open-mmi-config updates prepare
 open-mmi-config updates install
 ```
