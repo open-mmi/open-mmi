@@ -91,6 +91,63 @@ class CanbusdCoreTests(unittest.TestCase):
             },
         )
 
+    def test_document_source_recognizes_installed_catalogue_outside_package_root(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            package_root = root / "venv" / "site-packages"
+            install_root = root / "opt" / "open-mmi"
+            custom_root = root / "home" / "open-mmi" / ".config" / "open-mmi"
+
+            with (
+                mock.patch.object(core, "BASE_DIR", package_root),
+                mock.patch.object(core, "USER_CONFIG_DIR", custom_root),
+                mock.patch.dict(
+                    core.os.environ,
+                    {"OPEN_MMI_INSTALL_DIR": str(install_root)},
+                    clear=False,
+                ),
+            ):
+                self.assertEqual(
+                    core._document_source(
+                        "vehicle",
+                        "seat_1p",
+                        install_root / "vehicles" / "seat_1p" / "config.json",
+                    ),
+                    "maintained",
+                )
+                self.assertEqual(
+                    core._document_source(
+                        "bindings",
+                        "default",
+                        install_root / "bindings" / "default.json",
+                    ),
+                    "maintained",
+                )
+                self.assertEqual(
+                    core._document_source(
+                        "vehicle",
+                        "seat_1p",
+                        package_root / "vehicles" / "seat_1p" / "config.json",
+                    ),
+                    "maintained",
+                )
+                self.assertEqual(
+                    core._document_source(
+                        "bindings",
+                        "default",
+                        custom_root / "bindings" / "default.json",
+                    ),
+                    "custom",
+                )
+                self.assertEqual(
+                    core._document_source(
+                        "vehicle",
+                        "seat_1p",
+                        root / "elsewhere" / "config.json",
+                    ),
+                    "external",
+                )
+
     def test_loaded_runtime_evidence_is_bounded_and_publication_failure_is_isolated(self):
         core.LOADED_VEHICLE = {
             "source": "custom",

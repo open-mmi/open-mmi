@@ -103,20 +103,37 @@ def _resolve_bindings_path() -> Path:
     return BASE_DIR / "bindings" / f"{BINDINGS}.json"
 
 
+def _maintained_catalogue_roots() -> Tuple[Path, ...]:
+    """Return trusted maintained roots for source and installed runtimes."""
+
+    development_root = str(
+        os.getenv("OPEN_MMI_VEHICLE_SETUP_DEVELOPMENT_ROOT") or ""
+    ).strip()
+    installed_root = str(os.getenv("OPEN_MMI_INSTALL_DIR") or "/opt/open-mmi").strip()
+    configured_root = Path(development_root or installed_root).expanduser()
+
+    roots = []
+    for root in (BASE_DIR, configured_root):
+        absolute = root.expanduser().absolute()
+        if absolute not in roots:
+            roots.append(absolute)
+    return tuple(roots)
+
+
 def _document_source(kind: str, identifier: str, path: Path) -> str:
     """Classify one daemon-resolved document without exposing its path."""
 
     if kind == "vehicle":
-        maintained = BASE_DIR / "vehicles" / identifier / "config.json"
-        custom = USER_CONFIG_DIR / "vehicles" / identifier / "config.json"
+        relative = Path("vehicles") / identifier / "config.json"
+        custom = USER_CONFIG_DIR / relative
     elif kind == "bindings":
-        maintained = BASE_DIR / "bindings" / f"{identifier}.json"
-        custom = USER_CONFIG_DIR / "bindings" / f"{identifier}.json"
+        relative = Path("bindings") / f"{identifier}.json"
+        custom = USER_CONFIG_DIR / relative
     else:  # pragma: no cover - internal fixed callers only
         return "external"
 
     candidate = path.expanduser().absolute()
-    if candidate == maintained.expanduser().absolute():
+    if any(candidate == root / relative for root in _maintained_catalogue_roots()):
         return "maintained"
     if candidate == custom.expanduser().absolute():
         return "custom"
