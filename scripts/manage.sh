@@ -600,9 +600,26 @@ values = {
     "OPEN_MMI_STATUS_PATH": sys.argv[5],
 }
 
+for key, value in values.items():
+    if not value.startswith("/") or "\n" in value or "\r" in value or "\x00" in value:
+        raise SystemExit(f"invalid coordinator path for {key}")
+
+temporary = destination.with_name(f".{destination.name}.tmp")
+temporary.write_text(
+    "".join(f"{key}={json.dumps(value)}\n" for key, value in values.items()),
+    encoding="utf-8",
+)
+os.chmod(temporary, 0o644)
+os.replace(temporary, destination)
+PY_VEHICLE_CONFIG_COORDINATOR_ENV
+    chown root:root "$VEHICLE_CONFIG_COORDINATOR_ENV"
+    chmod 0644 "$VEHICLE_CONFIG_COORDINATOR_ENV"
+}
+
 write_vehicle_config_coordinator_sandbox() {
     local runtime_directory
     runtime_directory="$REAL_HOME/.config/systemd/user/canbusd.service.d"
+    install -d -m 0755 -o "$REAL_USER" -g "$REAL_USER" "$runtime_directory"
     install -d -m 0755 -o root -g root "$VEHICLE_CONFIG_COORDINATOR_OVERRIDE_DIR"
     python3 - "$VEHICLE_CONFIG_COORDINATOR_SANDBOX" "$runtime_directory" <<'PY_VEHICLE_CONFIG_COORDINATOR_SANDBOX'
 import os
@@ -630,21 +647,6 @@ os.replace(temporary, destination)
 PY_VEHICLE_CONFIG_COORDINATOR_SANDBOX
     chown root:root "$VEHICLE_CONFIG_COORDINATOR_SANDBOX"
     chmod 0644 "$VEHICLE_CONFIG_COORDINATOR_SANDBOX"
-}
-for key, value in values.items():
-    if not value.startswith("/") or "\n" in value or "\r" in value or "\x00" in value:
-        raise SystemExit(f"invalid coordinator path for {key}")
-
-temporary = destination.with_name(f".{destination.name}.tmp")
-temporary.write_text(
-    "".join(f"{key}={json.dumps(value)}\n" for key, value in values.items()),
-    encoding="utf-8",
-)
-os.chmod(temporary, 0o644)
-os.replace(temporary, destination)
-PY_VEHICLE_CONFIG_COORDINATOR_ENV
-    chown root:root "$VEHICLE_CONFIG_COORDINATOR_ENV"
-    chmod 0644 "$VEHICLE_CONFIG_COORDINATOR_ENV"
 }
 
 wait_for_vehicle_config_coordinator() {

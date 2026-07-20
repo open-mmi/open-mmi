@@ -35,6 +35,16 @@ class ManageScriptLifecycleTests(unittest.TestCase):
         end = self.text.index("\nPY_UPDATE_SOURCE", start)
         compile(self.text[start:end], "manage.sh:PY_UPDATE_SOURCE", "exec")
 
+    def test_vehicle_coordinator_environment_python_has_valid_syntax(self) -> None:
+        marker = "<<'PY_VEHICLE_CONFIG_COORDINATOR_ENV'\n"
+        start = self.text.index(marker) + len(marker)
+        end = self.text.index("\nPY_VEHICLE_CONFIG_COORDINATOR_ENV", start)
+        compile(
+            self.text[start:end],
+            "manage.sh:PY_VEHICLE_CONFIG_COORDINATOR_ENV",
+            "exec",
+        )
+
     def test_vehicle_coordinator_sandbox_python_has_valid_syntax(self) -> None:
         marker = "<<'PY_VEHICLE_CONFIG_COORDINATOR_SANDBOX'\n"
         start = self.text.index(marker) + len(marker)
@@ -468,6 +478,15 @@ sleep() {{ :; }}
         self.assertIn("wait_for_vehicle_config_coordinator", block)
         self.assertIn("write_vehicle_config_coordinator_environment", block)
         self.assertIn("write_vehicle_config_coordinator_sandbox", block)
+        environment_end = self.text.index("\nPY_VEHICLE_CONFIG_COORDINATOR_ENV")
+        sandbox_definition = self.text.index(
+            "write_vehicle_config_coordinator_sandbox() {"
+        )
+        self.assertGreater(sandbox_definition, environment_end)
+        self.assertIn(
+            'install -d -m 0755 -o "$REAL_USER" -g "$REAL_USER" "$runtime_directory"',
+            self.text,
+        )
         self.assertIn("vehicle-config-coordinator-sandbox.conf", self.text)
         self.assertIn("ReadWritePaths=\"-", self.text)
         self.assertIn('"$USER_CONFIG_DIR"', self.text)
