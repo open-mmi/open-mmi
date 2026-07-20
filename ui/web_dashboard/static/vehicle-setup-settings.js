@@ -153,6 +153,60 @@
         || "--";
     }
 
+    function revisionFingerprint(value) {
+      const revision = String(value || "");
+      if (!revision) return "--";
+      if (revision.startsWith("sha256:") && revision.length > 31) {
+        const digest = revision.slice(7);
+        return `sha256:${digest.slice(0, 10)}…${digest.slice(-8)}`;
+      }
+      if (revision.length > 31) return `${revision.slice(0, 18)}…${revision.slice(-8)}`;
+      return revision;
+    }
+
+    function revisionTemplate(value, testId = "") {
+      const revision = String(value || "");
+      const attributes = revision
+        ? ` title="${escapeHtml(revision)}" aria-label="${escapeHtml(`Full revision ${revision}`)}"`
+        : "";
+      const testAttribute = testId ? ` data-testid="${escapeHtml(testId)}"` : "";
+      return `<code class="openmmi-vehicle-revision"${testAttribute}${attributes}>${escapeHtml(revisionFingerprint(revision))}</code>`;
+    }
+
+    function loadedIdentity(kind) {
+      return snapshot?.active?.loaded?.[kind] || {};
+    }
+
+    function runtimeSync() {
+      const active = snapshot?.active || {};
+      const loaded = active.loaded || {};
+      if (loaded.state !== "ready") {
+        return { state: "unavailable", label: "Loaded runtime unavailable" };
+      }
+      const currentVehicle = activeIdentity("vehicle");
+      const currentBindings = activeIdentity("bindings");
+      const runtimeVehicle = loadedIdentity("vehicle");
+      const runtimeBindings = loadedIdentity("bindings");
+      const sameSelections = identityKey(currentVehicle) === identityKey(runtimeVehicle)
+        && identityKey(currentBindings) === identityKey(runtimeBindings)
+        && String(active.active_bus || "") === String(loaded.active_bus || "")
+        && String(active.interface || "") === String(loaded.interface || "");
+      if (!sameSelections) {
+        return { state: "different-selection", label: "Loaded runtime uses a different setup" };
+      }
+      const profilePending = String(currentVehicle.revision || "") !== String(runtimeVehicle.revision || "");
+      const bindingsPending = String(currentBindings.revision || "") !== String(runtimeBindings.revision || "");
+      if (profilePending || bindingsPending) {
+        return {
+          state: "saved-unapplied",
+          label: "Saved revisions await review and Apply",
+          profilePending,
+          bindingsPending,
+        };
+      }
+      return { state: "matched", label: "Loaded runtime matches configured revisions" };
+    }
+
     function draftDiffers() {
       if (!draft || !snapshot) return false;
       return draft.vehicle !== identityKey(activeIdentity("vehicle"))
@@ -450,7 +504,7 @@
         <section class="openmmi-vehicle-custom-editor" data-testid="vehicle-custom-editor" aria-label="Custom ${escapeHtml(label)} editor">
           <div class="openmmi-settings-subhead"><span>Edit custom ${escapeHtml(label)}</span><small>${escapeHtml(editor.id)}</small></div>
           <textarea class="openmmi-vehicle-custom-editor-content" data-openmmi-vehicle-custom-editor-content="true" data-testid="vehicle-custom-editor-content" spellcheck="false" ${editorBusy ? "disabled" : ""}>${escapeHtml(editor.content)}</textarea>
-          <div class="openmmi-vehicle-custom-editor-meta">Expected revision: <code>${escapeHtml(editor.revision)}</code></div>
+          <div class="openmmi-vehicle-custom-editor-meta">Expected revision: ${revisionTemplate(editor.revision, "vehicle-custom-editor-revision")}</div>
           ${message}
           <div class="openmmi-config-actions openmmi-vehicle-custom-editor-actions">
             <button type="button" class="openmmi-setting-pill" data-openmmi-vehicle-custom-save="true" data-testid="vehicle-custom-editor-save" ${editorBusy ? "disabled" : ""}>${editorBusy ? "Saving…" : "Save custom " + escapeHtml(label)}</button>
@@ -1062,23 +1116,36 @@
       const active = snapshot.active || {};
       const activeVehicle = activeIdentity("vehicle");
       const activeBindings = activeIdentity("bindings");
+      const loadedVehicle = loadedIdentity("vehicle");
+      const loadedBindings = loadedIdentity("bindings");
+      const sync = runtimeSync();
       const profile = selectedEntry("vehicle");
       const bindings = selectedEntry("bindings");
       const bus = selectedBus();
       const changed = draftDiffers();
       const canReview = Boolean(previewRequest()) && !loading && !previewLoading && !applyBusy
-        && !copyBusyKind && !lifecycleBusyKind && !editor && !editorBusy;
+        && !copyBusyKind && !lifecycleBusyKind && !importBusyKind && !editor && !editorBusy;
       const activeReady = active.state === "ready";
       const statusText = preview
         ? changed
-          ? "Review ready — changes remain unapplied."
-          : "Review ready — the current setup would remain unchanged."
+          ? "Review ready — draft selections remain unapplied."
+          : sync.state === "saved-unapplied"
+            ? "Review ready — saved revisions remain unloaded until Apply is confirmed."
+            : "Review ready — the configured and loaded setup would remain unchanged."
         : changed
-          ? "Changes not applied — selections are a local draft only."
-        : activeReady
-          ? "Current active setup is ready."
-          : `Active setup needs attention: ${(active.errors || []).join(", ") || "status unavailable"}`;
-      const statusKind = changed ? "warning" : activeReady ? "success" : "error";
+          ? "Draft selections are not applied. The running CAN service remains unchanged."
+          : sync.state === "saved-unapplied"
+            ? "Saved custom revisions await review and Apply. The CAN service is still using the previously loaded revisions."
+            : activeReady && sync.state === "matched"
+              ? "Configured and loaded setup match."
+              : activeReady
+                ? sync.label
+                : `Configured setup needs attention: ${(active.errors || []).join(", ") || "status unavailable"}`;
+      const statusKind = changed || (activeReady && sync.state !== "matched")
+        ? "warning"
+        : activeReady && sync.state === "matched"
+          ? "success"
+          : "error";
       const interfaceName = bus.interface || active.interface || "";
       const interfaceEntry = (snapshot.interfaces || []).find((entry) => entry?.name === interfaceName);
       const interfacePresent = interfaceEntry?.present === true
@@ -1096,12 +1163,16 @@
           <div class="openmmi-settings-panel-head"><span>Vehicle setup</span><small>${escapeHtml(snapshot.runtime_mode === "single" ? "single CAN input" : snapshot.runtime_mode || "runtime")}</small></div>
           <div class="openmmi-config-message ${statusKind}" role="status" data-testid="vehicle-setup-status">${escapeHtml(statusText)}</div>
 
-          <div class="openmmi-vehicle-setup-active" aria-label="Active vehicle setup">
-            <div class="openmmi-settings-metric"><span>Active profile</span><strong data-testid="vehicle-setup-active-profile">${escapeHtml(identityDisplay("vehicle", activeVehicle))} · ${sourceLabel(activeVehicle.source)}</strong></div>
-            <div class="openmmi-settings-metric"><span>Active bindings</span><strong data-testid="vehicle-setup-active-bindings">${escapeHtml(identityDisplay("bindings", activeBindings))} · ${sourceLabel(activeBindings.source)}</strong></div>
+          <div class="openmmi-vehicle-setup-active" aria-label="Configured vehicle setup">
+            <div class="openmmi-settings-metric"><span>Configured profile</span><strong data-testid="vehicle-setup-active-profile">${escapeHtml(identityDisplay("vehicle", activeVehicle))} · ${sourceLabel(activeVehicle.source)}</strong></div>
+            <div class="openmmi-settings-metric"><span>Configured bindings</span><strong data-testid="vehicle-setup-active-bindings">${escapeHtml(identityDisplay("bindings", activeBindings))} · ${sourceLabel(activeBindings.source)}</strong></div>
           </div>
 
-          <div class="openmmi-settings-subhead"><span>Draft selection</span><small>not applied</small></div>
+          <div class="openmmi-vehicle-runtime-sync is-${escapeHtml(sync.state)}" data-testid="vehicle-setup-runtime-sync">
+            <span>Running CAN service</span><strong>${escapeHtml(sync.label)}</strong>
+          </div>
+
+          <div class="openmmi-settings-subhead"><span>Draft selection</span><small>${changed ? "not applied" : "matches configured selection"}</small></div>
           <div class="openmmi-vehicle-setup-selectors">
             <div class="openmmi-vehicle-setup-selector">
               <label for="openMmiVehicleProfile"><strong>Vehicle profile</strong><small>${escapeHtml(validationNote(profile, "Choose a valid profile"))}</small></label>
@@ -1129,10 +1200,10 @@
 
           <div class="openmmi-settings-subhead"><span>CAN input</span><small>profile summary</small></div>
           <div class="openmmi-vehicle-setup-summary">
-            <div class="openmmi-settings-metric"><span>Active CAN bus</span><strong data-testid="vehicle-setup-bus">${escapeHtml(bus.name || active.active_bus || "--")}</strong></div>
-            <div class="openmmi-settings-metric"><span>CAN adapter</span><strong data-testid="vehicle-setup-interface">${escapeHtml(interfaceText)}</strong></div>
+            <div class="openmmi-settings-metric"><span>Selected CAN bus</span><strong data-testid="vehicle-setup-bus">${escapeHtml(bus.name || active.active_bus || "--")}</strong></div>
+            <div class="openmmi-settings-metric"><span>Selected CAN adapter</span><strong data-testid="vehicle-setup-interface">${escapeHtml(interfaceText)}</strong></div>
             <div class="openmmi-settings-metric"><span>Expected bitrate</span><strong data-testid="vehicle-setup-bitrate">${escapeHtml(bitrateLabel(bus.bitrate))}</strong></div>
-            <div class="openmmi-settings-metric"><span>Active compatibility</span><strong data-testid="vehicle-setup-compatibility">${escapeHtml(compatibilityLabel())}</strong></div>
+            <div class="openmmi-settings-metric"><span>Selected compatibility</span><strong data-testid="vehicle-setup-compatibility">${escapeHtml(compatibilityLabel())}</strong></div>
           </div>
 
           <div class="openmmi-config-actions openmmi-vehicle-setup-actions">
@@ -1146,10 +1217,13 @@
 
           <details class="openmmi-vehicle-setup-technical" data-testid="vehicle-setup-technical">
             <summary>Technical details</summary>
-            <div class="openmmi-settings-metric"><span>Active state</span><strong>${escapeHtml(active.state || "unavailable")}</strong></div>
+            <div class="openmmi-settings-metric"><span>Configured state</span><strong>${escapeHtml(active.state || "unavailable")}</strong></div>
+            <div class="openmmi-settings-metric"><span>Loaded state</span><strong>${escapeHtml(active.loaded?.state || "unavailable")}</strong></div>
             <div class="openmmi-settings-metric"><span>Catalogue</span><strong>${escapeHtml(issueText)}</strong></div>
-            <div class="openmmi-settings-metric"><span>Profile revision</span><strong>${escapeHtml(activeVehicle.revision || "--")}</strong></div>
-            <div class="openmmi-settings-metric"><span>Bindings revision</span><strong>${escapeHtml(activeBindings.revision || "--")}</strong></div>
+            <div class="openmmi-settings-metric"><span>Configured profile revision</span>${revisionTemplate(activeVehicle.revision, "vehicle-setup-configured-profile-revision")}</div>
+            <div class="openmmi-settings-metric"><span>Loaded profile revision</span>${revisionTemplate(loadedVehicle.revision, "vehicle-setup-loaded-profile-revision")}</div>
+            <div class="openmmi-settings-metric"><span>Configured bindings revision</span>${revisionTemplate(activeBindings.revision, "vehicle-setup-configured-bindings-revision")}</div>
+            <div class="openmmi-settings-metric"><span>Loaded bindings revision</span>${revisionTemplate(loadedBindings.revision, "vehicle-setup-loaded-bindings-revision")}</div>
           </details>
         </div>
       `;

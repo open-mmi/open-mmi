@@ -17,6 +17,11 @@
 - Revision-bound custom lifecycle controls for duplicate, rename and delete. Maintained items expose no lifecycle actions; active custom items can be duplicated but cannot be renamed or deleted until another item is applied. Provenance follows duplicates and renames, and every lifecycle result remains unapplied.
 - Local same-origin JSON import for new custom profiles and bindings. The server validates strict UTF-8 JSON and the complete profile/bindings schema before a private no-overwrite creation, records import provenance, selects the new item only as a draft, and never applies or restarts the CAN service.
 
+### Changed
+- Settings → Vehicle setup now distinguishes configured catalogue content, page-local draft selection and exact loaded-runtime evidence. Saved active custom revisions are labelled as awaiting review and Apply instead of appearing already loaded.
+- Technical details render compact SHA-256 fingerprints with the full exact value retained in accessible metadata, preventing long revisions from widening the 800×480 panel or the cards above it.
+- CAN summary labels now describe the selected draft bus, adapter and compatibility rather than implying those draft values are already active.
+
 ### Security
 - Privileged rendering reopens catalogue files through descriptor-relative no-follow traversal, verifies maintained/custom ownership and non-writable modes, and rechecks the reviewed content revisions immediately before installation.
 - Generated destinations reject symlinks and non-regular files; rollback manifests and payloads are checksum-validated, root-only, bounded, and retained in a bounded archive.

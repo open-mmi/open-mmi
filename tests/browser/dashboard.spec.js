@@ -201,7 +201,16 @@ async function loadDashboard(page, options = {}) {
       interface: "can0",
       interface_present: false,
       configuration_revision: "sha256:configuration",
-      loaded: null,
+      loaded: {
+        api_version: 1,
+        state: "ready",
+        errors: [],
+        vehicle: { source: "maintained", id: "seat_1p", revision: "sha256:profile" },
+        bindings: { source: "maintained", id: "default", revision: "sha256:bindings" },
+        active_bus: "comfort",
+        interface: "can0",
+        updated_at: 1,
+      },
     },
     catalogue: {
       development_mode: false,
@@ -239,6 +248,25 @@ async function loadDashboard(page, options = {}) {
     },
     interfaces: [],
   };
+
+  if (options.vehicleSetupPendingRevisions) {
+    const revisions = options.vehicleSetupPendingRevisions;
+    vehicleSetupPayload.active.vehicle = { source: "custom", id: "my-seat", revision: revisions.configuredProfile };
+    vehicleSetupPayload.active.bindings = { source: "custom", id: "my-controls", revision: revisions.configuredBindings };
+    vehicleSetupPayload.active.interface = "can1";
+    vehicleSetupPayload.active.loaded = {
+      api_version: 1,
+      state: "ready",
+      errors: [],
+      vehicle: { source: "custom", id: "my-seat", revision: revisions.loadedProfile },
+      bindings: { source: "custom", id: "my-controls", revision: revisions.loadedBindings },
+      active_bus: "comfort",
+      interface: "can1",
+      updated_at: 1,
+    };
+    vehicleSetupPayload.catalogue.profiles.find((entry) => entry.id === "my-seat").revision = revisions.configuredProfile;
+    vehicleSetupPayload.catalogue.bindings.find((entry) => entry.id === "my-controls").revision = revisions.configuredBindings;
+  }
 
   const vehicleSetupPreviewPayload = options.vehicleSetupPreviewPayload || {
     api_version: 1,
@@ -1531,6 +1559,45 @@ test("vehicle setup edits only custom JSON and leaves it unapplied", async ({ pa
   await expectNoRuntimeFailures(failures);
 });
 
+test("vehicle setup contains long revisions and distinguishes saved from loaded state", async ({ page }) => {
+  const failures = captureRuntimeFailures(page);
+  const revisions = {
+    configuredProfile: `sha256:${"a".repeat(64)}`,
+    loadedProfile: `sha256:${"b".repeat(64)}`,
+    configuredBindings: `sha256:${"c".repeat(64)}`,
+    loadedBindings: `sha256:${"d".repeat(64)}`,
+  };
+  await loadDashboard(page, { vehicleSetupPendingRevisions: revisions });
+  await openSettings(page);
+
+  await page.locator('[data-openmmi-settings-section="vehicle-setup"]').click();
+  await expect(page.getByTestId("vehicle-setup-status")).toContainText("Saved custom revisions await review and Apply");
+  await expect(page.getByTestId("vehicle-setup-runtime-sync")).toContainText("Saved revisions await review and Apply");
+  await expect(page.getByTestId("vehicle-setup-profile")).toHaveValue("custom:my-seat");
+  await expect(page.getByTestId("vehicle-setup-bindings")).toHaveValue("custom:my-controls");
+
+  const technical = page.getByTestId("vehicle-setup-technical");
+  await technical.locator("summary").click();
+  const configuredProfile = page.getByTestId("vehicle-setup-configured-profile-revision");
+  const loadedProfile = page.getByTestId("vehicle-setup-loaded-profile-revision");
+  await expect(configuredProfile).toHaveText("sha256:aaaaaaaaaa…aaaaaaaa");
+  await expect(loadedProfile).toHaveText("sha256:bbbbbbbbbb…bbbbbbbb");
+  await expect(configuredProfile).toHaveAttribute("title", revisions.configuredProfile);
+  await expect(loadedProfile).toHaveAttribute("title", revisions.loadedProfile);
+
+  const overflow = await page.getByTestId("vehicle-setup-technical").evaluate((details) => ({
+    details: details.scrollWidth - details.clientWidth,
+    panel: details.closest("[data-openmmi-vehicle-setup-panel]").scrollWidth
+      - details.closest("[data-openmmi-vehicle-setup-panel]").clientWidth,
+    rows: Array.from(details.querySelectorAll(".openmmi-settings-metric"))
+      .map((row) => row.scrollWidth - row.clientWidth),
+  }));
+  expect(overflow.details).toBeLessThanOrEqual(1);
+  expect(overflow.panel).toBeLessThanOrEqual(1);
+  expect(Math.max(...overflow.rows)).toBeLessThanOrEqual(1);
+  await expectNoRuntimeFailures(failures);
+});
+
 test("vehicle setup reviews and applies an exact confirmed draft", async ({ page }) => {
   const failures = captureRuntimeFailures(page);
   const dashboard = await loadDashboard(page);
@@ -1551,7 +1618,7 @@ test("vehicle setup reviews and applies an exact confirmed draft", async ({ page
 
   await page.getByTestId("vehicle-setup-profile").selectOption("custom:my-seat");
   await page.getByTestId("vehicle-setup-bindings").selectOption("custom:my-controls");
-  await expect(page.getByTestId("vehicle-setup-status")).toContainText("Changes not applied");
+  await expect(page.getByTestId("vehicle-setup-status")).toContainText("Draft selections are not applied");
   await expect(page.getByTestId("vehicle-setup-profile")).toHaveValue("custom:my-seat");
   await expect(page.getByTestId("vehicle-setup-bindings")).toHaveValue("custom:my-controls");
   await expect(page.getByTestId("vehicle-setup-interface")).toHaveText("can1 · not detected");

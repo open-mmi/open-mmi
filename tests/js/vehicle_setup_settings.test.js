@@ -18,7 +18,16 @@ function payload() {
       interface: "can0",
       interface_present: false,
       configuration_revision: "sha256:configuration",
-      loaded: null,
+      loaded: {
+        api_version: 1,
+        state: "ready",
+        errors: [],
+        vehicle: { source: "maintained", id: "seat_1p", revision: "sha256:profile" },
+        bindings: { source: "maintained", id: "default", revision: "sha256:bindings" },
+        active_bus: "comfort",
+        interface: "can0",
+        updated_at: 1,
+      },
     },
     catalogue: {
       development_mode: false,
@@ -328,7 +337,7 @@ test("vehicle setup renders maintained and custom draft choices before review", 
   const html = controller.template();
 
   assert.match(html, /Vehicle setup/);
-  assert.match(html, /Current active setup is ready/);
+  assert.match(html, /Configured and loaded setup match/);
   assert.match(html, /Seat 1P/);
   assert.match(html, /Default · Maintained/);
   assert.match(html, /Maintained/);
@@ -344,6 +353,45 @@ test("vehicle setup renders maintained and custom draft choices before review", 
     ["GET", "/api/system/vehicle-setup/coordinator"],
   ]);
   assert.equal(state.calls.some((call) => call[0] === "POST"), false);
+});
+
+test("saved revisions are clearly distinguished from loaded runtime and SHAs stay compact", async () => {
+  const status = payload();
+  const configuredProfile = `sha256:${"a".repeat(64)}`;
+  const loadedProfile = `sha256:${"b".repeat(64)}`;
+  const configuredBindings = `sha256:${"c".repeat(64)}`;
+  const loadedBindings = `sha256:${"d".repeat(64)}`;
+
+  status.active.vehicle = { source: "custom", id: "my-seat", revision: configuredProfile };
+  status.active.bindings = { source: "custom", id: "my-controls", revision: configuredBindings };
+  status.active.interface = "can1";
+  status.active.loaded = {
+    api_version: 1,
+    state: "ready",
+    errors: [],
+    vehicle: { source: "custom", id: "my-seat", revision: loadedProfile },
+    bindings: { source: "custom", id: "my-controls", revision: loadedBindings },
+    active_bus: "comfort",
+    interface: "can1",
+    updated_at: 1,
+  };
+  status.catalogue.profiles.find((entry) => entry.id === "my-seat").revision = configuredProfile;
+  status.catalogue.bindings.find((entry) => entry.id === "my-controls").revision = configuredBindings;
+
+  const controller = vehicleSetup.createController(fixture({ status }));
+  await controller.refresh();
+  const html = controller.template();
+
+  assert.match(html, /Saved custom revisions await review and Apply/);
+  assert.match(html, /Saved revisions await review and Apply/);
+  assert.match(html, /Configured profile/);
+  assert.match(html, /matches configured selection/);
+  assert.match(html, /sha256:aaaaaaaaaa…aaaaaaaa/);
+  assert.match(html, /sha256:bbbbbbbbbb…bbbbbbbb/);
+  assert.match(html, new RegExp(`title="${configuredProfile}"`));
+  assert.match(html, new RegExp(`title="${loadedProfile}"`));
+  assert.doesNotMatch(html, new RegExp(`>${configuredProfile}<`));
+  assert.doesNotMatch(html, new RegExp(`>${loadedProfile}<`));
 });
 
 test("maintained items create revision-bound custom copies in the user catalogue", async () => {
@@ -613,7 +661,7 @@ test("the current setup can be reviewed when no alternative catalogue entry exis
     runtime: { active_bus: "comfort", buses: { comfort: { interface: "can0" } } },
   }]);
   const html = controller.template();
-  assert.match(html, /current setup would remain unchanged/);
+  assert.match(html, /configured and loaded setup would remain unchanged/);
   assert.match(html, /No active configuration values would change/);
   assert.match(html, /No service or adapter changes are required/);
   assert.doesNotMatch(html, /data-testid="vehicle-setup-apply" disabled/);
@@ -631,7 +679,7 @@ test("profile and bindings changes produce an exact read-only review request", a
     vehicle: "custom:my-seat",
     bindings: "custom:my-controls",
   });
-  assert.match(controller.template(), /Changes not applied/);
+  assert.match(controller.template(), /Draft selections are not applied/);
   assert.match(controller.template(), /can1/);
   assert.doesNotMatch(controller.template(), /data-testid="vehicle-setup-review" disabled/);
   assert.equal(controller.setDraft("vehicle", "custom:broken"), false);

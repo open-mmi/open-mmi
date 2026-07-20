@@ -10,6 +10,34 @@
   gap: .5rem;
 }
 
+.openmmi-vehicle-runtime-sync {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  min-width: 0;
+  padding: .48rem .68rem;
+  border: 1px solid rgba(176, 215, 245, .12);
+  border-radius: 8px;
+  background: rgba(5, 21, 35, .3);
+  color: var(--muted);
+  font-size: .72rem;
+  line-height: 1.3;
+}
+
+.openmmi-vehicle-runtime-sync strong {
+  min-width: 0;
+  color: var(--text);
+  font-weight: 650;
+  text-align: right;
+}
+
+.openmmi-vehicle-runtime-sync.is-saved-unapplied,
+.openmmi-vehicle-runtime-sync.is-different-selection,
+.openmmi-vehicle-runtime-sync.is-unavailable {
+  border-color: rgba(240, 195, 106, .28);
+}
+
 .openmmi-vehicle-setup-selectors {
   display: grid;
   gap: .55rem;
@@ -202,7 +230,26 @@
 }
 
 .openmmi-vehicle-setup-technical .openmmi-settings-metric {
+  min-width: 0;
   margin-top: .42rem;
+  padding: .58rem .68rem;
+}
+
+.openmmi-vehicle-setup-technical .openmmi-settings-metric > * {
+  min-width: 0;
+}
+
+.openmmi-vehicle-revision {
+  display: block;
+  min-width: 0;
+  max-width: min(100%, 24ch);
+  overflow: hidden;
+  color: var(--text);
+  font: 600 .72rem/1.3 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  text-align: right;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
 }
 
 @media (max-width: 620px) {
@@ -214,6 +261,18 @@
   .openmmi-vehicle-setup-selector {
     grid-template-columns: 1fr;
     gap: .4rem;
+  }
+
+  .openmmi-vehicle-runtime-sync {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: .2rem;
+  }
+
+  .openmmi-vehicle-runtime-sync strong,
+  .openmmi-vehicle-revision {
+    max-width: 100%;
+    text-align: left;
   }
 
   .openmmi-vehicle-preview-change {

@@ -10,14 +10,18 @@ vehicle-control actions.
 
 ## Current contained slice
 
-The contained implementation remains intentionally read-only. It displays the active
-configuration, maintained/custom catalogue, selected bus and detected-adapter state.
-Changing the profile or bindings selector creates an in-memory draft and shows
-`Changes not applied`; it does not persist, provision hardware or restart the CAN
-service. **Review current setup** or **Review changes** submits the allowlisted draft
-to the fixed preview route and renders its normalized changes, warnings, interface
-health and proposed effects inline. **Apply setup** remains disabled until the
-privileged apply contract is implemented and qualified.
+The V1 implementation displays the configured maintained/custom identities, the
+revision actually loaded by `canbusd`, a page-local draft selection, selected bus and
+adapter state. Changing a selector creates an unapplied draft. Saving an active custom
+file updates the configured catalogue revision but the managed daemon remains pinned to
+the previously loaded revision until the user completes **Review changes** and confirms
+**Apply setup**. The coordinator then rechecks exact revisions, provisions the reviewed
+adapter, restarts `canbusd`, verifies loaded evidence and restores the previous setup
+automatically after a failed mutation.
+
+Custom actions are source-scoped: maintained entries are copy-only; custom entries may
+be imported, edited, duplicated, renamed or deleted subject to exact-revision, active
+identity and lifecycle-lock checks. None of those actions implicitly applies a setup.
 
 ## Main panel
 
@@ -26,14 +30,15 @@ The collapsed overview contains:
 ```text
 Vehicle setup                                      single CAN input
 
-Vehicle profile    Seat 1P                         Maintained  [Change]
-Bindings           Default                         Maintained  [Change]
-Active CAN bus     Comfort                         profile default
-CAN adapter        can0                            connected
-Expected bitrate   100 kbit/s
-Runtime            active configuration loaded
+Configured profile  Seat 1P                     Maintained
+Configured bindings Default                        Maintained
+Running CAN service Loaded revisions match configured setup
+Draft selection     Seat 1P / Default              matches configured
+Selected CAN bus    Comfort                        profile default
+CAN adapter         can0                           connected
+Expected bitrate    100 kbit/s
 
-[Review changes]          [Advanced]
+[Review current setup]    [Technical details]
 ```
 
 The action area includes its own inline status region. Success, warning and failure
@@ -50,12 +55,12 @@ User-facing terms:
 | SocketCAN interface | CAN adapter, with interface name in detail |
 | source path override | Custom selection |
 | daemon | CAN service, except in technical details |
-| default_bus | Active CAN bus / profile default |
+| default_bus | Selected CAN bus / profile default |
 
 Full paths, revisions and generated files belong under **Technical details**. Final UI
 polish must keep SHA-256 values from widening either the disclosure or its parent cards:
-show a compact/shortened value by default, allow the exact value to be copied or revealed,
-and retain `overflow-wrap` as a narrow-screen fallback.
+show a compact fingerprint by default, retain the exact value in accessible
+metadata, and keep strict overflow containment as a narrow-screen fallback.
 
 ## Profile selection
 
@@ -110,20 +115,26 @@ Previously selected can2           not currently detected
 Advanced manual entry accepts only a valid Linux interface name. It does not accept a
 command or provisioning script.
 
-## Draft and active state
+## Configured, draft and loaded state
 
-The panel must distinguish:
+The panel distinguishes:
 
-- **Active**: loaded by `canbusd`;
-- **Draft**: currently selected in the form;
-- **Saved custom file**: exists on disk; and
-- **Applied descriptor**: coordinator source of truth.
+- **Configured**: the canonical maintained/custom identity and the current catalogue
+  revision on disk;
+- **Draft selection**: the profile and bindings currently selected in the form;
+- **Loaded runtime**: the exact revisions successfully parsed by the running `canbusd`;
+  and
+- **Saved but unapplied**: configured and loaded identities match, but one or both exact
+  revisions differ.
 
-When draft differs from active, show `Changes not applied` beside the action area.
+When the draft differs, show `Draft selections are not applied. The running CAN service
+remains unchanged.` When an active custom file has been saved but not applied, show
+`Saved custom revisions await review and Apply` and retain both configured and loaded
+fingerprints under **Technical details**.
 
-Changing a custom file after activation shows `Custom file changed since activation`.
-It is not silently reloaded unless a separately designed live-reload policy explicitly
-permits it.
+Managed runtime revisions are pinned for the lifetime of the daemon process. A saved
+custom file is loaded only after a fresh review, explicit confirmation and coordinator
+restart.
 
 ## Review screen
 
@@ -148,8 +159,9 @@ The CAN service will restart. Open MMI will not transmit CAN messages.
 [Back to selection] [Apply setup — disabled]
 ```
 
-The current slice stops here. It does not expose the proposed apply route and does not
-write the canonical descriptor, systemd drop-in or udev rules.
+The confirmed action is bound to the exact review and active configuration revision.
+The browser sends no paths, commands, generated content or service names. Apply progress,
+verified success, verified restoration and blocked recovery states remain inline.
 
 ## Progress and results
 
@@ -197,23 +209,17 @@ The user chooses:
 Creation does not activate the file. Existing identifiers are never overwritten.
 A separate **Import profile JSON** / **Import bindings JSON** control accepts a local JSON file, prompts for a new safe identifier, validates it on the server, and selects the imported item only as an unapplied draft.
 
-## Editor screen
+## Editor and lifecycle controls
 
-Initial sections:
+V1 exposes a bounded raw JSON editor for custom entries only. Load returns the exact
+current revision; save requires that revision, validates JSON and schema semantics, and
+atomically replaces only the user-owned file. A stale revision preserves editor text and
+requires reload. Closing a dirty editor requires explicit discard confirmation.
 
-```text
-Overview | CAN buses | Bindings | Advanced JSON | Validation
-```
-
-Profile and bindings remain separate documents even when edited in one workflow.
-
-Primary actions:
-
-```text
-[Save draft] [Discard unsaved changes] [Review and activate]
-```
-
-`Review and activate` is disabled while validation contains errors.
+Custom entries also expose **Duplicate**, inactive-only **Rename**, and inactive-only
+**Delete**. Maintained entries expose only **Use maintained … as template**. Import is
+creation-only and refuses an existing identifier. Save, import and lifecycle operations
+never activate or restart the CAN service.
 
 ## Tablet and accessibility requirements
 

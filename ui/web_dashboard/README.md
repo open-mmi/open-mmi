@@ -450,21 +450,21 @@ disabled. The equivalent terminal command is
 authorization group requires one logout/login or reboot before the existing dashboard
 session can reach the socket.
 
-**Settings → Vehicle setup** displays the active configuration and catalogue. Profile
-and bindings selectors create a page-local draft. **Review current setup** or
-**Review changes** sends only the
-selected maintained/custom identities and one bus/interface assignment to the fixed
-preview route, then renders changed values, compatibility warnings, interface health
-and proposed system effects inline. The draft and preview are not persisted, and
-**Apply setup** remains disabled.
+**Settings → Vehicle setup** distinguishes configured catalogue revisions, page-local
+draft selections and the exact revisions loaded by `canbusd`. **Review current setup**
+or **Review changes** sends only selected maintained/custom identities and one
+bus/interface assignment to the fixed preview route, then renders normalized changes,
+warnings, adapter health and fixed effects inline. A fresh review plus explicit browser
+confirmation enables the fixed Apply route. Saving, importing, copying, duplicating,
+renaming or deleting custom catalogue content remains separate and unapplied.
 
 `POST /api/system/vehicle-setup/preview` is a fixed, same-origin, non-mutating backend
 contract routed through the root-owned coordinator socket. It accepts only maintained/custom identifiers plus one declared bus/interface
 assignment. The coordinator rereads fixed catalogue/runtime paths, rebuilds the plan independently, and returns a normalized canonical target, compatibility warnings, lock activity and deterministic systemd/udev/restart effects. The page fails closed unless the response
-explicitly remains a read-only preview with apply unavailable. The backend now has
-qualified atomic apply, verification and restoration actions, but preview intentionally
-still returns `apply_available: false` so the unfinished page cannot enable itself. The same planner can be
-inspected from a terminal without mutation:
+explicitly remains a read-only preview with `apply_available: false`; the browser
+combines that normalized review with separate coordinator capability/lock state before
+enabling its own confirmed Apply control. The same planner can be inspected from a
+terminal without mutation:
 
 ```bash
 open-mmi-config vehicle-setup preview seat_1p default \
@@ -478,9 +478,10 @@ for backend/device qualification. It accepts exactly the normalized `target`,
 copied from a fresh preview. The coordinator rebuilds the plan under the shared locks,
 rechecks catalogue revisions, rejects conflicting runtime drop-ins, existing
 non-SocketCAN interfaces, absent non-`canN` names and all public `vcanN` targets, then
-applies or automatically restores through fixed operations. Stale/busy responses are machine-readable; restored failures include only
-bounded persisted transaction state. The frontend JavaScript does not call this route
-yet, and **Apply setup** remains disabled.
+applies or automatically restores through fixed operations. Stale/busy responses are
+machine-readable; restored failures include only bounded persisted transaction state.
+The frontend calls this route only with the exact reviewed target and explicit
+confirmation, then polls bounded coordinator transaction state through completion.
 
 `static/styles.css` remains as an import-only compatibility manifest. `tools/verify_css_split.py` locks the module order and verifies that their concatenated bytes remain identical to the pre-split stylesheet, preventing accidental cascade changes during this structural phase.
 
@@ -514,7 +515,7 @@ http://127.0.0.1:8765/?force=all
 
 ## Design constraints
 
-- Keep vehicle/CAN integration read-only in the dashboard.
+- Keep vehicle/CAN runtime passive: setup may configure reception, but the dashboard must not expose CAN transmission or arbitrary system commands.
 - Keep secrets in environment variables or local ignored files only.
 - Prefer small, reversible UI passes.
 - Keep Drive/Climate/Vehicle stable when working on Media.

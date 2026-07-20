@@ -149,8 +149,10 @@ Playwright coverage includes:
 - unsaved editor navigation warning;
 - active custom save leaves loaded runtime revisions and PID unchanged beyond the legacy reload interval;
 - focus preservation across status refresh;
-- no off-screen-only feedback; and
-- 800×480 containment with touch-sized controls.
+- no off-screen-only feedback;
+- configured, draft and loaded revision state remains distinct after a custom save;
+- compact SHA fingerprints retain the exact value in accessible technical detail metadata; and
+- 800×480 containment with touch-sized controls and no horizontal expansion when technical details open.
 
 ## Concrete apply-operation tests
 
@@ -287,10 +289,23 @@ On the reference tablet and Seat 1P profile verify:
 
 ## First-release acceptance
 
-The first setup-management release is complete when a user can select and safely apply a
-maintained profile, bindings and one CAN adapter entirely from Settings; the selection
-survives reboot and hotplug; failures restore the prior configuration; and custom files
-are never created or activated implicitly.
+The V1 setup-management release is complete when all of the following are true:
 
-The editor and simultaneous multi-CAN runtime may ship later without invalidating that
-first release.
+- a user can select and safely apply maintained or custom profile/bindings identities
+  and one CAN adapter entirely from Settings;
+- the exact reviewed revisions are loaded only after explicit confirmation and daemon
+  restart, while custom saves remain visibly unapplied beyond the legacy reload interval;
+- apply failure restores and verifies the prior generated files and loaded runtime;
+- maintained entries remain immutable and expose template-copy only;
+- custom copy, creation-only import, revision-safe JSON editing, duplicate, inactive
+  rename and inactive delete preserve private ownership and never activate implicitly;
+- install/update repair only the fixed custom catalogue trees and preserve unrelated
+  user settings;
+- active custom rename/delete is blocked both in the UI and server contract;
+- configured, draft and loaded states remain unambiguous at 800×480, and full SHA-256
+  values cannot widen the panel; and
+- maintained-to-custom and custom-to-maintained source switches retain ready runtime
+  evidence and real receive-only CAN traffic when the vehicle is connected.
+
+Simultaneous multi-CAN reception, structured rule forms and the bindings action registry
+remain later milestones and do not block this single-input V1 release.

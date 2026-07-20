@@ -1,6 +1,6 @@
 # V1 vehicle setup management
 
-Status: implementation in progress — core apply, custom copy, editing and lifecycle management complete
+Status: V1 implementation complete — final tablet acceptance and release sign-off pending
 
 This design defines a local, explicit setup path for selecting an Open MMI vehicle
 profile, bindings and SocketCAN input without editing systemd or udev files by hand.
@@ -22,8 +22,9 @@ A user should be able to:
 7. see whether the configuration loaded and whether the interface is present;
 8. create a named custom copy from a maintained template;
 9. edit and validate that custom copy without changing the active runtime;
-10. duplicate, rename or delete inactive custom entries explicitly; and
-11. return to a maintained profile without leaving a custom path override active.
+10. import validated profile or bindings JSON as a new custom entry;
+11. duplicate, rename or delete inactive custom entries explicitly; and
+12. return to a maintained profile without leaving a custom path override active.
 
 The normal path must not require a terminal. Existing management commands remain an
 administrator and recovery interface over the same backend contract.
@@ -42,6 +43,7 @@ The V1 setup-management scope includes:
 - a canonical root-owned selection descriptor;
 - preview, validation, apply, verification and automatic restoration;
 - creation of custom copies from installed maintained templates;
+- creation-only validated JSON import into new custom identities;
 - draft editing with atomic saves and revision checks;
 - revision-bound duplicate, rename and inactive-only deletion for custom entries;
 - machine-readable active configuration and CAN health status; and
