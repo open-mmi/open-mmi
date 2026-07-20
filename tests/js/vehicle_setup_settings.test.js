@@ -86,6 +86,16 @@ function previewPayload() {
       errors: [],
       warnings: [{ code: "bindings-unused", message: "1 binding is not emitted by the profile" }],
     },
+    coordinator: {
+      previewed: true,
+      read_only: true,
+      locks: {
+        configuration_active: false,
+        lifecycle_active: false,
+        update_active: false,
+      },
+      apply_blocked: false,
+    },
     plan: {
       changes: [
         {
@@ -108,9 +118,44 @@ function previewPayload() {
   };
 }
 
+
+function coordinatorPayload(overrides = {}) {
+  return {
+    ok: true,
+    api_version: 1,
+    read_only: false,
+    preview_enabled: true,
+    apply_enabled: true,
+    restore_enabled: false,
+    locks: { configuration_active: false, lifecycle_active: false, update_active: false },
+    state: {
+      state: "idle", stage: "idle", error: "", restoration_attempted: false,
+      restoration_verified: false,
+    },
+    ...overrides,
+  };
+}
+
+function applyResult() {
+  return {
+    ok: true,
+    api_version: 1,
+    action: "apply",
+    state: {
+      state: "complete", stage: "complete", error: "", restoration_attempted: false,
+      restoration_verified: false, target: { interface: "can1" },
+    },
+  };
+}
+
 function fixture(options = {}) {
   const listeners = {};
   const calls = [];
+  const confirmations = [];
+  const timers = [];
+  const coordinatorResponses = Array.isArray(options.coordinators)
+    ? [...options.coordinators]
+    : null;
   const panel = { innerHTML: "" };
   const active = { dataset: { openmmiSettingsSection: "vehicle-setup" } };
   const document = {
@@ -124,22 +169,43 @@ function fixture(options = {}) {
   const window = {
     document,
     addEventListener() {},
+    confirm(message) {
+      confirmations.push(message);
+      return options.confirm !== false;
+    },
     requestAnimationFrame(callback) { callback(); },
+    setTimeout(callback) {
+      timers.push(callback);
+      if (options.runTimers) queueMicrotask(callback);
+      return timers.length;
+    },
   };
   const api = {
     async getJson(path) {
       calls.push(["GET", path]);
       if (options.error) throw new Error(options.error);
-      return payload();
+      if (path === vehicleSetup.ENDPOINT) return options.status || payload();
+      if (path === vehicleSetup.COORDINATOR_ENDPOINT) {
+        if (options.coordinatorError) throw new Error(options.coordinatorError);
+        if (coordinatorResponses?.length) return coordinatorResponses.shift();
+        return options.coordinator || coordinatorPayload();
+      }
+      throw new Error("Unexpected vehicle setup GET");
     },
     async postJson(path, body) {
       calls.push(["POST", path, body]);
-      if (options.previewError) throw new Error(options.previewError);
-      if (path !== vehicleSetup.PREVIEW_ENDPOINT) throw new Error("Unexpected vehicle setup POST");
-      return options.preview || previewPayload();
+      if (path === vehicleSetup.PREVIEW_ENDPOINT) {
+        if (options.previewError) throw new Error(options.previewError);
+        return options.preview || previewPayload();
+      }
+      if (path === vehicleSetup.APPLY_ENDPOINT) {
+        if (options.applyError) throw options.applyError;
+        return options.apply || applyResult();
+      }
+      throw new Error("Unexpected vehicle setup POST");
     },
   };
-  return { active, api, calls, document, listeners, panel, window };
+  return { active, api, calls, confirmations, document, listeners, panel, timers, window };
 }
 
 test("vehicle setup renders maintained and custom draft choices before review", async () => {
@@ -160,7 +226,10 @@ test("vehicle setup renders maintained and custom draft choices before review", 
   assert.match(html, /100 kbit\/s/);
   assert.match(html, /Review current setup/);
   assert.doesNotMatch(html, /data-testid="vehicle-setup-review" disabled/);
-  assert.deepEqual(state.calls, [["GET", "/api/system/vehicle-setup"]]);
+  assert.deepEqual(state.calls, [
+    ["GET", "/api/system/vehicle-setup"],
+    ["GET", "/api/system/vehicle-setup/coordinator"],
+  ]);
   assert.equal(state.calls.some((call) => call[0] === "POST"), false);
 });
 
@@ -184,7 +253,7 @@ test("the current setup can be reviewed when no alternative catalogue entry exis
   await controller.refresh();
   assert.equal(controller.draftDiffers(), false);
   await controller.reviewDraft();
-  assert.deepEqual(state.calls[1], ["POST", "/api/system/vehicle-setup/preview", {
+  assert.deepEqual(state.calls.find((call) => call[0] === "POST"), ["POST", "/api/system/vehicle-setup/preview", {
     vehicle: { source: "maintained", id: "seat_1p" },
     bindings: { source: "maintained", id: "default" },
     runtime: { active_bus: "comfort", buses: { comfort: { interface: "can0" } } },
@@ -193,7 +262,7 @@ test("the current setup can be reviewed when no alternative catalogue entry exis
   assert.match(html, /current setup would remain unchanged/);
   assert.match(html, /No active configuration values would change/);
   assert.match(html, /No service or adapter changes are required/);
-  assert.match(html, /data-testid="vehicle-setup-apply" disabled/);
+  assert.doesNotMatch(html, /data-testid="vehicle-setup-apply" disabled/);
 });
 
 test("profile and bindings changes produce an exact read-only review request", async () => {
@@ -220,7 +289,7 @@ test("profile and bindings changes produce an exact read-only review request", a
     runtime: { active_bus: "comfort", buses: { comfort: { interface: "can1" } } },
   });
   await controller.reviewDraft();
-  assert.deepEqual(state.calls[1], ["POST", "/api/system/vehicle-setup/preview", request]);
+  assert.deepEqual(state.calls.find((call) => call[0] === "POST"), ["POST", "/api/system/vehicle-setup/preview", request]);
   assert.equal(controller.preview().read_only, true);
   const review = controller.template();
   assert.match(review, /Review ready/);
@@ -229,8 +298,128 @@ test("profile and bindings changes produce an exact read-only review request", a
   assert.match(review, /can1 · not detected/);
   assert.match(review, /1 binding is not emitted by the profile/);
   assert.match(review, /Restart the CAN service/);
-  assert.match(review, /data-testid="vehicle-setup-apply" disabled/);
+  assert.doesNotMatch(review, /data-testid="vehicle-setup-apply" disabled/);
+  assert.match(review, /failed mutation is restored automatically/);
   assert.doesNotMatch(JSON.stringify(request), /path|command|revision/);
+});
+
+
+test("confirmed apply sends only the exact reviewed target and revisions", async () => {
+  const state = fixture();
+  const controller = vehicleSetup.createController(state);
+  await controller.refresh();
+  controller.setDraft("vehicle", "custom:my-seat");
+  controller.setDraft("bindings", "custom:my-controls");
+  await controller.reviewDraft();
+
+  const reviewed = controller.preview();
+  const result = await controller.applyDraft();
+  const call = state.calls.find((entry) => entry[0] === "POST" && entry[1] === vehicleSetup.APPLY_ENDPOINT);
+  assert.deepEqual(call, ["POST", vehicleSetup.APPLY_ENDPOINT, {
+    target: reviewed.target,
+    expected_configuration_revision: reviewed.expected_configuration_revision,
+    target_configuration_revision: reviewed.target_configuration_revision,
+    confirm: true,
+  }]);
+  assert.equal(result.state.state, "complete");
+  assert.equal(state.confirmations.length, 1);
+  assert.match(state.confirmations[0], /My <Seat>/);
+  assert.match(state.confirmations[0], /can1/);
+  assert.equal(controller.preview(), null);
+  assert.match(controller.template(), /Vehicle setup applied and verified/);
+});
+
+test("apply cancellation never sends a mutation request", async () => {
+  const state = fixture({ confirm: false });
+  const controller = vehicleSetup.createController(state);
+  await controller.refresh();
+  controller.setDraft("vehicle", "custom:my-seat");
+  await controller.reviewDraft();
+  assert.equal(await controller.applyDraft(), null);
+  assert.equal(state.calls.some((entry) => entry[1] === vehicleSetup.APPLY_ENDPOINT), false);
+});
+
+test("stale previews fail closed and require a fresh review", async () => {
+  const error = new Error("Vehicle configuration preview is stale");
+  error.status = 409;
+  error.payload = { ok: false, code: "stale-preview", error: error.message };
+  const state = fixture({ applyError: error });
+  const controller = vehicleSetup.createController(state);
+  await controller.refresh();
+  controller.setDraft("vehicle", "custom:my-seat");
+  await controller.reviewDraft();
+  await assert.rejects(controller.applyDraft(), /stale/);
+  assert.equal(controller.preview(), null);
+  assert.match(controller.template(), /reviewed setup is stale/i);
+});
+
+test("verified rollback is reported explicitly after a failed apply", async () => {
+  const error = new Error("Applied vehicle configuration could not be verified");
+  error.status = 500;
+  error.payload = {
+    ok: false,
+    code: "apply-failed-restored",
+    error: error.message,
+    state: {
+      state: "failed", stage: "restored", error: error.message,
+      restoration_attempted: true, restoration_verified: true,
+    },
+  };
+  const state = fixture({ applyError: error });
+  const controller = vehicleSetup.createController(state);
+  await controller.refresh();
+  controller.setDraft("vehicle", "custom:my-seat");
+  await controller.reviewDraft();
+  await assert.rejects(controller.applyDraft(), /could not be verified/);
+  const html = controller.template();
+  assert.match(html, /previous setup was restored and verified/i);
+  assert.match(html, /Previous setup restoration was verified/);
+});
+
+test("active coordinator transactions resume progress polling after panel reload", async () => {
+  const activeCoordinator = coordinatorPayload({
+    locks: { configuration_active: true, lifecycle_active: true, update_active: true },
+    state: {
+      state: "validating", stage: "validated", error: "", restoration_attempted: false,
+      restoration_verified: false, transaction_id: "configuration-active",
+    },
+  });
+  const completeCoordinator = coordinatorPayload({
+    state: {
+      state: "complete", stage: "complete", error: "", restoration_attempted: false,
+      restoration_verified: false, transaction_id: "configuration-active",
+    },
+  });
+  const state = fixture({ coordinators: [activeCoordinator, completeCoordinator] });
+  const controller = vehicleSetup.createController(state);
+  await controller.refresh();
+  assert.match(controller.template(), /Apply progress: validating reviewed setup/);
+  assert.ok(state.timers.length > 0);
+  await state.timers.shift()();
+  assert.match(controller.template(), /Vehicle setup applied and verified/);
+});
+
+test("unverified restoration blocks retries with explicit recovery guidance", async () => {
+  const error = new Error("Vehicle configuration restoration could not be verified");
+  error.status = 500;
+  error.payload = {
+    ok: false,
+    code: "apply-failed-restore-unverified",
+    error: error.message,
+    state: {
+      state: "failed", stage: "restore-unverified", error: error.message,
+      restoration_attempted: true, restoration_verified: false,
+    },
+  };
+  const state = fixture({ applyError: error });
+  const controller = vehicleSetup.createController(state);
+  await controller.refresh();
+  controller.setDraft("vehicle", "custom:my-seat");
+  await controller.reviewDraft();
+  await assert.rejects(controller.applyDraft(), /could not be verified/);
+  const html = controller.template();
+  assert.match(html, /do not retry until coordinator recovery succeeds/i);
+  assert.match(html, /Previous setup restoration could not be verified/);
 });
 
 test("preview failures remain inline and unsafe capability responses fail closed", async () => {

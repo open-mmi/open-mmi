@@ -7,6 +7,10 @@
 
   const ENDPOINT = "/api/system/vehicle-setup";
   const PREVIEW_ENDPOINT = "/api/system/vehicle-setup/preview";
+  const APPLY_ENDPOINT = "/api/system/vehicle-setup/apply";
+  const COORDINATOR_ENDPOINT = "/api/system/vehicle-setup/coordinator";
+  const ACTIVE_APPLY_STATES = new Set(["validating", "applying", "reloading", "verifying", "restoring"]);
+  const TERMINAL_APPLY_STATES = new Set(["idle", "complete", "failed"]);
   const SOURCES = Object.freeze(["maintained", "custom"]);
   const IDENTIFIER_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/;
   const INTERFACE_RE = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,14}$/;
@@ -95,6 +99,14 @@
     let previewLoading = false;
     let previewError = "";
     let previewGeneration = 0;
+    let coordinator = null;
+    let coordinatorError = "";
+    let applyBusy = false;
+    let applyMessage = "";
+    let applyMessageKind = "";
+    let applyState = null;
+    let applyPollTimer = null;
+    let applyPollDeadline = 0;
 
     function activeSection() {
       return documentRef.querySelector("[data-openmmi-settings-section].active")
@@ -138,6 +150,246 @@
       preview = null;
       previewLoading = false;
       previewError = "";
+    }
+
+    function coordinatorState() {
+      return applyState || coordinator?.state || {};
+    }
+
+    function coordinatorApplyReady() {
+      const locks = coordinator?.locks || {};
+      return coordinator?.ok === true
+        && coordinator?.apply_enabled === true
+        && coordinator?.read_only === false
+        && preview?.coordinator?.apply_blocked === false
+        && preview?.validation?.valid !== false
+        && !Object.values(locks).some((value) => value === true)
+        && !applyBusy;
+    }
+
+    function applyStateLabel(value) {
+      const labels = {
+        idle: "idle",
+        validating: "validating reviewed setup…",
+        applying: "writing configuration…",
+        reloading: "provisioning CAN adapter…",
+        verifying: "verifying loaded runtime…",
+        restoring: "restoring previous setup…",
+        complete: "complete",
+        failed: "failed",
+      };
+      return labels[String(value || "")] || String(value || "waiting…");
+    }
+
+    function applyPayload() {
+      if (
+        !preview
+        || preview.read_only !== true
+        || preview.apply_available !== false
+        || preview.state !== "ready"
+        || !preview.target
+        || typeof preview.expected_configuration_revision !== "string"
+        || typeof preview.target_configuration_revision !== "string"
+      ) return null;
+      return {
+        target: preview.target,
+        expected_configuration_revision: preview.expected_configuration_revision,
+        target_configuration_revision: preview.target_configuration_revision,
+        confirm: true,
+      };
+    }
+
+    function applyCapabilityMessage() {
+      const state = coordinatorState();
+      if (applyBusy) return `Apply progress: ${applyStateLabel(state.state)}`;
+      if (coordinatorError) return coordinatorError;
+      if (coordinator?.apply_enabled !== true) {
+        if (state.stage === "restore-unverified") {
+          return "A previous setup could not be restored safely. Applying remains blocked until recovery succeeds.";
+        }
+        return "The privileged apply service is unavailable.";
+      }
+      if (Object.values(coordinator?.locks || {}).some((value) => value === true)) {
+        return "Another Open MMI lifecycle operation is active. Refresh the review before applying.";
+      }
+      return "Applying restarts the CAN service and verifies the loaded runtime. A failed mutation is restored automatically.";
+    }
+
+    function setApplyMessage(text, kind = "") {
+      applyMessage = String(text || "");
+      applyMessageKind = String(kind || "");
+    }
+
+    function applyFeedbackTemplate() {
+      const state = coordinatorState();
+      const stateName = String(state.state || "");
+      const active = ACTIVE_APPLY_STATES.has(stateName);
+      const message = applyMessage || (active ? `Apply progress: ${applyStateLabel(stateName)}` : "");
+      if (!message) return "";
+      const kind = applyMessageKind || (active ? "warning" : stateName === "complete" ? "success" : "error");
+      const restoration = state.restoration_attempted === true
+        ? state.restoration_verified === true
+          ? " Previous setup restoration was verified."
+          : " Previous setup restoration could not be verified."
+        : "";
+      return `<div class="openmmi-config-message ${escapeHtml(kind)}" role="status" aria-live="polite" data-testid="vehicle-setup-apply-feedback">${escapeHtml(message)}${escapeHtml(restoration)}</div>`;
+    }
+
+    function terminalApplyMessage(state = {}) {
+      if (state.state === "complete") return ["Vehicle setup applied and verified.", "success"];
+      if (state.stage === "restored" && state.restoration_verified === true) {
+        return [`${state.error || "Vehicle setup apply failed"}. The previous setup was restored and verified.`, "error"];
+      }
+      if (state.stage === "restore-unverified") {
+        return [`${state.error || "Vehicle setup apply failed"}. Restoration could not be verified; do not retry until coordinator recovery succeeds.`, "error"];
+      }
+      return [state.error || "Vehicle setup apply failed", "error"];
+    }
+
+    function scheduleApplyPoll() {
+      const stateName = String(coordinatorState().state || "");
+      const active = ACTIVE_APPLY_STATES.has(stateName);
+      const timeoutMs = Math.max(1000, Number(options.applyActionTimeoutMs || 60000));
+      if (active && !applyPollDeadline) applyPollDeadline = Date.now() + timeoutMs;
+      if (TERMINAL_APPLY_STATES.has(stateName)) applyPollDeadline = 0;
+      const recovering = !coordinator && applyPollDeadline > Date.now();
+      if (documentRef.hidden || applyPollTimer || applyBusy || (!active && !recovering)) return;
+      const pollIntervalMs = Math.max(25, Number(options.applyPollIntervalMs || 250));
+      applyPollTimer = windowRef.setTimeout(async () => {
+        applyPollTimer = null;
+        if (documentRef.hidden) return;
+        await refreshCoordinator(false);
+        const next = coordinatorState();
+        if (TERMINAL_APPLY_STATES.has(String(next.state || "")) && next.state !== "idle") {
+          const [message, kind] = terminalApplyMessage(next);
+          setApplyMessage(message, kind);
+          try {
+            snapshot = await api.getJson(ENDPOINT, { usePayloadError: true });
+            if (!draftDirty) seedDraft();
+          } catch (_) {}
+        }
+        render();
+        scheduleApplyPoll();
+      }, pollIntervalMs);
+    }
+
+    async function refreshCoordinator(renderAfter = true) {
+      try {
+        coordinator = await api.getJson(COORDINATOR_ENDPOINT, { usePayloadError: true });
+        coordinatorError = "";
+        if (coordinator?.state) applyState = coordinator.state;
+      } catch (error) {
+        coordinator = null;
+        coordinatorError = error?.message || "Could not reach the vehicle configuration coordinator";
+      }
+      scheduleApplyPoll();
+      if (renderAfter) render();
+      return coordinator;
+    }
+
+    function confirmed(messageText) {
+      return typeof windowRef.confirm === "function" && windowRef.confirm(messageText) === true;
+    }
+
+    async function runApplyAction(body) {
+      const pollIntervalMs = Math.max(25, Number(options.applyPollIntervalMs || 250));
+      const timeoutMs = Math.max(1000, Number(options.applyActionTimeoutMs || 60000));
+      const deadline = Date.now() + timeoutMs;
+      let requestDone = false;
+      let requestResult = null;
+      let requestError = null;
+      const request = api.postJson(APPLY_ENDPOINT, body, { usePayloadError: true })
+        .then((result) => {
+          requestResult = result;
+          if (result?.state) applyState = result.state;
+          return result;
+        })
+        .catch((error) => {
+          requestError = error;
+          if (error?.payload?.state) applyState = error.payload.state;
+          return null;
+        })
+        .finally(() => { requestDone = true; });
+
+      while (Date.now() < deadline) {
+        await Promise.resolve();
+        if (requestDone) {
+          if (requestError) throw requestError;
+          if (requestResult?.ok === true && requestResult?.state?.state === "complete") return requestResult;
+          throw new Error("Vehicle setup apply returned an invalid result");
+        }
+        await Promise.race([
+          request,
+          new Promise((resolve) => windowRef.setTimeout(resolve, pollIntervalMs)),
+        ]);
+        if (!requestDone) {
+          await refreshCoordinator(false);
+          render();
+        }
+      }
+      throw new Error("Timed out waiting for vehicle setup apply");
+    }
+
+    function applyFailureMessage(error) {
+      const code = String(error?.payload?.code || "");
+      const message = error?.message || "Vehicle setup apply failed";
+      if (code === "stale-preview") {
+        return ["The reviewed setup is stale. Review the current selection again before applying.", "warning"];
+      }
+      if (code === "busy") {
+        return ["Another Open MMI lifecycle operation is active. Review again after it finishes.", "warning"];
+      }
+      if (code === "apply-failed-restored") {
+        return [`${message}. The previous setup was restored and verified.`, "error"];
+      }
+      if (code === "apply-failed-restore-unverified") {
+        return [`${message}. Restoration could not be verified; do not retry until coordinator recovery succeeds.`, "error"];
+      }
+      return [message, "error"];
+    }
+
+    async function applyDraft() {
+      const body = applyPayload();
+      if (!body || !coordinatorApplyReady()) {
+        throw new Error("The reviewed vehicle setup is not ready to apply");
+      }
+      const vehicle = `${identityDisplay("vehicle", body.target.vehicle)} · ${sourceLabel(body.target.vehicle?.source)}`;
+      const bindings = `${identityDisplay("bindings", body.target.bindings)} · ${sourceLabel(body.target.bindings?.source)}`;
+      const bus = body.target.runtime?.active_bus || "--";
+      const interfaceName = body.target.runtime?.buses?.[bus]?.interface || "--";
+      if (!confirmed(`Apply ${vehicle} with ${bindings} on ${interfaceName}? The CAN service will restart and the loaded runtime will be verified.`)) {
+        return null;
+      }
+
+      applyBusy = true;
+      applyState = { state: "validating", stage: "submitting", error: "" };
+      setApplyMessage("Applying the reviewed vehicle setup…", "warning");
+      render();
+      try {
+        const result = await runApplyAction(body);
+        try {
+          snapshot = await api.getJson(ENDPOINT, { usePayloadError: true });
+          seedDraft();
+        } catch (_) {}
+        await refreshCoordinator(false);
+        clearPreview();
+        applyState = result.state;
+        setApplyMessage("Vehicle setup applied and verified.", "success");
+        return result;
+      } catch (error) {
+        const failureState = error?.payload?.state && typeof error.payload.state === "object"
+          ? error.payload.state
+          : null;
+        const [message, kind] = applyFailureMessage(error);
+        if (String(error?.payload?.code || "") === "stale-preview") clearPreview();
+        setApplyMessage(message, kind);
+        await refreshCoordinator(false);
+        if (failureState) applyState = failureState;
+        throw error;
+      } finally {
+        applyBusy = false;
+        render();
+      }
     }
 
     function setDraft(kind, key) {
@@ -239,6 +491,9 @@
       }
       if (!preview) return "";
 
+      const canApply = Boolean(applyPayload()) && coordinatorApplyReady();
+      const capabilityKind = canApply ? "warning" : coordinatorError ? "error" : "warning";
+      const transaction = coordinatorState();
       const changes = Array.isArray(preview.plan?.changes) ? preview.plan.changes : [];
       const warnings = Array.isArray(preview.validation?.warnings) ? preview.validation.warnings : [];
       const effects = previewEffects(preview.plan?.effects);
@@ -263,7 +518,7 @@
 
       return `
         <section class="openmmi-vehicle-setup-preview" aria-label="Vehicle setup review" data-testid="vehicle-setup-preview">
-          <div class="openmmi-settings-subhead"><span>Review changes</span><small>read-only preview</small></div>
+          <div class="openmmi-settings-subhead"><span>Review changes</span><small>confirmed apply</small></div>
           <div class="openmmi-vehicle-preview-changes">${changeRows}</div>
           <div class="openmmi-settings-metric openmmi-vehicle-preview-interface"><span>Selected CAN adapter</span><strong data-testid="vehicle-setup-preview-interface">${escapeHtml(interfaceText)}</strong></div>
           <div class="openmmi-vehicle-preview-block">
@@ -274,10 +529,12 @@
             <summary>What applying this setup would do</summary>
             ${effectRows}
           </details>
-          <div class="openmmi-config-message warning" role="status">Preview only — applying vehicle setup is unavailable in this build.</div>
+          ${applyBusy ? `<div class="openmmi-settings-metric openmmi-vehicle-apply-progress" aria-busy="true"><span>Apply progress</span><strong data-testid="vehicle-setup-apply-progress">${escapeHtml(applyStateLabel(transaction.state))}</strong></div>` : ""}
+          ${applyFeedbackTemplate()}
+          <div class="openmmi-config-message ${capabilityKind}" role="status" data-testid="vehicle-setup-apply-capability">${escapeHtml(applyCapabilityMessage())}</div>
           <div class="openmmi-config-actions openmmi-vehicle-setup-actions">
-            <button type="button" class="openmmi-settings-link" data-openmmi-vehicle-setup-preview-close="true" data-testid="vehicle-setup-preview-close">Back to selection</button>
-            <button type="button" class="openmmi-setting-pill" data-testid="vehicle-setup-apply" disabled>Apply setup</button>
+            <button type="button" class="openmmi-settings-link" data-openmmi-vehicle-setup-preview-close="true" data-testid="vehicle-setup-preview-close" ${applyBusy ? "disabled" : ""}>Back to selection</button>
+            <button type="button" class="openmmi-setting-pill is-selected" data-openmmi-vehicle-setup-apply="true" data-testid="vehicle-setup-apply" ${canApply ? "" : "disabled"}>${applyBusy ? "Applying…" : "Apply setup"}</button>
           </div>
         </section>
       `;
@@ -302,6 +559,7 @@
           throw new Error("Vehicle setup preview was not safely available");
         }
         preview = result;
+        await refreshCoordinator(false);
         return preview;
       } catch (error) {
         if (generation === previewGeneration) {
@@ -337,7 +595,7 @@
       const bindings = selectedEntry("bindings");
       const bus = selectedBus();
       const changed = draftDiffers();
-      const canReview = Boolean(previewRequest()) && !loading && !previewLoading;
+      const canReview = Boolean(previewRequest()) && !loading && !previewLoading && !applyBusy;
       const activeReady = active.state === "ready";
       const statusText = preview
         ? changed
@@ -375,13 +633,13 @@
           <div class="openmmi-vehicle-setup-selectors">
             <label>
               <span><strong>Vehicle profile</strong><small>${escapeHtml(validationNote(profile, "Choose a valid profile"))}</small></span>
-              <select data-openmmi-vehicle-setup-select="vehicle" data-testid="vehicle-setup-profile" ${loading || previewLoading ? "disabled" : ""}>
+              <select data-openmmi-vehicle-setup-select="vehicle" data-testid="vehicle-setup-profile" ${loading || previewLoading || applyBusy ? "disabled" : ""}>
                 ${optionGroups(catalogue("vehicle"), draft.vehicle, activeVehicle)}
               </select>
             </label>
             <label>
               <span><strong>Bindings</strong><small>${escapeHtml(validationNote(bindings, "Choose valid bindings"))}</small></span>
-              <select data-openmmi-vehicle-setup-select="bindings" data-testid="vehicle-setup-bindings" ${loading || previewLoading ? "disabled" : ""}>
+              <select data-openmmi-vehicle-setup-select="bindings" data-testid="vehicle-setup-bindings" ${loading || previewLoading || applyBusy ? "disabled" : ""}>
                 ${optionGroups(catalogue("bindings"), draft.bindings, activeBindings)}
               </select>
             </label>
@@ -396,11 +654,12 @@
           </div>
 
           <div class="openmmi-config-actions openmmi-vehicle-setup-actions">
-            <button type="button" class="openmmi-settings-link" data-openmmi-vehicle-setup-refresh="true" data-testid="vehicle-setup-refresh" ${loading || previewLoading ? "disabled" : ""}>Refresh status</button>
+            <button type="button" class="openmmi-settings-link" data-openmmi-vehicle-setup-refresh="true" data-testid="vehicle-setup-refresh" ${loading || previewLoading || applyBusy ? "disabled" : ""}>Refresh status</button>
             <button type="button" class="openmmi-setting-pill" data-openmmi-vehicle-setup-review="true" data-testid="vehicle-setup-review" ${canReview ? "" : "disabled"}>${previewLoading ? "Checking setup…" : preview ? "Refresh review" : changed ? "Review changes" : "Review current setup"}</button>
           </div>
-          <p class="openmmi-vehicle-setup-note">Review is read-only. Activation remains unavailable until the privileged apply boundary is implemented and qualified.</p>
+          <p class="openmmi-vehicle-setup-note">Applying requires this exact review and an explicit confirmation. The coordinator verifies the loaded runtime and restores the previous setup after a failed mutation.</p>
 
+          ${preview ? "" : applyFeedbackTemplate()}
           ${previewTemplate()}
 
           <details class="openmmi-vehicle-setup-technical" data-testid="vehicle-setup-technical">
@@ -427,11 +686,14 @@
       loading = true;
       attempted = true;
       errorMessage = "";
+      setApplyMessage("", "");
+      applyState = null;
       render();
       try {
         const next = await api.getJson(ENDPOINT, { usePayloadError: true });
         snapshot = next;
         if (!draft || !draftDirty) seedDraft();
+        await refreshCoordinator(false);
         return snapshot;
       } catch (error) {
         errorMessage = error?.message || "Could not load vehicle setup";
@@ -466,6 +728,11 @@
         reviewDraft().catch(() => {});
         return;
       }
+      const applyButton = event.target?.closest?.("[data-openmmi-vehicle-setup-apply]");
+      if (applyButton && !applyButton.disabled) {
+        applyDraft().catch(() => {});
+        return;
+      }
       const closeButton = event.target?.closest?.("[data-openmmi-vehicle-setup-preview-close]");
       if (closeButton) {
         clearPreview();
@@ -475,6 +742,7 @@
 
     documentRef.addEventListener("change", changeHandler);
     documentRef.addEventListener("click", clickHandler);
+    documentRef.addEventListener("visibilitychange", scheduleApplyPoll);
     windowRef.addEventListener("openmmi:settingsrender", () => windowRef.requestAnimationFrame(renderActive));
     windowRef.addEventListener("openmmi:dashboardconnection", (event) => {
       if (event?.detail?.state !== "ready") {
@@ -489,16 +757,24 @@
 
     return Object.freeze({
       activeSection,
+      applyDraft,
+      applyPayload,
+      applyStateLabel,
+      coordinatorApplyReady,
       draftDiffers,
       previewRequest,
       refresh,
+      refreshCoordinator,
       render,
       renderActive,
       reviewDraft,
+      scheduleApplyPoll,
       setDraft,
       snapshot: () => snapshot,
       draft: () => draft ? { ...draft } : null,
       preview: () => preview,
+      coordinator: () => coordinator,
+      applyState: () => coordinatorState(),
       template,
     });
   }
@@ -510,6 +786,8 @@
   return Object.freeze({
     ENDPOINT,
     PREVIEW_ENDPOINT,
+    APPLY_ENDPOINT,
+    COORDINATOR_ENDPOINT,
     createController,
     escapeHtml,
     identityFromKey,

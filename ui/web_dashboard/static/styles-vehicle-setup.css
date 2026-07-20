@@ -150,6 +150,25 @@
   margin-bottom: .35rem;
 }
 
+.openmmi-vehicle-apply-progress {
+  border-color: rgba(100, 190, 245, .34);
+  background: rgba(9, 42, 65, .72);
+}
+
+.openmmi-vehicle-apply-progress[aria-busy="true"] strong::after {
+  content: "";
+  display: inline-block;
+  width: .55rem;
+  height: .55rem;
+  margin-left: .45rem;
+  border: 2px solid rgba(255, 255, 255, .28);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: openmmi-vehicle-apply-spin .8s linear infinite;
+}
+
+@keyframes openmmi-vehicle-apply-spin { to { transform: rotate(360deg); } }
+
 .openmmi-vehicle-setup-technical {
   padding-top: .55rem;
   border-top: 1px solid rgba(255, 255, 255, .09);

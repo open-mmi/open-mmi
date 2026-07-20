@@ -177,20 +177,33 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
         self.assertNotIn('data-openmmi-update-channel', source)
         self.assertNotIn("repository_path", source)
 
-    def test_vehicle_setup_settings_owns_read_only_draft_preview(self):
+    def test_vehicle_setup_settings_owns_reviewed_apply_workflow(self):
         source = VEHICLE_SETUP_SETTINGS.read_text(encoding="utf-8")
         app = APP.read_text(encoding="utf-8")
         self.assertIn('const ENDPOINT = "/api/system/vehicle-setup";', source)
         self.assertIn('const PREVIEW_ENDPOINT = "/api/system/vehicle-setup/preview";', source)
+        self.assertIn('const APPLY_ENDPOINT = "/api/system/vehicle-setup/apply";', source)
+        self.assertIn(
+            'const COORDINATOR_ENDPOINT = "/api/system/vehicle-setup/coordinator";',
+            source,
+        )
         self.assertIn("api.getJson(ENDPOINT", source)
         self.assertIn("api.postJson(PREVIEW_ENDPOINT, request", source)
+        self.assertIn("api.postJson(APPLY_ENDPOINT, body", source)
+        self.assertIn("expected_configuration_revision", source)
+        self.assertIn("target_configuration_revision", source)
+        self.assertIn("confirm: true", source)
+        self.assertIn("windowRef.confirm", source)
+        self.assertIn('code === "stale-preview"', source)
+        self.assertIn('code === "apply-failed-restored"', source)
+        self.assertIn('code === "apply-failed-restore-unverified"', source)
         self.assertNotIn("localStorage", source)
+        self.assertNotIn("/restore", source)
         self.assertIn('activeSection() !== "vehicle-setup"', source)
         self.assertIn('data-testid="vehicle-setup-profile"', source)
         self.assertIn('data-testid="vehicle-setup-bindings"', source)
         self.assertIn('data-testid="vehicle-setup-preview"', source)
-        self.assertIn('data-testid="vehicle-setup-apply" disabled', source)
-        self.assertNotIn('/api/system/vehicle-setup/apply', source)
+        self.assertIn('data-openmmi-vehicle-setup-apply="true"', source)
         self.assertIn('data-openmmi-settings-section="vehicle-setup"', app)
 
     def test_application_does_not_override_module_owned_control_state(self):
