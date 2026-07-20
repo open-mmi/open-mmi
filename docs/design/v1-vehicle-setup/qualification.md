@@ -57,8 +57,9 @@ and adapter hotplug.
 
 - [x] create from an installed, revision-bound maintained template;
 - [x] private provenance sidecars outside the daemon catalogue;
+- [x] installer/update ownership hardening scoped to the custom catalogue only;
 - [ ] safe load/save with revision tokens;
-- [ ] qualify maintained/custom activation switching through the existing reviewed apply flow;
+- [x] qualify maintained/custom activation switching through the existing reviewed apply flow;
 - [ ] qualify explicit return-to-maintained through the existing source-labelled selector; and
 - [ ] last-known-good user revision for editor saves.
 

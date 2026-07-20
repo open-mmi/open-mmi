@@ -55,6 +55,155 @@ class ManageScriptLifecycleTests(unittest.TestCase):
             "exec",
         )
 
+    def custom_catalogue_permissions_program(self) -> str:
+        marker = "<<'PY_CUSTOM_CATALOGUE_PERMISSIONS'\n"
+        start = self.text.index(marker) + len(marker)
+        end = self.text.index("\nPY_CUSTOM_CATALOGUE_PERMISSIONS", start)
+        return self.text[start:end]
+
+    def test_custom_catalogue_permissions_python_has_valid_syntax(self) -> None:
+        compile(
+            self.custom_catalogue_permissions_program(),
+            "manage.sh:PY_CUSTOM_CATALOGUE_PERMISSIONS",
+            "exec",
+        )
+
+    def test_custom_catalogue_permission_repair_is_private_and_scoped(self) -> None:
+        program = self.custom_catalogue_permissions_program()
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary) / "home"
+            config = home / ".config"
+            root = config / "open-mmi"
+            profile = root / "vehicles" / "example" / "config.json"
+            bindings = root / "bindings" / "example.json"
+            provenance = (
+                root
+                / ".open-mmi-provenance"
+                / "profile"
+                / "example.json"
+            )
+            unrelated = root / "dashboard.env"
+            backup = root / "qualification-backup" / "99-vcan-test.conf"
+
+            profile.parent.mkdir(parents=True)
+            bindings.parent.mkdir(parents=True)
+            provenance.parent.mkdir(parents=True)
+            backup.parent.mkdir(parents=True)
+            profile.write_text("{}\n", encoding="utf-8")
+            bindings.write_text("{}\n", encoding="utf-8")
+            provenance.write_text("{}\n", encoding="utf-8")
+            unrelated.write_text("UNCHANGED=1\n", encoding="utf-8")
+            backup.write_text("legacy\n", encoding="utf-8")
+            home.chmod(0o700)
+            config.chmod(0o755)
+            root.chmod(0o777)
+            for directory in (
+                root / "vehicles",
+                profile.parent,
+                root / "bindings",
+                root / ".open-mmi-provenance",
+                provenance.parent,
+            ):
+                directory.chmod(0o777)
+            for file_path in (profile, bindings, provenance):
+                file_path.chmod(0o666)
+            unrelated.chmod(0o644)
+            backup.parent.chmod(0o755)
+            backup.chmod(0o644)
+
+            completed = subprocess.run(
+                [
+                    "python3",
+                    "-c",
+                    program,
+                    str(home),
+                    str(root),
+                    str(home.stat().st_uid),
+                    str(home.stat().st_gid),
+                ],
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+
+            for directory in (
+                root,
+                root / "vehicles",
+                profile.parent,
+                root / "bindings",
+                root / ".open-mmi-provenance",
+                provenance.parent,
+                root / ".open-mmi-provenance" / "bindings",
+            ):
+                self.assertEqual(directory.stat().st_mode & 0o777, 0o700)
+            for file_path in (profile, bindings, provenance):
+                self.assertEqual(file_path.stat().st_mode & 0o777, 0o600)
+
+            self.assertEqual(unrelated.stat().st_mode & 0o777, 0o644)
+            self.assertEqual(unrelated.read_text(encoding="utf-8"), "UNCHANGED=1\n")
+            self.assertEqual(backup.parent.stat().st_mode & 0o777, 0o755)
+            self.assertEqual(backup.stat().st_mode & 0o777, 0o644)
+
+    def test_custom_catalogue_permission_repair_rejects_symlinks_before_changes(self) -> None:
+        program = self.custom_catalogue_permissions_program()
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            home = base / "home"
+            root = home / ".config" / "open-mmi"
+            outside = base / "outside"
+            root.mkdir(parents=True)
+            outside.mkdir()
+            home.chmod(0o700)
+            (home / ".config").chmod(0o755)
+            root.chmod(0o755)
+            (root / "vehicles").symlink_to(outside, target_is_directory=True)
+
+            completed = subprocess.run(
+                [
+                    "python3",
+                    "-c",
+                    program,
+                    str(home),
+                    str(root),
+                    str(home.stat().st_uid),
+                    str(home.stat().st_gid),
+                ],
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("symlink", completed.stderr.lower())
+            self.assertEqual(root.stat().st_mode & 0o777, 0o755)
+            self.assertFalse((root / "bindings").exists())
+            self.assertFalse((root / ".open-mmi-provenance").exists())
+
+    def test_install_and_update_paths_harden_only_the_custom_catalogue(self) -> None:
+        coordinator_start = self.text.index("install_vehicle_config_coordinator() {")
+        coordinator_end = self.text.index("remove_login_autostart() {", coordinator_start)
+        coordinator_block = self.text[coordinator_start:coordinator_end]
+        self.assertIn("harden_custom_catalogue_permissions", coordinator_block)
+
+        update_start = self.text.index("cmd_update() {")
+        update_end = self.text.index("cmd_deploy_prepared() {", update_start)
+        update_block = self.text[update_start:update_end]
+        self.assertLess(
+            update_block.index("harden_custom_catalogue_permissions"),
+            update_block.index("Already up to date"),
+        )
+
+        provisioning_start = self.text.index("apply_profile_provisioning() {")
+        provisioning_end = self.text.index("reload_profile_provisioning() {", provisioning_start)
+        provisioning_block = self.text[provisioning_start:provisioning_end]
+        self.assertIn("harden_custom_catalogue_permissions", provisioning_block)
+        self.assertNotIn(
+            'chown -R "$REAL_USER:$REAL_USER" "$USER_CONFIG_DIR"',
+            provisioning_block,
+        )
+
     def test_update_source_writer_migrates_and_preserves_named_channel_policy(self) -> None:
         marker = "<<'PY_UPDATE_SOURCE'\n"
         start = self.text.index(marker) + len(marker)

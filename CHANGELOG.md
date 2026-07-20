@@ -23,6 +23,7 @@
 - Custom-copy requests accept no paths or content, require `template_source: maintained`, bind to the maintained file revision, reject existing destinations, validate the source document, reject unsafe user catalogue directories and write new content and provenance as private no-overwrite files. No route edits or deletes maintained content.
 
 ### Fixed
+- Install, interactive update and prepared deployment now preflight the fixed custom vehicle catalogue for symlinks, hard links, special files and foreign ownership, then repair only its directories/files to user-owned `0700`/`0600`. Unrelated settings such as `dashboard.env`, `launcher.json` and qualification backups are not recursively changed.
 - Managed installs now require a live coordinator socket and successful status round trip before reporting success, and prepared-update rollback preserves the previous coordinator unit and environment file.
 - The update and vehicle-configuration coordinators preserve their shared `/run/open-mmi` runtime directory across service restarts, preventing one coordinator restart from deleting the other coordinator's live Unix socket.
 - Managed installation writes an exact per-user systemd writable-path override so interrupted vcan qualification can be restored by the hardened coordinator service without granting write access to the rest of the service user's home directory.

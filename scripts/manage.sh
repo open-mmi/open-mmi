@@ -296,9 +296,8 @@ copy_if_missing() {
         return 0
     fi
 
-    mkdir -p "$(dirname "$dst")"
-    cp "$src" "$dst"
-    chown "$REAL_USER:$REAL_USER" "$dst"
+    install -d -m 0700 -o "$REAL_USER" -g "$REAL_USER" "$(dirname "$dst")"
+    install -m 0600 -o "$REAL_USER" -g "$REAL_USER" "$src" "$dst"
     log_success "Created $dst"
 }
 
@@ -457,6 +456,176 @@ configure_maintained_catalogue_permissions() {
             -exec chown root:root {} + \
             -exec chmod 0644 {} +
     done
+}
+
+
+harden_custom_catalogue_permissions() {
+    local user_group_id
+    user_group_id=$(id -g "$REAL_USER")
+
+    python3 - \
+        "$REAL_HOME" \
+        "$USER_CONFIG_DIR" \
+        "$USER_ID" \
+        "$user_group_id" <<'PY_CUSTOM_CATALOGUE_PERMISSIONS'
+import os
+import stat
+import sys
+from pathlib import Path
+
+home = Path(sys.argv[1])
+custom_root = Path(sys.argv[2])
+user_uid = int(sys.argv[3])
+user_gid = int(sys.argv[4])
+expected_root = home / ".config" / "open-mmi"
+allowed_owners = {0, user_uid}
+maximum_items = 10_000
+
+if not home.is_absolute() or custom_root != expected_root:
+    raise SystemExit("custom catalogue path is not the fixed user configuration root")
+
+
+def metadata(path: Path):
+    try:
+        return path.lstat()
+    except OSError as exc:
+        raise SystemExit(f"custom catalogue path cannot be inspected: {path}") from exc
+
+
+def validate_directory(path: Path, *, owner_must_be_user: bool = False) -> os.stat_result:
+    item = metadata(path)
+    if stat.S_ISLNK(item.st_mode) or not stat.S_ISDIR(item.st_mode):
+        raise SystemExit(f"custom catalogue directory is untrusted: {path}")
+    expected_owners = {user_uid} if owner_must_be_user else allowed_owners
+    if item.st_uid not in expected_owners:
+        raise SystemExit(f"custom catalogue directory has an untrusted owner: {path}")
+    return item
+
+
+def create_private_directory(path: Path) -> None:
+    try:
+        os.mkdir(path, 0o700)
+    except FileExistsError:
+        return
+    except OSError as exc:
+        raise SystemExit(f"custom catalogue directory cannot be created: {path}") from exc
+    os.chown(path, user_uid, user_gid, follow_symlinks=False)
+    os.chmod(path, 0o700)
+
+
+home_metadata = validate_directory(home, owner_must_be_user=True)
+if home_metadata.st_mode & 0o022:
+    raise SystemExit("user home directory must not be group or world writable")
+
+config_root = home / ".config"
+if not config_root.exists():
+    create_private_directory(config_root)
+config_metadata = validate_directory(config_root, owner_must_be_user=True)
+if config_metadata.st_mode & 0o022:
+    raise SystemExit("user configuration directory must not be group or world writable")
+
+if not custom_root.exists():
+    create_private_directory(custom_root)
+root_metadata = validate_directory(custom_root)
+
+catalogue_roots = [
+    custom_root / "vehicles",
+    custom_root / "bindings",
+    custom_root / ".open-mmi-provenance",
+]
+provenance_children = [
+    custom_root / ".open-mmi-provenance" / "profile",
+    custom_root / ".open-mmi-provenance" / "bindings",
+]
+
+# Inspect every existing targeted tree before changing ownership or modes. This
+# prevents an update from following a user-created symlink or touching an inode
+# linked outside the fixed custom catalogue.
+collected: dict[Path, tuple[int, int, bool]] = {
+    custom_root: (root_metadata.st_dev, root_metadata.st_ino, True),
+}
+for root in catalogue_roots:
+    try:
+        root_metadata = root.lstat()
+    except FileNotFoundError:
+        continue
+    except OSError as exc:
+        raise SystemExit(f"custom catalogue path cannot be inspected: {root}") from exc
+    if stat.S_ISLNK(root_metadata.st_mode):
+        raise SystemExit(f"custom catalogue symlinks are not trusted: {root}")
+    if not stat.S_ISDIR(root_metadata.st_mode):
+        raise SystemExit(f"custom catalogue directory is untrusted: {root}")
+    if root_metadata.st_uid not in allowed_owners:
+        raise SystemExit(f"custom catalogue directory has an untrusted owner: {root}")
+    collected[root] = (root_metadata.st_dev, root_metadata.st_ino, True)
+    stack = [root]
+    while stack:
+        directory = stack.pop()
+        try:
+            entries = list(os.scandir(directory))
+        except OSError as exc:
+            raise SystemExit(f"custom catalogue directory cannot be read: {directory}") from exc
+        for entry in entries:
+            path = Path(entry.path)
+            try:
+                item = entry.stat(follow_symlinks=False)
+            except OSError as exc:
+                raise SystemExit(f"custom catalogue item cannot be inspected: {path}") from exc
+            if stat.S_ISLNK(item.st_mode):
+                raise SystemExit(f"custom catalogue symlinks are not trusted: {path}")
+            if item.st_uid not in allowed_owners:
+                raise SystemExit(f"custom catalogue item has an untrusted owner: {path}")
+            if stat.S_ISDIR(item.st_mode):
+                collected[path] = (item.st_dev, item.st_ino, True)
+                stack.append(path)
+            elif stat.S_ISREG(item.st_mode) and item.st_nlink == 1:
+                collected[path] = (item.st_dev, item.st_ino, False)
+            else:
+                raise SystemExit(f"custom catalogue item is untrusted: {path}")
+            if len(collected) > maximum_items:
+                raise SystemExit("custom catalogue contains too many items")
+
+for root in catalogue_roots:
+    if not root.exists():
+        create_private_directory(root)
+for directory in provenance_children:
+    if not directory.exists():
+        create_private_directory(directory)
+
+# Include directories created after the no-follow preflight.
+for path in [*catalogue_roots, *provenance_children]:
+    item = validate_directory(path)
+    collected[path] = (item.st_dev, item.st_ino, True)
+
+# Files first, then deepest directories, so no unrelated file in the shared
+# open-mmi settings root is ever traversed or modified.
+ordered = sorted(
+    collected.items(),
+    key=lambda pair: (pair[1][2], -len(pair[0].parts)),
+)
+for path, (device, inode, is_directory) in ordered:
+    item = metadata(path)
+    if item.st_dev != device or item.st_ino != inode:
+        raise SystemExit(f"custom catalogue changed during permission repair: {path}")
+    if is_directory != stat.S_ISDIR(item.st_mode):
+        raise SystemExit(f"custom catalogue changed during permission repair: {path}")
+    if not is_directory and (not stat.S_ISREG(item.st_mode) or item.st_nlink != 1):
+        raise SystemExit(f"custom catalogue changed during permission repair: {path}")
+    os.chown(path, user_uid, user_gid, follow_symlinks=False)
+    os.chmod(path, 0o700 if is_directory else 0o600)
+
+for path, (_device, _inode, is_directory) in collected.items():
+    item = metadata(path)
+    expected_mode = 0o700 if is_directory else 0o600
+    if (
+        item.st_uid != user_uid
+        or item.st_gid != user_gid
+        or stat.S_IMODE(item.st_mode) != expected_mode
+    ):
+        raise SystemExit(f"custom catalogue permission repair could not be verified: {path}")
+PY_CUSTOM_CATALOGUE_PERMISSIONS
+
+    log_success "Verified private user-owned custom vehicle catalogue"
 }
 
 install_command_links() {
@@ -675,6 +844,7 @@ wait_for_vehicle_config_coordinator() {
 
 install_vehicle_config_coordinator() {
     local authorization_added=false
+    harden_custom_catalogue_permissions
     if ! getent group "$VEHICLE_CONFIG_COORDINATOR_GROUP" >/dev/null 2>&1; then
         groupadd --system "$VEHICLE_CONFIG_COORDINATOR_GROUP"
     fi
@@ -726,7 +896,8 @@ apply_profile_provisioning() {
         --bindings "$bindings" \
         --real-user "$REAL_USER"
 
-    chown -R "$REAL_USER:$REAL_USER" "$USER_CONFIG_DIR" "$REAL_HOME/.config/systemd/user" || true
+    harden_custom_catalogue_permissions
+    chown -R "$REAL_USER:$REAL_USER" "$REAL_HOME/.config/systemd/user" || true
 }
 
 reload_profile_provisioning() {
@@ -900,6 +1071,8 @@ cmd_update() {
         log_error "$APP_NAME not installed"
         return 1
     fi
+
+    harden_custom_catalogue_permissions
 
     local old_version
     old_version=$(get_installed_version)
@@ -1396,9 +1569,7 @@ cmd_config() {
             local bindings="${3:-default}"
 
             log_info "Creating user config directory at $USER_CONFIG_DIR"
-            mkdir -p "$USER_CONFIG_DIR/vehicles/$vehicle"
-            mkdir -p "$USER_CONFIG_DIR/bindings"
-            chown -R "$REAL_USER:$REAL_USER" "$USER_CONFIG_DIR"
+            harden_custom_catalogue_permissions
 
             local source_vehicle="$INSTALL_DIR/vehicles/$vehicle/config.json"
             local source_bindings="$INSTALL_DIR/bindings/$bindings.json"
