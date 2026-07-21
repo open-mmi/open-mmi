@@ -122,9 +122,11 @@ class ReleaseReadinessTests(unittest.TestCase):
         self.assertIn('"open-mmi-update-installer": "ui.update_installer:main"', source)
         self.assertIn('"open-mmi-vehicle-config-coordinator": "ui.vehicle_config_coordinator:main"', source)
 
-    def test_product_docs_do_not_describe_browser_nightly_installation_as_future(self):
+    def test_product_docs_describe_current_ui_update_boundary(self):
         source = (ROOT / "README.md").read_text(encoding="utf-8")
-        self.assertIn("same-origin browser flow", source)
+        self.assertIn("Settings → System → Software updates", source)
+        self.assertIn("recorded **nightly** source", source)
+        self.assertIn("There is no unattended schedule or browser channel editor", source)
         self.assertNotIn(
             "Browser installation, scheduling, unattended updates, and stable/beta installation remain disabled",
             source,

@@ -22,13 +22,12 @@ This is not yet a polished infotainment replacement, final tablet UI, or multi-v
 
 Useful background docs:
 
-```text
-docs/project-philosophy.md
-docs/versioning.md
-docs/release-checklist.md
-docs/status-snapshot.md
-SECURITY.md
-```
+- [`docs/README.md`](docs/README.md) — documentation map by audience;
+- [`docs/project-philosophy.md`](docs/project-philosophy.md);
+- [`docs/versioning.md`](docs/versioning.md);
+- [`docs/release-checklist.md`](docs/release-checklist.md);
+- [`docs/status-snapshot.md`](docs/status-snapshot.md);
+- [`SECURITY.md`](SECURITY.md).
 
 ---
 

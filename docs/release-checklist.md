@@ -20,7 +20,7 @@
 - [ ] With Bluetooth audio playing, verify steering-wheel pause, resume, next, previous, and stop through BlueZ AVRCP.
 - [ ] Confirm Diagnostics displays canonical RPM, supply voltage, outside temperatures, and all currently decoded profile paths.
 - [ ] Exercise dashboard navigation, overlays, settings persistence, and each enabled media provider.
-- [ ] Confirm the dashboard remains read-only with respect to vehicle CAN transmission.
+- [ ] Confirm the dashboard remains receive-only with respect to vehicle CAN transmission.
 - [ ] Confirm loopback binding is retained unless deployment security has been explicitly reviewed.
 
 ## Installation checks

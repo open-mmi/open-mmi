@@ -1,5 +1,10 @@
 # Delivery and qualification
 
+> **Historical qualification record.** Early sections preserve the order in which
+> preview, coordinator mutation, and browser Apply were enabled. Current behavior is
+> documented in [`../../vehicle-setup.md`](../../vehicle-setup.md). Unless a line is
+> explicitly marked pending, pre-enablement wording is historical rather than current.
+
 ## Delivery slices
 
 ### Slice 0: contract cleanup
@@ -28,7 +33,7 @@ Gate: no mutation endpoints; malformed and symlinked fixtures fail closed.
 
 ### Slice 2: canonical state and coordinator
 
-Current foundation status: the root-owned coordinator service, persistent state schema, recovery path, dedicated authorization group, configuration/update/lifecycle lock primitives, and independent non-mutating preview action are implemented. Dashboard and CLI preview now cross the fixed coordinator socket. Managed installation is not considered successful until the service is active, its socket exists, and a status round trip succeeds; prepared rollback preserves the previous coordinator unit and fixed-path environment. Apply, systemd/udev mutation, runtime verification and restoration remain gated.
+Current foundation status: the root-owned coordinator service, persistent state schema, recovery path, dedicated authorization group, configuration/update/lifecycle lock primitives, and independent non-mutating preview action are implemented. Dashboard and CLI preview now cross the fixed coordinator socket. Managed installation is not considered successful until the service is active, its socket exists, and a status round trip succeeds; prepared rollback preserves the previous coordinator unit and fixed-path environment. At this historical foundation checkpoint, Apply, systemd/udev mutation, runtime verification and restoration remained gated. Those gates were subsequently completed in this milestone.
 
 - root-owned descriptor;
 - deterministic plan rendering;
@@ -65,7 +70,7 @@ and adapter hotplug.
 - [x] active custom identities are protected from rename/delete in both UI and backend;
 - [x] install/update pre-creates trusted transaction locks without replacing held lock inodes;
 - [x] qualify maintained/custom activation switching through the existing reviewed apply flow;
-- [ ] qualify explicit return-to-maintained through the existing source-labelled selector; and
+- [x] qualify explicit return-to-maintained through the existing source-labelled selector; and
 - [ ] last-known-good user revision for editor saves.
 
 Gate: sacred custom files survive update, apply, switching and failed activation.
@@ -73,7 +78,7 @@ Gate: sacred custom files survive update, apply, switching and failed activation
 ### Slice 5: editors
 
 - [x] advanced custom-only JSON validation editor;
-- [ ] action registry;
+- [x] canonical action registry and maintained binding validation;
 - [ ] bindings matrix;
 - [ ] structured bus metadata; and
 - [ ] later rule-specific forms.
@@ -170,8 +175,7 @@ Before exposing apply, unit and integration tests must prove:
 - an injected post-mutation failure restores both files and previous runtime evidence; and
 - interrupted mutation recovery reopens the durable snapshot and reports restored versus unverified restoration.
 
-These tests qualified the concrete operation layer before the public socket action was
-enabled. They still do not enable the browser button.
+These tests qualified the concrete operation layer before the public socket action and browser control were enabled. The current frontend now requires the same exact reviewed target, explicit confirmation, coordinator capability, and lock checks.
 
 ## Root-only vcan round-trip qualification
 
@@ -201,12 +205,11 @@ transaction and retains enough root-owned rollback material for interrupted reco
 
 The coordinator service receives only the exact generated-file and runtime-drop-in
 writable paths required to recover an interrupted qualification after process or tablet
-restart. The fixed socket/HTTP apply action is enabled only after this round trip; the
-browser button remains disabled.
+restart. The fixed socket/HTTP Apply action was enabled only after this round trip. The browser control was connected later and now uses that same qualified protocol.
 
 ## Fixed apply protocol qualification
 
-Before connecting Settings, test the fixed HTTP route independently:
+Before Settings was connected, the fixed HTTP route was tested independently:
 
 - exact strict body from a fresh preview succeeds with `confirm: true`;
 - missing/false confirmation and extra fields mutate nothing;
@@ -215,7 +218,7 @@ Before connecting Settings, test the fixed HTTP route independently:
 - an existing selected non-SocketCAN interface is rejected before snapshot;
 - a post-mutation injected failure returns `apply-failed-restored` with verified state;
 - an unverified restoration returns `apply-failed-restore-unverified`; and
-- preview continues to return `apply_available: false`, leaving the UI control disabled.
+- preview continues to return `apply_available: false` because preview is non-mutating; the frontend enables Apply only after separate coordinator capability and lock checks.
 
 On the tablet, a confirmed reapply of the already-active maintained `can0` target is a
 safe first route smoke test: it exercises the socket, snapshot, fixed writes, host-network
@@ -307,5 +310,4 @@ The V1 setup-management release is complete when all of the following are true:
 - maintained-to-custom and custom-to-maintained source switches retain ready runtime
   evidence and real receive-only CAN traffic when the vehicle is connected.
 
-Simultaneous multi-CAN reception, structured rule forms and the bindings action registry
-remain later milestones and do not block this single-input V1 release.
+Simultaneous multi-CAN reception, broader structured rule forms, the graphical bindings matrix, and per-save last-known-good custom archives remain later milestones and do not block this single-input V1 release.

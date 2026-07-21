@@ -43,9 +43,10 @@ privileged configuration must be strict.
 
 ## Bindings validation
 
-Bindings currently identify a module and function dynamically. UI editing requires an
-explicit action registry before a bindings document is considered safe for visual
-editing.
+Maintained bindings identify stable canonical actions. The implemented action registry
+owns the private module/function mapping and validates maintained and custom binding
+action contracts. Legacy custom bindings using `module`, `func`, and `args` remain a
+compatibility input and receive warnings.
 
 The registry defines:
 
@@ -66,9 +67,12 @@ Bindings validation then checks:
 - argument types and values; and
 - no unsupported extra fields.
 
-The vehicle-event registry is already authoritative for binding keys. The runtime may retain
-a compatibility reader for existing `module` and `func` action fields, but newly saved UI
-bindings should eventually resolve action implementations through the separate action registry.
+The vehicle-event registry is authoritative for binding keys and the vehicle-action
+registry is authoritative for maintained action identifiers and argument contracts. The
+runtime retains a compatibility reader for existing custom `module` and `func` fields,
+but maintained bindings and newly created canonical content use action identifiers. A
+future graphical bindings matrix is a UI enhancement, not a prerequisite for registry
+safety.
 
 ## Compatibility validation
 

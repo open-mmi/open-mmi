@@ -138,11 +138,13 @@ restart.
 
 ## Review screen
 
-The read-only review screen is implemented. It is produced only from the backend
-preview response; the browser does not invent filesystem paths, commands, services or
-revisions. Changing either selector or refreshing active status invalidates the prior
-review. A preview response that does not explicitly report `read_only: true`,
-`apply_available: false` and `state: ready` is rejected by the browser.
+The review screen is produced only from the backend preview response; the browser does
+not invent filesystem paths, commands, services or revisions. Changing either selector
+or refreshing active status invalidates the prior review. A preview response that does
+not explicitly report `read_only: true`, `apply_available: false` and `state: ready` is
+rejected. Those preview fields prove that preview itself is non-mutating; the separate
+coordinator capability/lock response controls whether the confirmed Apply button is
+enabled.
 
 Review shows only changed values first, followed by an expandable complete plan:
 
@@ -156,7 +158,7 @@ Provisioning can0 / 100 kbit/s     ->  can1 / 100 kbit/s
 
 The CAN service will restart. Open MMI will not transmit CAN messages.
 
-[Back to selection] [Apply setup — disabled]
+[Back to selection] [Apply setup]
 ```
 
 The confirmed action is bound to the exact review and active configuration revision.

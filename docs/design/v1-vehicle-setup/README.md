@@ -1,6 +1,17 @@
 # V1 vehicle setup management
 
-Status: V1 implementation complete — final tablet acceptance and release sign-off pending
+| Field | Value |
+|---|---|
+| Source branch | `v1-vehicle-setup-foundation` |
+| Target | `main` |
+| Status | Implemented; final tablet acceptance and release sign-off pending |
+| Current user documentation | [`../../vehicle-setup.md`](../../vehicle-setup.md) |
+| Current operator documentation | [`../../manual-administration.md`](../../manual-administration.md) |
+
+This folder is the historical design and qualification record. Current user and
+operator instructions belong in the permanent documents linked above. Statements
+inside historical qualification sections describe the order in which capability
+was enabled, not a claim that the current UI remains gated.
 
 This design defines a local, explicit setup path for selecting an Open MMI vehicle
 profile, bindings and SocketCAN input without editing systemd or udev files by hand.
@@ -73,7 +84,7 @@ The design retains these current contracts:
   selected through the stable ID in `vehicles/catalogue.v1.json`;
 - maintained bindings are installed under `/opt/open-mmi/bindings/<bindings>.json`;
 - custom vehicle profiles live under
-  `~/.config/open-mmi/vehicles/<profile>/config.json`;
+  `~/.config/open-mmi/vehicles/<custom-id>/config.json`;
 - custom bindings live under `~/.config/open-mmi/bindings/<bindings>.json`;
 - custom files are sacred and opt-in;
 - `canbusd` remains a passive SocketCAN consumer;
@@ -153,16 +164,29 @@ Settings UI
 - [`../../vehicle-integration-standard.md`](../../vehicle-integration-standard.md) defines the
   universal profile/event/binding boundary used by every vehicle integration.
 
-## Required implementation order
+## Implementation close-out
 
-1. Reconcile existing ownership and lookup documentation.
-2. Extract shared profile/bindings resolution and validation from shell-facing code.
-3. Add read-only catalogue and active-runtime status.
-4. Add the canonical descriptor and privileged apply transaction.
-5. Qualify maintained selection through CLI and `vcan` before exposing writes in UI.
-6. Add the Vehicle setup selector and review screen.
-7. Add custom copy/import, revision-safe JSON editing, validation and activation.
-8. Add rename, duplicate and protected deletion, then last-known-good user revisions.
-9. Add bindings editing through an explicit action registry.
-10. Add broader structured profile editing only after rule schemas are complete.
-11. Treat simultaneous multi-CAN as its own reviewed beta milestone.
+Implemented in this milestone:
+
+1. reconciled maintained/custom ownership and installed production resolution;
+2. shared profile/bindings catalogue, validation, compatibility, and revisioning;
+3. canonical root-owned configuration and derived systemd/udev outputs;
+4. restricted coordinator status, preview, confirmed Apply, verification, and restoration;
+5. maintained/custom selectors and one-bus/interface review in Settings;
+6. custom template copy, strict import, revision-safe JSON save, duplicate, rename,
+   inactive deletion, and explicit return to maintained;
+7. canonical event, status, and action registries with generated references;
+8. maintained-profile conformance, deterministic replay, scaffolding, capture
+   analysis, qualification records, and CI/package coverage.
+
+Deferred beyond this milestone:
+
+- simultaneous multi-CAN reception;
+- last-known-good archives for each custom editor save;
+- a graphical bindings matrix and broader structured rule editors;
+- automatic vehicle or bitrate detection;
+- automatic merging of maintained-template changes into custom copies.
+
+The original implementation sequence is preserved through commit history and the
+qualification document. Current behavior is documented in
+[`../../vehicle-setup.md`](../../vehicle-setup.md).

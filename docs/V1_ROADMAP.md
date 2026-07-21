@@ -1,6 +1,8 @@
 # Open MMI V1 Roadmap
 
-Open MMI V1 is the first complete public shape of the project: a local, read-only vehicle dashboard/MMI built from decoded vehicle state.
+> **Planning record.** This file preserves the V1 planning history. Current user and operator behavior is documented in [`getting-started.md`](getting-started.md), [`vehicle-setup.md`](vehicle-setup.md), and [`manual-administration.md`](manual-administration.md).
+
+Open MMI V1 is the first complete public shape of the project: a local, receive-only vehicle dashboard/MMI built from decoded vehicle state.
 
 V1 is not a finished car operating system. It is the point where the project has a complete, usable loop:
 
@@ -18,7 +20,7 @@ vehicle state → dashboard → media → settings → events/overlays → docs 
 - Footer tell-tales are stable and use local icon assets.
 - Demo mode can run without a vehicle.
 - SEAT León 1P is the confirmed reference vehicle.
-- Dashboard is read-only from the vehicle side.
+- Dashboard is receive-only from the vehicle side.
 
 ## Required before V1
 
@@ -89,7 +91,7 @@ Initial setting/placeholder options:
 - Camera only, placeholder
 - Camera + PDC, placeholder
 
-The dashboard must remain read-only with respect to vehicle control.
+The dashboard must remain receive-only with respect to vehicle control.
 
 ### 6. Compatibility testing path
 
@@ -196,7 +198,7 @@ Still pending before calling V1 complete:
 - [ ] Release notes/changelog for the V1 checkpoint.
 - [ ] Compatibility reports beyond the confirmed SEAT León 1P development vehicle.
 - [ ] PQ35-family validation using reversible, listen-only test setups.
-- [ ] Keep all dashboard behaviour read-only; no CAN transmit/control path from the web UI.
+- [ ] Keep the dashboard receive-only with respect to vehicle CAN; no transmit/control path from the web UI.
 <!-- OPENMMI_V1_STATUS_END -->
 
 ## Recent dashboard cleanup

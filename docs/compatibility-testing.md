@@ -10,7 +10,7 @@ How much of the existing decoded Open MMI status works on this vehicle without c
 
 ## Safety boundary
 
-The dashboard side of Open MMI should be treated as read-only.
+The dashboard should be treated as receive-only with respect to vehicle CAN. Local Vehicle Setup may change trusted host-side receive configuration, but it must not transmit vehicle control frames.
 
 For compatibility testing:
 

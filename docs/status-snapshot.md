@@ -117,10 +117,11 @@ state.steering.angle_degrees
 
 not raw CAN IDs and bytes.
 
-Vehicle-specific CAN knowledge belongs in:
+Vehicle-specific CAN knowledge belongs in maintained or custom profile files:
 
 ```text
-vehicles/<profile>/config.json
+vehicles/<brand>/<model>/<generation-platform>/config.json
+~/.config/open-mmi/vehicles/<custom-id>/config.json
 ```
 
 not in UI code.

@@ -29,9 +29,10 @@ Branch-specific design documents remain in the repository as a historical record
 4. mark any deferred or changed decisions explicitly;
 5. do not rewrite the original design to imply that every proposal shipped unchanged.
 
-Current user and operator instructions belong in normal product documents such as `README.md`, `docs/desktop-shell.md`, or a dedicated installation guide. Design documents explain why a change was planned and how it was intended to work.
+Current user and operator instructions belong in normal product documents such as `README.md`, `docs/getting-started.md`, `docs/vehicle-setup.md`, or `docs/manual-administration.md`. Design documents explain why a change was planned and how it was intended to work.
 
 ## Current design sets
 
+- [`v1-vehicle-setup`](v1-vehicle-setup/README.md) — implementation complete; final tablet acceptance and release sign-off pending.
 - [`v1-runtime-hardening`](v1-runtime-hardening/README.md) — implementation complete; merge qualification recorded in its close-out documents.
-- [`v1-update-management`](v1-update-management/README.md) — active design set; confirmed manual nightly flow implemented with [device qualification](v1-update-management/qualification.md) continuing on the branch.
+- [`v1-update-management`](v1-update-management/README.md) — implementation complete; confirmed manual nightly flow shipped and [device qualification](v1-update-management/qualification.md) continues as a close-out record.

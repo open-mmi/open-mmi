@@ -1,6 +1,6 @@
 # Desktop shell
 
-The desktop shell provides one entry point for the Open MMI web dashboard and terminal status UI.
+The desktop shell provides one entry point for the Open MMI Web dashboard and terminal status UI. Normal vehicle owners can configure the remembered interface and open-after-login behavior from **Settings → System**; this document is the detailed operator and implementation reference. See [`getting-started.md`](getting-started.md) for the shorter UI-first path.
 
 ## Commands
 

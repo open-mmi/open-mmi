@@ -127,7 +127,7 @@ protocol. It:
 - verifies both restored files and the exact previous loaded identities, revisions, bus and interface.
 
 The internal state machine can reopen a durable snapshot after an interrupted mutation.
-The socket and fixed HTTP route may trigger apply; the Settings button still cannot.
+The socket and fixed HTTP route trigger the same confirmed Apply transaction used by Settings; the button is enabled only from a fresh read-only preview plus separate coordinator capability and lock state.
 
 ## Vcan qualification boundary
 
@@ -270,8 +270,8 @@ The previous configuration remains the only selectable automatic restoration tar
 ## CAN safety
 
 The configuration coordinator may provision receive interfaces, but neither the UI nor
-the coordinator transmits CAN frames. The operational dashboard remains read-only with
-respect to the vehicle.
+the coordinator transmits CAN frames. The operational dashboard remains receive-only with
+respect to vehicle CAN.
 
 Every apply confirmation should state that Open MMI services will restart and that no
 CAN transmission is performed.

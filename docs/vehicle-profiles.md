@@ -101,21 +101,38 @@ configure bitrate and does not silently bring interfaces up.
 
 ---
 
-## Applying a profile
+## Selecting and applying a profile
 
-Normal setup should apply the selected vehicle profile as the source of truth:
+For an installed system, the intended normal path is:
+
+```text
+Settings → Vehicle setup
+```
+
+The user selects a maintained or custom profile, bindings, one logical bus, and
+one SocketCAN interface. Changing a selector creates an unapplied draft. A fresh
+review validates exact content revisions, event/action compatibility, bus
+metadata, and receive-side provisioning. **Apply setup** then asks the restricted
+coordinator to write the canonical configuration and derived systemd/udev files,
+restart `canbusd`, and verify the exact loaded revisions.
+
+Saving or importing a custom profile does not activate it. The managed daemon
+pins the revisions it loaded until a reviewed Apply restarts it.
+
+The terminal management path remains supported for maintained-profile recovery,
+development, and installations whose dashboard is unavailable:
 
 ```bash
 sudo ./scripts/manage.sh config apply-profile seat-leon-1p-pq35 default
 ```
 
-This selects the maintained profile and bindings from the installed Open MMI tree,
-writes the daemon runtime drop-in, and generates udev rules from `can_buses` metadata.
-It does not create or activate custom copies.
+That command selects installed maintained content, writes the runtime drop-in,
+and generates udev rules from `can_buses` metadata. It does not create or replace
+custom copies. Direct `config init`, `config edit-can`, and environment overrides
+remain advanced tools rather than the normal vehicle-owner workflow.
 
-`config init` explicitly creates user-owned custom copies from the installed maintained
-files without activating them. `config edit-can` remains available as an advanced
-override for unusual hardware or replay testing.
+See [`vehicle-setup.md`](vehicle-setup.md) and
+[`manual-administration.md`](manual-administration.md).
 
 ---
 

@@ -286,11 +286,13 @@ Payload:
 ```
 
 Preview is read-only. It returns a normalized plan, compatibility results, warnings and
-the current configuration revision required by apply. It deliberately continues to
-return `apply_available: false` so the unfinished Settings workflow cannot enable its
-button merely because the backend route exists. Preview performs no filesystem write,
-systemd/udev reload or service restart, and its response contains no resolved
-filesystem path or generated command text.
+the current configuration revision required by Apply. It deliberately returns
+`apply_available: false` because the preview response is not an authorization signal and
+must never enable mutation by itself. The frontend combines the exact normalized preview
+with the separately fetched coordinator capability and lock state before enabling its
+confirmed **Apply setup** control. Preview performs no filesystem write, systemd/udev
+reload or service restart, and its response contains no resolved filesystem path or
+generated command text.
 
 The normalized target uses the canonical selection shape without `applied_at`. The
 coordinator adds its own trusted application timestamp only after it has independently
@@ -343,9 +345,11 @@ qualification command. Stale or busy requests return machine-readable conflict c
 failure returns bounded transaction state distinguishing verified restoration from an
 unverified restoration failure.
 
-This route is currently for backend/device qualification. **Settings → Vehicle setup**
-still leaves **Apply setup** disabled until confirmation, progress polling, focus and
-result handling are connected in the frontend.
+This fixed route is used by both device qualification and the installed
+**Settings → Vehicle setup** workflow. The frontend submits only the exact reviewed
+target after explicit confirmation, polls coordinator state through completion, refreshes
+loaded-runtime evidence, and reports stale, busy, restored-failure, and unverified-
+restoration outcomes inline.
 
 ## Custom-file routes
 

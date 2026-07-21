@@ -1,5 +1,7 @@
 # CAN runtime configuration roadmap
 
+> **Historical roadmap.** Current end-user selection and Apply behavior is documented in [`../vehicle-setup.md`](../vehicle-setup.md); terminal fallback is documented in [`../manual-administration.md`](../manual-administration.md).
+
 `open-mmi` currently supports one active SocketCAN interface, resolved through a named
 CAN bus model.
 

@@ -5,7 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 RADIO = ROOT / "ui" / "web_dashboard" / "static" / "media-radio.js"
 APP = ROOT / "ui" / "web_dashboard" / "static" / "app.js"
-DOCS = ROOT / "ui" / "web_dashboard" / "README.md"
+DOCS = ROOT / "docs" / "media-sources.md"
 
 
 class RadioPrivacyConsentTests(unittest.TestCase):
