@@ -2,6 +2,7 @@
 
 ## Unreleased — V1 vehicle setup coordinator
 - Added a hierarchical maintained vehicle catalogue with stable IDs, legacy aliases, contributor templates, deterministic mapping replay fixtures, and exact migration of missing legacy maintained runtime paths.
+- Added generated maintained-vehicle navigation and a cross-vehicle canonical capability matrix derived from checked profile identity, qualification, evidence and replay coverage.
 
 ### Added
 - Versioned maintained vehicle-profile schema, explicit identity/maturity/qualification metadata, reviewable evidence records and a single `vehicle-setup conform` catalogue-admission command shared by contributors and CI.

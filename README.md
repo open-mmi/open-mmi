@@ -421,7 +421,7 @@ This gate records what vehicle the profile targets, its maturity, what was actua
 
 Named CAN bus metadata is documented in [`docs/can-bus-model.md`](docs/can-bus-model.md).
 
-See [`docs/vehicle-profiles.md`](docs/vehicle-profiles.md) for the profile boundary and [`docs/vehicle-integration-standard.md`](docs/vehicle-integration-standard.md) for the canonical event and contribution contract. The generated event catalogue is [`docs/vehicle-event-registry.md`](docs/vehicle-event-registry.md). Maintained catalogue admission, maturity and evidence requirements are defined in [`docs/maintained-profile-standard.md`](docs/maintained-profile-standard.md).
+See [`docs/vehicle-profiles.md`](docs/vehicle-profiles.md) for the profile boundary and [`docs/vehicle-integration-standard.md`](docs/vehicle-integration-standard.md) for the canonical event and contribution contract. Generated maintained-vehicle navigation and cross-vehicle coverage are available in [`docs/vehicle-catalogue.md`](docs/vehicle-catalogue.md) and [`docs/vehicle-capability-matrix.md`](docs/vehicle-capability-matrix.md). The generated event catalogue is [`docs/vehicle-event-registry.md`](docs/vehicle-event-registry.md). Maintained catalogue admission, maturity and evidence requirements are defined in [`docs/maintained-profile-standard.md`](docs/maintained-profile-standard.md).
 Persistent vehicle state uses the same continuity checkpoint: the generated
 [`vehicle-status registry`](docs/vehicle-status-registry.md) defines shared paths, types,
 units and lifecycle while each vehicle profile supplies only the CAN-specific decoder.

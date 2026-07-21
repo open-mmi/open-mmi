@@ -218,6 +218,11 @@ a real integration begins.
 
 Candidate and qualified profiles include `fixtures/mappings.v1.json`. The replay
 gate must cover every canonical event and status output claimed by the profile.
+Generated catalogue and capability documentation must remain current:
+
+```bash
+python tools/generate_vehicle_catalogue_docs.py --check
+```
 
 ---
 

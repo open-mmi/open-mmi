@@ -36,5 +36,14 @@ open-mmi-config vehicle-setup conform --root .
 open-mmi-config vehicle-setup replay --root . <profile-id>
 ```
 
+Generated human-facing navigation and cross-vehicle coverage are published in
+[`docs/vehicle-catalogue.md`](../docs/vehicle-catalogue.md) and
+[`docs/vehicle-capability-matrix.md`](../docs/vehicle-capability-matrix.md). Regenerate
+both from the checked catalogue and profile metadata with:
+
+```bash
+python tools/generate_vehicle_catalogue_docs.py
+```
+
 Raw discovery remains open. Maintained admission is the continuity checkpoint
 that turns vehicle-specific hexadecimal data into shared human meaning.

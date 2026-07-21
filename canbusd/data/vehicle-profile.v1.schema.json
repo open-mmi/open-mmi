@@ -39,6 +39,12 @@
         "model": {"type": "string", "minLength": 1, "maxLength": 128},
         "generation": {"type": "string", "minLength": 1, "maxLength": 128},
         "platform": {"type": "string", "minLength": 1, "maxLength": 128},
+        "market_aliases": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1, "maxLength": 256}
+        },
         "model_years": {
           "type": "object",
           "additionalProperties": false,

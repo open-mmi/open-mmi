@@ -34,6 +34,7 @@ A maintained profile starts with:
     "model": "Leon",
     "generation": "1P",
     "platform": "VAG PQ35",
+    "market_aliases": [],
     "model_years": {
       "from": 2005,
       "to": 2012
@@ -71,8 +72,9 @@ A maintained profile starts with:
 
 `metadata.id` must match the stable identity declared in `vehicles/catalogue.v1.json`.
 The catalogue maps that ID to `vehicles/<brand>/<model>/<generation-platform>/config.json`
-and may retain deprecated IDs for installed compatibility. Evidence paths are repository-relative
-and must resolve to regular files in the same source tree.
+and may retain deprecated IDs for installed compatibility. Optional `market_aliases` records
+compatible regional or rebadged names without duplicating a profile solely for branding. Evidence
+paths are repository-relative and must resolve to regular files in the same source tree.
 
 ## Maturity levels
 

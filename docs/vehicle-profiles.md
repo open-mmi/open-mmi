@@ -59,6 +59,12 @@ must cover every canonical event and non-alias status output:
 open-mmi-config vehicle-setup replay --root . seat-leon-1p-pq35
 ```
 
+Generated maintained-vehicle navigation, identity, qualification and evidence summaries are
+kept in [`vehicle-catalogue.md`](vehicle-catalogue.md). Canonical event and status coverage
+across all maintained profiles is generated in
+[`vehicle-capability-matrix.md`](vehicle-capability-matrix.md). Both documents are derived
+from the same checked catalogue and profile metadata rather than maintained by hand.
+
 ## Profile shape
 
 A vehicle profile may contain:

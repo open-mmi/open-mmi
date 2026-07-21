@@ -55,6 +55,9 @@ jobs:
       - name: Verify generated vehicle-status documentation
         run: python tools/generate_vehicle_status_docs.py --check
 
+      - name: Verify generated vehicle catalogue documentation
+        run: python tools/generate_vehicle_catalogue_docs.py --check
+
       - name: Verify CSS module cascade
         run: python tools/verify_css_split.py
 

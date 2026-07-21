@@ -49,6 +49,16 @@ class ReleaseReadinessTests(unittest.TestCase):
             source,
         )
 
+    def test_generated_vehicle_catalogue_documents_exist_and_ci_checks_them(self):
+        self.assertTrue((ROOT / "docs/vehicle-catalogue.md").is_file())
+        self.assertTrue((ROOT / "docs/vehicle-capability-matrix.md").is_file())
+        self.assertTrue((ROOT / "tools/generate_vehicle_catalogue_docs.py").is_file())
+        source = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        self.assertIn(
+            "python tools/generate_vehicle_catalogue_docs.py --check",
+            source,
+        )
+
     def test_update_management_design_set_exists(self):
         root = ROOT / "docs" / "design" / "v1-update-management"
         for name in (

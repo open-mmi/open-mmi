@@ -50,6 +50,7 @@ METADATA_FIELDS = {
     "maintainers",
     "qualification",
     "limitations",
+    "market_aliases",
 }
 
 
@@ -202,7 +203,7 @@ def validate_metadata(
             )
         )
 
-    required = METADATA_FIELDS - {"limitations"}
+    required = METADATA_FIELDS - {"limitations", "market_aliases"}
     for field in sorted(required - set(metadata)):
         issues.append(
             _issue("error", "missing-metadata-field", f"metadata.{field}", "is required")
@@ -298,6 +299,13 @@ def validate_metadata(
         minimum=1,
         maximum=16,
     )
+    if "market_aliases" in metadata:
+        _validate_text_list(
+            metadata.get("market_aliases"),
+            path="metadata.market_aliases",
+            issues=issues,
+            maximum=32,
+        )
     if "limitations" in metadata:
         _validate_text_list(
             metadata.get("limitations"),
