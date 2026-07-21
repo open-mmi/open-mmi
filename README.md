@@ -47,11 +47,14 @@ CAN observations into a maintained profile.
 
 `open-mmi` is currently an **alpha vehicle integration project** with a working local web dashboard and backend/status layer.
 
-The current maintainer-tested reference vehicle is:
+The only vehicle currently reverse engineered and maintained by Open MMI is:
 
 ```text
-Seat Leon 1P / VAG PQ35
+SEAT Leon 1P / VAG PQ35
 ```
+
+Templates, synthetic examples and capability-matrix infrastructure do not imply
+support for any second vehicle.
 
 The current focus is:
 

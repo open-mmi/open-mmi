@@ -90,7 +90,7 @@ Registry: `open-mmi.vehicle-statuses` · schema version `1`
 
 ## Where hex meets human form
 
-The Seat and Vauxhall CAN layouts may be completely different while the downstream
+Vehicle-specific CAN layouts may be completely different while the downstream
 status remains identical:
 
 ```json

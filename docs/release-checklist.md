@@ -6,6 +6,7 @@
 - [ ] Unit, Node, Playwright, CSS-cascade, package-content, and dashboard-smoke jobs are green.
 - [ ] Maintained profiles and bindings pass canonical event, status, and action registry checks.
 - [ ] `open-mmi-config vehicle-setup conform --root .` passes for the complete maintained profile catalogue.
+- [ ] `open-mmi-config vehicle-setup scaffold ... --dry-run` produces a safe non-mutating plan and the scaffold test suite passes.
 - [ ] Generated action, event, and status references are current.
 - [ ] `bindings/default.json` uses canonical `action` identifiers and contains no module/function implementation names.
 - [ ] The wheel installs in a clean environment and all console entry points start.

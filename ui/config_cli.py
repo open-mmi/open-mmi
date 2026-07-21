@@ -21,6 +21,7 @@ from ui import (
     update_readiness,
     vehicle_config_coordinator,
     vehicle_profile_conformance,
+    vehicle_profile_scaffold,
     vehicle_setup,
 )
 from ui.configuration import (
@@ -183,6 +184,30 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="repository or installed Open MMI root; defaults to the maintained catalogue root",
     )
+    vehicle_scaffold = vehicle_setup_commands.add_parser(
+        "scaffold",
+        help="create and register an experimental maintained-profile source scaffold",
+    )
+    vehicle_scaffold.add_argument("--brand", required=True)
+    vehicle_scaffold.add_argument("--model", required=True)
+    vehicle_scaffold.add_argument("--generation", required=True)
+    vehicle_scaffold.add_argument("--platform", required=True)
+    vehicle_scaffold.add_argument("--year-from", type=int, required=True)
+    vehicle_scaffold.add_argument("--year-to", type=int, required=True)
+    vehicle_scaffold.add_argument("--id", dest="profile_id")
+    vehicle_scaffold.add_argument("--display-name")
+    vehicle_scaffold.add_argument("--maintainer", action="append")
+    vehicle_scaffold.add_argument("--market-alias", action="append")
+    vehicle_scaffold.add_argument("--default-bus", default="comfort")
+    vehicle_scaffold.add_argument("--interface", default="can0")
+    vehicle_scaffold.add_argument("--bitrate", type=int)
+    vehicle_scaffold.add_argument(
+        "--root",
+        type=Path,
+        default=Path.cwd(),
+        help="source checkout root; defaults to the current directory",
+    )
+    vehicle_scaffold.add_argument("--dry-run", action="store_true")
     vehicle_setup_commands.add_parser(
         "coordinator",
         help="inspect the privileged vehicle configuration coordinator",
@@ -286,6 +311,26 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 report["fixture_path"] = fixture_path.relative_to(root).as_posix()
                 _print(report)
                 return 0 if report["valid"] else 1
+            elif args.command == "scaffold":
+                _print(
+                    vehicle_profile_scaffold.scaffold_profile(
+                        args.root,
+                        brand=args.brand,
+                        model=args.model,
+                        generation=args.generation,
+                        platform=args.platform,
+                        year_from=args.year_from,
+                        year_to=args.year_to,
+                        profile_id=args.profile_id,
+                        display_name=args.display_name,
+                        maintainers=args.maintainer,
+                        market_aliases=args.market_alias,
+                        default_bus=args.default_bus,
+                        interface=args.interface,
+                        bitrate=args.bitrate,
+                        dry_run=args.dry_run,
+                    )
+                )
             elif args.command == "events":
                 selected = sum(
                     value is not None
@@ -388,7 +433,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         result = _jellyfin_test(values)
         _print({"ok": True, **result})
         return 0
-    except (ConfigurationError, launcher.LauncherError, update_coordinator.CoordinatorError, vehicle_config_coordinator.CoordinatorError, update_status.UpdateStatusError, vehicle_actions.VehicleActionRegistryError, vehicle_events.VehicleEventRegistryError, profile_catalogue.VehicleProfileCatalogueError, profile_replay.VehicleProfileReplayError, vehicle_statuses.VehicleStatusRegistryError, vehicle_profile_conformance.VehicleProfileConformanceError, vehicle_setup.VehicleSetupError, RuntimeError, ValueError) as exc:
+    except (ConfigurationError, launcher.LauncherError, update_coordinator.CoordinatorError, vehicle_config_coordinator.CoordinatorError, update_status.UpdateStatusError, vehicle_actions.VehicleActionRegistryError, vehicle_events.VehicleEventRegistryError, profile_catalogue.VehicleProfileCatalogueError, profile_replay.VehicleProfileReplayError, vehicle_statuses.VehicleStatusRegistryError, vehicle_profile_conformance.VehicleProfileConformanceError, vehicle_profile_scaffold.VehicleProfileScaffoldError, vehicle_setup.VehicleSetupError, RuntimeError, ValueError) as exc:
         print(f"open-mmi-config: {exc}", file=sys.stderr)
         return 1
 

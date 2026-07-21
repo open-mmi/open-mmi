@@ -1,22 +1,28 @@
 # Vehicle profile template
 
-Copy this directory to:
+Use the checked scaffold command from the repository root instead of copying this
+directory by hand:
 
-```text
-vehicles/<brand>/<model>/<generation-platform>/
+```bash
+open-mmi-config vehicle-setup scaffold \
+  --root . \
+  --brand "Brand" \
+  --model "Model" \
+  --generation "Generation" \
+  --platform "Platform" \
+  --year-from 2000 \
+  --year-to 2005
 ```
 
-Then:
+The values above are placeholders, not supported-vehicle claims. The command:
 
-1. rename `config.template.json` to `config.json`;
-2. choose a stable lowercase profile ID such as `vauxhall-astra-h-delta`;
-3. register the exact path and any genuine legacy aliases in
-   `vehicles/catalogue.v1.json`;
-4. record compatible regional or rebadged names in `metadata.market_aliases`;
-5. map CAN frames to canonical events and statuses;
-6. replace `fixtures/README.md` with `fixtures/mappings.v1.json` replay proof;
-7. document qualification evidence and limitations;
-8. run the maintained conformance and replay commands.
+- derives a safe `vehicles/<brand>/<model>/<generation-platform>/` path;
+- creates an experimental, non-claiming `config.json`;
+- creates profile-local README, fixtures, evidence and notes guidance;
+- registers a collision-free stable profile ID in `vehicles/catalogue.v1.json`;
+- refuses path syntax, symlinked parents, existing destinations, duplicate IDs and aliases;
+- supports `--dry-run` so the complete plan can be reviewed without mutation.
 
-The template is guidance, not an allow-list. New brands, models and universal
-concepts may be proposed in the same pull request as their first implementation.
+After scaffolding, replace placeholders only with facts supported by real captures.
+A profile does not become a compatibility claim merely because its directory exists.
+Candidate and qualified profiles require deterministic replay and reviewable evidence.

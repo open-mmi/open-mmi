@@ -43,6 +43,18 @@ jobs:
       - name: Verify maintained vehicle-profile conformance
         run: open-mmi-config vehicle-setup conform --root .
 
+      - name: Verify maintained vehicle-profile scaffold planning
+        run: |
+          open-mmi-config vehicle-setup scaffold \
+            --root . \
+            --brand "Example Brand" \
+            --model "Example Model" \
+            --generation "Generation" \
+            --platform "Platform" \
+            --year-from 2000 \
+            --year-to 2005 \
+            --dry-run
+
       - name: Replay maintained vehicle mappings
         run: open-mmi-config vehicle-setup replay --root . seat-leon-1p-pq35
 
@@ -120,7 +132,7 @@ jobs:
           from canbusd import event_registry as vehicle_events
           from canbusd import profile_catalogue, profile_replay
           from canbusd import status_registry as vehicle_statuses
-          from ui import vehicle_profile_conformance
+          from ui import vehicle_profile_conformance, vehicle_profile_scaffold
           from ui.web_dashboard import bluetooth, jellyfin, radio, usb
           import vehicles
 
@@ -130,6 +142,8 @@ jobs:
               "vehicle_statuses": vehicle_statuses.DEFAULT_REGISTRY_PATH,
               "bluetooth": Path(bluetooth.__file__),
               "vehicle_catalogue": Path(vehicles.__file__).parent / "catalogue.v1.json",
+              "vehicle_profile_scaffold": Path(vehicle_profile_scaffold.__file__),
+              "vehicle_template": Path(vehicles.__file__).parent / "_template" / "config.template.json",
               "vehicle": Path(vehicles.__file__).parent / "seat" / "leon" / "1p-pq35" / "config.json",
               "vehicle_fixtures": Path(vehicles.__file__).parent / "seat" / "leon" / "1p-pq35" / "fixtures" / "mappings.v1.json",
               "dashboard": Path(ui.web_dashboard.__file__).parent / "static" / "index.html",

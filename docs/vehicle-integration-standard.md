@@ -36,7 +36,7 @@ Each layer has one responsibility:
 4. **Action registry** — universal local behavior plus its private implementation contract.
 5. **Consumers** — interfaces that read canonical status independently of vehicle decoding.
 
-For example, Seat and Vauxhall may encode a steering-wheel mute request differently:
+For example, two vehicle profiles may encode a steering-wheel mute request differently:
 
 ```json
 {
@@ -67,7 +67,7 @@ vehicles and of the Python implementation:
 }
 ```
 
-A profile entry such as `vauxhall_steering_volume_off` is not acceptable when
+A profile entry such as `manufacturer_steering_volume_off` is not acceptable when
 `mute_toggle` already describes the intent.
 
 ## Canonical event rules

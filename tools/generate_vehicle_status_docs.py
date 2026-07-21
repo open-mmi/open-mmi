@@ -69,7 +69,7 @@ def render() -> str:
             "",
             "## Where hex meets human form",
             "",
-            "The Seat and Vauxhall CAN layouts may be completely different while the downstream",
+            "Vehicle-specific CAN layouts may be completely different while the downstream",
             "status remains identical:",
             "",
             "```json",

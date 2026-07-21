@@ -49,6 +49,18 @@ class ReleaseReadinessTests(unittest.TestCase):
             source,
         )
 
+    def test_vehicle_profile_scaffold_workflow_is_packaged_and_checked(self):
+        self.assertTrue((ROOT / "ui/vehicle_profile_scaffold.py").is_file())
+        self.assertTrue((ROOT / "docs/vehicle-profile-scaffolding.md").is_file())
+        source = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        self.assertIn(
+            "open-mmi-config vehicle-setup scaffold",
+            source,
+        )
+        wheel = (ROOT / "tools/verify_wheel.py").read_text(encoding="utf-8")
+        self.assertIn('"ui/vehicle_profile_scaffold.py"', wheel)
+        self.assertIn('"vehicles/_template/config.template.json"', wheel)
+
     def test_generated_vehicle_catalogue_documents_exist_and_ci_checks_them(self):
         self.assertTrue((ROOT / "docs/vehicle-catalogue.md").is_file())
         self.assertTrue((ROOT / "docs/vehicle-capability-matrix.md").is_file())

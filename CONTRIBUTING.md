@@ -89,8 +89,8 @@ At that boundary:
 5. add a genuinely new universal descriptor in the same pull request as the mapping.
 
 No separate permission request is required to propose a registry entry. Review exists to
-keep Seat, Vauxhall and every future vehicle speaking one understandable language rather
-than hundreds of private dialects.
+keep the current SEAT profile and every future evidence-backed vehicle speaking one
+understandable language rather than hundreds of private dialects.
 
 For example, if another vehicle emits mute from CAN ID `0x431`, the contributor should reuse
 `mute_toggle` and replace only the CAN ID, byte and value. A discovery label such as
@@ -213,8 +213,23 @@ vehicles/<brand>/<model>/<generation-platform>/
 The checked `vehicles/catalogue.v1.json` maps that human-browsable path to a
 stable machine ID and any deprecated compatibility aliases. Do not create empty
 brand folders or split profiles only for trim, engine, steering side, or market
-badges unless the CAN mappings genuinely differ. Copy `vehicles/_template/` when
-a real integration begins.
+badges unless the CAN mappings genuinely differ. Start a real integration with:
+
+```bash
+open-mmi-config vehicle-setup scaffold \
+  --root . \
+  --brand "Brand" \
+  --model "Model" \
+  --generation "Generation" \
+  --platform "Platform" \
+  --year-from 2000 \
+  --year-to 2005
+```
+
+The values are placeholders, not supported-vehicle claims. Run the same command
+with `--dry-run` first when reviewing the derived ID and path. The
+[scaffolding guide](docs/vehicle-profile-scaffolding.md) documents the safety and
+follow-up workflow.
 
 Candidate and qualified profiles include `fixtures/mappings.v1.json`. The replay
 gate must cover every canonical event and status output claimed by the profile.

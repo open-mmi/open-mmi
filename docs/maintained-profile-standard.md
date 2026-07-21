@@ -156,6 +156,25 @@ update the fixture deliberately and pass review.
 
 ## Contribution path
 
+Create the source layout and catalogue identity with a non-claiming scaffold:
+
+```bash
+open-mmi-config vehicle-setup scaffold \
+  --root . \
+  --brand "Brand" \
+  --model "Model" \
+  --generation "Generation" \
+  --platform "Platform" \
+  --year-from 2000 \
+  --year-to 2005
+```
+
+Use `--dry-run` to inspect the plan. The
+[scaffolding guide](vehicle-profile-scaffolding.md) describes every option and
+safety check. The command creates only an experimental identity envelope and
+contribution directories. It does not invent CAN mappings,
+evidence, replay coverage, compatibility or hardware qualification.
+
 ```text
 Raw CAN discovery
         ↓

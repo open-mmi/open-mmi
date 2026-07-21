@@ -122,7 +122,7 @@ A profile translates vehicle-specific CAN signals into canonical Open MMI events
 not embed Python modules, function names, or manufacturer-specific synonyms for an existing
 universal intent.
 
-For example, different Seat and Vauxhall CAN messages may both emit `mute_toggle`; the
+For example, different evidence-backed vehicle profiles may both emit `mute_toggle`; the
 application behavior belongs in the separate bindings file as a canonical action such as
 `media.mute.toggle`. The action registry, not the binding, owns the private Python
 module/function mapping. Event contracts are documented in

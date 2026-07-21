@@ -17,9 +17,26 @@ vehicle belongs**; `metadata.id` is the stable machine identity used by Open MMI
 The exact mapping is declared in [`catalogue.v1.json`](catalogue.v1.json), which
 also carries deprecated IDs used by existing installations.
 
-Do not pre-create empty brand or model directories. Copy `_template` when a real
-integration starts. A new profile directory represents a genuine CAN/decoder
-boundary, not merely a trim, engine, steering side, or market badge.
+Do not pre-create empty brand or model directories. Start a real integration with
+the checked scaffold command:
+
+```bash
+open-mmi-config vehicle-setup scaffold \
+  --root . \
+  --brand "Brand" \
+  --model "Model" \
+  --generation "Generation" \
+  --platform "Platform" \
+  --year-from 2000 \
+  --year-to 2005
+```
+
+Use `--dry-run` to review the derived stable ID, path and files without changing
+the checkout. See the [scaffolding guide](../docs/vehicle-profile-scaffolding.md)
+for options and safety guarantees. The placeholder values above are not support
+claims. A new profile directory represents a genuine CAN/decoder boundary, not
+merely a trim, engine,
+steering side, or market badge.
 
 Each maintained profile contains:
 

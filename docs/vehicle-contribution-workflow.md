@@ -182,7 +182,7 @@ Names that remain machine- or vendor-specific are not ready for the maintained b
 
 ```text
 PDC_signal
-vauxhall_door_byte_3
+manufacturer_door_byte_3
 seat_5c1_value_43
 BCM_status_2
 sound_module_off
