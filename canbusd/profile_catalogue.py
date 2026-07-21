@@ -193,12 +193,6 @@ def load_catalogue(path: Path) -> dict[str, Any]:
         raise VehicleProfileCatalogueError(
             "maintained vehicle catalogue exceeds the size limit"
         )
-    if metadata.st_mode & 0o002:
-        mode = stat.S_IMODE(metadata.st_mode)
-        raise VehicleProfileCatalogueError(
-            "maintained vehicle catalogue must not be world-writable "
-            f"(mode {mode:#05o})"
-        )
     try:
         content = path.read_bytes()
         document = json.loads(

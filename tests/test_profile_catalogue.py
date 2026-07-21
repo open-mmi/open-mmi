@@ -67,7 +67,7 @@ class ProfileCatalogueTests(unittest.TestCase):
                 profile_catalogue.catalogue_payload(root)["legacy_flat_fallback"]
             )
 
-    def test_catalogue_accepts_group_writable_installed_package_data(self) -> None:
+    def test_catalogue_validation_is_independent_of_installer_file_mode(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "catalogue.v1.json"
             path.write_text(
@@ -85,37 +85,15 @@ class ProfileCatalogueTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            path.chmod(0o664)
+            # pip can create installed package data with 0o666 even when the
+            # wheel archive records 0o644. The catalogue shares the package's
+            # trust boundary with the Python code that loads it, so validate
+            # file type, size and content rather than installer-selected mode.
+            path.chmod(0o666)
 
             catalogue = profile_catalogue.load_catalogue(path)
 
             self.assertIn("example", catalogue["profiles"])
-
-    def test_catalogue_rejects_world_writable_file(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "catalogue.v1.json"
-            path.write_text(
-                json.dumps(
-                    {
-                        "schema_version": 1,
-                        "catalogue_id": "open-mmi.maintained-vehicles",
-                        "profiles": {
-                            "example": {
-                                "path": "brand/model/generation/config.json",
-                                "aliases": [],
-                            }
-                        },
-                    }
-                ),
-                encoding="utf-8",
-            )
-            path.chmod(0o666)
-
-            with self.assertRaisesRegex(
-                profile_catalogue.VehicleProfileCatalogueError,
-                "must not be world-writable.*0o666",
-            ):
-                profile_catalogue.load_catalogue(path)
 
 
     def test_registered_profile_rejects_symlinked_path_components(self) -> None:
