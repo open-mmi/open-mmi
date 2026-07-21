@@ -893,10 +893,34 @@ def _profile_entry(roots: CatalogueRoots, source: str, identifier: str) -> dict[
             )
     else:
         default_bus = DEFAULT_BUS
+    metadata = document.get("metadata") if isinstance(document, Mapping) else None
+    metadata = metadata if isinstance(metadata, Mapping) else {}
+    qualification = metadata.get("qualification")
+    qualification = qualification if isinstance(qualification, Mapping) else {}
+    display_name = metadata.get("display_name")
+    if not isinstance(display_name, str) or not display_name.strip():
+        display_name = _display_name(identifier)
     return {
         "source": source,
         "id": identifier,
-        "display_name": _display_name(identifier),
+        "display_name": display_name,
+        "manufacturer": str(metadata.get("manufacturer") or ""),
+        "model": str(metadata.get("model") or ""),
+        "generation": str(metadata.get("generation") or ""),
+        "platform": str(metadata.get("platform") or ""),
+        "maturity": (
+            "custom"
+            if source == "custom"
+            else str(metadata.get("maturity") or "unspecified")
+        ),
+        "qualification_level": (
+            "unqualified"
+            if source == "custom"
+            else str(qualification.get("level") or "none")
+        ),
+        "last_tested": (
+            None if source == "custom" else qualification.get("last_tested")
+        ),
         "valid": validation["valid"],
         "revision": revision,
         "default_bus": default_bus,

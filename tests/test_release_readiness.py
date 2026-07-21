@@ -10,6 +10,29 @@ class ReleaseReadinessTests(unittest.TestCase):
         for relative in ("CHANGELOG.md", "docs/v1-foundation-migration.md", "docs/release-checklist.md"):
             self.assertTrue((ROOT / relative).is_file(), relative)
 
+    def test_maintained_profile_standard_and_schema_exist(self):
+        self.assertTrue((ROOT / "docs/maintained-profile-standard.md").is_file())
+        self.assertTrue((ROOT / "canbusd/data/vehicle-profile.v1.schema.json").is_file())
+
+    def test_ci_runs_the_single_maintained_profile_gate(self):
+        source = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        self.assertIn(
+            "open-mmi-config vehicle-setup conform --root .",
+            source,
+        )
+
+    def test_reference_profile_declares_qualified_hardware_evidence(self):
+        profile = json.loads(
+            (ROOT / "vehicles/seat_1p/config.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(profile["schema_version"], 1)
+        self.assertEqual(profile["metadata"]["id"], "seat_1p")
+        self.assertEqual(profile["metadata"]["maturity"], "qualified")
+        self.assertEqual(
+            profile["metadata"]["qualification"]["level"],
+            "hardware",
+        )
+
     def test_update_management_design_set_exists(self):
         root = ROOT / "docs" / "design" / "v1-update-management"
         for name in (

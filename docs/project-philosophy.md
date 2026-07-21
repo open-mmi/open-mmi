@@ -79,3 +79,8 @@ bindings/actions:
   flexible and user-controlled
   replaceable behind stable action identifiers
   built on decoded events and state, not raw CAN
+
+
+## Evidence without gatekeeping
+
+Open MMI does not require permission to investigate a vehicle. Maintained profiles do require explicit identity, maturity, test scope and evidence because users deserve to know what a compatibility claim means. The conformance report is an honesty and continuity checkpoint, not a walled garden.

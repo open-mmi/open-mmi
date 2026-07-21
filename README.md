@@ -411,9 +411,17 @@ actions and dashboards
 
 The core idea is that vehicle-specific CAN knowledge should live in vehicle profiles, not hardcoded into the daemon.
 
+A profile may be explored freely as a custom file. Before it enters the maintained catalogue, run the single identity/evidence/conformance gate:
+
+```bash
+open-mmi-config vehicle-setup conform --root .
+```
+
+This gate records what vehicle the profile targets, its maturity, what was actually tested, and where the evidence lives. It is not permission to research or contribute.
+
 Named CAN bus metadata is documented in [`docs/can-bus-model.md`](docs/can-bus-model.md).
 
-See [`docs/vehicle-profiles.md`](docs/vehicle-profiles.md) for the profile boundary and [`docs/vehicle-integration-standard.md`](docs/vehicle-integration-standard.md) for the canonical event and contribution contract. The generated event catalogue is [`docs/vehicle-event-registry.md`](docs/vehicle-event-registry.md).
+See [`docs/vehicle-profiles.md`](docs/vehicle-profiles.md) for the profile boundary and [`docs/vehicle-integration-standard.md`](docs/vehicle-integration-standard.md) for the canonical event and contribution contract. The generated event catalogue is [`docs/vehicle-event-registry.md`](docs/vehicle-event-registry.md). Maintained catalogue admission, maturity and evidence requirements are defined in [`docs/maintained-profile-standard.md`](docs/maintained-profile-standard.md).
 Persistent vehicle state uses the same continuity checkpoint: the generated
 [`vehicle-status registry`](docs/vehicle-status-registry.md) defines shared paths, types,
 units and lifecycle while each vehicle profile supplies only the CAN-specific decoder.

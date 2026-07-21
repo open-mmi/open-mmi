@@ -3,6 +3,7 @@
 ## Unreleased — V1 vehicle setup coordinator
 
 ### Added
+- Versioned maintained vehicle-profile schema, explicit identity/maturity/qualification metadata, reviewable evidence records and a single `vehicle-setup conform` catalogue-admission command shared by contributors and CI.
 - Canonical machine-readable vehicle-action registry with stable human-readable behavior identifiers, configured-argument contracts, event-payload compatibility, availability requirements, lifecycle status and private Python implementation mappings.
 - Action search/check CLI tooling, generated action documentation, runtime resolution and maintained-binding conformance that complete the event → action → implementation boundary without restricting same-pull-request proposals.
 - Canonical machine-readable vehicle-status registry with stable path meaning, value type, unit, enum, nullability and lifecycle contracts for all maintained Seat status outputs.

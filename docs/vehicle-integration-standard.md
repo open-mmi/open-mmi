@@ -288,3 +288,8 @@ The registries are APIs. Once a stable event, status or action has shipped:
 - renaming uses an explicit deprecated alias and migration plan;
 - removals require a major compatibility decision; and
 - generated documentation and conformance tests must change in the same commit.
+
+
+## Maintained catalogue admission
+
+Canonical vocabulary is necessary but not sufficient for a maintained profile. The profile must also identify its vehicle family, maturity, qualification scope and evidence under the [maintained profile standard](maintained-profile-standard.md). CI applies the same `open-mmi-config vehicle-setup conform --root .` report to every maintained profile. Custom discovery remains outside this admission gate.

@@ -1,0 +1,140 @@
+# Maintained vehicle-profile standard
+
+A maintained Open MMI vehicle profile is more than a decoder that happens to load. It is a
+versioned, reviewable compatibility claim about a real vehicle family.
+
+> **This is an admission and continuity checkpoint, not a walled garden.**
+>
+> Raw CAN discovery, notes, captures and custom profiles remain open. No contributor needs
+> permission to investigate a vehicle. The extra requirements begin only when a profile is
+> proposed for the maintained catalogue distributed by Open MMI.
+
+The standard answers four user-facing questions:
+
+1. **What vehicle is this profile for?**
+2. **How mature is the integration?**
+3. **What exactly has been tested?**
+4. **Where is the reviewable evidence?**
+
+The machine-readable envelope is described by
+`canbusd/data/vehicle-profile.v1.schema.json`. Registry and decoder semantics remain enforced
+by the normal profile validator.
+
+## Required envelope
+
+A maintained profile starts with:
+
+```json
+{
+  "schema_version": 1,
+  "metadata": {
+    "id": "seat_1p",
+    "display_name": "SEAT Leon 1P",
+    "manufacturer": "SEAT",
+    "model": "Leon",
+    "generation": "1P",
+    "platform": "VAG PQ35",
+    "model_years": {
+      "from": 2005,
+      "to": 2012
+    },
+    "maturity": "qualified",
+    "license": "GPL-3.0-only",
+    "maintainers": [
+      "Open MMI contributors"
+    ],
+    "qualification": {
+      "level": "hardware",
+      "last_tested": "2026-07-20",
+      "scope": [
+        "Passive comfort CAN reception at 100 kbit/s"
+      ],
+      "evidence": [
+        {
+          "kind": "hardware",
+          "path": "docs/design/v1-vehicle-setup/qualification.md",
+          "description": "Maintainer hardware qualification record."
+        }
+      ]
+    },
+    "limitations": [
+      "Only the comfort CAN bus is qualified."
+    ]
+  },
+  "default_bus": "comfort",
+  "can_buses": {},
+  "rules": [],
+  "presence": [],
+  "status": []
+}
+```
+
+`metadata.id` must match the directory under `vehicles/`. Evidence paths are repository-relative
+and must resolve to regular files in the same source tree.
+
+## Maturity levels
+
+| Maturity | Meaning | Minimum evidence |
+| --- | --- | --- |
+| `experimental` | Useful maintained work whose interpretation or coverage is still changing. | Qualification may be `none`; limitations must remain honest. |
+| `candidate` | Canonical semantics and deterministic testing are ready for broader qualification. | Replay or hardware qualification and corresponding evidence. |
+| `qualified` | The stated scope has passed real-vehicle hardware testing. | Hardware qualification, date, scope and at least one hardware evidence record. |
+| `deprecated` | Retained for migration or historical compatibility. | Existing evidence remains visible; replacement guidance belongs in limitations/docs. |
+
+A profile maturity label describes the overall integration. Individual status registry entries
+may still be `experimental` or `diagnostic`, and those limitations must not be presented as
+fully stable capabilities.
+
+## Qualification levels
+
+- `none` — no formal replay or hardware claim; `last_tested` is `null` and scope/evidence are empty.
+- `replay` — deterministic captures or fixtures were replayed; the tested scope and evidence are named.
+- `hardware` — the stated scope was tested on a real vehicle; the date and hardware evidence are named.
+
+Evidence kinds are `research`, `capture`, `replay`, `hardware`, and `documentation`.
+
+## One admission command
+
+Check the complete maintained catalogue from a source checkout:
+
+```bash
+open-mmi-config vehicle-setup conform --root .
+```
+
+Check one profile:
+
+```bash
+open-mmi-config vehicle-setup conform --root . seat_1p
+```
+
+The command verifies:
+
+- the versioned metadata envelope;
+- directory and profile identity agreement;
+- maturity/qualification consistency;
+- evidence paths and files;
+- CAN bus metadata and decoder structure;
+- canonical event and status contracts;
+- a capability inventory derived from the profile rather than handwritten claims.
+
+CI runs the same complete-catalogue command. A failed report blocks admission to the maintained
+catalogue; it does not block discovery notes or local custom-profile use.
+
+## Contribution path
+
+```text
+Raw CAN discovery
+        ↓
+Custom/provisional decoder
+        ↓
+Canonical events and statuses
+        ↓
+Replay or hardware evidence
+        ↓
+Maintained-profile conformance report
+        ↓
+Catalogue review
+```
+
+A contributor may add the metadata, evidence and first profile implementation in the same pull
+request. There is no separate permission request or private allow-list.

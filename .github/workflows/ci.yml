@@ -40,6 +40,9 @@ jobs:
           find ui/web_dashboard/static -maxdepth 1 -name '*.js' -print0 \
             | xargs -0 -n1 node --check
 
+      - name: Verify maintained vehicle-profile conformance
+        run: open-mmi-config vehicle-setup conform --root .
+
       - name: Verify generated vehicle-action documentation
         run: python tools/generate_vehicle_action_docs.py --check
 
@@ -110,6 +113,7 @@ jobs:
           import ui.web_dashboard
           from canbusd import event_registry as vehicle_events
           from canbusd import status_registry as vehicle_statuses
+          from ui import vehicle_profile_conformance
           from ui.web_dashboard import bluetooth, jellyfin, radio, usb
           import vehicles
 
@@ -152,7 +156,13 @@ jobs:
           statuses = vehicle_statuses.registry_payload()
           if "doors.front_right" not in statuses["statuses"]:
               raise SystemExit("Installed vehicle-status registry is incomplete")
-          vehicle_statuses.require_profile_statuses(json.loads(roots["vehicle"].read_text()))
+          vehicle_document = json.loads(roots["vehicle"].read_text())
+          vehicle_statuses.require_profile_statuses(vehicle_document)
+          metadata = vehicle_profile_conformance.validate_metadata(
+              vehicle_document, expected_id="seat_1p"
+          )
+          if not metadata["valid"]:
+              raise SystemExit(f"Installed maintained profile metadata is invalid: {metadata}")
           print("Installed package imports and runtime assets verified")
           PY
 

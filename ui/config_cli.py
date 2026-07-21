@@ -7,6 +7,7 @@ import getpass
 import json
 import os
 import sys
+from pathlib import Path
 from typing import Any, Mapping, Optional, Sequence
 
 from canbusd import action_registry as vehicle_actions
@@ -18,6 +19,7 @@ from ui import (
     update_coordinator,
     update_readiness,
     vehicle_config_coordinator,
+    vehicle_profile_conformance,
     vehicle_setup,
 )
 from ui.configuration import (
@@ -156,6 +158,20 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="PATH",
         help="explain whether to reuse, migrate or propose a status path",
     )
+    vehicle_conform = vehicle_setup_commands.add_parser(
+        "conform",
+        help="check maintained vehicle-profile identity, evidence and registry conformance",
+    )
+    vehicle_conform.add_argument(
+        "profiles",
+        nargs="*",
+        help="maintained profile identifiers; omit to check the complete catalogue",
+    )
+    vehicle_conform.add_argument(
+        "--root",
+        type=Path,
+        help="repository or installed Open MMI root; defaults to the maintained catalogue root",
+    )
     vehicle_setup_commands.add_parser(
         "coordinator",
         help="inspect the privileged vehicle configuration coordinator",
@@ -241,6 +257,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 _print(vehicle_config_coordinator.client_status())
             elif args.command == "catalogue":
                 _print(vehicle_setup.catalogue_payload())
+            elif args.command == "conform":
+                root = args.root or vehicle_setup.default_roots().maintained
+                report = vehicle_profile_conformance.catalogue_report(
+                    root, identifiers=args.profiles or None
+                )
+                _print(report)
+                return 0 if report["valid"] else 1
             elif args.command == "events":
                 selected = sum(
                     value is not None
@@ -343,7 +366,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         result = _jellyfin_test(values)
         _print({"ok": True, **result})
         return 0
-    except (ConfigurationError, launcher.LauncherError, update_coordinator.CoordinatorError, vehicle_config_coordinator.CoordinatorError, update_status.UpdateStatusError, vehicle_actions.VehicleActionRegistryError, vehicle_events.VehicleEventRegistryError, vehicle_statuses.VehicleStatusRegistryError, vehicle_setup.VehicleSetupError, RuntimeError, ValueError) as exc:
+    except (ConfigurationError, launcher.LauncherError, update_coordinator.CoordinatorError, vehicle_config_coordinator.CoordinatorError, update_status.UpdateStatusError, vehicle_actions.VehicleActionRegistryError, vehicle_events.VehicleEventRegistryError, vehicle_statuses.VehicleStatusRegistryError, vehicle_profile_conformance.VehicleProfileConformanceError, vehicle_setup.VehicleSetupError, RuntimeError, ValueError) as exc:
         print(f"open-mmi-config: {exc}", file=sys.stderr)
         return 1
 

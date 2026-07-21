@@ -28,6 +28,18 @@ currently alpha/backend software with an experimentally tested reference profile
 
 ---
 
+## Maintained catalogue identity and evidence
+
+Normal custom profiles remain lightweight and editable. A profile distributed in the maintained `vehicles/` catalogue must also carry `schema_version: 1` and the metadata envelope defined by [`maintained-profile-standard.md`](maintained-profile-standard.md). The envelope records vehicle identity, model-year range, maturity, maintainers, qualification scope, date, evidence and honest limitations.
+
+Check the source catalogue with:
+
+```bash
+open-mmi-config vehicle-setup conform --root .
+```
+
+The command is stricter than ordinary custom-profile validation by design. It gates a maintained compatibility claim; it does not restrict discovery.
+
 ## Profile shape
 
 A vehicle profile may contain:

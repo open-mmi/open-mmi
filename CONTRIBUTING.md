@@ -59,6 +59,18 @@ Good contributions usually improve one of these areas:
 
 The goal is to make vehicle integration knowledge reusable, not to hardcode one car into the daemon.
 
+## Maintained profiles state their evidence
+
+Custom profiles and raw CAN research do not require a formal metadata envelope. A profile proposed for `vehicles/` must additionally identify the vehicle family, declare a maturity level, state the exact qualification scope, and link reviewable evidence.
+
+Run the same gate used by CI:
+
+```bash
+open-mmi-config vehicle-setup conform --root .
+```
+
+A genuinely new vehicle can add its profile, canonical vocabulary proposals, evidence and metadata in one pull request. This is a continuity and honesty checkpoint, not advance permission or an exclusive list of supported developers. See [`docs/maintained-profile-standard.md`](docs/maintained-profile-standard.md).
+
 ## The registry is not a walled garden
 
 The canonical event and status registries are continuity checkpoints. They do not reserve
