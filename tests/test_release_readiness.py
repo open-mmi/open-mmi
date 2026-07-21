@@ -61,6 +61,21 @@ class ReleaseReadinessTests(unittest.TestCase):
         self.assertIn('"ui/vehicle_profile_scaffold.py"', wheel)
         self.assertIn('"vehicles/_template/config.template.json"', wheel)
 
+    def test_vehicle_capture_research_workflow_is_packaged_and_checked(self):
+        self.assertTrue((ROOT / "ui/vehicle_capture_analysis.py").is_file())
+        self.assertTrue((ROOT / "docs/vehicle-capture-analysis.md").is_file())
+        source = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        self.assertIn(
+            "open-mmi-config vehicle-setup capture compare",
+            source,
+        )
+        self.assertIn(
+            "open-mmi-config vehicle-setup capture export",
+            source,
+        )
+        wheel = (ROOT / "tools/verify_wheel.py").read_text(encoding="utf-8")
+        self.assertIn('"ui/vehicle_capture_analysis.py"', wheel)
+
     def test_generated_vehicle_catalogue_documents_exist_and_ci_checks_them(self):
         self.assertTrue((ROOT / "docs/vehicle-catalogue.md").is_file())
         self.assertTrue((ROOT / "docs/vehicle-capability-matrix.md").is_file())

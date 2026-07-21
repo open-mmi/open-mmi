@@ -55,6 +55,35 @@ jobs:
             --year-to 2005 \
             --dry-run
 
+      - name: Verify vehicle capture research tooling
+        run: |
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"' EXIT
+          printf '(1.000000) can0 123#00\n' > "$work/before.log"
+          printf '(2.000000) can0 123#01\n' > "$work/after.log"
+          open-mmi-config vehicle-setup capture compare \
+            "$work/before.log" "$work/after.log" \
+            --output "$work/comparison.json" \
+            --root .
+          open-mmi-config vehicle-setup capture export \
+            "$work/before.log" "$work/after.log" \
+            --profile-id example-profile \
+            --fixture-bus comfort \
+            --output "$work/candidate.json" \
+            --root .
+          python - "$work/comparison.json" "$work/candidate.json" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          comparison = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          candidate = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+          if comparison["summary"]["changed_ids"] != 1:
+              raise SystemExit("capture comparison did not report the changed ID")
+          if not candidate.get("experimental") or not candidate.get("review_required"):
+              raise SystemExit("candidate fixture is not marked for manual review")
+          PY
+
       - name: Replay maintained vehicle mappings
         run: open-mmi-config vehicle-setup replay --root . seat-leon-1p-pq35
 
@@ -132,7 +161,7 @@ jobs:
           from canbusd import event_registry as vehicle_events
           from canbusd import profile_catalogue, profile_replay
           from canbusd import status_registry as vehicle_statuses
-          from ui import vehicle_profile_conformance, vehicle_profile_scaffold
+          from ui import vehicle_capture_analysis, vehicle_profile_conformance, vehicle_profile_scaffold
           from ui.web_dashboard import bluetooth, jellyfin, radio, usb
           import vehicles
 
@@ -142,6 +171,7 @@ jobs:
               "vehicle_statuses": vehicle_statuses.DEFAULT_REGISTRY_PATH,
               "bluetooth": Path(bluetooth.__file__),
               "vehicle_catalogue": Path(vehicles.__file__).parent / "catalogue.v1.json",
+              "vehicle_capture_analysis": Path(vehicle_capture_analysis.__file__),
               "vehicle_profile_scaffold": Path(vehicle_profile_scaffold.__file__),
               "vehicle_template": Path(vehicles.__file__).parent / "_template" / "config.template.json",
               "vehicle": Path(vehicles.__file__).parent / "seat" / "leon" / "1p-pq35" / "config.json",

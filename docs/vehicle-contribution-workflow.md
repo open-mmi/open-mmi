@@ -249,6 +249,21 @@ open-mmi-config vehicle-setup statuses parking.distance.rear_left
 open-mmi-config vehicle-setup actions media.mute.toggle
 ```
 
+## Compare captures without inventing meaning
+
+Use the bounded research tooling to normalize common `candump` logs and compare a quiet
+baseline with a capture taken during one documented physical action:
+
+```bash
+open-mmi-config vehicle-setup capture normalize captures/action.log
+open-mmi-config vehicle-setup capture compare captures/before.log captures/after.log
+```
+
+The comparison highlights changed IDs, bytes and bits. It does not identify the human
+meaning, distinguish causation from counters or unrelated traffic, or promote a mapping.
+Candidate replay export deliberately leaves event and status expectations empty and refuses
+to write under `vehicles/`. See [`vehicle-capture-analysis.md`](vehicle-capture-analysis.md).
+
 ## Contribution sequence
 
 ```text

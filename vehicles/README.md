@@ -62,5 +62,11 @@ both from the checked catalogue and profile metadata with:
 python tools/generate_vehicle_catalogue_docs.py
 ```
 
-Raw discovery remains open. Maintained admission is the continuity checkpoint
-that turns vehicle-specific hexadecimal data into shared human meaning.
+Raw discovery remains open. Use `open-mmi-config vehicle-setup capture` to normalize
+and compare passive `candump` logs. Generated reports and candidate fixtures are refused
+beneath this maintained tree until a contributor manually confirms meaning, canonical
+vocabulary, deterministic expectations and evidence. See the
+[capture analysis guide](../docs/vehicle-capture-analysis.md).
+
+Maintained admission is the continuity checkpoint that turns vehicle-specific hexadecimal
+data into shared human meaning.

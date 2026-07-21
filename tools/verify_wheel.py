@@ -27,6 +27,7 @@ REQUIRED_PATHS = {
     "canbusd/data/vehicle-statuses.v1.json",
     "canbusd/data/vehicle-profile.v1.schema.json",
     "ui/vehicle_profile_conformance.py",
+    "ui/vehicle_capture_analysis.py",
     "ui/vehicle_profile_scaffold.py",
     "ui/vehicle_config_coordinator.py",
     "ui/web_dashboard/bluetooth.py",

@@ -374,7 +374,22 @@ Example action notes:
 00:30 handbrake applied
 ```
 
-Good capture notes make decoding much easier.
+Good capture notes make decoding much easier. Normalize and compare bounded classic-CAN logs with:
+
+```bash
+open-mmi-config vehicle-setup capture normalize captures/action.log
+open-mmi-config vehicle-setup capture compare captures/before.log captures/after.log
+open-mmi-config vehicle-setup capture export \
+  captures/before.log captures/after.log \
+  --profile-id example-profile \
+  --output tmp/action.candidate.json \
+  --root .
+```
+
+The example ID is a placeholder, not a support claim. Generated reports and candidate
+fixtures are refused beneath `vehicles/`; manually confirm the human meaning and canonical
+contract before moving reviewed cases into a maintained profile. See
+[`docs/vehicle-capture-analysis.md`](docs/vehicle-capture-analysis.md).
 
 ---
 

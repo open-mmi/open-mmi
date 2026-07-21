@@ -20,6 +20,7 @@ from ui import (
     update_coordinator,
     update_readiness,
     vehicle_config_coordinator,
+    vehicle_capture_analysis,
     vehicle_profile_conformance,
     vehicle_profile_scaffold,
     vehicle_setup,
@@ -208,6 +209,60 @@ def build_parser() -> argparse.ArgumentParser:
         help="source checkout root; defaults to the current directory",
     )
     vehicle_scaffold.add_argument("--dry-run", action="store_true")
+
+    vehicle_capture = vehicle_setup_commands.add_parser(
+        "capture",
+        help="normalize and compare bounded candump research captures",
+    )
+    vehicle_capture_commands = vehicle_capture.add_subparsers(
+        dest="capture_command",
+        required=True,
+    )
+
+    def add_capture_filters(selected: argparse.ArgumentParser) -> None:
+        selected.add_argument("--bus", action="append", help="include one capture interface")
+        selected.add_argument("--id", dest="can_ids", action="append", help="include one CAN ID")
+        selected.add_argument("--from-ms", type=float, help="include frames from this relative time")
+        selected.add_argument("--to-ms", type=float, help="include frames through this relative time")
+
+    capture_normalize = vehicle_capture_commands.add_parser(
+        "normalize",
+        help="parse candump text into deterministic JSON",
+    )
+    capture_normalize.add_argument("input", type=Path)
+    add_capture_filters(capture_normalize)
+    capture_normalize.add_argument("--output", type=Path)
+    capture_normalize.add_argument("--force", action="store_true")
+    capture_normalize.add_argument("--root", type=Path, default=Path.cwd())
+
+    capture_compare = vehicle_capture_commands.add_parser(
+        "compare",
+        help="compare before and after captures by changed bytes and bits",
+    )
+    capture_compare.add_argument("before", type=Path)
+    capture_compare.add_argument("after", type=Path)
+    add_capture_filters(capture_compare)
+    capture_compare.add_argument("--minimum-score", type=float, default=0.0)
+    capture_compare.add_argument("--limit", type=int, default=128)
+    capture_compare.add_argument("--output", type=Path)
+    capture_compare.add_argument("--force", action="store_true")
+    capture_compare.add_argument("--root", type=Path, default=Path.cwd())
+
+    capture_export = vehicle_capture_commands.add_parser(
+        "export",
+        help="export experimental candidate replay cases outside vehicles/",
+    )
+    capture_export.add_argument("before", type=Path)
+    capture_export.add_argument("after", type=Path)
+    add_capture_filters(capture_export)
+    capture_export.add_argument("--minimum-score", type=float, default=0.0)
+    capture_export.add_argument("--limit", type=int, default=128)
+    capture_export.add_argument("--profile-id", required=True)
+    capture_export.add_argument("--fixture-bus")
+    capture_export.add_argument("--output", type=Path, required=True)
+    capture_export.add_argument("--force", action="store_true")
+    capture_export.add_argument("--root", type=Path, default=Path.cwd())
+
     vehicle_setup_commands.add_parser(
         "coordinator",
         help="inspect the privileged vehicle configuration coordinator",
@@ -331,6 +386,51 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                         dry_run=args.dry_run,
                     )
                 )
+            elif args.command == "capture":
+                filters = {
+                    "buses": args.bus,
+                    "can_ids": args.can_ids,
+                    "start_ms": args.from_ms,
+                    "end_ms": args.to_ms,
+                }
+                if args.capture_command == "normalize":
+                    report = vehicle_capture_analysis.normalize_capture(
+                        args.input,
+                        **filters,
+                    )
+                    if args.output is not None:
+                        written = vehicle_capture_analysis.write_json_report(
+                            report, args.output, root=args.root, force=args.force
+                        )
+                        _print({**written, "summary": report["summary"]})
+                    else:
+                        _print(report)
+                else:
+                    comparison = vehicle_capture_analysis.compare_captures(
+                        args.before,
+                        args.after,
+                        minimum_score=args.minimum_score,
+                        limit=args.limit,
+                        **filters,
+                    )
+                    if args.capture_command == "export":
+                        _print(
+                            vehicle_capture_analysis.export_candidate_fixture(
+                                comparison,
+                                args.output,
+                                profile_id=args.profile_id,
+                                root=args.root,
+                                fixture_bus=args.fixture_bus,
+                                force=args.force,
+                            )
+                        )
+                    elif args.output is not None:
+                        written = vehicle_capture_analysis.write_json_report(
+                            comparison, args.output, root=args.root, force=args.force
+                        )
+                        _print({**written, "summary": comparison["summary"]})
+                    else:
+                        _print(comparison)
             elif args.command == "events":
                 selected = sum(
                     value is not None
@@ -433,7 +533,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         result = _jellyfin_test(values)
         _print({"ok": True, **result})
         return 0
-    except (ConfigurationError, launcher.LauncherError, update_coordinator.CoordinatorError, vehicle_config_coordinator.CoordinatorError, update_status.UpdateStatusError, vehicle_actions.VehicleActionRegistryError, vehicle_events.VehicleEventRegistryError, profile_catalogue.VehicleProfileCatalogueError, profile_replay.VehicleProfileReplayError, vehicle_statuses.VehicleStatusRegistryError, vehicle_profile_conformance.VehicleProfileConformanceError, vehicle_profile_scaffold.VehicleProfileScaffoldError, vehicle_setup.VehicleSetupError, RuntimeError, ValueError) as exc:
+    except (ConfigurationError, launcher.LauncherError, update_coordinator.CoordinatorError, vehicle_config_coordinator.CoordinatorError, update_status.UpdateStatusError, vehicle_actions.VehicleActionRegistryError, vehicle_events.VehicleEventRegistryError, profile_catalogue.VehicleProfileCatalogueError, profile_replay.VehicleProfileReplayError, vehicle_statuses.VehicleStatusRegistryError, vehicle_capture_analysis.VehicleCaptureAnalysisError, vehicle_profile_conformance.VehicleProfileConformanceError, vehicle_profile_scaffold.VehicleProfileScaffoldError, vehicle_setup.VehicleSetupError, RuntimeError, ValueError) as exc:
         print(f"open-mmi-config: {exc}", file=sys.stderr)
         return 1
 

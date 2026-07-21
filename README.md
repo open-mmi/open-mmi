@@ -37,7 +37,8 @@ Only the hexadecimal mapping changes. The human meaning remains `mute_toggle`.
 When no existing descriptor fits a genuinely new concept, the contributor adds a universal
 registry entry in the same pull request as the vehicle mapping—no separate permission gate.
 
-Read the [vehicle signal contribution workflow](docs/vehicle-contribution-workflow.md) and
+Read the [vehicle signal contribution workflow](docs/vehicle-contribution-workflow.md),
+[capture analysis guide](docs/vehicle-capture-analysis.md), and
 [vehicle integration standard](docs/vehicle-integration-standard.md) before promoting raw
 CAN observations into a maintained profile.
 
@@ -66,6 +67,7 @@ local Linux actions
 CLI/dashboard consumers
 safe user configuration
 vehicle-profile contribution workflow
+bounded CAN capture comparison
 ```
 
 This is **not yet** a finished infotainment replacement or multi-vehicle supported product, but the dashboard is now a real development target rather than only a terminal/status prototype.
@@ -420,7 +422,7 @@ A profile may be explored freely as a custom file. Before it enters the maintain
 open-mmi-config vehicle-setup conform --root .
 ```
 
-This gate records what vehicle the profile targets, its maturity, what was actually tested, and where the evidence lives. It is not permission to research or contribute.
+This gate records what vehicle the profile targets, its maturity, what was actually tested, and where the evidence lives. It is not permission to research or contribute. Raw `candump` logs can be normalized and compared with `open-mmi-config vehicle-setup capture`; generated candidates remain outside `vehicles/` until manual review.
 
 Named CAN bus metadata is documented in [`docs/can-bus-model.md`](docs/can-bus-model.md).
 
