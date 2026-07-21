@@ -98,6 +98,7 @@ jobs:
 
       - name: Build distributions
         run: |
+          umask 022
           python -m pip install --upgrade pip build
           python -m build
 
@@ -106,6 +107,7 @@ jobs:
 
       - name: Install built wheel
         run: |
+          umask 022
           python -m pip install dist/*.whl
           cd "$(mktemp -d)"
           python - <<'PY'
