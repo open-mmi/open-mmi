@@ -67,6 +67,56 @@ class ProfileCatalogueTests(unittest.TestCase):
                 profile_catalogue.catalogue_payload(root)["legacy_flat_fallback"]
             )
 
+    def test_catalogue_accepts_group_writable_installed_package_data(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "catalogue.v1.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "catalogue_id": "open-mmi.maintained-vehicles",
+                        "profiles": {
+                            "example": {
+                                "path": "brand/model/generation/config.json",
+                                "aliases": [],
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            path.chmod(0o664)
+
+            catalogue = profile_catalogue.load_catalogue(path)
+
+            self.assertIn("example", catalogue["profiles"])
+
+    def test_catalogue_rejects_world_writable_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "catalogue.v1.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "catalogue_id": "open-mmi.maintained-vehicles",
+                        "profiles": {
+                            "example": {
+                                "path": "brand/model/generation/config.json",
+                                "aliases": [],
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            path.chmod(0o666)
+
+            with self.assertRaisesRegex(
+                profile_catalogue.VehicleProfileCatalogueError,
+                "non-world-writable",
+            ):
+                profile_catalogue.load_catalogue(path)
+
 
     def test_registered_profile_rejects_symlinked_path_components(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as outside:
