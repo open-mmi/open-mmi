@@ -113,7 +113,7 @@ class ProfileCatalogueTests(unittest.TestCase):
 
             with self.assertRaisesRegex(
                 profile_catalogue.VehicleProfileCatalogueError,
-                "non-world-writable",
+                "must not be world-writable.*0o666",
             ):
                 profile_catalogue.load_catalogue(path)
 

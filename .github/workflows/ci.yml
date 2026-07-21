@@ -99,6 +99,7 @@ jobs:
       - name: Build distributions
         run: |
           umask 022
+          chmod 0644 vehicles/catalogue.v1.json
           python -m pip install --upgrade pip build
           python -m build
 
@@ -113,6 +114,7 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           import json
+          import stat
           import bindings
           import canbusd
           import ui.web_dashboard
@@ -158,6 +160,21 @@ jobs:
           missing = [f"{name}: {path}" for name, path in roots.items() if not path.is_file()]
           if missing:
               raise SystemExit("Missing installed assets:\n" + "\n".join(missing))
+          catalogue_metadata = roots["vehicle_catalogue"].lstat()
+          catalogue_mode = stat.S_IMODE(catalogue_metadata.st_mode)
+          print(
+              "Installed vehicle catalogue:",
+              roots["vehicle_catalogue"],
+              f"mode={catalogue_mode:#05o}",
+              f"size={catalogue_metadata.st_size}",
+          )
+          if not stat.S_ISREG(catalogue_metadata.st_mode):
+              raise SystemExit("Installed vehicle catalogue is not a regular file")
+          if catalogue_mode & 0o002:
+              raise SystemExit(
+                  "Installed vehicle catalogue is world-writable: "
+                  f"mode={catalogue_mode:#05o}"
+              )
           registry = vehicle_events.registry_payload()
           if "mute_toggle" not in registry["events"]:
               raise SystemExit("Installed vehicle-event registry is incomplete")

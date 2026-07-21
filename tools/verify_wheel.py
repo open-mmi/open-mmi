@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import stat
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -82,11 +83,24 @@ def verify(wheel_path: Path) -> None:
         formatted = "\n".join(f"  - {path}" for path in missing)
         raise SystemExit(f"Wheel is missing required files:\n{formatted}")
 
+    with ZipFile(wheel_path) as archive:
+        catalogue_info = archive.getinfo("vehicles/catalogue.v1.json")
+    catalogue_mode = stat.S_IMODE(catalogue_info.external_attr >> 16)
+
+    if catalogue_mode & 0o002:
+        raise SystemExit(
+            "Wheel vehicle catalogue is world-writable: "
+            f"mode={catalogue_mode:#05o}"
+        )
+
     metadata = [name for name in members if name.endswith(".dist-info/METADATA")]
     if len(metadata) != 1:
         raise SystemExit(f"Expected exactly one METADATA file, found {len(metadata)}")
 
-    print(f"Verified {wheel_path}: {len(members)} files, all required assets present")
+    print(
+        f"Verified {wheel_path}: {len(members)} files, "
+        f"catalogue mode={catalogue_mode:#05o}, all required assets present"
+    )
 
 
 def main() -> None:

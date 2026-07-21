@@ -185,13 +185,19 @@ def load_catalogue(path: Path) -> dict[str, Any]:
         raise VehicleProfileCatalogueError(
             f"maintained vehicle catalogue cannot be inspected: {path}"
         ) from exc
-    if (
-        not stat.S_ISREG(metadata.st_mode)
-        or metadata.st_size > MAX_CATALOGUE_BYTES
-        or metadata.st_mode & 0o002
-    ):
+    if not stat.S_ISREG(metadata.st_mode):
         raise VehicleProfileCatalogueError(
-            "maintained vehicle catalogue must be a bounded non-world-writable regular file"
+            "maintained vehicle catalogue must be a regular file"
+        )
+    if metadata.st_size > MAX_CATALOGUE_BYTES:
+        raise VehicleProfileCatalogueError(
+            "maintained vehicle catalogue exceeds the size limit"
+        )
+    if metadata.st_mode & 0o002:
+        mode = stat.S_IMODE(metadata.st_mode)
+        raise VehicleProfileCatalogueError(
+            "maintained vehicle catalogue must not be world-writable "
+            f"(mode {mode:#05o})"
         )
     try:
         content = path.read_bytes()
