@@ -1,7 +1,6 @@
 # Changelog
-- Add formal maintained-profile qualification records, reviewed lifecycle transitions, compatibility boundaries, and stale-review warnings.
-
 ## Unreleased — V1 vehicle setup coordinator
+- Added formal maintained-profile qualification records, reviewed lifecycle transitions, compatibility boundaries, and stale-review warnings.
 - Added a hierarchical maintained vehicle catalogue with stable IDs, legacy aliases, contributor templates, deterministic mapping replay fixtures, and exact migration of missing legacy maintained runtime paths.
 - Added generated maintained-vehicle navigation and a cross-vehicle canonical capability matrix derived from checked profile identity, qualification, evidence and replay coverage.
 - Added a collision-safe `vehicle-setup scaffold` source workflow that creates an explicitly experimental profile envelope, contribution directories and catalogue registration without claiming reverse engineering or hardware support.

@@ -39,8 +39,13 @@ Open MMI is designed to be profile-driven.
 Vehicle-specific CAN knowledge should live in:
 
 ```text
-vehicles/{profile}/config.json
+maintained: vehicles/<brand>/<model>/<generation-platform>/config.json
+custom:     ~/.config/open-mmi/vehicles/<custom-id>/config.json
 ```
+
+The checked `vehicles/catalogue.v1.json` assigns stable IDs and compatibility aliases only
+to maintained profiles. A custom profile remains user-owned and does not become a support
+claim merely because it exists.
 
 Core Python should stay generic wherever possible.
 
@@ -55,7 +60,7 @@ Good contributions usually improve one of these areas:
 * documentation
 * tests
 * screenshots or example output
-* replay/demo data once tooling supports it
+* replay fixtures, capture-analysis reports, and qualification evidence
 
 The goal is to make vehicle integration knowledge reusable, not to hardcode one car into the daemon.
 
@@ -258,10 +263,12 @@ Please check:
 python tools/generate_vehicle_action_docs.py --check
 python tools/generate_vehicle_event_docs.py --check
 python tools/generate_vehicle_status_docs.py --check
+python tools/generate_vehicle_catalogue_docs.py --check
 python3 -m py_compile canbusd/core.py canbusd/can_runtime.py canbusd/status_rules.py canbusd/status_bus.py
 python3 -m unittest discover -s tests
 python3 -m json.tool vehicles/seat/leon/1p-pq35/config.json >/dev/null
 open-mmi-config vehicle-setup conform --root .
+open-mmi-config vehicle-setup qualification report --root .
 open-mmi-config vehicle-setup replay --root . seat-leon-1p-pq35
 python3 -m json.tool bindings/default.json >/dev/null
 bash -n scripts/manage.sh
@@ -315,12 +322,17 @@ SECURITY.md
 
 Vehicle profiles should contain vehicle-specific CAN IDs, byte positions, masks, values, and status mappings.
 
-Do:
+Use the correct ownership boundary:
 
 ```text
-vehicles/seat/leon/1p-pq35/config.json
-vehicles/my_vehicle/config.json
+maintained profile:
+  vehicles/seat/leon/1p-pq35/config.json
+
+user-owned custom profile:
+  ~/.config/open-mmi/vehicles/my-vehicle/config.json
 ```
+
+Do not add a flat `vehicles/my_vehicle/` directory to the maintained repository tree.
 
 Avoid hardcoding vehicle-specific CAN IDs or values in:
 

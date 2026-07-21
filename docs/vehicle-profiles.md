@@ -18,13 +18,16 @@ vehicles/<brand>/<model>/<generation-platform>/config.json
 
 The maintainer-tested reference vehicle is currently:
 
-* Seat Leon 1P
+* SEAT Leon 1P
 * VAG PQ35 platform
 * comfort CAN at 100000 bitrate
 * SocketCAN interface currently provisioned as `can0`
 
 This does not mean `open-mmi` is a finished Seat/VW infotainment product. The project is
-currently alpha/backend software with an experimentally tested reference profile.
+currently alpha/backend software. The SEAT profile is the sole reverse-engineered maintained
+profile and is hardware-qualified only for the scope and compatibility boundary recorded in
+[`vehicle-catalogue.md`](vehicle-catalogue.md) and
+[`vehicle-qualification-workflow.md`](vehicle-qualification-workflow.md).
 
 ---
 

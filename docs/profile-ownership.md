@@ -18,11 +18,16 @@ Vehicle profiles describe maintained CAN/status/action mappings for a vehicle pl
 
 Installed location:
 
-    /opt/open-mmi/vehicles/<vehicle>/config.json
+    /opt/open-mmi/vehicles/<brand>/<model>/<generation-platform>/config.json
 
 Development checkout location:
 
-    vehicles/<vehicle>/config.json
+    vehicles/<brand>/<model>/<generation-platform>/config.json
+
+The checked `vehicles/catalogue.v1.json` maps each maintained path to a stable profile ID
+and any deprecated compatibility aliases. Runtime callers select the stable ID; catalogue
+resolution finds the nested installed file. New maintained profiles should not use the old
+flat `vehicles/<profile>/` layout.
 
 Vehicle profiles are part of the OpenMMI repository. Normal users should receive profile improvements when OpenMMI updates.
 
@@ -68,7 +73,7 @@ However, it is not used by default. It should only be active when explicitly sel
 
 Example explicit selection:
 
-    OPEN_MMI_VEHICLE_CONFIG=/home/open-mmi/.config/open-mmi/vehicles/seat_1p/config.json
+    OPEN_MMI_VEHICLE_CONFIG=/home/open-mmi/.config/open-mmi/vehicles/custom-seat/config.json
 
 ## User binding overrides
 
@@ -89,7 +94,7 @@ Example explicit selection:
 Vehicle profile:
 
     1. OPEN_MMI_VEHICLE_CONFIG, if explicitly set
-    2. /opt/open-mmi/vehicles/<vehicle>/config.json
+    2. /opt/open-mmi/vehicles/<resolved-catalogue-path>/config.json
 
 Bindings:
 
@@ -103,7 +108,7 @@ If OpenMMI automatically prefers files in ~/.config/open-mmi, stale user-space c
 That creates confusing behaviour:
 
     OpenMMI update changes /opt/open-mmi/vehicles/seat/leon/1p-pq35/config.json
-    canbusd still loads ~/.config/open-mmi/vehicles/seat_1p/config.json
+    canbusd still loads ~/.config/open-mmi/vehicles/custom-seat/config.json
     new signals do not appear
 
 The same problem can happen with bindings:
@@ -146,11 +151,11 @@ Create custom binding override:
 
 Create custom vehicle profile override:
 
-    copy /opt/open-mmi/vehicles/<vehicle>/config.json
-    to   ~/.config/open-mmi/vehicles/<vehicle>/config.json
+    copy /opt/open-mmi/vehicles/<resolved-catalogue-path>/config.json
+    to   ~/.config/open-mmi/vehicles/<custom-id>/config.json
 
     set:
-    OPEN_MMI_VEHICLE_CONFIG=~/.config/open-mmi/vehicles/<vehicle>/config.json
+    OPEN_MMI_VEHICLE_CONFIG=~/.config/open-mmi/vehicles/<custom-id>/config.json
 
 ## Runtime logging
 
@@ -161,7 +166,7 @@ At daemon startup, canbusd should log the active files:
 
 If user override files exist but are not selected, canbusd may warn:
 
-    User vehicle profile override exists but is not active: ~/.config/open-mmi/vehicles/<vehicle>/config.json
+    User vehicle profile override exists but is not active: ~/.config/open-mmi/vehicles/<custom-id>/config.json
     Set OPEN_MMI_VEHICLE_CONFIG to use it.
 
     User bindings override exists but is not active: ~/.config/open-mmi/bindings/<bindings>.json

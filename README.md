@@ -211,9 +211,12 @@ Current capabilities include:
 
 * SocketCAN input
 * vehicle profiles
+* maintained vehicle catalogue with stable IDs and deterministic replay
 * user bindings
 * modular actions
 * profile-driven status/state mappings
+* contributor scaffolding and bounded CAN capture analysis
+* formal replay and hardware qualification records
 * persistent status snapshot output
 * CLI diagnostic dashboard and local web dashboard consumers
 * hot-reload configuration
@@ -416,13 +419,21 @@ actions and dashboards
 
 The core idea is that vehicle-specific CAN knowledge should live in vehicle profiles, not hardcoded into the daemon.
 
-A profile may be explored freely as a custom file. Before it enters the maintained catalogue, run the single identity/evidence/conformance gate:
+A profile may be explored freely as a custom file. Start structured research with
+`open-mmi-config vehicle-setup scaffold`, normalize and compare bounded `candump` logs
+with `open-mmi-config vehicle-setup capture`, and inspect the evidence lifecycle with
+`open-mmi-config vehicle-setup qualification`.
+
+Before a profile enters the maintained catalogue, run the single identity, evidence and
+conformance gate:
 
 ```bash
 open-mmi-config vehicle-setup conform --root .
 ```
 
-This gate records what vehicle the profile targets, its maturity, what was actually tested, and where the evidence lives. It is not permission to research or contribute. Raw `candump` logs can be normalized and compared with `open-mmi-config vehicle-setup capture`; generated candidates remain outside `vehicles/` until manual review.
+This gate records what vehicle the profile targets, its maturity, what was actually tested,
+and where the evidence lives. It is not permission to research or contribute. Generated
+capture candidates remain outside `vehicles/` until manual review.
 
 Named CAN bus metadata is documented in [`docs/can-bus-model.md`](docs/can-bus-model.md).
 
@@ -451,6 +462,8 @@ open-mmi/
 │   ├── data/
 │   │   ├── vehicle-actions.v1.json
 │   │   ├── vehicle-events.v1.json
+│   │   ├── vehicle-profile.v1.schema.json
+│   │   ├── vehicle-qualification.v1.schema.json
 │   │   └── vehicle-statuses.v1.json
 │   └── __init__.py
 │
@@ -459,7 +472,9 @@ open-mmi/
 │   ├── _template/           ← contributor scaffold
 │   └── seat/leon/1p-pq35/
 │       ├── config.json      ← vehicle CAN profile
-│       └── fixtures/mappings.v1.json
+│       ├── evidence/qualification.v1.json
+│       ├── fixtures/mappings.v1.json
+│       └── notes/           ← bounded research notes
 │
 ├── bindings/
 │   └── default.json         ← canonical event → action mapping
@@ -472,12 +487,19 @@ open-mmi/
 │   └── __init__.py
 │
 ├── ui/
-│   └── dashboard/
-│       └── status_cli.py    ← CLI diagnostic dashboard
+│   ├── config_cli.py        ← installed configuration CLI
+│   ├── vehicle_catalogue.py
+│   ├── vehicle_capture_analysis.py
+│   ├── vehicle_profile_conformance.py
+│   ├── vehicle_profile_qualification.py
+│   ├── vehicle_profile_scaffold.py
+│   ├── dashboard/status_cli.py
+│   └── web_dashboard/       ← local dashboard and Vehicle Setup UI
 │
 ├── scripts/
 │   ├── manage.sh            ← install/update/uninstall/config
-│   └── manage.sh            ← install/update/uninstall and desktop lifecycle
+│   ├── dev_run.sh           ← development launcher
+│   └── open-mmi-desktop     ← managed desktop/browser entry point
 │
 ├── packaging/
 │   └── linux-desktop/
@@ -571,17 +593,30 @@ lighting.dimmer_percent = 42
 
 Status mappings are profile-driven.
 
-The core daemon knows generic rule types such as `bool`, `enum`, `bitfield`, `percent`, `raw`, and masked boolean rules; vehicle-specific CAN knowledge stays inside `vehicles/{profile}/config.json`.
+The core daemon knows generic rule types such as `bool`, `enum`, `bitfield`, `percent`,
+`raw`, and masked boolean rules. Maintained vehicle-specific CAN knowledge stays inside
+`vehicles/<brand>/<model>/<generation-platform>/config.json`; user-owned custom profiles
+remain flat beneath `~/.config/open-mmi/vehicles/<custom-id>/config.json`.
 
 ---
 
 # Vehicle profile format
 
-Vehicle profiles live in:
+Maintained profiles live in the checked catalogue tree:
 
 ```text
-vehicles/{profile}/config.json
+vehicles/<brand>/<model>/<generation-platform>/config.json
 ```
+
+`vehicles/catalogue.v1.json` maps that human-browsable location to a stable profile ID and
+any deprecated compatibility aliases. User-owned custom profiles remain separate:
+
+```text
+~/.config/open-mmi/vehicles/<custom-id>/config.json
+```
+
+Creating or editing a custom profile does not add it to the maintained catalogue or claim
+that its vehicle has been replay- or hardware-qualified.
 
 A profile may contain CAN bus metadata plus rules, presence rules, and status rules:
 

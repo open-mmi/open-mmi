@@ -69,7 +69,8 @@ The first delivery does not include:
 The design retains these current contracts:
 
 - maintained vehicle profiles are installed under
-  `/opt/open-mmi/vehicles/<profile>/config.json`;
+  `/opt/open-mmi/vehicles/<brand>/<model>/<generation-platform>/config.json` and are
+  selected through the stable ID in `vehicles/catalogue.v1.json`;
 - maintained bindings are installed under `/opt/open-mmi/bindings/<bindings>.json`;
 - custom vehicle profiles live under
   `~/.config/open-mmi/vehicles/<profile>/config.json`;
