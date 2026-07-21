@@ -74,8 +74,8 @@ class VehicleSetupTests(unittest.TestCase):
             selected_root / "bindings" / f"{identifier}.json",
             document
             or {
-                "play_pause": {"module": "audio", "func": "play_pause"},
-                "vehicle_present:on": {"module": "screen", "func": "wake_and_login"},
+                "play_pause": {"action": "media.playback.toggle"},
+                "vehicle_present:on": {"action": "display.power.wake"},
             },
         )
 

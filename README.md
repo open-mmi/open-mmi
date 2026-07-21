@@ -415,9 +415,10 @@ Named CAN bus metadata is documented in [`docs/can-bus-model.md`](docs/can-bus-m
 
 See [`docs/vehicle-profiles.md`](docs/vehicle-profiles.md) for the profile boundary and [`docs/vehicle-integration-standard.md`](docs/vehicle-integration-standard.md) for the canonical event and contribution contract. The generated event catalogue is [`docs/vehicle-event-registry.md`](docs/vehicle-event-registry.md).
 Persistent vehicle state uses the same continuity checkpoint: the generated
-[`vehicle-status registry`](docs/vehicle-status-registry.md) defines shared paths,
-types, units and lifecycle while each vehicle profile supplies only the CAN-specific
-decoder.
+[`vehicle-status registry`](docs/vehicle-status-registry.md) defines shared paths, types,
+units and lifecycle while each vehicle profile supplies only the CAN-specific decoder.
+Bindings use the generated [`vehicle-action registry`](docs/vehicle-action-registry.md) so
+local behavior remains human-readable while Python implementation details stay private.
 
 ---
 
@@ -428,12 +429,14 @@ open-mmi/
 ├── canbusd/
 │   ├── core.py              ← daemon loop: CAN input, profile loading
 │   ├── dispatcher.py        ← event → event bus + action execution
+│   ├── action_registry.py   ← canonical local-action contracts and implementation lookup
 │   ├── event_bus.py         ← in-process pub/sub for events
 │   ├── event_registry.py    ← canonical event contracts and lookup
 │   ├── status_bus.py        ← persistent vehicle state snapshots
 │   ├── status_registry.py   ← canonical status contracts and lookup
 │   ├── status_rules.py      ← generic profile-driven status evaluator
 │   ├── data/
+│   │   ├── vehicle-actions.v1.json
 │   │   ├── vehicle-events.v1.json
 │   │   └── vehicle-statuses.v1.json
 │   └── __init__.py
@@ -516,7 +519,7 @@ arrow_left
 brightness_level
 ```
 
-These events must be declared by the canonical registry in `canbusd/data/vehicle-events.v1.json`, are looked up in `bindings/*.json`, and are then routed to functions in `actions/`. Different vehicles use the same event identifier for the same universal intent.
+These events must be declared by the canonical registry in `canbusd/data/vehicle-events.v1.json` and are looked up in `bindings/*.json`. Maintained bindings select a stable action from `canbusd/data/vehicle-actions.v1.json`; the action registry privately resolves that human-readable behavior to its current Python implementation. Different vehicles use the same event identifier for the same universal intent, and different bindings use the same action identifier for the same local behavior.
 
 ## `presence`
 
@@ -762,16 +765,34 @@ Example:
 ```json
 {
   "volume_up": {
-    "module": "audio",
-    "func": "volume_up",
-    "args": ["+5%"]
+    "action": "media.volume.increase"
   },
   "play_pause": {
-    "module": "audio",
-    "func": "play_pause"
+    "action": "media.playback.toggle"
+  },
+  "brightness_level": {
+    "action": "display.brightness.set"
   }
 }
 ```
+
+The event key describes what happened in the vehicle. The canonical action describes what
+Open MMI should do locally. Python module and function names are private implementation
+details and do not belong in maintained bindings. Existing custom `module`/`func` bindings
+remain supported during the migration window and are reported with a validation warning.
+
+Search or inspect the action vocabulary with:
+
+```bash
+open-mmi-config vehicle-setup actions --search "audio mute"
+open-mmi-config vehicle-setup actions --check media.mute.toggle
+open-mmi-config vehicle-setup actions media.mute.toggle
+```
+
+See [`docs/vehicle-action-registry.md`](docs/vehicle-action-registry.md) for the generated
+action reference. The action registry is a continuity checkpoint, not a walled garden: a
+genuinely new universal behavior can be proposed with its implementation and tests in the
+same pull request.
 
 Bindings are selected with:
 
@@ -1145,13 +1166,12 @@ candump can0
 }
 ```
 
-3. Add a binding:
+3. Add or reuse a canonical binding:
 
 ```json
 {
   "play_pause": {
-    "module": "audio",
-    "func": "play_pause"
+    "action": "media.playback.toggle"
   }
 }
 ```

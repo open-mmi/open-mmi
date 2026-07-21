@@ -3,6 +3,8 @@
 ## Unreleased — V1 vehicle setup coordinator
 
 ### Added
+- Canonical machine-readable vehicle-action registry with stable human-readable behavior identifiers, configured-argument contracts, event-payload compatibility, availability requirements, lifecycle status and private Python implementation mappings.
+- Action search/check CLI tooling, generated action documentation, runtime resolution and maintained-binding conformance that complete the event → action → implementation boundary without restricting same-pull-request proposals.
 - Canonical machine-readable vehicle-status registry with stable path meaning, value type, unit, enum, nullability and lifecycle contracts for all maintained Seat status outputs.
 - Human-language status search/check tooling, generated status documentation, runtime/profile conformance, enum-value enforcement and event guidance that redirects ambiguous persistent concepts toward the status registry.
 - Canonical machine-readable vehicle-event registry with stable semantic, payload, delivery and lifecycle contracts for all maintained profile emissions and binding keys.
@@ -24,6 +26,7 @@
 - Local same-origin JSON import for new custom profiles and bindings. The server validates strict UTF-8 JSON and the complete profile/bindings schema before a private no-overwrite creation, records import provenance, selects the new item only as a draft, and never applies or restarts the CAN service.
 
 ### Changed
+- Maintained default bindings now use canonical action identifiers instead of Python module/function names. Existing custom legacy bindings remain supported with a migration warning.
 - Settings → Vehicle setup now distinguishes configured catalogue content, page-local draft selection and exact loaded-runtime evidence. Saved active custom revisions are labelled as awaiting review and Apply instead of appearing already loaded.
 - Technical details render compact SHA-256 fingerprints with the full exact value retained in accessible metadata, preventing long revisions from widening the 800×480 panel or the cards above it.
 - CAN summary labels now describe the selected draft bus, adapter and compatibility rather than implying those draft values are already active.

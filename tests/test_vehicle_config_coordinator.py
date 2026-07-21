@@ -188,8 +188,7 @@ class VehicleConfigurationCoordinatorTests(unittest.TestCase):
                 json.dumps(
                     {
                         "play_pause": {
-                            "module": "audio",
-                            "func": "play_pause",
+                            "action": "media.playback.toggle",
                         }
                     }
                 ),

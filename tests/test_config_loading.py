@@ -149,14 +149,21 @@ class ConfigLoadingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = self._write_json(
                 Path(tmp) / "bindings.json",
-                {"mute_toggle": {"module": "audio", "func": "mute_toggle"}},
+                {"mute_toggle": {"action": "media.mute.toggle"}},
             )
             with mock.patch.object(core, "_resolve_bindings_path", return_value=path):
                 bindings = core._load_bindings()
 
         self.assertEqual(
             bindings,
-            {"mute_toggle": {"module": "audio", "func": "mute_toggle"}},
+            {
+                "mute_toggle": {
+                    "action": "media.mute.toggle",
+                    "module": "audio",
+                    "func": "mute_toggle",
+                    "args": [],
+                }
+            },
         )
 
     def test_bindings_reject_unregistered_event_names(self):
@@ -179,6 +186,22 @@ class ConfigLoadingTests(unittest.TestCase):
         self.assertEqual(bindings, {})
         self.assertIsNone(core.LOADED_BINDINGS)
         self.assertIn("event is not registered", "\n".join(logs.output))
+
+    def test_bindings_reject_unregistered_action_names(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._write_json(
+                Path(tmp) / "bindings.json",
+                {"mute_toggle": {"action": "sound.module.off"}},
+            )
+            with (
+                mock.patch.object(core, "_resolve_bindings_path", return_value=path),
+                self.assertLogs("canbusd", level="ERROR") as logs,
+            ):
+                bindings = core._load_bindings()
+
+        self.assertEqual(bindings, {})
+        self.assertIsNone(core.LOADED_BINDINGS)
+        self.assertIn("not registered", "\n".join(logs.output))
 
     def test_bindings_load_failure_is_non_fatal(self):
         with tempfile.TemporaryDirectory() as tmp:

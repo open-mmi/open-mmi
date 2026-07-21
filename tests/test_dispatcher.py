@@ -41,6 +41,50 @@ class DispatcherTests(unittest.TestCase):
         publish.assert_called_once_with("demo:event", [4, 5])
         action_fn.assert_called_once_with("fixed", 4, 5)
 
+    def test_canonical_action_is_resolved_before_execution(self):
+        action_fn = mock.Mock()
+        module = types.SimpleNamespace(mute_toggle=action_fn)
+        real_import = __import__
+
+        def import_module(name, globals=None, locals=None, fromlist=(), level=0):
+            if name == "actions.audio":
+                return module
+            return real_import(name, globals, locals, fromlist, level)
+
+        with (
+            mock.patch.object(dispatcher, "publish") as publish,
+            mock.patch("builtins.__import__", side_effect=import_module),
+        ):
+            dispatcher.dispatch(
+                "mute_toggle",
+                {"action": "media.mute.toggle"},
+            )
+
+        publish.assert_called_once_with("mute_toggle", None)
+        action_fn.assert_called_once_with()
+
+    def test_canonical_payload_action_receives_event_value(self):
+        action_fn = mock.Mock()
+        module = types.SimpleNamespace(set_percent=action_fn)
+        real_import = __import__
+
+        def import_module(name, globals=None, locals=None, fromlist=(), level=0):
+            if name == "actions.brightness":
+                return module
+            return real_import(name, globals, locals, fromlist, level)
+
+        with (
+            mock.patch.object(dispatcher, "publish"),
+            mock.patch("builtins.__import__", side_effect=import_module),
+        ):
+            dispatcher.dispatch(
+                "brightness_level",
+                {"action": "display.brightness.set"},
+                [42],
+            )
+
+        action_fn.assert_called_once_with(42)
+
     def test_invalid_binding_is_logged_without_importing(self):
         with (
             mock.patch.object(dispatcher, "publish"),

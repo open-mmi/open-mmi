@@ -22,15 +22,19 @@ discovery, reuse and proposal workflow.
 Vehicle-specific CAN signal
         ↓ profile decoding
 Canonical Open MMI event or status
-        ↓ bindings / consumers
-Application behavior
+        ↓ binding
+Canonical Open MMI action
+        ↓ registry-owned implementation
+Local application behavior
 ```
 
 Each layer has one responsibility:
 
 1. **Vehicle profile** — CAN IDs, bytes, values, masks, scaling and bus metadata.
-2. **Canonical registries** — universal event intent and persistent-status contracts.
-3. **Bindings and consumers** — application actions and interfaces that use those contracts.
+2. **Event and status registries** — universal intent and persistent-state contracts.
+3. **Bindings** — a readable event-to-action choice.
+4. **Action registry** — universal local behavior plus its private implementation contract.
+5. **Consumers** — interfaces that read canonical status independently of vehicle decoding.
 
 For example, Seat and Vauxhall may encode a steering-wheel mute request differently:
 
@@ -52,13 +56,13 @@ For example, Seat and Vauxhall may encode a steering-wheel mute request differen
 }
 ```
 
-Both profiles emit the same universal intent. The binding remains independent:
+Both profiles emit the same universal intent. The binding remains independent of both
+vehicles and of the Python implementation:
 
 ```json
 {
   "mute_toggle": {
-    "module": "audio",
-    "func": "mute_toggle"
+    "action": "media.mute.toggle"
   }
 }
 ```
@@ -114,6 +118,28 @@ Stable paths are consumer-facing API. `experimental` paths preserve useful inter
 that still need confirmation. `diagnostic` paths retain raw evidence and are not stable UI
 contracts. Deprecated aliases may be emitted only where a profile explicitly identifies them
 as compatibility aliases.
+
+## Canonical action rules
+
+The authoritative machine-readable action source is:
+
+```text
+canbusd/data/vehicle-actions.v1.json
+```
+
+Its generated reference is `docs/vehicle-action-registry.md`. An action describes what Open
+MMI should do locally, independently of which vehicle event triggered it and independently
+of the Python implementation that currently performs it.
+
+Maintained bindings use `action` identifiers such as `media.playback.toggle`; they do not
+name a module, function, executable or package. The registry records configured arguments,
+event-payload compatibility, availability requirements, lifecycle status and the private
+implementation target. Existing custom `module`/`func` bindings remain supported during a
+deprecated compatibility window.
+
+A genuinely new behavior can be added in the same pull request as its implementation and
+first binding. Review checks that the behavior is universal, human-readable and not already
+represented—not who is allowed to contribute it.
 
 ## Event payloads
 
@@ -177,8 +203,9 @@ A maintained profile contribution must answer all of the following:
 6. Are new event names truly universal and already registered?
 7. Are uncertain signals clearly marked rather than guessed?
 8. Does the profile pass registry validation and replay tests?
-9. Does the default binding use canonical event keys only?
-10. Does documentation explain omissions and known limitations?
+9. Does the default binding use canonical event keys and canonical action identifiers only?
+10. Do action payload and configured-argument contracts match the bound events?
+11. Does documentation explain omissions and known limitations?
 
 ## Tooling
 
@@ -217,9 +244,18 @@ open-mmi-config vehicle-setup statuses --check doors.front_right
 open-mmi-config vehicle-setup statuses parking.distance.rear_left
 ```
 
+Search, check or inspect canonical actions:
+
+```bash
+open-mmi-config vehicle-setup actions --search "audio mute"
+open-mmi-config vehicle-setup actions --check media.mute.toggle
+open-mmi-config vehicle-setup actions media.mute.toggle
+```
+
 Regenerate the references after a registry change:
 
 ```bash
+python tools/generate_vehicle_action_docs.py
 python tools/generate_vehicle_event_docs.py
 python tools/generate_vehicle_status_docs.py
 ```
@@ -227,6 +263,7 @@ python tools/generate_vehicle_status_docs.py
 Verify that generated documentation is current:
 
 ```bash
+python tools/generate_vehicle_action_docs.py --check
 python tools/generate_vehicle_event_docs.py --check
 python tools/generate_vehicle_status_docs.py --check
 ```
@@ -234,15 +271,20 @@ python tools/generate_vehicle_status_docs.py --check
 Run the conformance tests:
 
 ```bash
-PYTHONPATH=.:tests python -m unittest tests.test_vehicle_events tests.test_vehicle_setup
+PYTHONPATH=.:tests python -m unittest \
+  tests.test_vehicle_actions \
+  tests.test_vehicle_events \
+  tests.test_vehicle_statuses \
+  tests.test_vehicle_setup
 ```
 
 ## Change control
 
-The registry is an API. Once a stable event has shipped:
+The registries are APIs. Once a stable event, status or action has shipped:
 
 - its identifier and meaning remain stable;
-- narrowing or changing its payload contract requires a new event;
+- narrowing or changing a payload, value or argument contract requires a new identifier;
+- implementation changes may occur behind a stable action only when behavior remains equivalent;
 - renaming uses an explicit deprecated alias and migration plan;
 - removals require a major compatibility decision; and
 - generated documentation and conformance tests must change in the same commit.

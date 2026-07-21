@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping, Optional, Sequence
 
 from canbusd.can_runtime import resolve_can_runtime
+from canbusd import action_registry as vehicle_actions
 from canbusd import event_registry as vehicle_events
 from canbusd import status_registry as vehicle_statuses
 from ui import vehicle_configuration
@@ -651,10 +652,67 @@ def validate_profile(
     return _validation(issues)
 
 
+def _validate_legacy_binding(
+    action: Mapping[str, Any],
+    *,
+    path: str,
+    issues: list[dict[str, str]],
+) -> None:
+    unsupported = sorted(set(action) - {"module", "func", "args"})
+    for key in unsupported:
+        issues.append(
+            _issue(
+                "error",
+                "unsupported-binding-field",
+                f"{path}.{key}",
+                "is not supported",
+            )
+        )
+    for key in ("module", "func"):
+        if not isinstance(action.get(key), str) or not PYTHON_IDENTIFIER_RE.fullmatch(
+            action[key]
+        ):
+            issues.append(
+                _issue(
+                    "error",
+                    f"invalid-{key}",
+                    f"{path}.{key}",
+                    "must be a Python identifier",
+                )
+            )
+    args = action.get("args", [])
+    if not isinstance(args, list) or len(args) > 16:
+        issues.append(
+            _issue(
+                "error",
+                "invalid-arguments",
+                f"{path}.args",
+                "must be an array of at most 16 values",
+            )
+        )
+    else:
+        for index, value in enumerate(args):
+            if (
+                isinstance(value, (list, dict))
+                or (isinstance(value, str) and len(value.encode("utf-8")) > 4096)
+                or (isinstance(value, float) and not math.isfinite(value))
+            ):
+                issues.append(
+                    _issue(
+                        "error",
+                        "invalid-argument",
+                        f"{path}.args[{index}]",
+                        "must be a bounded JSON scalar",
+                    )
+                )
+
+
 def validate_bindings(
     document: Any,
     *,
     event_registry: Optional[Mapping[str, Any]] = None,
+    action_registry: Optional[Mapping[str, Any]] = None,
+    maintained: bool = False,
 ) -> dict[str, Any]:
     issues: list[dict[str, str]] = []
     selected_event_registry = (
@@ -662,21 +720,19 @@ def validate_bindings(
         if event_registry is not None
         else vehicle_events.registry_payload()
     )
+    selected_action_registry = (
+        vehicle_actions.normalize_registry(action_registry)
+        if action_registry is not None
+        else vehicle_actions.registry_payload()
+    )
     if not isinstance(document, Mapping):
-        return _validation([_issue("error", "invalid-document", "$", "bindings must contain a JSON object")])
-
-    if document:
-        issues.append(
-            _issue(
-                "warning",
-                "legacy-action-schema",
-                "$",
-                "bindings use the runtime compatibility schema until the action registry is introduced",
-            )
+        return _validation(
+            [_issue("error", "invalid-document", "$", "bindings must contain a JSON object")]
         )
+
     for event, action in document.items():
         path = f"bindings.{event}"
-        _validate_event_reference(
+        event_definition = _validate_event_reference(
             event,
             path=path,
             registry=selected_event_registry,
@@ -685,23 +741,42 @@ def validate_bindings(
         if not isinstance(action, Mapping):
             issues.append(_issue("error", "invalid-binding", path, "must be an object"))
             continue
-        unsupported = sorted(set(action) - {"module", "func", "args"})
-        for key in unsupported:
-            issues.append(_issue("error", "unsupported-binding-field", f"{path}.{key}", "is not supported"))
-        for key in ("module", "func"):
-            if not isinstance(action.get(key), str) or not PYTHON_IDENTIFIER_RE.fullmatch(action[key]):
-                issues.append(_issue("error", f"invalid-{key}", f"{path}.{key}", "must be a Python identifier"))
-        args = action.get("args", [])
-        if not isinstance(args, list) or len(args) > 16:
-            issues.append(_issue("error", "invalid-arguments", f"{path}.args", "must be an array of at most 16 values"))
-        else:
-            for index, value in enumerate(args):
-                if (
-                    isinstance(value, (list, dict))
-                    or (isinstance(value, str) and len(value.encode("utf-8")) > 4096)
-                    or (isinstance(value, float) and not math.isfinite(value))
-                ):
-                    issues.append(_issue("error", "invalid-argument", f"{path}.args[{index}]", "must be a bounded JSON scalar"))
+
+        if vehicle_actions.is_legacy_binding(action):
+            level = "error" if maintained else "warning"
+            issues.append(
+                _issue(
+                    level,
+                    "legacy-action-schema",
+                    path,
+                    (
+                        "maintained bindings must use a canonical action identifier"
+                        if maintained
+                        else (
+                            "module/func bindings remain supported for custom compatibility "
+                            "but should migrate to a canonical action identifier"
+                        )
+                    ),
+                )
+            )
+            _validate_legacy_binding(action, path=path, issues=issues)
+            continue
+
+        carries_payload = (
+            None
+            if event_definition is None
+            else event_definition["payload"]["type"] != "none"
+        )
+        try:
+            vehicle_actions.resolve_binding(
+                action,
+                carries_event_payload=carries_payload,
+                registry=selected_action_registry,
+                allow_legacy=False,
+            )
+        except vehicle_actions.VehicleActionRegistryError as exc:
+            issues.append(_issue("error", exc.code, path, str(exc)))
+
     return _validation(issues)
 
 
@@ -839,7 +914,7 @@ def _bindings_entry(roots: CatalogueRoots, source: str, identifier: str) -> dict
         document, revision = _read_document(path, MAX_BINDINGS_BYTES)
     except VehicleSetupError as exc:
         return _invalid_entry(source, identifier, str(exc))
-    validation = validate_bindings(document)
+    validation = validate_bindings(document, maintained=(source == "maintained"))
     return {
         "source": source,
         "id": identifier,
@@ -1314,7 +1389,9 @@ def _selected_document(
     validation = (
         validate_profile(document)
         if kind == "profile"
-        else validate_bindings(document)
+        else validate_bindings(
+            document, maintained=(identity["source"] == "maintained")
+        )
     )
     if not validation["valid"] or not isinstance(document, Mapping):
         label = "vehicle profile" if kind == "profile" else "bindings"

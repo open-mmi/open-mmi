@@ -272,7 +272,10 @@ def render_artifacts(
             expected_uid=bindings_expected_uid,
         )
         profile_validation = vehicle_setup.validate_profile(profile)
-        bindings_validation = vehicle_setup.validate_bindings(bindings)
+        bindings_validation = vehicle_setup.validate_bindings(
+            bindings,
+            maintained=(normalized["bindings"]["source"] == "maintained"),
+        )
         if not profile_validation["valid"]:
             raise ApplyOperationError("Selected vehicle profile is invalid")
         if not bindings_validation["valid"]:

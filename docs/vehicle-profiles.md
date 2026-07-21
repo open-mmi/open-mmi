@@ -86,10 +86,12 @@ not embed Python modules, function names, or manufacturer-specific synonyms for 
 universal intent.
 
 For example, different Seat and Vauxhall CAN messages may both emit `mute_toggle`; the
-application action belongs in the separate bindings file. The canonical names and payload
-contracts are defined by the machine-readable event registry and documented in
-[`vehicle-event-registry.md`](vehicle-event-registry.md). The complete contribution rules
-are in [`vehicle-integration-standard.md`](vehicle-integration-standard.md).
+application behavior belongs in the separate bindings file as a canonical action such as
+`media.mute.toggle`. The action registry, not the binding, owns the private Python
+module/function mapping. Event contracts are documented in
+[`vehicle-event-registry.md`](vehicle-event-registry.md), action contracts in
+[`vehicle-action-registry.md`](vehicle-action-registry.md), and the complete contribution
+rules in [`vehicle-integration-standard.md`](vehicle-integration-standard.md).
 
 Unknown event names, deprecated aliases, payload-bearing `any` rules for no-payload events,
 and no-payload rules for value events fail profile validation.

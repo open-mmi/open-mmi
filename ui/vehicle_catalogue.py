@@ -433,7 +433,7 @@ def _read_template(
     validation = (
         vehicle_setup.validate_profile(document)
         if kind == "profile"
-        else vehicle_setup.validate_bindings(document)
+        else vehicle_setup.validate_bindings(document, maintained=True)
     )
     if validation.get("valid") is not True:
         raise VehicleCatalogueError("Maintained template is not valid")

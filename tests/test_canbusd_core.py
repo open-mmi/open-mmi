@@ -58,7 +58,7 @@ class CanbusdCoreTests(unittest.TestCase):
             profile_path.parent.mkdir(parents=True)
             bindings_path.parent.mkdir(parents=True)
             profile_content = b'{"default_bus":"comfort","can_buses":{"comfort":{"interface":"can0"}}}'
-            bindings_content = b'{"play_pause":{"module":"audio","func":"play_pause"}}'
+            bindings_content = b'{"play_pause":{"action":"media.playback.toggle"}}'
             profile_path.write_bytes(profile_content)
             bindings_path.write_bytes(bindings_content)
 
@@ -74,6 +74,9 @@ class CanbusdCoreTests(unittest.TestCase):
 
         self.assertEqual(loaded[5].interface, "can0")
         self.assertIn("play_pause", bindings)
+        self.assertEqual(bindings["play_pause"]["action"], "media.playback.toggle")
+        self.assertEqual(bindings["play_pause"]["module"], "audio")
+        self.assertEqual(bindings["play_pause"]["func"], "play_pause")
         self.assertEqual(
             core.LOADED_VEHICLE,
             {

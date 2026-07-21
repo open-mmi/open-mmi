@@ -1,63 +1,38 @@
 {
   "volume_up": {
-    "module": "audio",
-    "func": "volume_up",
-    "args": ["+5%"]
+    "action": "media.volume.increase"
   },
-
   "volume_down": {
-    "module": "audio",
-    "func": "volume_down",
-    "args": ["-5%"]
+    "action": "media.volume.decrease"
   },
-
   "mute_toggle": {
-    "module": "audio",
-    "func": "mute_toggle"
+    "action": "media.mute.toggle"
   },
-
   "next_track": {
-    "module": "audio",
-    "func": "next_track"
+    "action": "media.playback.next"
   },
-
   "previous_track": {
-    "module": "audio",
-    "func": "prev_track"
+    "action": "media.playback.previous"
   },
-
   "play_pause": {
-    "module": "audio",
-    "func": "play_pause"
+    "action": "media.playback.toggle"
   },
-
   "stop_playback": {
-    "module": "audio",
-    "func": "stop"
+    "action": "media.playback.stop"
   },
-
-    "arrow_left": {
-    "module": "keys",
-    "func": "arrow_left"
+  "arrow_left": {
+    "action": "navigation.focus.left"
   },
-
-    "arrow_right": {
-    "module": "keys",
-    "func": "arrow_right"
+  "arrow_right": {
+    "action": "navigation.focus.right"
   },
-
   "brightness_level": {
-    "module": "brightness",
-    "func": "from_can"
+    "action": "display.brightness.set"
   },
-
   "vehicle_present:on": {
-    "module": "screen",
-    "func": "wake_and_login"
+    "action": "display.power.wake"
   },
-
   "vehicle_present:off": {
-    "module": "screen",
-    "func": "off"
+    "action": "display.power.off"
   }
 }

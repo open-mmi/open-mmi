@@ -41,7 +41,7 @@ class VehicleCatalogueTests(unittest.TestCase):
             "status": [],
         }
         self.bindings_document = {
-            "play_pause": {"module": "audio", "func": "play_pause", "args": []}
+            "play_pause": {"action": "media.playback.toggle"}
         }
         self.profile_path = self._write_json(
             self.maintained / "vehicles" / "seat_1p" / "config.json",

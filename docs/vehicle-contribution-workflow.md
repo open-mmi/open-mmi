@@ -84,18 +84,18 @@ Only the CAN ID, byte and value change. The human meaning stays `mute_toggle`.
 A contributor should be able to find the Seat example, recognise the same physical intent,
 and substitute the CAN details discovered in their own vehicle.
 
-The binding remains independent of both vehicles:
+The binding remains independent of both vehicles and of implementation details:
 
 ```json
 {
   "mute_toggle": {
-    "module": "audio",
-    "func": "mute_toggle"
+    "action": "media.mute.toggle"
   }
 }
 ```
 
-The profile says what happened in human terms. The binding says what Open MMI should do.
+The profile says what happened in human terms. The binding selects a human-readable local
+behavior. The action registry privately maps that behavior to the current implementation.
 
 ## Propose: genuinely new human meaning
 
@@ -125,6 +125,29 @@ its first vehicle mapping. That pull request should include:
 - the vehicle-specific CAN rule;
 - tests and regenerated documentation; and
 - real-vehicle or replay evidence, with uncertainties stated.
+
+## From event to action
+
+Events and actions are deliberately separate vocabularies:
+
+```text
+mute_toggle          = what happened
+media.mute.toggle     = what Open MMI should do
+actions.audio...      = private implementation detail
+```
+
+A contributor or user can search actions using ordinary wording:
+
+```bash
+open-mmi-config vehicle-setup actions --search "audio mute"
+open-mmi-config vehicle-setup actions --check media.mute.toggle
+```
+
+When no action fits, a contributor may propose a new universal behavior together with its
+implementation, argument contract, payload contract, requirements, tests and generated
+documentation in the same pull request. No separate permission request is required.
+Maintained bindings may not invent module/function dialects; existing custom legacy bindings
+continue to work while users migrate.
 
 ## Human-readable naming test
 
@@ -200,6 +223,7 @@ open-mmi-config vehicle-setup events --search mute
 open-mmi-config vehicle-setup events --search "audio volume"
 open-mmi-config vehicle-setup statuses --search "right door"
 open-mmi-config vehicle-setup statuses --search pdc_signal
+open-mmi-config vehicle-setup actions --search "audio mute"
 ```
 
 Check a proposed identifier:
@@ -209,6 +233,7 @@ open-mmi-config vehicle-setup events --check mute_toggle
 open-mmi-config vehicle-setup events --check pdc_signal
 open-mmi-config vehicle-setup statuses --check doors.front_right
 open-mmi-config vehicle-setup statuses --check pdc_signal
+open-mmi-config vehicle-setup actions --check media.mute.toggle
 ```
 
 The check command does not grant or deny permission. It explains whether to reuse an
@@ -221,6 +246,7 @@ Inspect exact canonical definitions:
 ```bash
 open-mmi-config vehicle-setup events mute_toggle
 open-mmi-config vehicle-setup statuses parking.distance.rear_left
+open-mmi-config vehicle-setup actions media.mute.toggle
 ```
 
 ## Contribution sequence
@@ -234,7 +260,9 @@ Confirm the human meaning
         ↓
 Classify event versus persistent status
         ↓
-Search the canonical vocabulary
+Search the event/status vocabulary
+        ↓
+Select or propose the canonical local action when a binding is needed
         ↓
 Reuse an existing descriptor
         or propose a new universal descriptor

@@ -56,7 +56,11 @@ python3 -m py_compile canbusd/core.py canbusd/status_rules.py canbusd/status_bus
 python3 -m json.tool vehicles/seat_1p/config.json >/dev/null
 python3 -m json.tool bindings/default.json >/dev/null
 open-mmi-config vehicle-setup events --search "<human meaning>"
+open-mmi-config vehicle-setup statuses --search "<human meaning>"
+open-mmi-config vehicle-setup actions --search "<local behavior>"
+python tools/generate_vehicle_action_docs.py --check
 python tools/generate_vehicle_event_docs.py --check
+python tools/generate_vehicle_status_docs.py --check
 bash -n scripts/manage.sh
 ```
 

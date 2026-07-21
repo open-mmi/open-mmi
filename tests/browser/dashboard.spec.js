@@ -233,7 +233,7 @@ async function loadDashboard(page, options = {}) {
         {
           source: "maintained", id: "default", display_name: "Default", valid: true,
           revision: "sha256:bindings", binding_count: 12,
-          validation: { valid: true, errors: [], warnings: [{ code: "legacy-action-schema" }] },
+          validation: { valid: true, errors: [], warnings: [] },
         },
         {
           source: "custom", id: "my-controls", display_name: "My controls", valid: true,

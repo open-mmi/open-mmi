@@ -12,6 +12,8 @@ REQUIRED_PATHS = {
     "actions/__init__.py",
     "bindings/default.json",
     "canbusd/core.py",
+    "canbusd/action_registry.py",
+    "canbusd/data/vehicle-actions.v1.json",
     "ui/dashboard/status_cli.py",
     "ui/update_policy.py",
     "ui/update_readiness.py",

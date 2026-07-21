@@ -9,6 +9,7 @@ Too much CAN-bus reverse-engineering is rediscovered privately, lost in forum th
 - keep vehicle integration local-first
 - keep vehicle profiles reusable
 - translate every vehicle into one shared canonical event and status vocabulary
+- translate bindings into one shared action vocabulary rather than Python implementation names
 - keep the core daemon small and boring
 - keep vehicle-specific CAN knowledge out of core Python
 - make it possible to add vehicle support without reinventing the whole project
@@ -42,10 +43,11 @@ The project should allow different levels of contribution:
 
 A contributor should not need to understand the whole daemon to help with one vehicle, one status mapping, or one UI consumer.
 
-The canonical registries are continuity checkpoints, not a walled garden. Contributors may
-share raw evidence and provisional interpretations freely. A confirmed signal only needs to
-cross into the shared human-readable vocabulary when it becomes part of a maintained
-profile, and a genuinely new concept may be proposed in that same pull request.
+The canonical event, status and action registries are continuity checkpoints, not a walled
+garden. Contributors may share raw evidence and provisional interpretations freely. A
+confirmed signal only needs to cross into the shared human-readable vocabulary when it
+becomes part of a maintained profile. A genuinely new event, status or local action may be
+proposed with its mapping or implementation in that same pull request.
 
 See [`vehicle-contribution-workflow.md`](vehicle-contribution-workflow.md).
 
@@ -71,8 +73,9 @@ vehicle profiles:
   marked experimental/stable
   kept out of core Python
 
-UI/actions:
-  flexible
-  user-controlled
-  replaceable
-  built on decoded state, not raw CAN
+bindings/actions:
+  human-readable at the binding boundary
+  registry-backed rather than module/function-backed
+  flexible and user-controlled
+  replaceable behind stable action identifiers
+  built on decoded events and state, not raw CAN

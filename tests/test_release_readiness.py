@@ -48,17 +48,16 @@ class ReleaseReadinessTests(unittest.TestCase):
         self.assertNotIn("Transitional private aliases", source)
         self.assertNotIn("Temporary private aliases", source)
 
-    def test_default_media_bindings_use_transport_actions(self):
+    def test_default_media_bindings_use_canonical_actions(self):
         bindings = json.loads((ROOT / "bindings/default.json").read_text(encoding="utf-8"))
         expected = {
-            "play_pause": "play_pause",
-            "next_track": "next_track",
-            "previous_track": "prev_track",
-            "stop_playback": "stop",
+            "play_pause": "media.playback.toggle",
+            "next_track": "media.playback.next",
+            "previous_track": "media.playback.previous",
+            "stop_playback": "media.playback.stop",
         }
-        for event, function in expected.items():
-            self.assertEqual(bindings[event]["module"], "audio")
-            self.assertEqual(bindings[event]["func"], function)
+        for event, action in expected.items():
+            self.assertEqual(bindings[event], {"action": action})
 
     def test_generated_directories_are_ignored(self):
         source = (ROOT / ".gitignore").read_text(encoding="utf-8")

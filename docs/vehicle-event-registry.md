@@ -52,13 +52,12 @@ Different vehicles may encode the same user intent differently. The event identi
 }
 ```
 
-The binding is independent of both CAN layouts:
+The binding is independent of both CAN layouts and of Python implementation details:
 
 ```json
 {
   "mute_toggle": {
-    "module": "audio",
-    "func": "mute_toggle"
+    "action": "media.mute.toggle"
   }
 }
 ```

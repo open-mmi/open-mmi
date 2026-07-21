@@ -6,6 +6,7 @@ import queue
 import threading
 from typing import Any, Dict, Optional
 
+from canbusd import action_registry
 from canbusd.event_bus import publish
 
 logger = logging.getLogger("canbusd.dispatcher")
@@ -18,14 +19,28 @@ _STOP = object()
 def _action_name(action: Optional[Dict[str, Any]]) -> Optional[str]:
     if not action:
         return None
-
+    canonical = action.get("action")
+    if canonical:
+        return str(canonical)
     module_name = action.get("module")
     func_name = action.get("func")
-
     if not module_name or not func_name:
         return None
-
     return f"actions.{module_name}.{func_name}"
+
+
+def _runtime_action(
+    action: Optional[Dict[str, Any]],
+    extra_args=None,
+) -> Optional[Dict[str, Any]]:
+    if not action:
+        return None
+    if action.get("module") and action.get("func"):
+        return dict(action)
+    return action_registry.resolve_binding(
+        action,
+        carries_event_payload=bool(extra_args),
+    )
 
 
 def _publish_event(event: str, extra_args=None) -> None:
@@ -46,9 +61,18 @@ def _execute_action(event: str, action: Optional[Dict[str, Any]], extra_args=Non
         logger.warning("No binding configured for event=%s", event)
         return
 
-    module_name = action.get("module")
-    func_name = action.get("func")
-    args = list(action.get("args", []))
+    try:
+        resolved = _runtime_action(action, extra_args)
+    except action_registry.VehicleActionRegistryError as exc:
+        logger.error("Invalid binding for event=%s: %s", event, exc)
+        return
+    if not resolved:
+        logger.warning("No binding configured for event=%s", event)
+        return
+
+    module_name = resolved.get("module")
+    func_name = resolved.get("func")
+    args = list(resolved.get("args", []))
 
     if not module_name or not func_name:
         logger.error("Invalid binding for event=%s: %s", event, action)
@@ -64,7 +88,7 @@ def _execute_action(event: str, action: Optional[Dict[str, Any]], extra_args=Non
         fn = getattr(mod, func_name)
         fn(*args)
     except Exception:
-        logger.exception("Action failed for event=%s action=%s", event, _action_name(action))
+        logger.exception("Action failed for event=%s action=%s", event, _action_name(resolved))
 
 
 def dispatch(event: str, action: Optional[Dict[str, Any]], extra_args=None):
@@ -121,14 +145,19 @@ class ActionQueue:
         if not action:
             logger.warning("No binding configured for event=%s", event)
             return False
-        if not _action_name(action):
+        try:
+            resolved = _runtime_action(action, extra_args)
+        except action_registry.VehicleActionRegistryError as exc:
+            logger.error("Invalid binding for event=%s: %s", event, exc)
+            return False
+        if not resolved or not _action_name(resolved):
             logger.error("Invalid binding for event=%s: %s", event, action)
             return False
         if self._closed:
             logger.error("Action queue is closed; dropping event=%s", event)
             return False
 
-        item = (event, dict(action), list(extra_args) if extra_args else None)
+        item = (event, resolved, list(extra_args) if extra_args else None)
         try:
             self._queue.put_nowait(item)
             return True

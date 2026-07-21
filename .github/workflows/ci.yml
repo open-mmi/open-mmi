@@ -40,6 +40,9 @@ jobs:
           find ui/web_dashboard/static -maxdepth 1 -name '*.js' -print0 \
             | xargs -0 -n1 node --check
 
+      - name: Verify generated vehicle-action documentation
+        run: python tools/generate_vehicle_action_docs.py --check
+
       - name: Verify generated vehicle-event documentation
         run: python tools/generate_vehicle_event_docs.py --check
 

@@ -47,7 +47,7 @@ class VehicleConfigurationApplyOperationsTests(unittest.TestCase):
             sort_keys=True,
         ).encode("utf-8")
         self.bindings_bytes = json.dumps(
-            {"play_pause": {"module": "audio", "func": "play_pause"}},
+            {"play_pause": {"action": "media.playback.toggle"}},
             sort_keys=True,
         ).encode("utf-8")
         self._write_trusted(self.profile_path, self.profile_bytes)

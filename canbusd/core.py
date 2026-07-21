@@ -14,7 +14,7 @@ import can
 
 from canbusd.can_runtime import CanRuntimeConfig, item_matches_bus, resolve_can_runtime
 from canbusd.dispatcher import ActionQueue, dispatch
-from canbusd import event_registry
+from canbusd import action_registry, event_registry
 from canbusd import status_registry
 from canbusd.status_bus import publish as publish_status
 from canbusd.status_bus import publish_runtime as publish_runtime_status
@@ -195,8 +195,19 @@ def _load_bindings() -> Dict[str, Dict[str, Any]]:
         bindings, revision = _read_json_with_revision(path)
         if not isinstance(bindings, dict):
             raise ValueError("bindings root must be an object")
-        for event in bindings:
-            event_registry.require_event(event)
+        resolved_bindings = {}
+        for event, binding in bindings.items():
+            definition = event_registry.require_event(event)
+            if action_registry.is_legacy_binding(binding):
+                logger.warning(
+                    "Binding for event=%s uses deprecated module/func schema; "
+                    "use a canonical action identifier",
+                    event,
+                )
+            resolved_bindings[event] = action_registry.resolve_binding(
+                binding,
+                carries_event_payload=(definition["payload"]["type"] != "none"),
+            )
 
         LOADED_BINDINGS = {
             "source": _document_source("bindings", BINDINGS, path),
@@ -204,8 +215,8 @@ def _load_bindings() -> Dict[str, Dict[str, Any]]:
             "revision": revision,
         }
 
-        logger.info("Loaded %d bindings from %s", len(bindings), path)
-        return bindings
+        logger.info("Loaded %d bindings from %s", len(resolved_bindings), path)
+        return resolved_bindings
 
     except Exception as e:
         LOADED_BINDINGS = None

@@ -1,0 +1,297 @@
+{
+  "schema_version": 1,
+  "registry_id": "open-mmi.vehicle-actions",
+  "actions": {
+    "display.brightness.set": {
+      "title": "Set display brightness",
+      "category": "display",
+      "description": "Set the local display brightness from a canonical percentage payload.",
+      "implementation": {
+        "module": "brightness",
+        "func": "set_percent"
+      },
+      "arguments": [],
+      "event_payload": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 100,
+        "unit": "percent"
+      },
+      "requirements": [
+        "brightnessctl"
+      ],
+      "status": "stable",
+      "search_terms": [
+        "screen display brightness dimmer illumination percent"
+      ]
+    },
+    "display.power.off": {
+      "title": "Turn display off",
+      "category": "display",
+      "description": "Request local display power-off through the desktop display-power integration.",
+      "implementation": {
+        "module": "screen",
+        "func": "off"
+      },
+      "arguments": [],
+      "event_payload": {
+        "type": "none"
+      },
+      "requirements": [
+        "xset"
+      ],
+      "status": "stable",
+      "search_terms": [
+        "screen display monitor power off sleep"
+      ]
+    },
+    "display.power.on": {
+      "title": "Turn display on",
+      "category": "display",
+      "description": "Request local display power-on through the desktop display-power integration.",
+      "implementation": {
+        "module": "screen",
+        "func": "on"
+      },
+      "arguments": [],
+      "event_payload": {
+        "type": "none"
+      },
+      "requirements": [
+        "xset"
+      ],
+      "status": "stable",
+      "search_terms": [
+        "screen display monitor power on wake"
+      ]
+    },
+    "display.power.wake": {
+      "title": "Wake display and session",
+      "category": "display",
+      "description": "Wake the local display and optionally switch to a configured desktop user session.",
+      "implementation": {
+        "module": "screen",
+        "func": "wake_and_login"
+      },
+      "arguments": [
+        {
+          "name": "user",
+          "type": "string",
+          "required": false,
+          "maximum_length": 64,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_-]{0,63}$"
+        }
+      ],
+      "event_payload": {
+        "type": "none"
+      },
+      "requirements": [
+        "xset",
+        "dm-tool-optional"
+      ],
+      "status": "stable",
+      "search_terms": [
+        "screen display wake login session vehicle present"
+      ]
+    },
+    "media.mute.toggle": {
+      "title": "Toggle audio mute",
+      "category": "media",
+      "description": "Toggle mute for the local default audio sink.",
+      "implementation": {
+        "module": "audio",
+        "func": "mute_toggle"
+      },
+      "arguments": [],
+      "event_payload": {
+        "type": "none"
+      },
+      "requirements": [
+        "pactl"
+      ],
+      "status": "stable",
+      "search_terms": [
+        "audio sound volume mute unmute toggle"
+      ]
+    },
+    "media.playback.next": {
+      "title": "Next media item",
+      "category": "media",
+      "description": "Advance the active playback context to its next playable item.",
+      "implementation": {
+        "module": "audio",
+        "func": "next_track"
+      },
+      "arguments": [],
+      "event_payload": {
+        "type": "none"
+      },
+      "requirements": [
+        "bluez-or-playerctl-or-uinput"
+      ],
+      "status": "stable",
+      "search_terms": [
+        "media music next track song skip forward"
+      ]
+    },
+    "media.playback.previous": {
+      "title": "Previous media item",
+      "category": "media",
+      "description": "Move the active playback context to its previous playable item.",
+      "implementation": {
+        "module": "audio",
+        "func": "prev_track"
+      },
+      "arguments": [],
+      "event_payload": {
+        "type": "none"
+      },
+      "requirements": [
+        "bluez-or-playerctl-or-uinput"
+      ],
+      "status": "stable",
+      "search_terms": [
+        "media music previous track song skip back"
+      ]
+    },
+    "media.playback.stop": {
+      "title": "Stop media playback",
+      "category": "media",
+      "description": "Stop the active playback context.",
+      "implementation": {
+        "module": "audio",
+        "func": "stop"
+      },
+      "arguments": [],
+      "event_payload": {
+        "type": "none"
+      },
+      "requirements": [
+        "bluez-or-playerctl-or-uinput"
+      ],
+      "status": "stable",
+      "search_terms": [
+        "media music stop playback"
+      ]
+    },
+    "media.playback.toggle": {
+      "title": "Toggle play or pause",
+      "category": "media",
+      "description": "Toggle the active playback context between playing and paused states.",
+      "implementation": {
+        "module": "audio",
+        "func": "play_pause"
+      },
+      "arguments": [],
+      "event_payload": {
+        "type": "none"
+      },
+      "requirements": [
+        "bluez-or-playerctl-or-uinput"
+      ],
+      "status": "stable",
+      "search_terms": [
+        "media music play pause resume toggle"
+      ]
+    },
+    "media.volume.decrease": {
+      "title": "Decrease audio volume",
+      "category": "media",
+      "description": "Decrease the local default audio-sink volume by an optional configured percentage step.",
+      "implementation": {
+        "module": "audio",
+        "func": "volume_down"
+      },
+      "arguments": [
+        {
+          "name": "step",
+          "type": "string",
+          "required": false,
+          "maximum_length": 5,
+          "pattern": "^-[1-9][0-9]{0,2}%$",
+          "default": "-5%"
+        }
+      ],
+      "event_payload": {
+        "type": "none"
+      },
+      "requirements": [
+        "pactl"
+      ],
+      "status": "stable",
+      "search_terms": [
+        "audio sound volume down lower decrease quieter"
+      ]
+    },
+    "media.volume.increase": {
+      "title": "Increase audio volume",
+      "category": "media",
+      "description": "Increase the local default audio-sink volume by an optional configured percentage step.",
+      "implementation": {
+        "module": "audio",
+        "func": "volume_up"
+      },
+      "arguments": [
+        {
+          "name": "step",
+          "type": "string",
+          "required": false,
+          "maximum_length": 5,
+          "pattern": "^\\+[1-9][0-9]{0,2}%$",
+          "default": "+5%"
+        }
+      ],
+      "event_payload": {
+        "type": "none"
+      },
+      "requirements": [
+        "pactl"
+      ],
+      "status": "stable",
+      "search_terms": [
+        "audio sound volume up raise increase louder"
+      ]
+    },
+    "navigation.focus.left": {
+      "title": "Move focus left",
+      "category": "navigation",
+      "description": "Move the currently focused local interface one logical step to the left.",
+      "implementation": {
+        "module": "keys",
+        "func": "arrow_left"
+      },
+      "arguments": [],
+      "event_payload": {
+        "type": "none"
+      },
+      "requirements": [
+        "uinput"
+      ],
+      "status": "stable",
+      "search_terms": [
+        "navigation focus cursor arrow left interface"
+      ]
+    },
+    "navigation.focus.right": {
+      "title": "Move focus right",
+      "category": "navigation",
+      "description": "Move the currently focused local interface one logical step to the right.",
+      "implementation": {
+        "module": "keys",
+        "func": "arrow_right"
+      },
+      "arguments": [],
+      "event_payload": {
+        "type": "none"
+      },
+      "requirements": [
+        "uinput"
+      ],
+      "status": "stable",
+      "search_terms": [
+        "navigation focus cursor arrow right interface"
+      ]
+    }
+  },
+  "aliases": {}
+}

@@ -9,6 +9,7 @@ import os
 import sys
 from typing import Any, Mapping, Optional, Sequence
 
+from canbusd import action_registry as vehicle_actions
 from canbusd import event_registry as vehicle_events
 from canbusd import status_registry as vehicle_statuses
 
@@ -124,6 +125,21 @@ def build_parser() -> argparse.ArgumentParser:
         "--check",
         metavar="EVENT",
         help="explain whether to reuse, migrate or propose an event",
+    )
+    vehicle_actions_parser = vehicle_setup_commands.add_parser(
+        "actions",
+        help="inspect the canonical vehicle-action registry",
+    )
+    vehicle_actions_parser.add_argument("action", nargs="?")
+    vehicle_actions_parser.add_argument(
+        "--search",
+        metavar="TEXT",
+        help="search canonical actions by human wording",
+    )
+    vehicle_actions_parser.add_argument(
+        "--check",
+        metavar="ACTION",
+        help="explain whether to reuse, migrate or propose an action",
     )
     vehicle_statuses_parser = vehicle_setup_commands.add_parser(
         "statuses",
@@ -242,6 +258,23 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     _print(vehicle_events.event_definition(args.event))
                 else:
                     _print(vehicle_events.registry_payload())
+            elif args.command == "actions":
+                selected = sum(
+                    value is not None
+                    for value in (args.action, args.search, args.check)
+                )
+                if selected > 1:
+                    raise ValueError(
+                        "choose one action, --search query, or --check action"
+                    )
+                if args.search is not None:
+                    _print(vehicle_actions.search_actions(args.search))
+                elif args.check is not None:
+                    _print(vehicle_actions.contribution_check(args.check))
+                elif args.action:
+                    _print(vehicle_actions.action_definition(args.action))
+                else:
+                    _print(vehicle_actions.registry_payload())
             elif args.command == "statuses":
                 selected = sum(
                     value is not None
@@ -310,7 +343,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         result = _jellyfin_test(values)
         _print({"ok": True, **result})
         return 0
-    except (ConfigurationError, launcher.LauncherError, update_coordinator.CoordinatorError, vehicle_config_coordinator.CoordinatorError, update_status.UpdateStatusError, vehicle_events.VehicleEventRegistryError, vehicle_statuses.VehicleStatusRegistryError, vehicle_setup.VehicleSetupError, RuntimeError, ValueError) as exc:
+    except (ConfigurationError, launcher.LauncherError, update_coordinator.CoordinatorError, vehicle_config_coordinator.CoordinatorError, update_status.UpdateStatusError, vehicle_actions.VehicleActionRegistryError, vehicle_events.VehicleEventRegistryError, vehicle_statuses.VehicleStatusRegistryError, vehicle_setup.VehicleSetupError, RuntimeError, ValueError) as exc:
         print(f"open-mmi-config: {exc}", file=sys.stderr)
         return 1
 

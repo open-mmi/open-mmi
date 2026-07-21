@@ -206,6 +206,7 @@ For a maintained vehicle mapping, complete the **reuse or propose** checkpoint:
 Please check:
 
 ```bash
+python tools/generate_vehicle_action_docs.py --check
 python tools/generate_vehicle_event_docs.py --check
 python tools/generate_vehicle_status_docs.py --check
 python3 -m py_compile canbusd/core.py canbusd/can_runtime.py canbusd/status_rules.py canbusd/status_bus.py
@@ -380,11 +381,19 @@ Decoded status is informational and should not be treated as a replacement for O
 
 Vehicle profiles and bindings are trusted local configuration.
 
-Bindings can map decoded vehicle events to Python action modules. This is intentional, but it means bindings are not just passive data.
+Maintained bindings map canonical events to canonical action identifiers such as
+`media.mute.toggle`. The action registry owns the private Python module/function mapping.
+This keeps bindings readable and prevents implementation names from becoming public API.
+Existing custom `module`/`func` bindings remain supported during migration, but they are
+deprecated and receive a validation warning.
 
-A malicious or careless binding may trigger unwanted local actions.
+A malicious or careless binding may still trigger unwanted local actions. Only use profiles,
+bindings, action implementations, scripts, and udev rules that you trust or have reviewed.
 
-Only use profiles, bindings, action modules, scripts, and udev rules that you trust or have reviewed.
+Before proposing an action, search with `open-mmi-config vehicle-setup actions --search
+<meaning>`. Reuse a matching behavior, or add a genuinely new universal action, its
+implementation, documentation and tests in the same pull request. This is a continuity
+checkpoint, not a permission gate.
 
 ---
 
