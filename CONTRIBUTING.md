@@ -202,6 +202,23 @@ For vehicle support, useful information includes:
 
 Please avoid posting sensitive vehicle data such as full VINs, private locations, personal details, credentials, or complete logs containing sensitive information.
 
+### Maintained vehicle folder placement
+
+Maintained profiles live at:
+
+```text
+vehicles/<brand>/<model>/<generation-platform>/
+```
+
+The checked `vehicles/catalogue.v1.json` maps that human-browsable path to a
+stable machine ID and any deprecated compatibility aliases. Do not create empty
+brand folders or split profiles only for trim, engine, steering side, or market
+badges unless the CAN mappings genuinely differ. Copy `vehicles/_template/` when
+a real integration begins.
+
+Candidate and qualified profiles include `fixtures/mappings.v1.json`. The replay
+gate must cover every canonical event and status output claimed by the profile.
+
 ---
 
 ## Before opening a pull request
@@ -223,7 +240,9 @@ python tools/generate_vehicle_event_docs.py --check
 python tools/generate_vehicle_status_docs.py --check
 python3 -m py_compile canbusd/core.py canbusd/can_runtime.py canbusd/status_rules.py canbusd/status_bus.py
 python3 -m unittest discover -s tests
-python3 -m json.tool vehicles/seat_1p/config.json >/dev/null
+python3 -m json.tool vehicles/seat/leon/1p-pq35/config.json >/dev/null
+open-mmi-config vehicle-setup conform --root .
+open-mmi-config vehicle-setup replay --root . seat-leon-1p-pq35
 python3 -m json.tool bindings/default.json >/dev/null
 bash -n scripts/manage.sh
 ```
@@ -279,7 +298,7 @@ Vehicle profiles should contain vehicle-specific CAN IDs, byte positions, masks,
 Do:
 
 ```text
-vehicles/seat_1p/config.json
+vehicles/seat/leon/1p-pq35/config.json
 vehicles/my_vehicle/config.json
 ```
 

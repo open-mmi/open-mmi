@@ -539,15 +539,19 @@ sudo() {{ printf '%s\\0' "$@"; }}
 
     def test_custom_template_creation_prefers_installed_maintained_files(self) -> None:
         self.assertIn(
-            'local source_vehicle="$INSTALL_DIR/vehicles/$vehicle/config.json"',
+            'source_vehicle="$(resolve_maintained_profile_source "$vehicle")"',
+            self.text,
+        )
+        self.assertIn(
+            'profile_catalogue.resolve_profile(root, vehicle)',
+            self.text,
+        )
+        self.assertIn(
+            'if Path(resolved["path"]).is_file():',
             self.text,
         )
         self.assertIn(
             'local source_bindings="$INSTALL_DIR/bindings/$bindings.json"',
-            self.text,
-        )
-        self.assertIn(
-            'source_vehicle="$REPO_ROOT/vehicles/$vehicle/config.json"',
             self.text,
         )
         self.assertIn(

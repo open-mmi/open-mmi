@@ -102,7 +102,7 @@ If OpenMMI automatically prefers files in ~/.config/open-mmi, stale user-space c
 
 That creates confusing behaviour:
 
-    OpenMMI update changes /opt/open-mmi/vehicles/seat_1p/config.json
+    OpenMMI update changes /opt/open-mmi/vehicles/seat/leon/1p-pq35/config.json
     canbusd still loads ~/.config/open-mmi/vehicles/seat_1p/config.json
     new signals do not appear
 

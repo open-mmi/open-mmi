@@ -67,7 +67,7 @@ The status snapshot is currently written as a wrapper object:
     "errors": [],
     "vehicle": {
       "source": "maintained",
-      "id": "seat_1p",
+      "id": "seat-leon-1p-pq35",
       "revision": "sha256:…"
     },
     "bindings": {

@@ -140,7 +140,7 @@ open-mmi-config updates check
 open-mmi-config updates readiness
 open-mmi-config updates coordinator
 open-mmi-config vehicle-setup coordinator
-open-mmi-config vehicle-setup preview seat_1p default --bus comfort --interface can0
+open-mmi-config vehicle-setup preview seat-leon-1p-pq35 default --bus comfort --interface can0
 open-mmi-config updates prepare
 open-mmi-config updates install
 ```
@@ -450,8 +450,11 @@ open-mmi/
 │   └── __init__.py
 │
 ├── vehicles/
-│   └── seat_1p/
-│       └── config.json      ← vehicle CAN profile
+│   ├── catalogue.v1.json    ← stable profile ID and legacy-alias index
+│   ├── _template/           ← contributor scaffold
+│   └── seat/leon/1p-pq35/
+│       ├── config.json      ← vehicle CAN profile
+│       └── fixtures/mappings.v1.json
 │
 ├── bindings/
 │   └── default.json         ← canonical event → action mapping
@@ -829,7 +832,7 @@ Application files are installed to:
 Normal runtime uses repo/default configuration from the installed application tree:
 
 ```text
-/opt/open-mmi/vehicles/<vehicle>/config.json
+/opt/open-mmi/vehicles/<brand>/<model>/<generation-platform>/config.json
 /opt/open-mmi/bindings/<bindings>.json
 ```
 
@@ -848,7 +851,7 @@ See [`docs/profile-ownership.md`](docs/profile-ownership.md) for the full owners
 ## Apply a vehicle profile
 
 ```bash
-sudo ./scripts/manage.sh config apply-profile seat_1p default
+sudo ./scripts/manage.sh config apply-profile seat-leon-1p-pq35 default
 ```
 
 This is the normal setup path.
@@ -874,7 +877,7 @@ A user vehicle-profile override can be selected by setting `OPEN_MMI_VEHICLE_CON
 
 ```ini
 [Service]
-Environment="OPEN_MMI_VEHICLE_CONFIG=/home/open-mmi/.config/open-mmi/vehicles/seat_1p/config.json"
+Environment="OPEN_MMI_VEHICLE_CONFIG=/home/open-mmi/.config/open-mmi/vehicles/seat-leon-1p-pq35/config.json"
 ```
 
 A user bindings override can be selected by setting `OPEN_MMI_BINDINGS_FILE` explicitly, for example:
@@ -896,7 +899,7 @@ Use this for environment variables such as:
 
 ```ini
 [Service]
-Environment="OPEN_MMI_VEHICLE=seat_1p"
+Environment="OPEN_MMI_VEHICLE=seat-leon-1p-pq35"
 Environment="OPEN_MMI_BINDINGS=default"
 Environment="OPEN_MMI_LOG_LEVEL=DEBUG"
 ```
@@ -915,7 +918,7 @@ Vehicle config lookup order:
 
 ```text
 1. OPEN_MMI_VEHICLE_CONFIG, if explicitly set
-2. /opt/open-mmi/vehicles/<vehicle>/config.json
+2. /opt/open-mmi/vehicles/<brand>/<model>/<generation-platform>/config.json
 ```
 
 Bindings lookup order:
@@ -965,7 +968,7 @@ sudo ./scripts/manage.sh logs
 ## Config
 
 ```bash
-sudo ./scripts/manage.sh config apply-profile seat_1p default
+sudo ./scripts/manage.sh config apply-profile seat-leon-1p-pq35 default
 sudo ./scripts/manage.sh config edit-service
 sudo ./scripts/manage.sh config paths
 ```
@@ -1112,13 +1115,13 @@ wake_and_login(user)
 From the repo checkout:
 
 ```bash
-OPEN_MMI_LOG_LEVEL=DEBUG OPEN_MMI_VEHICLE=seat_1p python3 -m canbusd.core
+OPEN_MMI_LOG_LEVEL=DEBUG OPEN_MMI_VEHICLE=seat-leon-1p-pq35 python3 -m canbusd.core
 ```
 
 ## Validate JSON
 
 ```bash
-python3 -m json.tool vehicles/seat_1p/config.json >/dev/null
+python3 -m json.tool vehicles/seat/leon/1p-pq35/config.json >/dev/null
 python3 -m json.tool bindings/default.json >/dev/null
 ```
 
@@ -1212,7 +1215,7 @@ The current maintainer-tested reference vehicle is:
 Seat Leon 1P / VAG PQ35
 ```
 
-The included `seat_1p` profile is the first real-car tested profile.
+The maintained `seat-leon-1p-pq35` profile is stored under `vehicles/seat/leon/1p-pq35/` and is the first real-car tested profile. The previous ID `seat_1p` remains a deprecated compatibility alias.
 
 Known decoded areas include, where supported by the tested vehicle/profile:
 

@@ -956,8 +956,31 @@ remove_login_autostart() {
 # =============================================================================
 # PROFILE-DRIVEN PROVISIONING
 # =============================================================================
+resolve_maintained_profile_source() {
+    local vehicle="$1"
+    PYTHONPATH="$REPO_ROOT${PYTHONPATH:+:$PYTHONPATH}" python3 - \
+        "$REPO_ROOT" "$INSTALL_DIR" "$vehicle" <<'PYRESOLVE'
+import sys
+from pathlib import Path
+from canbusd import profile_catalogue
+
+repo_root = Path(sys.argv[1])
+install_dir = Path(sys.argv[2])
+vehicle = sys.argv[3]
+for root in (install_dir, repo_root):
+    try:
+        resolved = profile_catalogue.resolve_profile(root, vehicle)
+    except profile_catalogue.VehicleProfileCatalogueError:
+        continue
+    if Path(resolved["path"]).is_file():
+        print(resolved["path"])
+        raise SystemExit(0)
+raise SystemExit(f"Vehicle profile not found: {vehicle}")
+PYRESOLVE
+}
+
 apply_profile_provisioning() {
-    local vehicle="${1:-seat_1p}"
+    local vehicle="${1:-seat-leon-1p-pq35}"
     local bindings="${2:-default}"
 
     log_info "Applying profile-driven provisioning: vehicle=$vehicle bindings=$bindings"
@@ -1101,7 +1124,7 @@ cmd_install() {
     # Apply default profile-driven CAN provisioning.
     # This creates user config if missing, writes the daemon runtime drop-in,
     # and generates udev rules from the selected vehicle profile metadata.
-    apply_profile_provisioning "seat_1p" "default"
+    apply_profile_provisioning "seat-leon-1p-pq35" "default"
     reload_profile_provisioning
     # The generated runtime drop-in directory may not have existed when the
     # coordinator first started. Restart once so its mount namespace receives
@@ -1628,7 +1651,7 @@ cmd_config() {
 
     case "$action" in
         apply-profile|set-profile)
-            local vehicle="${2:-seat_1p}"
+            local vehicle="${2:-seat-leon-1p-pq35}"
             local bindings="${3:-default}"
 
             apply_profile_provisioning "$vehicle" "$bindings"
@@ -1640,18 +1663,15 @@ cmd_config() {
             log_info "Use 'sudo $0 config edit-can' only for advanced hardware overrides."
             ;;
         init)
-            local vehicle="${2:-seat_1p}"
+            local vehicle="${2:-seat-leon-1p-pq35}"
             local bindings="${3:-default}"
 
             log_info "Creating user config directory at $USER_CONFIG_DIR"
             harden_custom_catalogue_permissions
 
-            local source_vehicle="$INSTALL_DIR/vehicles/$vehicle/config.json"
+            local source_vehicle
+            source_vehicle="$(resolve_maintained_profile_source "$vehicle")" || return 1
             local source_bindings="$INSTALL_DIR/bindings/$bindings.json"
-
-            if [ ! -f "$source_vehicle" ]; then
-                source_vehicle="$REPO_ROOT/vehicles/$vehicle/config.json"
-            fi
 
             if [ ! -f "$source_bindings" ]; then
                 source_bindings="$REPO_ROOT/bindings/$bindings.json"
@@ -1684,7 +1704,7 @@ cmd_config() {
             log_info "Normal profile setup uses: sudo $0 config apply-profile $vehicle $bindings"
             ;;
         edit-profile)
-            local vehicle="${2:-${OPEN_MMI_VEHICLE:-seat_1p}}"
+            local vehicle="${2:-${OPEN_MMI_VEHICLE:-seat-leon-1p-pq35}}"
             local profile="$USER_CONFIG_DIR/vehicles/$vehicle/config.json"
 
             if [ ! -f "$profile" ]; then
@@ -1702,7 +1722,7 @@ cmd_config() {
             if [ ! -f "$file" ]; then
                 log_warn "User bindings do not exist yet: $file"
                 log_info "Creating it from installed/repo bindings..."
-                cmd_config init "${OPEN_MMI_VEHICLE:-seat_1p}" "$bindings"
+                cmd_config init "${OPEN_MMI_VEHICLE:-seat-leon-1p-pq35}" "$bindings"
             fi
 
             open_editor_as_user "$file"
@@ -1814,7 +1834,7 @@ Commands:
   apply-profile [vehicle] [bindings]
       Select a vehicle profile and apply its runtime/provisioning defaults.
       This is the normal setup path.
-      Default vehicle: seat_1p
+      Default vehicle: seat-leon-1p-pq35
       Default bindings: default
 
   init [vehicle] [bindings]
@@ -1824,7 +1844,7 @@ Commands:
 
   edit-profile [vehicle]
       Edit a user-owned vehicle profile.
-      Default vehicle: seat_1p
+      Default vehicle: seat-leon-1p-pq35
 
   edit-bindings [bindings]
       Edit a user-owned bindings file.
@@ -1850,9 +1870,9 @@ Commands:
       Show where Open-MMI looks for config files.
 
 Examples:
-  sudo $0 config apply-profile seat_1p default
-  sudo $0 config init seat_1p default
-  sudo $0 config edit-profile seat_1p
+  sudo $0 config apply-profile seat-leon-1p-pq35 default
+  sudo $0 config init seat-leon-1p-pq35 default
+  sudo $0 config edit-profile seat-leon-1p-pq35
   sudo $0 config edit-bindings default
   sudo $0 config edit-can
   sudo $0 config edit-service
@@ -1888,9 +1908,9 @@ ${BLUE}Examples:${NC}
   sudo ./scripts/manage.sh update
   sudo ./scripts/manage.sh status
   sudo ./scripts/manage.sh logs
-  sudo ./scripts/manage.sh config apply-profile seat_1p default
+  sudo ./scripts/manage.sh config apply-profile seat-leon-1p-pq35 default
   sudo ./scripts/manage.sh config init
-  sudo ./scripts/manage.sh config edit-profile seat_1p
+  sudo ./scripts/manage.sh config edit-profile seat-leon-1p-pq35
   sudo ./scripts/manage.sh config edit-service
 
 ${BLUE}Installation Details:${NC}
@@ -1901,10 +1921,10 @@ ${BLUE}Installation Details:${NC}
 ${BLUE}Troubleshooting:${NC}
   View logs:        sudo ./scripts/manage.sh logs
   Check status:     sudo ./scripts/manage.sh status
-  Apply profile:    sudo ./scripts/manage.sh config apply-profile seat_1p default
-  Edit profile:     sudo ./scripts/manage.sh config edit-profile seat_1p
+  Apply profile:    sudo ./scripts/manage.sh config apply-profile seat-leon-1p-pq35 default
+  Edit profile:     sudo ./scripts/manage.sh config edit-profile seat-leon-1p-pq35
   sudo ./scripts/manage.sh config init
-  sudo ./scripts/manage.sh config edit-profile seat_1p
+  sudo ./scripts/manage.sh config edit-profile seat-leon-1p-pq35
   sudo ./scripts/manage.sh config edit-service
 
 EOF

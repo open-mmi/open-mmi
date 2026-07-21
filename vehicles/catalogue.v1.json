@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "catalogue_id": "open-mmi.maintained-vehicles",
+  "profiles": {
+    "seat-leon-1p-pq35": {
+      "path": "seat/leon/1p-pq35/config.json",
+      "aliases": [
+        "seat_1p"
+      ]
+    }
+  }
+}

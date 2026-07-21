@@ -94,6 +94,54 @@ class CanbusdCoreTests(unittest.TestCase):
             },
         )
 
+
+    def test_missing_legacy_explicit_path_migrates_to_nested_catalogue(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            profile = (
+                root
+                / "vehicles"
+                / "seat"
+                / "leon"
+                / "1p-pq35"
+                / "config.json"
+            )
+            profile.parent.mkdir(parents=True)
+            profile.write_text("{}", encoding="utf-8")
+            (root / "vehicles" / "catalogue.v1.json").write_text(
+                '{"schema_version":1,"catalogue_id":"open-mmi.maintained-vehicles",'
+                '"profiles":{"seat-leon-1p-pq35":{'
+                '"path":"seat/leon/1p-pq35/config.json",'
+                '"aliases":["seat_1p"]}}}',
+                encoding="utf-8",
+            )
+            legacy = root / "vehicles" / "seat_1p" / "config.json"
+
+            with (
+                mock.patch.object(core, "BASE_DIR", root),
+                mock.patch.object(core, "VEHICLE", "seat_1p"),
+                mock.patch.dict(
+                    core.os.environ,
+                    {
+                        "OPEN_MMI_INSTALL_DIR": str(root),
+                        "OPEN_MMI_VEHICLE_CONFIG": str(legacy),
+                    },
+                    clear=False,
+                ),
+            ):
+                self.assertEqual(core._resolve_vehicle_config_path(), profile)
+
+    def test_missing_arbitrary_explicit_profile_path_does_not_redirect(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            missing = root / "external" / "config.json"
+            with mock.patch.dict(
+                core.os.environ,
+                {"OPEN_MMI_VEHICLE_CONFIG": str(missing)},
+                clear=False,
+            ):
+                self.assertEqual(core._resolve_vehicle_config_path(), missing)
+
     def test_document_source_recognizes_installed_catalogue_outside_package_root(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

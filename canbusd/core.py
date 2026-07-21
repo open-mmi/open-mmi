@@ -14,7 +14,7 @@ import can
 
 from canbusd.can_runtime import CanRuntimeConfig, item_matches_bus, resolve_can_runtime
 from canbusd.dispatcher import ActionQueue, dispatch
-from canbusd import action_registry, event_registry
+from canbusd import action_registry, event_registry, profile_catalogue
 from canbusd import status_registry
 from canbusd.status_bus import publish as publish_status
 from canbusd.status_bus import publish_runtime as publish_runtime_status
@@ -35,7 +35,7 @@ USER_CONFIG_DIR = Path(
     os.getenv("OPEN_MMI_CONFIG_DIR", str(Path.home() / ".config" / "open-mmi"))
 )
 
-VEHICLE = os.getenv("OPEN_MMI_VEHICLE", "seat_1p")
+VEHICLE = os.getenv("OPEN_MMI_VEHICLE", "seat-leon-1p-pq35")
 BINDINGS = os.getenv("OPEN_MMI_BINDINGS", "default")
 
 DEFAULT_CAN_BUS = "comfort"
@@ -101,7 +101,27 @@ signal.signal(signal.SIGHUP, _sig_hup)
 def _resolve_vehicle_config_path() -> Path:
     explicit = os.getenv("OPEN_MMI_VEHICLE_CONFIG")
     if explicit:
-        return Path(explicit).expanduser()
+        explicit_path = Path(explicit).expanduser()
+        if explicit_path.exists():
+            return explicit_path
+        candidate = explicit_path.absolute()
+        for root in _maintained_catalogue_roots():
+            legacy_path = root / "vehicles" / VEHICLE / "config.json"
+            if candidate != legacy_path.expanduser().absolute():
+                continue
+            try:
+                resolved = profile_catalogue.resolve_profile(root, VEHICLE)
+            except profile_catalogue.VehicleProfileCatalogueError:
+                continue
+            replacement = Path(resolved["path"])
+            if replacement.is_file():
+                logger.warning(
+                    "Migrating missing legacy maintained profile path %s to %s",
+                    explicit_path,
+                    replacement,
+                )
+                return replacement
+        return explicit_path
 
     user_path = USER_CONFIG_DIR / "vehicles" / VEHICLE / "config.json"
     if user_path.exists():
@@ -111,6 +131,11 @@ def _resolve_vehicle_config_path() -> Path:
             user_path,
         )
 
+    for root in _maintained_catalogue_roots():
+        try:
+            return profile_catalogue.resolve_profile(root, VEHICLE)["path"]
+        except profile_catalogue.VehicleProfileCatalogueError:
+            continue
     return BASE_DIR / "vehicles" / VEHICLE / "config.json"
 
 
@@ -151,8 +176,18 @@ def _document_source(kind: str, identifier: str, path: Path) -> str:
     """Classify one daemon-resolved document without exposing its path."""
 
     if kind == "vehicle":
-        relative = Path("vehicles") / identifier / "config.json"
-        custom = USER_CONFIG_DIR / relative
+        custom = USER_CONFIG_DIR / "vehicles" / identifier / "config.json"
+        candidate = path.expanduser().absolute()
+        for root in _maintained_catalogue_roots():
+            try:
+                maintained = profile_catalogue.resolve_profile(root, identifier)["path"]
+            except profile_catalogue.VehicleProfileCatalogueError:
+                continue
+            if candidate == maintained.expanduser().absolute():
+                return "maintained"
+        if candidate == custom.expanduser().absolute():
+            return "custom"
+        return "external"
     elif kind == "bindings":
         relative = Path("bindings") / f"{identifier}.json"
         custom = USER_CONFIG_DIR / relative
@@ -165,6 +200,18 @@ def _document_source(kind: str, identifier: str, path: Path) -> str:
     if candidate == custom.expanduser().absolute():
         return "custom"
     return "external"
+
+
+def _canonical_vehicle_id(path: Path, identifier: str) -> str:
+    candidate = path.expanduser().absolute()
+    for root in _maintained_catalogue_roots():
+        try:
+            resolved = profile_catalogue.resolve_profile(root, identifier)
+        except profile_catalogue.VehicleProfileCatalogueError:
+            continue
+        if candidate == resolved["path"].expanduser().absolute():
+            return str(resolved["id"])
+    return identifier
 
 
 def _read_json_with_revision(path: Path) -> Tuple[Any, str]:
@@ -347,7 +394,7 @@ def _load_config(
         IFACE = runtime.interface
         LOADED_VEHICLE = {
             "source": _document_source("vehicle", VEHICLE, path),
-            "id": VEHICLE,
+            "id": _canonical_vehicle_id(path, VEHICLE),
             "revision": revision,
         }
 

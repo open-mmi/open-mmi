@@ -55,7 +55,7 @@ Suggested profile catalogue entry:
 ```json
 {
   "source": "maintained",
-  "id": "seat_1p",
+  "id": "seat-leon-1p-pq35",
   "display_name": "Seat 1P",
   "valid": true,
   "revision": "sha256:…",
@@ -104,7 +104,7 @@ Schema version 1:
   "schema_version": 1,
   "vehicle": {
     "source": "maintained",
-    "id": "seat_1p",
+    "id": "seat-leon-1p-pq35",
     "revision": "sha256:…"
   },
   "bindings": {
@@ -180,7 +180,7 @@ Current response shape:
   "active": {
     "state": "ready",
     "errors": [],
-    "vehicle": {"source": "maintained", "id": "seat_1p"},
+    "vehicle": {"source": "maintained", "id": "seat-leon-1p-pq35"},
     "bindings": {"source": "maintained", "id": "default"},
     "active_bus": "comfort",
     "interface": "can0",
@@ -192,7 +192,7 @@ Current response shape:
       "errors": [],
       "vehicle": {
         "source": "maintained",
-        "id": "seat_1p",
+        "id": "seat-leon-1p-pq35",
         "revision": "sha256:…"
       },
       "bindings": {
@@ -276,7 +276,7 @@ Payload:
 
 ```json
 {
-  "vehicle": {"source": "maintained", "id": "seat_1p"},
+  "vehicle": {"source": "maintained", "id": "seat-leon-1p-pq35"},
   "bindings": {"source": "maintained", "id": "default"},
   "runtime": {
     "active_bus": "comfort",
@@ -312,7 +312,7 @@ normalized target, both revision tokens and explicit confirmation:
   "target": {
     "vehicle": {
       "source": "maintained",
-      "id": "seat_1p",
+      "id": "seat-leon-1p-pq35",
       "revision": "sha256:…"
     },
     "bindings": {
@@ -366,7 +366,7 @@ Creation accepts only this exact small body:
   "kind": "profile",
   "id": "my-seat",
   "template_source": "maintained",
-  "template_id": "seat_1p",
+  "template_id": "seat-leon-1p-pq35",
   "template_revision": "sha256:…"
 }
 ```

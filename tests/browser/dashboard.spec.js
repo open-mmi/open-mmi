@@ -195,7 +195,7 @@ async function loadDashboard(page, options = {}) {
     active: {
       state: "ready",
       errors: [],
-      vehicle: { source: "maintained", id: "seat_1p", revision: "sha256:profile" },
+      vehicle: { source: "maintained", id: "seat-leon-1p-pq35", revision: "sha256:profile" },
       bindings: { source: "maintained", id: "default", revision: "sha256:bindings" },
       active_bus: "comfort",
       interface: "can0",
@@ -205,7 +205,7 @@ async function loadDashboard(page, options = {}) {
         api_version: 1,
         state: "ready",
         errors: [],
-        vehicle: { source: "maintained", id: "seat_1p", revision: "sha256:profile" },
+        vehicle: { source: "maintained", id: "seat-leon-1p-pq35", revision: "sha256:profile" },
         bindings: { source: "maintained", id: "default", revision: "sha256:bindings" },
         active_bus: "comfort",
         interface: "can0",
@@ -217,7 +217,7 @@ async function loadDashboard(page, options = {}) {
       issues: [],
       profiles: [
         {
-          source: "maintained", id: "seat_1p", display_name: "Seat 1P", valid: true,
+          source: "maintained", id: "seat-leon-1p-pq35", display_name: "SEAT Leon 1P / Mk2 (PQ35)", valid: true,
           revision: "sha256:profile", default_bus: "comfort",
           buses: [{ name: "comfort", interface: "can0", bitrate: 100000, provisioning: "udev" }],
           validation: { valid: true, errors: [], warnings: [] },
@@ -301,7 +301,7 @@ async function loadDashboard(page, options = {}) {
       changes: [
         {
           field: "vehicle",
-          from: { source: "maintained", id: "seat_1p", revision: "sha256:profile" },
+          from: { source: "maintained", id: "seat-leon-1p-pq35", revision: "sha256:profile" },
           to: { source: "custom", id: "my-seat", revision: "sha256:custom-profile" },
         },
         { field: "bindings", from: { source: "maintained", id: "default" }, to: { source: "custom", id: "my-controls" } },
@@ -1412,7 +1412,7 @@ test("vehicle setup copies maintained templates into the user catalogue", async 
 
   page.once("dialog", async (dialog) => {
     expect(dialog.type()).toBe("prompt");
-    expect(dialog.defaultValue()).toBe("seat_1p-custom");
+    expect(dialog.defaultValue()).toBe("seat-leon-1p-pq35-custom");
     await dialog.accept("seat-template");
   });
   await page.getByTestId("vehicle-setup-copy-vehicle").click();
@@ -1428,7 +1428,7 @@ test("vehicle setup copies maintained templates into the user catalogue", async 
     kind: "profile",
     id: "seat-template",
     template_source: "maintained",
-    template_id: "seat_1p",
+    template_id: "seat-leon-1p-pq35",
     template_revision: "sha256:profile",
   }]);
   expect(await dashboard.vehicleSetupApplyRequests()).toBe(0);
@@ -1605,9 +1605,9 @@ test("vehicle setup reviews and applies an exact confirmed draft", async ({ page
 
   await page.locator('[data-openmmi-settings-section="vehicle-setup"]').click();
   await expect(page.locator('[data-openmmi-vehicle-setup-ready="true"]')).toBeVisible();
-  await expect(page.getByTestId("vehicle-setup-active-profile")).toHaveText("Seat 1P · Maintained");
+  await expect(page.getByTestId("vehicle-setup-active-profile")).toHaveText("SEAT Leon 1P / Mk2 (PQ35) · Maintained");
   await expect(page.getByTestId("vehicle-setup-active-bindings")).toHaveText("Default · Maintained");
-  await expect(page.getByTestId("vehicle-setup-profile")).toHaveValue("maintained:seat_1p");
+  await expect(page.getByTestId("vehicle-setup-profile")).toHaveValue("maintained:seat-leon-1p-pq35");
   await expect(page.getByTestId("vehicle-setup-bindings")).toHaveValue("maintained:default");
   await expect(page.getByTestId("vehicle-setup-interface")).toHaveText("can0 · not detected");
   await expect(page.getByTestId("vehicle-setup-bitrate")).toHaveText("100 kbit/s");

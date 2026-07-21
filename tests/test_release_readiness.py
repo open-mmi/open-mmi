@@ -23,14 +23,30 @@ class ReleaseReadinessTests(unittest.TestCase):
 
     def test_reference_profile_declares_qualified_hardware_evidence(self):
         profile = json.loads(
-            (ROOT / "vehicles/seat_1p/config.json").read_text(encoding="utf-8")
+            (ROOT / "vehicles/seat/leon/1p-pq35/config.json").read_text(encoding="utf-8")
         )
         self.assertEqual(profile["schema_version"], 1)
-        self.assertEqual(profile["metadata"]["id"], "seat_1p")
+        self.assertEqual(profile["metadata"]["id"], "seat-leon-1p-pq35")
         self.assertEqual(profile["metadata"]["maturity"], "qualified")
         self.assertEqual(
             profile["metadata"]["qualification"]["level"],
             "hardware",
+        )
+
+
+    def test_hierarchical_catalogue_and_replay_fixture_exist(self):
+        self.assertTrue((ROOT / "vehicles/catalogue.v1.json").is_file())
+        self.assertTrue((ROOT / "vehicles/_template/config.template.json").is_file())
+        self.assertTrue((ROOT / "vehicles/seat/leon/1p-pq35/config.json").is_file())
+        self.assertTrue(
+            (ROOT / "vehicles/seat/leon/1p-pq35/fixtures/mappings.v1.json").is_file()
+        )
+
+    def test_ci_runs_the_reference_mapping_replay(self):
+        source = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        self.assertIn(
+            "open-mmi-config vehicle-setup replay --root . seat-leon-1p-pq35",
+            source,
         )
 
     def test_update_management_design_set_exists(self):

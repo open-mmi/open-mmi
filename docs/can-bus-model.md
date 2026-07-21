@@ -104,7 +104,7 @@ Profile selection now drives local CAN provisioning.
 The normal user-facing workflow is:
 
 ```bash
-sudo ./scripts/manage.sh config apply-profile seat_1p default
+sudo ./scripts/manage.sh config apply-profile seat-leon-1p-pq35 default
 ```
 
 That command reads the selected profile's `default_bus` and `can_buses`

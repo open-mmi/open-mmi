@@ -467,7 +467,7 @@ enabling its own confirmed Apply control. The same planner can be inspected from
 terminal without mutation:
 
 ```bash
-open-mmi-config vehicle-setup preview seat_1p default \
+open-mmi-config vehicle-setup preview seat-leon-1p-pq35 default \
   --bus comfort \
   --interface can0
 ```

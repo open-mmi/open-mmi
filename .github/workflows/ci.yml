@@ -43,6 +43,9 @@ jobs:
       - name: Verify maintained vehicle-profile conformance
         run: open-mmi-config vehicle-setup conform --root .
 
+      - name: Replay maintained vehicle mappings
+        run: open-mmi-config vehicle-setup replay --root . seat-leon-1p-pq35
+
       - name: Verify generated vehicle-action documentation
         run: python tools/generate_vehicle_action_docs.py --check
 
@@ -112,6 +115,7 @@ jobs:
           import canbusd
           import ui.web_dashboard
           from canbusd import event_registry as vehicle_events
+          from canbusd import profile_catalogue, profile_replay
           from canbusd import status_registry as vehicle_statuses
           from ui import vehicle_profile_conformance
           from ui.web_dashboard import bluetooth, jellyfin, radio, usb
@@ -122,7 +126,9 @@ jobs:
               "vehicle_events": vehicle_events.DEFAULT_REGISTRY_PATH,
               "vehicle_statuses": vehicle_statuses.DEFAULT_REGISTRY_PATH,
               "bluetooth": Path(bluetooth.__file__),
-              "vehicle": Path(vehicles.__file__).parent / "seat_1p" / "config.json",
+              "vehicle_catalogue": Path(vehicles.__file__).parent / "catalogue.v1.json",
+              "vehicle": Path(vehicles.__file__).parent / "seat" / "leon" / "1p-pq35" / "config.json",
+              "vehicle_fixtures": Path(vehicles.__file__).parent / "seat" / "leon" / "1p-pq35" / "fixtures" / "mappings.v1.json",
               "dashboard": Path(ui.web_dashboard.__file__).parent / "static" / "index.html",
               "frontend_api": Path(ui.web_dashboard.__file__).parent / "static" / "api.js",
               "frontend_preferences": Path(ui.web_dashboard.__file__).parent / "static" / "preferences.js",
@@ -158,8 +164,19 @@ jobs:
               raise SystemExit("Installed vehicle-status registry is incomplete")
           vehicle_document = json.loads(roots["vehicle"].read_text())
           vehicle_statuses.require_profile_statuses(vehicle_document)
+          resolved_profile = profile_catalogue.resolve_profile(
+              Path(vehicles.__file__).parent.parent,
+              "seat_1p",
+          )
+          if resolved_profile["id"] != "seat-leon-1p-pq35":
+              raise SystemExit("Installed profile alias did not resolve canonically")
+          replay = profile_replay.replay_files(
+              roots["vehicle"], roots["vehicle_fixtures"]
+          )
+          if not replay["valid"]:
+              raise SystemExit(f"Installed profile replay failed: {replay}")
           metadata = vehicle_profile_conformance.validate_metadata(
-              vehicle_document, expected_id="seat_1p"
+              vehicle_document, expected_id="seat-leon-1p-pq35"
           )
           if not metadata["valid"]:
               raise SystemExit(f"Installed maintained profile metadata is invalid: {metadata}")

@@ -14,8 +14,8 @@ Environment="PYTHONUNBUFFERED=1"
 # Logging level (DEBUG, INFO, WARNING, ERROR)
 Environment="OPEN_MMI_LOG_LEVEL=INFO"
 
-# Vehicle profile (default: seat_1p)
-Environment="OPEN_MMI_VEHICLE=seat_1p"
+# Vehicle profile (default: seat-leon-1p-pq35)
+Environment="OPEN_MMI_VEHICLE=seat-leon-1p-pq35"
 
 # Bindings file (default: default)
 Environment="OPEN_MMI_BINDINGS=default"

@@ -53,6 +53,38 @@ class ProfileProvisionTests(unittest.TestCase):
                 installed_bindings,
             )
 
+
+    def test_manifest_alias_resolves_nested_profile_and_canonical_identity(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo_root = root / "repo"
+            install_dir = root / "install"
+            profile = (
+                repo_root
+                / "vehicles"
+                / "seat"
+                / "leon"
+                / "1p-pq35"
+                / "config.json"
+            )
+            profile.parent.mkdir(parents=True)
+            profile.write_text("{}", encoding="utf-8")
+            (repo_root / "vehicles" / "catalogue.v1.json").write_text(
+                '{"schema_version":1,"catalogue_id":"open-mmi.maintained-vehicles",'
+                '"profiles":{"seat-leon-1p-pq35":{'
+                '"path":"seat/leon/1p-pq35/config.json",'
+                '"aliases":["seat_1p"]}}}',
+                encoding="utf-8",
+            )
+
+            resolved = profile_provision.resolve_source_vehicle(
+                repo_root, install_dir, "seat_1p"
+            )
+
+            self.assertEqual(resolved["id"], "seat-leon-1p-pq35")
+            self.assertEqual(resolved["requested_status"], "alias")
+            self.assertEqual(resolved["path"], profile)
+
     def test_development_checkout_preference_is_explicit(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

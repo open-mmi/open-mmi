@@ -9,7 +9,7 @@ specific vehicle platform.
 Vehicle-specific information belongs in:
 
 ```text
-vehicles/<profile>/config.json
+vehicles/<brand>/<model>/<generation-platform>/config.json
 ```
 
 ---
@@ -39,6 +39,25 @@ open-mmi-config vehicle-setup conform --root .
 ```
 
 The command is stricter than ordinary custom-profile validation by design. It gates a maintained compatibility claim; it does not restrict discovery.
+
+Maintained profile placement is recursive and human-browsable:
+
+```text
+vehicles/<brand>/<model>/<generation-platform>/
+```
+
+`vehicles/catalogue.v1.json` maps each directory to a stable `metadata.id` and any
+deprecated compatibility aliases. Custom profiles remain flat under
+`~/.config/open-mmi/vehicles/<custom-id>/` and are never reorganised by updates.
+Copy `vehicles/_template/` when starting a real integration; do not create empty
+brand trees that imply unsupported vehicles.
+
+Candidate and qualified profiles include `fixtures/mappings.v1.json`. Replay proof
+must cover every canonical event and non-alias status output:
+
+```bash
+open-mmi-config vehicle-setup replay --root . seat-leon-1p-pq35
+```
 
 ## Profile shape
 
@@ -78,7 +97,7 @@ configure bitrate and does not silently bring interfaces up.
 Normal setup should apply the selected vehicle profile as the source of truth:
 
 ```bash
-sudo ./scripts/manage.sh config apply-profile seat_1p default
+sudo ./scripts/manage.sh config apply-profile seat-leon-1p-pq35 default
 ```
 
 This selects the maintained profile and bindings from the installed Open MMI tree,

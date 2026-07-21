@@ -113,7 +113,7 @@ Store provenance in a sidecar file which the daemon does not parse:
   "display_name": "My Seat",
   "template": {
     "source": "maintained",
-    "id": "seat_1p",
+    "id": "seat-leon-1p-pq35",
     "open_mmi_version": "v1-foundation-alpha-…",
     "revision": "sha256:…"
   },

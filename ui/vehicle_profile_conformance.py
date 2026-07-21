@@ -17,7 +17,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Optional, Sequence
 
-from canbusd import status_registry
+from canbusd import profile_catalogue, profile_replay, status_registry
 from ui import vehicle_setup
 
 
@@ -224,7 +224,7 @@ def validate_metadata(
                 "error",
                 "profile-id-mismatch",
                 "metadata.id",
-                f"must match maintained catalogue directory {expected_id!r}",
+                f"must match maintained catalogue identity {expected_id!r}",
             )
         )
 
@@ -578,6 +578,84 @@ def _event_names(document: Mapping[str, Any]) -> list[str]:
     return sorted(events)
 
 
+def _fixture_report(
+    document: Mapping[str, Any],
+    *,
+    profile_path: Path,
+    identifier: str,
+) -> tuple[dict[str, Any], list[dict[str, str]]]:
+    fixture_path = profile_path.parent / "fixtures" / "mappings.v1.json"
+    metadata = document.get("metadata")
+    maturity = metadata.get("maturity") if isinstance(metadata, Mapping) else None
+    issues: list[dict[str, str]] = []
+    if not fixture_path.exists():
+        level = "error" if maturity in {"candidate", "qualified"} else "warning"
+        issues.append(
+            _issue(
+                level,
+                "missing-mapping-fixtures",
+                "fixtures/mappings.v1.json",
+                "candidate and qualified profiles require deterministic mapping fixtures",
+            )
+        )
+        return {
+            "present": False,
+            "valid": maturity not in {"candidate", "qualified"},
+            "path": "fixtures/mappings.v1.json",
+            "case_count": 0,
+            "coverage": {},
+        }, issues
+    try:
+        fixture = profile_replay.load_json(fixture_path)
+        report = profile_replay.replay_fixture(
+            document,
+            fixture,
+            expected_profile_id=identifier,
+        )
+    except profile_replay.VehicleProfileReplayError as exc:
+        issues.append(
+            _issue(
+                "error",
+                "invalid-mapping-fixtures",
+                "fixtures/mappings.v1.json",
+                str(exc),
+            )
+        )
+        return {
+            "present": True,
+            "valid": False,
+            "path": "fixtures/mappings.v1.json",
+            "case_count": 0,
+            "coverage": {},
+        }, issues
+    if not report["valid"]:
+        coverage = report["coverage"]
+        missing = [*coverage["missing_events"], *coverage["missing_statuses"]]
+        failed = [case["name"] for case in report["cases"] if not case["valid"]]
+        message_parts = []
+        if missing:
+            message_parts.append("missing coverage: " + ", ".join(missing))
+        if failed:
+            message_parts.append("failed cases: " + ", ".join(failed))
+        if coverage["unexpected_events"] or coverage["unexpected_statuses"]:
+            message_parts.append("fixture declares outputs not produced by the profile")
+        issues.append(
+            _issue(
+                "error",
+                "mapping-fixture-failed",
+                "fixtures/mappings.v1.json",
+                "; ".join(message_parts) or "mapping replay did not pass",
+            )
+        )
+    return {
+        "present": True,
+        "valid": bool(report["valid"]),
+        "path": "fixtures/mappings.v1.json",
+        "case_count": report["case_count"],
+        "coverage": copy.deepcopy(report["coverage"]),
+    }, issues
+
+
 def profile_report(
     path: Path,
     *,
@@ -592,6 +670,12 @@ def profile_report(
     issues = [*technical["errors"], *technical["warnings"], *metadata["errors"], *metadata["warnings"]]
     if check_evidence_files:
         issues.extend(_evidence_issues(document, root=root))
+    fixtures, fixture_issues = _fixture_report(
+        document,
+        profile_path=path,
+        identifier=identifier,
+    )
+    issues.extend(fixture_issues)
     validation = _validation(issues)
 
     metadata_document = document.get("metadata")
@@ -618,6 +702,7 @@ def profile_report(
             "event_count": len(_event_names(document)),
             "status_count": len(canonical_statuses),
         },
+        "fixtures": fixtures,
         "validation": validation,
     }
 
@@ -634,39 +719,50 @@ def catalogue_report(
         raise VehicleProfileConformanceError(
             f"maintained vehicle catalogue is not a trusted directory: {vehicles}"
         )
+    try:
+        tree = profile_catalogue.verify_tree(root)
+        entries = profile_catalogue.profile_entries(root)
+    except profile_catalogue.VehicleProfileCatalogueError as exc:
+        raise VehicleProfileConformanceError(str(exc)) from exc
 
+    by_id = {str(entry["id"]): entry for entry in entries}
     requested: list[str]
     if identifiers:
-        requested = list(identifiers)
-        invalid = [item for item in requested if not PROFILE_ID_RE.fullmatch(item)]
-        if invalid:
-            raise VehicleProfileConformanceError(
-                "invalid profile identifiers: " + ", ".join(invalid)
-            )
+        requested = []
+        for item in identifiers:
+            if not PROFILE_ID_RE.fullmatch(item):
+                raise VehicleProfileConformanceError(
+                    f"invalid profile identifier: {item}"
+                )
+            try:
+                resolved = profile_catalogue.resolve_profile(root, item)
+            except profile_catalogue.VehicleProfileCatalogueError as exc:
+                raise VehicleProfileConformanceError(str(exc)) from exc
+            canonical = str(resolved["id"])
+            if canonical not in requested:
+                requested.append(canonical)
     else:
-        requested = sorted(
-            child.name
-            for child in vehicles.iterdir()
-            if child.is_dir() and not child.is_symlink() and PROFILE_ID_RE.fullmatch(child.name)
-        )
+        requested = sorted(by_id)
 
     profiles: list[dict[str, Any]] = []
     for identifier in requested:
-        path = vehicles / identifier / "config.json"
+        entry = by_id[identifier]
+        path = root / "vehicles" / str(entry["path"])
         try:
-            profiles.append(
-                profile_report(
-                    path,
-                    root=root,
-                    expected_id=identifier,
-                    check_evidence_files=check_evidence_files,
-                )
+            report = profile_report(
+                path,
+                root=root,
+                expected_id=identifier,
+                check_evidence_files=check_evidence_files,
             )
+            report["aliases"] = list(entry["aliases"])
+            profiles.append(report)
         except VehicleProfileConformanceError as exc:
             profiles.append(
                 {
                     "id": identifier,
-                    "path": f"vehicles/{identifier}/config.json",
+                    "aliases": list(entry["aliases"]),
+                    "path": f"vehicles/{entry['path']}",
                     "valid": False,
                     "metadata": {},
                     "capabilities": {
@@ -676,22 +772,49 @@ def catalogue_report(
                         "event_count": 0,
                         "status_count": 0,
                     },
+                    "fixtures": {
+                        "present": False,
+                        "valid": False,
+                        "case_count": 0,
+                        "coverage": {},
+                    },
                     "validation": _validation(
                         [_issue("error", "unreadable-profile", "$", str(exc))]
                     ),
                 }
             )
 
+    if tree["issues"]:
+        profiles.append(
+            {
+                "id": "_catalogue",
+                "aliases": [],
+                "path": "vehicles/catalogue.v1.json",
+                "valid": False,
+                "metadata": {},
+                "capabilities": {
+                    "buses": [], "events": [], "statuses": [],
+                    "event_count": 0, "status_count": 0,
+                },
+                "fixtures": {"present": False, "valid": False, "case_count": 0, "coverage": {}},
+                "validation": _validation([
+                    _issue("error", "invalid-catalogue-tree", "vehicles", issue)
+                    for issue in tree["issues"]
+                ]),
+            }
+        )
+
     maturity_counts = Counter(
         str(profile.get("metadata", {}).get("maturity") or "missing")
         for profile in profiles
+        if profile["id"] != "_catalogue"
     )
     valid = bool(profiles) and all(profile["valid"] for profile in profiles)
     return {
         "standard": STANDARD_ID,
         "schema_version": SCHEMA_VERSION,
         "valid": valid,
-        "count": len(profiles),
+        "count": len([profile for profile in profiles if profile["id"] != "_catalogue"]),
         "summary": {
             "valid": sum(1 for profile in profiles if profile["valid"]),
             "invalid": sum(1 for profile in profiles if not profile["valid"]),
@@ -699,7 +822,7 @@ def catalogue_report(
         },
         "profiles": profiles,
         "guidance": (
-            "This is a catalogue continuity and evidence checkpoint, not permission to "
+            "This is a catalogue continuity, replay and evidence checkpoint, not permission to "
             "research a vehicle. Discovery and custom profiles remain open; a maintained "
             "profile must state its identity, maturity, test scope and reviewable evidence."
         ),

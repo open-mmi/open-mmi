@@ -22,6 +22,8 @@ REQUIRED_PATHS = {
     "canbusd/event_registry.py",
     "canbusd/data/vehicle-events.v1.json",
     "canbusd/status_registry.py",
+    "canbusd/profile_catalogue.py",
+    "canbusd/profile_replay.py",
     "canbusd/data/vehicle-statuses.v1.json",
     "canbusd/data/vehicle-profile.v1.schema.json",
     "ui/vehicle_profile_conformance.py",
@@ -61,7 +63,10 @@ REQUIRED_PATHS = {
     "ui/web_dashboard/static/styles-media-sources.css",
     "ui/web_dashboard/static/styles-diagnostics.css",
     "ui/web_dashboard/static/styles-media-final.css",
-    "vehicles/seat_1p/config.json",
+    "vehicles/catalogue.v1.json",
+    "vehicles/seat/leon/1p-pq35/config.json",
+    "vehicles/seat/leon/1p-pq35/fixtures/mappings.v1.json",
+    "vehicles/seat/leon/1p-pq35/README.md",
 }
 
 

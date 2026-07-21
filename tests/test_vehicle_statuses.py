@@ -102,7 +102,7 @@ class VehicleStatusRegistryTests(unittest.TestCase):
 
     def test_maintained_seat_profile_conforms(self) -> None:
         profile = json.loads(
-            Path("vehicles/seat_1p/config.json").read_text(encoding="utf-8")
+            Path("vehicles/seat/leon/1p-pq35/config.json").read_text(encoding="utf-8")
         )
 
         status_registry.require_profile_statuses(profile)

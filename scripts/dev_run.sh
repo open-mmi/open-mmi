@@ -17,7 +17,7 @@ echo "[dev] Press Ctrl+C to stop"
 echo "[dev]"
 
 export OPEN_MMI_LOG_LEVEL="${OPEN_MMI_LOG_LEVEL:-DEBUG}"
-export OPEN_MMI_VEHICLE="${OPEN_MMI_VEHICLE:-seat_1p}"
+export OPEN_MMI_VEHICLE="${OPEN_MMI_VEHICLE:-seat-leon-1p-pq35}"
 export OPEN_MMI_BINDINGS="${OPEN_MMI_BINDINGS:-default}"
 
 cd "$REPO_ROOT"

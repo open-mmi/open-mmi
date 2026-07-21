@@ -104,9 +104,54 @@ class VehicleProfileConformanceTests(unittest.TestCase):
         }
 
     def write_profile(self, identifier: str, document: dict[str, object]) -> Path:
-        path = self.root / "vehicles" / identifier / "config.json"
-        path.parent.mkdir()
+        relative = "example/car/one-platform/config.json"
+        path = self.root / "vehicles" / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+        catalogue = {
+            "schema_version": 1,
+            "catalogue_id": "open-mmi.maintained-vehicles",
+            "profiles": {
+                identifier: {"path": relative, "aliases": []},
+            },
+        }
+        (self.root / "vehicles" / "catalogue.v1.json").write_text(
+            json.dumps(catalogue, indent=2) + "\n", encoding="utf-8"
+        )
+        fixture_path = path.parent / "fixtures" / "mappings.v1.json"
+        fixture_path.parent.mkdir()
+        fixture_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "fixture_id": "open-mmi.vehicle-mapping-fixtures",
+                    "profile_id": identifier,
+                    "cases": [
+                        {
+                            "name": "play-pause",
+                            "bus": "comfort",
+                            "frames": [{"id": "0x100", "data": "01"}],
+                            "expect": {
+                                "events": [{"event": "play_pause", "payload": None}],
+                                "statuses": {},
+                            },
+                        },
+                        {
+                            "name": "front-right-door",
+                            "bus": "comfort",
+                            "frames": [{"id": "0x101", "data": "01"}],
+                            "expect": {
+                                "events": [],
+                                "statuses": {"doors.front_right": True},
+                            },
+                        },
+                    ],
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
         return path
 
     def test_qualified_profile_requires_hardware_evidence(self) -> None:
@@ -147,7 +192,7 @@ class VehicleProfileConformanceTests(unittest.TestCase):
         )
         self.assertTrue(result["valid"], result)
 
-    def test_profile_id_must_match_maintained_directory(self) -> None:
+    def test_profile_id_must_match_maintained_catalogue_identity(self) -> None:
         result = vehicle_profile_conformance.validate_metadata(
             self.profile("other_car"), expected_id="example_car"
         )
@@ -199,9 +244,22 @@ class VehicleProfileConformanceTests(unittest.TestCase):
         )
 
     def test_catalogue_report_rejects_duplicate_json_keys(self) -> None:
-        path = self.root / "vehicles" / "example_car" / "config.json"
-        path.parent.mkdir()
+        relative = "example/car/one-platform/config.json"
+        path = self.root / "vehicles" / relative
+        path.parent.mkdir(parents=True)
         path.write_text('{"schema_version":1,"schema_version":1}', encoding="utf-8")
+        (self.root / "vehicles" / "catalogue.v1.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "catalogue_id": "open-mmi.maintained-vehicles",
+                    "profiles": {
+                        "example_car": {"path": relative, "aliases": []}
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
         report = vehicle_profile_conformance.catalogue_report(self.root)
         self.assertFalse(report["valid"])
         self.assertIn(
@@ -219,6 +277,9 @@ class VehicleProfileConformanceTests(unittest.TestCase):
         )
         self.assertTrue(report["valid"], report)
         profile = report["profiles"][0]
+        self.assertEqual(profile["id"], "seat-leon-1p-pq35")
+        self.assertEqual(profile["aliases"], ["seat_1p"])
+        self.assertTrue(profile["fixtures"]["valid"])
         self.assertEqual(profile["metadata"]["maturity"], "qualified")
         self.assertEqual(profile["metadata"]["qualification"]["level"], "hardware")
 

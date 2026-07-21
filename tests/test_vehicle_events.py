@@ -206,7 +206,7 @@ class VehicleEventRegistryTests(unittest.TestCase):
     def test_maintained_catalogue_conforms_to_registry(self):
         root = Path(__file__).resolve().parents[1]
         profile = json.loads(
-            (root / "vehicles/seat_1p/config.json").read_text(encoding="utf-8")
+            (root / "vehicles/seat/leon/1p-pq35/config.json").read_text(encoding="utf-8")
         )
         bindings = json.loads(
             (root / "bindings/default.json").read_text(encoding="utf-8")

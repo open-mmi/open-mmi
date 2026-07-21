@@ -28,8 +28,8 @@ A maintained profile starts with:
 {
   "schema_version": 1,
   "metadata": {
-    "id": "seat_1p",
-    "display_name": "SEAT Leon 1P",
+    "id": "seat-leon-1p-pq35",
+    "display_name": "SEAT Leon 1P / Mk2 (PQ35)",
     "manufacturer": "SEAT",
     "model": "Leon",
     "generation": "1P",
@@ -69,7 +69,9 @@ A maintained profile starts with:
 }
 ```
 
-`metadata.id` must match the directory under `vehicles/`. Evidence paths are repository-relative
+`metadata.id` must match the stable identity declared in `vehicles/catalogue.v1.json`.
+The catalogue maps that ID to `vehicles/<brand>/<model>/<generation-platform>/config.json`
+and may retain deprecated IDs for installed compatibility. Evidence paths are repository-relative
 and must resolve to regular files in the same source tree.
 
 ## Maturity levels
@@ -104,21 +106,51 @@ open-mmi-config vehicle-setup conform --root .
 Check one profile:
 
 ```bash
-open-mmi-config vehicle-setup conform --root . seat_1p
+open-mmi-config vehicle-setup conform --root . seat-leon-1p-pq35
 ```
 
 The command verifies:
 
 - the versioned metadata envelope;
-- directory and profile identity agreement;
+- recursive catalogue path, stable profile identity, and legacy-alias agreement;
 - maturity/qualification consistency;
 - evidence paths and files;
 - CAN bus metadata and decoder structure;
 - canonical event and status contracts;
+- deterministic `fixtures/mappings.v1.json` replay with complete event/status coverage;
 - a capability inventory derived from the profile rather than handwritten claims.
 
 CI runs the same complete-catalogue command. A failed report blocks admission to the maintained
 catalogue; it does not block discovery notes or local custom-profile use.
+
+## Catalogue layout and replay proof
+
+The maintained tree is organised for humans:
+
+```text
+vehicles/<brand>/<model>/<generation-platform>/
+├── config.json
+├── README.md
+├── fixtures/mappings.v1.json
+├── evidence/
+└── notes/
+```
+
+The folder explains where a vehicle belongs. The profile ID remains the stable
+machine contract and therefore does not need to mirror every path component.
+Existing IDs can be retained as deprecated aliases while the maintained tree is
+reorganised.
+
+Replay one profile, using either its canonical ID or a legacy alias:
+
+```bash
+open-mmi-config vehicle-setup replay --root . seat-leon-1p-pq35
+open-mmi-config vehicle-setup replay --root . seat_1p
+```
+
+Fixture cases contain exact CAN bytes and expected canonical outputs. A mapping
+change that alters an event, scale, enum, bitfield, timeout, or status path must
+update the fixture deliberately and pass review.
 
 ## Contribution path
 

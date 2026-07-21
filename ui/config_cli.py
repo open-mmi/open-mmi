@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Mapping, Optional, Sequence
 
 from canbusd import action_registry as vehicle_actions
+from canbusd import profile_catalogue, profile_replay
 from canbusd import event_registry as vehicle_events
 from canbusd import status_registry as vehicle_statuses
 
@@ -172,6 +173,16 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="repository or installed Open MMI root; defaults to the maintained catalogue root",
     )
+    vehicle_replay = vehicle_setup_commands.add_parser(
+        "replay",
+        help="replay deterministic mapping fixtures for one maintained profile",
+    )
+    vehicle_replay.add_argument("profile")
+    vehicle_replay.add_argument(
+        "--root",
+        type=Path,
+        help="repository or installed Open MMI root; defaults to the maintained catalogue root",
+    )
     vehicle_setup_commands.add_parser(
         "coordinator",
         help="inspect the privileged vehicle configuration coordinator",
@@ -262,6 +273,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 report = vehicle_profile_conformance.catalogue_report(
                     root, identifiers=args.profiles or None
                 )
+                _print(report)
+                return 0 if report["valid"] else 1
+            elif args.command == "replay":
+                root = (args.root or vehicle_setup.default_roots().maintained).expanduser().resolve()
+                resolved = profile_catalogue.resolve_profile(root, args.profile)
+                fixture_path = Path(resolved["path"]).parent / "fixtures" / "mappings.v1.json"
+                report = profile_replay.replay_files(Path(resolved["path"]), fixture_path)
+                report["requested_profile"] = args.profile
+                report["profile_id"] = resolved["id"]
+                report["profile_path"] = resolved["relative_path"]
+                report["fixture_path"] = fixture_path.relative_to(root).as_posix()
                 _print(report)
                 return 0 if report["valid"] else 1
             elif args.command == "events":
@@ -366,7 +388,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         result = _jellyfin_test(values)
         _print({"ok": True, **result})
         return 0
-    except (ConfigurationError, launcher.LauncherError, update_coordinator.CoordinatorError, vehicle_config_coordinator.CoordinatorError, update_status.UpdateStatusError, vehicle_actions.VehicleActionRegistryError, vehicle_events.VehicleEventRegistryError, vehicle_statuses.VehicleStatusRegistryError, vehicle_profile_conformance.VehicleProfileConformanceError, vehicle_setup.VehicleSetupError, RuntimeError, ValueError) as exc:
+    except (ConfigurationError, launcher.LauncherError, update_coordinator.CoordinatorError, vehicle_config_coordinator.CoordinatorError, update_status.UpdateStatusError, vehicle_actions.VehicleActionRegistryError, vehicle_events.VehicleEventRegistryError, profile_catalogue.VehicleProfileCatalogueError, profile_replay.VehicleProfileReplayError, vehicle_statuses.VehicleStatusRegistryError, vehicle_profile_conformance.VehicleProfileConformanceError, vehicle_setup.VehicleSetupError, RuntimeError, ValueError) as exc:
         print(f"open-mmi-config: {exc}", file=sys.stderr)
         return 1
 

@@ -22,6 +22,7 @@ from typing import Any, Iterable, Mapping, Optional, Sequence
 from canbusd.can_runtime import resolve_can_runtime
 from canbusd import action_registry as vehicle_actions
 from canbusd import event_registry as vehicle_events
+from canbusd import profile_catalogue as maintained_profiles
 from canbusd import status_registry as vehicle_statuses
 from ui import vehicle_configuration
 
@@ -136,6 +137,12 @@ def _catalogue_path(
         raise VehicleSetupError("Catalogue source must be maintained or custom")
 
     if kind == "profile":
+        if source == "maintained":
+            try:
+                resolved = maintained_profiles.resolve_profile(root, identifier)
+            except maintained_profiles.VehicleProfileCatalogueError as exc:
+                raise VehicleSetupError(str(exc)) from exc
+            return root, resolved["path"]
         return root, root / "vehicles" / identifier / "config.json"
     if kind == "bindings":
         return root, root / "bindings" / f"{identifier}.json"
@@ -862,9 +869,29 @@ def _invalid_entry(source: str, identifier: str, message: str, code: str = "inva
     }
 
 
-def _profile_entry(roots: CatalogueRoots, source: str, identifier: str) -> dict[str, Any]:
+def _canonical_profile_identity(
+    roots: CatalogueRoots,
+    source: str,
+    identifier: str,
+) -> tuple[str, list[str], str]:
+    if source != "maintained":
+        return identifier, [], "canonical"
     try:
-        path = resolve_catalogue_path(roots, "profile", source, identifier)
+        resolved = maintained_profiles.resolve_profile(roots.maintained, identifier)
+    except maintained_profiles.VehicleProfileCatalogueError as exc:
+        raise VehicleSetupError(str(exc)) from exc
+    return resolved["id"], list(resolved["aliases"]), str(resolved["requested_status"])
+
+
+def _profile_entry(roots: CatalogueRoots, source: str, identifier: str) -> dict[str, Any]:
+    aliases: list[str] = []
+    requested_status = "canonical"
+    try:
+        canonical_id, aliases, requested_status = _canonical_profile_identity(
+            roots, source, identifier
+        )
+        path = resolve_catalogue_path(roots, "profile", source, canonical_id)
+        identifier = canonical_id
         document, revision = _read_document(path, MAX_PROFILE_BYTES)
     except VehicleSetupError as exc:
         return _invalid_entry(source, identifier, str(exc))
@@ -903,6 +930,8 @@ def _profile_entry(roots: CatalogueRoots, source: str, identifier: str) -> dict[
     return {
         "source": source,
         "id": identifier,
+        "aliases": aliases,
+        "requested_status": requested_status,
         "display_name": display_name,
         "manufacturer": str(metadata.get("manufacturer") or ""),
         "model": str(metadata.get("model") or ""),
@@ -950,12 +979,22 @@ def _bindings_entry(roots: CatalogueRoots, source: str, identifier: str) -> dict
     }
 
 
-def _discover_identifiers(root: Path, kind: str) -> tuple[list[str], list[dict[str, str]]]:
+def _discover_identifiers(
+    root: Path,
+    kind: str,
+    source: str,
+) -> tuple[list[str], list[dict[str, str]]]:
     directory = root / ("vehicles" if kind == "profile" else "bindings")
     if not directory.exists():
         return [], []
     if directory.is_symlink() or not directory.is_dir():
         return [], [_issue("error", "untrusted-catalogue-root", kind, "catalogue directory is not a trusted directory")]
+    if kind == "profile" and source == "maintained":
+        try:
+            entries = maintained_profiles.profile_entries(root)
+        except maintained_profiles.VehicleProfileCatalogueError as exc:
+            return [], [_issue("error", "invalid-maintained-catalogue", kind, str(exc))]
+        return [str(entry["id"]) for entry in entries], []
     try:
         children = sorted(directory.iterdir(), key=lambda item: item.name)
     except OSError:
@@ -982,8 +1021,8 @@ def catalogue_payload(roots: Optional[CatalogueRoots] = None) -> dict[str, Any]:
     bindings: list[dict[str, Any]] = []
     issues: list[dict[str, str]] = []
     for source, root in (("maintained", selected_roots.maintained), ("custom", selected_roots.custom)):
-        profile_ids, profile_issues = _discover_identifiers(root, "profile")
-        binding_ids, binding_issues = _discover_identifiers(root, "bindings")
+        profile_ids, profile_issues = _discover_identifiers(root, "profile", source)
+        binding_ids, binding_issues = _discover_identifiers(root, "bindings", source)
         issues.extend(profile_issues)
         issues.extend(binding_issues)
         for identifier in profile_ids:
@@ -1082,12 +1121,24 @@ def _identity_from_environment(
         candidate = Path(explicit_path).expanduser()
         for source in ("maintained", "custom"):
             try:
-                expected = resolve_catalogue_path(roots, kind, source, identifier)
+                resolved_id = identifier
+                if kind == "profile" and source == "maintained":
+                    resolved_id, _aliases, _status = _canonical_profile_identity(
+                        roots, source, identifier
+                    )
+                expected = resolve_catalogue_path(roots, kind, source, resolved_id)
             except VehicleSetupError:
                 continue
             if candidate == expected:
-                return {"source": source, "id": identifier}
+                return {"source": source, "id": resolved_id}
         return {"source": "external", "id": identifier}
+    if kind == "profile":
+        try:
+            identifier, _aliases, _status = _canonical_profile_identity(
+                roots, "maintained", identifier
+            )
+        except VehicleSetupError:
+            pass
     return {"source": "maintained", "id": identifier}
 
 
@@ -1256,7 +1307,7 @@ def status_payload(
         runtime_environment = {key: str(value) for key, value in environment.items() if key in RUNTIME_ENVIRONMENT_KEYS}
 
     catalogue = catalogue_payload(selected_roots)
-    vehicle_id = runtime_environment.get("OPEN_MMI_VEHICLE", "seat_1p")
+    vehicle_id = runtime_environment.get("OPEN_MMI_VEHICLE", "seat-leon-1p-pq35")
     bindings_id = runtime_environment.get("OPEN_MMI_BINDINGS", "default")
     vehicle = _identity_from_environment(
         selected_roots,
@@ -1482,6 +1533,11 @@ def preview_payload(
     )
     selected_roots = roots or default_roots()
     vehicle = _request_identity(payload["vehicle"], path="vehicle")
+    if vehicle["source"] == "maintained":
+        canonical_id, _aliases, _status = _canonical_profile_identity(
+            selected_roots, "maintained", vehicle["id"]
+        )
+        vehicle = {"source": "maintained", "id": canonical_id}
     bindings = _request_identity(payload["bindings"], path="bindings")
     active_bus, interface = _request_runtime(payload["runtime"])
 

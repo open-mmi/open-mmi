@@ -4,7 +4,7 @@
 #
 # Normal setup should use:
 #
-#   sudo ./scripts/manage.sh config apply-profile seat_1p default
+#   sudo ./scripts/manage.sh config apply-profile seat-leon-1p-pq35 default
 #
 # That command regenerates /etc/udev/rules.d/80-canbus.rules from vehicle profile
 # can_buses metadata.

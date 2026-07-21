@@ -61,7 +61,7 @@ On the Surface install, the user service loaded the per-user profile copy:
 
 The updated profile had to be copied there from:
 
-/opt/open-mmi/vehicles/seat_1p/config.json
+/opt/open-mmi/vehicles/seat/leon/1p-pq35/config.json
 
 Runtime observations:
 

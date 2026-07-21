@@ -29,7 +29,7 @@ If this adds or changes vehicle CAN transmit/control behaviour, explain the safe
 ## Vehicle-Specific Data
 
 - [ ] No vehicle-specific CAN knowledge was added to core Python
-- [ ] Vehicle-specific CAN data is kept inside `vehicles/<profile>/config.json`
+- [ ] Vehicle-specific CAN data is kept inside `vehicles/<brand>/<model>/<generation-platform>/config.json`
 - [ ] Not applicable
 
 ## Shared Human Vocabulary — Reuse or Propose
@@ -50,10 +50,10 @@ Explain any new descriptor and why no existing one fits:
 ## Maintained Profile Admission
 
 - [ ] New or changed maintained profiles use schema version 1 metadata
-- [ ] `metadata.id` matches the `vehicles/<id>/` directory
+- [ ] `metadata.id` matches its entry in `vehicles/catalogue.v1.json`
 - [ ] Maturity and qualification level match the evidence supplied
 - [ ] Qualification scope states exactly what was tested
-- [ ] Evidence files are included in this repository and limitations are explicit
+- [ ] Evidence files and `fixtures/mappings.v1.json` are included; limitations are explicit
 - [ ] `open-mmi-config vehicle-setup conform --root .` passes
 - [ ] Not applicable
 
@@ -63,8 +63,9 @@ Commands run:
 
 ```bash
 python3 -m py_compile canbusd/core.py canbusd/status_rules.py canbusd/status_bus.py
-python3 -m json.tool vehicles/seat_1p/config.json >/dev/null
+python3 -m json.tool vehicles/seat/leon/1p-pq35/config.json >/dev/null
 open-mmi-config vehicle-setup conform --root .
+open-mmi-config vehicle-setup replay --root . <profile-id>
 python3 -m json.tool bindings/default.json >/dev/null
 open-mmi-config vehicle-setup events --search "<human meaning>"
 open-mmi-config vehicle-setup statuses --search "<human meaning>"
