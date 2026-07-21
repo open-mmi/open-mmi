@@ -618,3 +618,10 @@ See:
 ```text
 LICENSE
 ```
+
+## Qualification transitions
+
+Do not change a maintained profile from experimental/candidate/qualified by editing labels alone.
+Use `open-mmi-config vehicle-setup qualification transition` with `--dry-run`, review the
+machine-readable plan, and include complete replay or hardware evidence. The formal workflow is
+documented in `docs/vehicle-qualification-workflow.md`.

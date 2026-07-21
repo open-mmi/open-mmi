@@ -14,9 +14,9 @@ A listed profile is a bounded compatibility claim, not a restriction on new vehi
 
 ## Catalogue summary
 
-| Profile | Vehicle | Years | Maturity | Qualification | Last tested | Legacy aliases | Compatible market names | Replay coverage | Evidence | Canonical capabilities |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| [`seat-leon-1p-pq35`](#seat-leon-1p-pq35) | SEAT Leon 1P / Mk2 (PQ35) | 2005–2012 | qualified | hardware | 2026-07-20 | `seat_1p` | — | 25 cases; 11/11 events; 65/65 statuses | hardware: 1, replay: 1, research: 1 | 11 events; 65 statuses |
+| Profile | Vehicle | Years | Maturity | Qualification | Last tested | Review | Recheck after | Legacy aliases | Compatible market names | Replay coverage | Evidence | Canonical capabilities |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| [`seat-leon-1p-pq35`](#seat-leon-1p-pq35) | SEAT Leon 1P / Mk2 (PQ35) | 2005–2012 | qualified | hardware | 2026-07-20 | approved | 2027-07-20 | `seat_1p` | — | 25 cases; 11/11 events; 65/65 statuses | hardware: 1, replay: 1, research: 1 | 11 events; 65 statuses |
 
 ## Profiles
 
@@ -30,6 +30,8 @@ A listed profile is a bounded compatibility claim, not a restriction on new vehi
 - Model years: 2005–2012
 - Maturity: `qualified`
 - Qualification: `hardware`; last tested `2026-07-20`
+- Review: `approved` by Open MMI maintainers; recheck after `2027-07-20`
+- Qualification history entries: 1
 - Legacy aliases: `seat_1p`
 - Compatible market names: —
 - CAN buses: `comfort`
@@ -42,6 +44,11 @@ A listed profile is a bounded compatibility claim, not a restriction on new vehi
 - Canonical vehicle status decoding
 - Reviewed Vehicle Setup apply and rollback
 - Real vehicle CAN traffic with maintained and custom sources
+
+#### Compatibility boundary
+
+- Equipment: Maintainer-qualified passive comfort CAN connection at 100 kbit/s
+- Vehicle variants: SEAT Leon 1P / Mk2 (PQ35), model years 2005 to 2012
 
 #### Evidence
 

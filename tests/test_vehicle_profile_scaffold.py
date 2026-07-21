@@ -92,6 +92,12 @@ class VehicleProfileScaffoldTests(unittest.TestCase):
             self.assertTrue(
                 (profile_path.parent / "evidence/README.md").is_file()
             )
+            qualification_record = profile_path.parent / "evidence/qualification.v1.json"
+            self.assertTrue(qualification_record.is_file())
+            self.assertEqual(
+                json.loads(qualification_record.read_text(encoding="utf-8"))["current"]["level"],
+                "none",
+            )
             self.assertTrue((profile_path.parent / "notes/README.md").is_file())
             readme = (profile_path.parent / "README.md").read_text(encoding="utf-8")
             self.assertIn("does not claim that Open MMI", readme)

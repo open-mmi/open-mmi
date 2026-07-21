@@ -670,6 +670,7 @@ def profile_report(
     root: Path,
     expected_id: Optional[str] = None,
     check_evidence_files: bool = True,
+    as_of: Optional[date] = None,
 ) -> dict[str, Any]:
     document = _read_profile(path)
     identifier = expected_id or path.parent.name
@@ -684,6 +685,17 @@ def profile_report(
         identifier=identifier,
     )
     issues.extend(fixture_issues)
+    from ui import vehicle_profile_qualification
+
+    qualification_record = vehicle_profile_qualification.qualification_report_for_profile(
+        document,
+        profile_path=path,
+        fixtures=fixtures,
+        expected_profile_id=identifier,
+        as_of=as_of,
+    )
+    issues.extend(qualification_record["validation"]["errors"])
+    issues.extend(qualification_record["validation"]["warnings"])
     validation = _validation(issues)
 
     metadata_document = document.get("metadata")
@@ -711,6 +723,7 @@ def profile_report(
             "status_count": len(canonical_statuses),
         },
         "fixtures": fixtures,
+        "qualification": qualification_record,
         "validation": validation,
     }
 
@@ -720,6 +733,7 @@ def catalogue_report(
     *,
     identifiers: Optional[Sequence[str]] = None,
     check_evidence_files: bool = True,
+    as_of: Optional[date] = None,
 ) -> dict[str, Any]:
     root = root.expanduser().resolve()
     vehicles = root / "vehicles"
@@ -762,6 +776,7 @@ def catalogue_report(
                 root=root,
                 expected_id=identifier,
                 check_evidence_files=check_evidence_files,
+                as_of=as_of,
             )
             report["aliases"] = list(entry["aliases"])
             profiles.append(report)
@@ -786,6 +801,11 @@ def catalogue_report(
                         "case_count": 0,
                         "coverage": {},
                     },
+                    "qualification": {
+                        "present": False,
+                        "stale": False,
+                        "validation": _validation([]),
+                    },
                     "validation": _validation(
                         [_issue("error", "unreadable-profile", "$", str(exc))]
                     ),
@@ -805,6 +825,7 @@ def catalogue_report(
                     "event_count": 0, "status_count": 0,
                 },
                 "fixtures": {"present": False, "valid": False, "case_count": 0, "coverage": {}},
+                "qualification": {"present": False, "stale": False, "validation": _validation([])},
                 "validation": _validation([
                     _issue("error", "invalid-catalogue-tree", "vehicles", issue)
                     for issue in tree["issues"]

@@ -1,4 +1,5 @@
 # Changelog
+- Add formal maintained-profile qualification records, reviewed lifecycle transitions, compatibility boundaries, and stale-review warnings.
 
 ## Unreleased — V1 vehicle setup coordinator
 - Added a hierarchical maintained vehicle catalogue with stable IDs, legacy aliases, contributor templates, deterministic mapping replay fixtures, and exact migration of missing legacy maintained runtime paths.

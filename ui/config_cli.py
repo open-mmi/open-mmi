@@ -7,6 +7,7 @@ import getpass
 import json
 import os
 import sys
+from datetime import date
 from pathlib import Path
 from typing import Any, Mapping, Optional, Sequence
 
@@ -22,6 +23,7 @@ from ui import (
     vehicle_config_coordinator,
     vehicle_capture_analysis,
     vehicle_profile_conformance,
+    vehicle_profile_qualification,
     vehicle_profile_scaffold,
     vehicle_setup,
 )
@@ -210,6 +212,44 @@ def build_parser() -> argparse.ArgumentParser:
     )
     vehicle_scaffold.add_argument("--dry-run", action="store_true")
 
+    vehicle_qualification = vehicle_setup_commands.add_parser(
+        "qualification",
+        help="inspect or transition formal maintained-profile qualification",
+    )
+    qualification_commands = vehicle_qualification.add_subparsers(
+        dest="qualification_command",
+        required=True,
+    )
+    qualification_report = qualification_commands.add_parser(
+        "report",
+        help="report review, compatibility and stale qualification state",
+    )
+    qualification_report.add_argument("profiles", nargs="*")
+    qualification_report.add_argument("--root", type=Path)
+    qualification_report.add_argument("--as-of", type=date.fromisoformat)
+
+    qualification_transition = qualification_commands.add_parser(
+        "transition",
+        help="promote or demote one maintained profile under formal review",
+    )
+    qualification_transition.add_argument("profile")
+    qualification_transition.add_argument("--to", dest="target", choices=("none", "replay", "hardware"), required=True)
+    qualification_transition.add_argument("--reason", required=True)
+    qualification_transition.add_argument("--reviewer", action="append", required=True)
+    qualification_transition.add_argument("--reviewed-on", required=True)
+    qualification_transition.add_argument("--tested-on")
+    qualification_transition.add_argument("--recheck-after")
+    qualification_transition.add_argument("--scope", action="append")
+    qualification_transition.add_argument("--equipment", action="append")
+    qualification_transition.add_argument("--variant", action="append")
+    qualification_transition.add_argument(
+        "--evidence",
+        action="append",
+        help="append KIND=PATH=DESCRIPTION to profile qualification evidence",
+    )
+    qualification_transition.add_argument("--root", type=Path, default=Path.cwd())
+    qualification_transition.add_argument("--dry-run", action="store_true")
+
     vehicle_capture = vehicle_setup_commands.add_parser(
         "capture",
         help="normalize and compare bounded candump research captures",
@@ -386,6 +426,37 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                         dry_run=args.dry_run,
                     )
                 )
+            elif args.command == "qualification":
+                if args.qualification_command == "report":
+                    root = args.root or vehicle_setup.default_roots().maintained
+                    report = vehicle_profile_conformance.catalogue_report(
+                        root,
+                        identifiers=args.profiles or None,
+                        as_of=args.as_of,
+                    )
+                    _print(report)
+                    return 0 if report["valid"] else 1
+                parsed_evidence = [
+                    vehicle_profile_qualification.parse_evidence_argument(value)
+                    for value in (args.evidence or [])
+                ]
+                _print(
+                    vehicle_profile_qualification.transition_profile(
+                        args.root,
+                        args.profile,
+                        target=args.target,
+                        reason=args.reason,
+                        reviewers=args.reviewer,
+                        reviewed_on=args.reviewed_on,
+                        tested_on=args.tested_on,
+                        recheck_after=args.recheck_after,
+                        scope=args.scope,
+                        equipment=args.equipment,
+                        variants=args.variant,
+                        evidence=parsed_evidence,
+                        dry_run=args.dry_run,
+                    )
+                )
             elif args.command == "capture":
                 filters = {
                     "buses": args.bus,
@@ -533,7 +604,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         result = _jellyfin_test(values)
         _print({"ok": True, **result})
         return 0
-    except (ConfigurationError, launcher.LauncherError, update_coordinator.CoordinatorError, vehicle_config_coordinator.CoordinatorError, update_status.UpdateStatusError, vehicle_actions.VehicleActionRegistryError, vehicle_events.VehicleEventRegistryError, profile_catalogue.VehicleProfileCatalogueError, profile_replay.VehicleProfileReplayError, vehicle_statuses.VehicleStatusRegistryError, vehicle_capture_analysis.VehicleCaptureAnalysisError, vehicle_profile_conformance.VehicleProfileConformanceError, vehicle_profile_scaffold.VehicleProfileScaffoldError, vehicle_setup.VehicleSetupError, RuntimeError, ValueError) as exc:
+    except (ConfigurationError, launcher.LauncherError, update_coordinator.CoordinatorError, vehicle_config_coordinator.CoordinatorError, update_status.UpdateStatusError, vehicle_actions.VehicleActionRegistryError, vehicle_events.VehicleEventRegistryError, profile_catalogue.VehicleProfileCatalogueError, profile_replay.VehicleProfileReplayError, vehicle_statuses.VehicleStatusRegistryError, vehicle_capture_analysis.VehicleCaptureAnalysisError, vehicle_profile_conformance.VehicleProfileConformanceError, vehicle_profile_qualification.VehicleProfileQualificationError, vehicle_profile_scaffold.VehicleProfileScaffoldError, vehicle_setup.VehicleSetupError, RuntimeError, ValueError) as exc:
         print(f"open-mmi-config: {exc}", file=sys.stderr)
         return 1
 

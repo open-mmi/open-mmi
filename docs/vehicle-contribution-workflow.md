@@ -287,3 +287,10 @@ Submit mapping, registry change if needed, tests and evidence together
 
 The registry protects continuity across vehicles. It does not restrict who may expand the
 project.
+
+## Promotion is a reviewed transition
+
+After capture analysis and deterministic fixtures are complete, use the formal
+[`none → replay → hardware` qualification workflow](vehicle-qualification-workflow.md).
+Promotion cannot skip replay, hardware claims must state tested equipment and variants, and stale
+reviews produce warnings until maintainers renew or explicitly demote the claim.

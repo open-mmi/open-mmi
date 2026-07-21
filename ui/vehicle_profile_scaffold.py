@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping, Optional, Sequence
 
 from canbusd import profile_catalogue
-from ui import vehicle_profile_conformance, vehicle_setup
+from ui import vehicle_profile_conformance, vehicle_profile_qualification, vehicle_setup
 
 
 MAX_DISPLAY_BYTES = 128
@@ -400,6 +400,7 @@ def scaffold_profile(
         f"{relative_directory}/README.md",
         f"{relative_directory}/fixtures/README.md",
         f"{relative_directory}/evidence/README.md",
+        f"{relative_directory}/evidence/qualification.v1.json",
         f"{relative_directory}/notes/README.md",
     ]
     result = {
@@ -441,6 +442,10 @@ def scaffold_profile(
             target = staged_profile / directory
             target.mkdir()
             shutil.copyfile(template / directory / "README.md", target / "README.md")
+        _write_json(
+            staged_profile / "evidence" / "qualification.v1.json",
+            vehicle_profile_qualification.default_record(selected_id),
+        )
         _write_json(staged_catalogue, normalized_catalogue)
         staged_catalogue.chmod(stat.S_IMODE(catalogue_path.stat().st_mode))
 

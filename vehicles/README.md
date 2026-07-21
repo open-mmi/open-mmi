@@ -70,3 +70,9 @@ vocabulary, deterministic expectations and evidence. See the
 
 Maintained admission is the continuity checkpoint that turns vehicle-specific hexadecimal
 data into shared human meaning.
+
+## Qualification records
+
+Each maintained profile has `evidence/qualification.v1.json`. A scaffold starts at `none` with an
+unreviewed empty record. Replay and hardware claims must be made through the formal transition
+workflow and must not be inferred from a directory name or the presence of captures alone.

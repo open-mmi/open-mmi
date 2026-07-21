@@ -55,6 +55,21 @@ class VehicleCatalogueDocumentationTests(unittest.TestCase):
                 "event_count": 2,
                 "status_count": 1,
             },
+            "qualification": {
+                "level": "hardware",
+                "tested_on": "2026-07-20",
+                "review_status": "approved",
+                "reviewers": ["Reviewer One"],
+                "reviewed_on": "2026-07-20",
+                "recheck_after": "2027-07-20",
+                "compatibility": {
+                    "equipment": ["Example CAN adapter"],
+                    "variants": ["Alpha One A model years 2010 to 2014"],
+                },
+                "history_count": 2,
+                "stale": False,
+                "validation": {"valid": True, "errors": [], "warnings": []},
+            },
             "fixtures": {
                 "present": True,
                 "valid": True,
@@ -107,6 +122,8 @@ class VehicleCatalogueDocumentationTests(unittest.TestCase):
         self.assertIn("3 cases; 2/2 events; 1/1 statuses", rendered)
         self.assertIn("hardware: 1, replay: 1", rendered)
         self.assertIn("last tested `2026-07-20`", rendered)
+        self.assertIn("recheck after `2027-07-20`", rendered)
+        self.assertIn("Example CAN adapter", rendered)
 
     def test_capability_matrix_distinguishes_supported_descriptors(self) -> None:
         rendered = generate_vehicle_catalogue_docs.render_capability_matrix(self.report())

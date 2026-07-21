@@ -8,9 +8,9 @@ not prove that the physical vehicle lacks the feature.
 
 ## Profile key
 
-| Profile | Vehicle | Maturity | Qualification | Last tested | Events | Statuses |
-| --- | --- | --- | --- | --- | --- | --- |
-| `seat-leon-1p-pq35` | SEAT Leon 1P / Mk2 (PQ35) | qualified | hardware | 2026-07-20 | 11 | 65 |
+| Profile | Vehicle | Maturity | Qualification | Last tested | Review | Recheck after | Events | Statuses |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `seat-leon-1p-pq35` | SEAT Leon 1P / Mk2 (PQ35) | qualified | hardware | 2026-07-20 | approved | 2027-07-20 | 11 | 65 |
 
 ## Canonical events
 

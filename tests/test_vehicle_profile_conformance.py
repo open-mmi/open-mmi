@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from ui import vehicle_profile_conformance, vehicle_setup
+from ui import vehicle_profile_conformance, vehicle_profile_qualification, vehicle_setup
 
 
 class VehicleProfileConformanceTests(unittest.TestCase):
@@ -38,11 +38,19 @@ class VehicleProfileConformanceTests(unittest.TestCase):
             scope = ["Passive CAN receive and canonical mappings"]
             evidence = [
                 {
-                    "kind": "hardware" if level == "hardware" else "replay",
+                    "kind": "replay",
                     "path": "docs/qualification.md",
-                    "description": "Reviewable qualification evidence.",
+                    "description": "Deterministic replay qualification evidence.",
                 }
             ]
+            if level == "hardware":
+                evidence.append(
+                    {
+                        "kind": "hardware",
+                        "path": "docs/qualification.md",
+                        "description": "Reviewable hardware qualification evidence.",
+                    }
+                )
         return {
             "id": identifier,
             "display_name": "Example Car",
@@ -152,6 +160,36 @@ class VehicleProfileConformanceTests(unittest.TestCase):
             + "\n",
             encoding="utf-8",
         )
+        level = document["metadata"]["qualification"]["level"]
+        record = vehicle_profile_qualification.default_record(identifier)
+        if level != "none":
+            record["current"] = {
+                "level": level,
+                "tested_on": "2026-07-20",
+                "scope": ["Passive CAN receive and canonical mappings"],
+                "compatibility": {
+                    "equipment": ["Example passive CAN capture setup"] if level == "hardware" else [],
+                    "variants": ["Example Car 2010 to 2014"] if level == "hardware" else [],
+                },
+                "review": {
+                    "status": "approved",
+                    "reviewers": ["Open MMI maintainers"],
+                    "reviewed_on": "2026-07-20",
+                    "recheck_after": "2027-07-20",
+                },
+            }
+            record["history"] = [
+                {
+                    "from": "replay" if level == "hardware" else "none",
+                    "to": level,
+                    "date": "2026-07-20",
+                    "reason": "Test qualification transition.",
+                    "reviewers": ["Open MMI maintainers"],
+                }
+            ]
+        evidence_path = path.parent / "evidence" / "qualification.v1.json"
+        evidence_path.parent.mkdir(exist_ok=True)
+        evidence_path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
         return path
 
     def test_qualified_profile_requires_hardware_evidence(self) -> None:

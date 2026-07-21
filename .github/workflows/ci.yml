@@ -43,6 +43,9 @@ jobs:
       - name: Verify maintained vehicle-profile conformance
         run: open-mmi-config vehicle-setup conform --root .
 
+      - name: Verify formal vehicle qualification records
+        run: open-mmi-config vehicle-setup qualification report --root .
+
       - name: Verify maintained vehicle-profile scaffold planning
         run: |
           open-mmi-config vehicle-setup scaffold \
@@ -161,7 +164,12 @@ jobs:
           from canbusd import event_registry as vehicle_events
           from canbusd import profile_catalogue, profile_replay
           from canbusd import status_registry as vehicle_statuses
-          from ui import vehicle_capture_analysis, vehicle_profile_conformance, vehicle_profile_scaffold
+          from ui import (
+              vehicle_capture_analysis,
+              vehicle_profile_conformance,
+              vehicle_profile_qualification,
+              vehicle_profile_scaffold,
+          )
           from ui.web_dashboard import bluetooth, jellyfin, radio, usb
           import vehicles
 
@@ -173,9 +181,12 @@ jobs:
               "vehicle_catalogue": Path(vehicles.__file__).parent / "catalogue.v1.json",
               "vehicle_capture_analysis": Path(vehicle_capture_analysis.__file__),
               "vehicle_profile_scaffold": Path(vehicle_profile_scaffold.__file__),
+              "vehicle_profile_qualification": Path(vehicle_profile_qualification.__file__),
+              "vehicle_qualification_schema": Path(canbusd.__file__).parent / "data" / "vehicle-qualification.v1.schema.json",
               "vehicle_template": Path(vehicles.__file__).parent / "_template" / "config.template.json",
               "vehicle": Path(vehicles.__file__).parent / "seat" / "leon" / "1p-pq35" / "config.json",
               "vehicle_fixtures": Path(vehicles.__file__).parent / "seat" / "leon" / "1p-pq35" / "fixtures" / "mappings.v1.json",
+              "vehicle_qualification": Path(vehicles.__file__).parent / "seat" / "leon" / "1p-pq35" / "evidence" / "qualification.v1.json",
               "dashboard": Path(ui.web_dashboard.__file__).parent / "static" / "index.html",
               "frontend_api": Path(ui.web_dashboard.__file__).parent / "static" / "api.js",
               "frontend_preferences": Path(ui.web_dashboard.__file__).parent / "static" / "preferences.js",
@@ -227,6 +238,18 @@ jobs:
           )
           if not metadata["valid"]:
               raise SystemExit(f"Installed maintained profile metadata is invalid: {metadata}")
+          qualification = vehicle_profile_qualification.qualification_report_for_profile(
+              vehicle_document,
+              profile_path=roots["vehicle"],
+              fixtures={
+                  "present": True,
+                  "valid": replay["valid"],
+                  "coverage": replay["coverage"],
+              },
+              expected_profile_id="seat-leon-1p-pq35",
+          )
+          if not qualification["validation"]["valid"]:
+              raise SystemExit(f"Installed qualification record is invalid: {qualification}")
           print("Installed package imports and runtime assets verified")
           PY
 

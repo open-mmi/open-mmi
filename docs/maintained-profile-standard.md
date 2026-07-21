@@ -191,3 +191,11 @@ Catalogue review
 
 A contributor may add the metadata, evidence and first profile implementation in the same pull
 request. There is no separate permission request or private allow-list.
+
+## Formal qualification record
+
+Every maintained profile carries `evidence/qualification.v1.json`, described by
+`canbusd/data/vehicle-qualification.v1.schema.json`. It records reviewer approval, the next
+recheck date, tested equipment and vehicle variants, and transition history. The record must
+agree with `metadata.qualification`; replay and hardware claims require complete passing fixture
+coverage. See [the qualification workflow](vehicle-qualification-workflow.md).

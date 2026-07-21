@@ -74,6 +74,11 @@ def _qualification(profile: Mapping[str, Any]) -> Mapping[str, Any]:
     return qualification if isinstance(qualification, Mapping) else {}
 
 
+def _formal_qualification(profile: Mapping[str, Any]) -> Mapping[str, Any]:
+    value = profile.get("qualification", {})
+    return value if isinstance(value, Mapping) else {}
+
+
 def _market_aliases(profile: Mapping[str, Any]) -> list[str]:
     metadata = profile.get("metadata", {})
     values = metadata.get("market_aliases", [])
@@ -129,13 +134,14 @@ def render_catalogue(report: Mapping[str, Any]) -> str:
             "",
             "## Catalogue summary",
             "",
-            "| Profile | Vehicle | Years | Maturity | Qualification | Last tested | Legacy aliases | Compatible market names | Replay coverage | Evidence | Canonical capabilities |",
-            "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+            "| Profile | Vehicle | Years | Maturity | Qualification | Last tested | Review | Recheck after | Legacy aliases | Compatible market names | Replay coverage | Evidence | Canonical capabilities |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
         ]
     )
     for profile in profiles:
         metadata = profile["metadata"]
         qualification = _qualification(profile)
+        formal = _formal_qualification(profile)
         fixtures = profile.get("fixtures", {})
         coverage = fixtures.get("coverage", {})
         replay = (
@@ -150,6 +156,8 @@ def render_catalogue(report: Mapping[str, Any]) -> str:
             f"{_markdown(metadata['display_name'])} | {_year_range(metadata)} | "
             f"{_markdown(metadata['maturity'])} | {_markdown(qualification.get('level', '—'))} | "
             f"{_markdown(qualification.get('last_tested') or '—')} | "
+            f"{_markdown(formal.get('review_status') or '—')} | "
+            f"{_markdown(formal.get('recheck_after') or '—')} | "
             f"{_code_list(profile.get('aliases', []))} | {_text_list(_market_aliases(profile))} | "
             f"{_markdown(replay)} | {_markdown(_evidence_summary(profile))} | "
             f"{capabilities.get('event_count', 0)} events; {capabilities.get('status_count', 0)} statuses |"
@@ -159,6 +167,7 @@ def render_catalogue(report: Mapping[str, Any]) -> str:
     for profile in profiles:
         metadata = profile["metadata"]
         qualification = _qualification(profile)
+        formal = _formal_qualification(profile)
         capabilities = profile.get("capabilities", {})
         fixtures = profile.get("fixtures", {})
         coverage = fixtures.get("coverage", {})
@@ -174,6 +183,8 @@ def render_catalogue(report: Mapping[str, Any]) -> str:
                 f"- Model years: {_year_range(metadata)}",
                 f"- Maturity: `{metadata['maturity']}`",
                 f"- Qualification: `{qualification.get('level', 'none')}`; last tested `{qualification.get('last_tested') or 'not recorded'}`",
+                f"- Review: `{formal.get('review_status', 'unreviewed')}` by {_text_list(formal.get('reviewers', []))}; recheck after `{formal.get('recheck_after') or 'not scheduled'}`",
+                f"- Qualification history entries: {formal.get('history_count', 0)}",
                 f"- Legacy aliases: {_code_list(profile.get('aliases', []))}",
                 f"- Compatible market names: {_text_list(_market_aliases(profile))}",
                 f"- CAN buses: {_code_list(capabilities.get('buses', []))}",
@@ -189,6 +200,13 @@ def render_catalogue(report: Mapping[str, Any]) -> str:
         lines.extend(f"- {_markdown(item)}" for item in scope)
         if not scope:
             lines.append("- No qualification scope declared.")
+
+        compatibility = formal.get("compatibility", {})
+        equipment = compatibility.get("equipment", []) if isinstance(compatibility, Mapping) else []
+        variants = compatibility.get("variants", []) if isinstance(compatibility, Mapping) else []
+        lines.extend(["", "#### Compatibility boundary", ""])
+        lines.append(f"- Equipment: {_text_list(equipment)}")
+        lines.append(f"- Vehicle variants: {_text_list(variants)}")
 
         lines.extend(["", "#### Evidence", ""])
         evidence = qualification.get("evidence", [])
@@ -279,17 +297,20 @@ def render_capability_matrix(report: Mapping[str, Any]) -> str:
         "",
         "## Profile key",
         "",
-        "| Profile | Vehicle | Maturity | Qualification | Last tested | Events | Statuses |",
-        "| --- | --- | --- | --- | --- | --- | --- |",
+        "| Profile | Vehicle | Maturity | Qualification | Last tested | Review | Recheck after | Events | Statuses |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for profile in profiles:
         metadata = profile["metadata"]
         qualification = _qualification(profile)
+        formal = _formal_qualification(profile)
         capabilities = profile.get("capabilities", {})
         lines.append(
             f"| `{profile['id']}` | {_markdown(metadata['display_name'])} | "
             f"{_markdown(metadata['maturity'])} | {_markdown(qualification.get('level', '—'))} | "
             f"{_markdown(qualification.get('last_tested') or '—')} | "
+            f"{_markdown(formal.get('review_status') or '—')} | "
+            f"{_markdown(formal.get('recheck_after') or '—')} | "
             f"{capabilities.get('event_count', 0)} | {capabilities.get('status_count', 0)} |"
         )
     lines.append("")

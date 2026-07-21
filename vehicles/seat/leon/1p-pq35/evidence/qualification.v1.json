@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "record_id": "open-mmi.vehicle-profile-qualification",
+  "profile_id": "seat-leon-1p-pq35",
+  "current": {
+    "level": "hardware",
+    "tested_on": "2026-07-20",
+    "scope": [
+      "Passive comfort CAN reception at 100 kbit/s",
+      "Canonical steering-wheel and presence events",
+      "Canonical vehicle status decoding",
+      "Reviewed Vehicle Setup apply and rollback",
+      "Real vehicle CAN traffic with maintained and custom sources"
+    ],
+    "compatibility": {
+      "equipment": [
+        "Maintainer-qualified passive comfort CAN connection at 100 kbit/s"
+      ],
+      "variants": [
+        "SEAT Leon 1P / Mk2 (PQ35), model years 2005 to 2012"
+      ]
+    },
+    "review": {
+      "status": "approved",
+      "reviewers": [
+        "Open MMI maintainers"
+      ],
+      "reviewed_on": "2026-07-20",
+      "recheck_after": "2027-07-20"
+    }
+  },
+  "history": [
+    {
+      "from": "replay",
+      "to": "hardware",
+      "date": "2026-07-20",
+      "reason": "Imported the existing maintained hardware qualification into the formal lifecycle record.",
+      "reviewers": [
+        "Open MMI maintainers"
+      ]
+    }
+  ]
+}

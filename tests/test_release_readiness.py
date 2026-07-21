@@ -76,6 +76,22 @@ class ReleaseReadinessTests(unittest.TestCase):
         wheel = (ROOT / "tools/verify_wheel.py").read_text(encoding="utf-8")
         self.assertIn('"ui/vehicle_capture_analysis.py"', wheel)
 
+    def test_vehicle_qualification_workflow_is_packaged_and_checked(self):
+        self.assertTrue((ROOT / "ui/vehicle_profile_qualification.py").is_file())
+        self.assertTrue((ROOT / "docs/vehicle-qualification-workflow.md").is_file())
+        self.assertTrue((ROOT / "canbusd/data/vehicle-qualification.v1.schema.json").is_file())
+        self.assertTrue(
+            (ROOT / "vehicles/seat/leon/1p-pq35/evidence/qualification.v1.json").is_file()
+        )
+        source = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        self.assertIn(
+            "open-mmi-config vehicle-setup qualification report --root .",
+            source,
+        )
+        wheel = (ROOT / "tools/verify_wheel.py").read_text(encoding="utf-8")
+        self.assertIn('"ui/vehicle_profile_qualification.py"', wheel)
+        self.assertIn('"canbusd/data/vehicle-qualification.v1.schema.json"', wheel)
+
     def test_generated_vehicle_catalogue_documents_exist_and_ci_checks_them(self):
         self.assertTrue((ROOT / "docs/vehicle-catalogue.md").is_file())
         self.assertTrue((ROOT / "docs/vehicle-capability-matrix.md").is_file())

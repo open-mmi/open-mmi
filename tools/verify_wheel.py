@@ -26,7 +26,9 @@ REQUIRED_PATHS = {
     "canbusd/profile_replay.py",
     "canbusd/data/vehicle-statuses.v1.json",
     "canbusd/data/vehicle-profile.v1.schema.json",
+    "canbusd/data/vehicle-qualification.v1.schema.json",
     "ui/vehicle_profile_conformance.py",
+    "ui/vehicle_profile_qualification.py",
     "ui/vehicle_capture_analysis.py",
     "ui/vehicle_profile_scaffold.py",
     "ui/vehicle_config_coordinator.py",
@@ -69,9 +71,11 @@ REQUIRED_PATHS = {
     "vehicles/_template/config.template.json",
     "vehicles/_template/fixtures/README.md",
     "vehicles/_template/evidence/README.md",
+    "vehicles/_template/evidence/qualification.v1.json",
     "vehicles/_template/notes/README.md",
     "vehicles/seat/leon/1p-pq35/config.json",
     "vehicles/seat/leon/1p-pq35/fixtures/mappings.v1.json",
+    "vehicles/seat/leon/1p-pq35/evidence/qualification.v1.json",
     "vehicles/seat/leon/1p-pq35/README.md",
 }
 

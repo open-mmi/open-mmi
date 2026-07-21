@@ -1521,3 +1521,10 @@ Jellyfin, Internet Radio, USB, and Bluetooth are functional media sources.
 Internet Radio uses Radio Browser for discovery and a same-origin, UUID-based audio
 proxy with public-address validation.
 <!-- open-mmi-media-sources-end -->
+
+## Formal vehicle qualification
+
+Maintained profile claims use a machine-readable review lifecycle: `none → replay → hardware`.
+See [the qualification workflow](docs/vehicle-qualification-workflow.md) for reviewer sign-off,
+compatibility boundaries, stale-review warnings, promotion and demotion rules. SEAT Leon 1P
+remains the only maintained reverse-engineered and hardware-qualified vehicle profile.
