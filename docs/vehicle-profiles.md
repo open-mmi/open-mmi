@@ -94,6 +94,21 @@ are in [`vehicle-integration-standard.md`](vehicle-integration-standard.md).
 Unknown event names, deprecated aliases, payload-bearing `any` rules for no-payload events,
 and no-payload rules for value events fail profile validation.
 
+## Universal statuses, not vehicle-specific paths
+
+Status rules translate vehicle-specific bytes, masks and scaling into canonical persistent
+state. The machine-readable source is `canbusd/data/vehicle-statuses.v1.json`; the generated
+reference is [`vehicle-status-registry.md`](vehicle-status-registry.md).
+
+For example, one vehicle may publish `doors.front_right` from a bitfield while another uses a
+dedicated boolean byte. The CAN decoder changes; dashboards and other consumers receive the
+same human-readable path and value contract.
+
+The registry records value type, unit, nullability and lifecycle. Stable paths are public
+consumer contracts. Experimental paths are provisional interpretations, while diagnostic
+paths preserve raw reverse-engineering evidence without presenting it as stable human state.
+Unregistered paths and incompatible decoder types fail maintained-profile validation.
+
 ## What belongs in a vehicle profile
 
 Vehicle profiles may define:

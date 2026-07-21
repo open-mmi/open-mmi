@@ -3,6 +3,8 @@
 ## Unreleased — V1 vehicle setup coordinator
 
 ### Added
+- Canonical machine-readable vehicle-status registry with stable path meaning, value type, unit, enum, nullability and lifecycle contracts for all maintained Seat status outputs.
+- Human-language status search/check tooling, generated status documentation, runtime/profile conformance, enum-value enforcement and event guidance that redirects ambiguous persistent concepts toward the status registry.
 - Canonical machine-readable vehicle-event registry with stable semantic, payload, delivery and lifecycle contracts for all maintained profile emissions and binding keys.
 - Generated event reference, vehicle-integration standard, CLI registry inspection and conformance tests that reject vehicle-specific event synonyms and payload mismatches.
 - Contributor-facing continuity policy that keeps raw CAN discovery open while requiring maintained profiles to reuse or propose one shared human-readable vocabulary.

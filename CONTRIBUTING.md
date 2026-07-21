@@ -61,8 +61,8 @@ The goal is to make vehicle integration knowledge reusable, not to hardcode one 
 
 ## The registry is not a walled garden
 
-The canonical event and future status registries are continuity checkpoints. They do not
-reserve vehicle discovery or new concepts for maintainers.
+The canonical event and status registries are continuity checkpoints. They do not reserve
+vehicle discovery or new concepts for maintainers.
 
 You may freely submit raw CAN captures, unknown bytes, manufacturer terminology, provisional
 names and partial interpretations. A signal only needs a canonical descriptor when it is
@@ -94,6 +94,10 @@ Useful commands:
 open-mmi-config vehicle-setup events --search mute
 open-mmi-config vehicle-setup events --check mute_toggle
 open-mmi-config vehicle-setup events --check pdc_signal
+open-mmi-config vehicle-setup statuses --search "right door"
+open-mmi-config vehicle-setup statuses --search pdc_signal
+open-mmi-config vehicle-setup statuses --check doors.front_right
+open-mmi-config vehicle-setup statuses --check pdc_signal
 ```
 
 ---
@@ -202,6 +206,8 @@ For a maintained vehicle mapping, complete the **reuse or propose** checkpoint:
 Please check:
 
 ```bash
+python tools/generate_vehicle_event_docs.py --check
+python tools/generate_vehicle_status_docs.py --check
 python3 -m py_compile canbusd/core.py canbusd/can_runtime.py canbusd/status_rules.py canbusd/status_bus.py
 python3 -m unittest discover -s tests
 python3 -m json.tool vehicles/seat_1p/config.json >/dev/null

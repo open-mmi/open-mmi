@@ -10,6 +10,7 @@ import sys
 from typing import Any, Mapping, Optional, Sequence
 
 from canbusd import event_registry as vehicle_events
+from canbusd import status_registry as vehicle_statuses
 
 from ui import (
     launcher,
@@ -124,6 +125,21 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="EVENT",
         help="explain whether to reuse, migrate or propose an event",
     )
+    vehicle_statuses_parser = vehicle_setup_commands.add_parser(
+        "statuses",
+        help="inspect the canonical persistent vehicle-status registry",
+    )
+    vehicle_statuses_parser.add_argument("path", nargs="?")
+    vehicle_statuses_parser.add_argument(
+        "--search",
+        metavar="TEXT",
+        help="search canonical status paths by human wording",
+    )
+    vehicle_statuses_parser.add_argument(
+        "--check",
+        metavar="PATH",
+        help="explain whether to reuse, migrate or propose a status path",
+    )
     vehicle_setup_commands.add_parser(
         "coordinator",
         help="inspect the privileged vehicle configuration coordinator",
@@ -226,6 +242,23 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     _print(vehicle_events.event_definition(args.event))
                 else:
                     _print(vehicle_events.registry_payload())
+            elif args.command == "statuses":
+                selected = sum(
+                    value is not None
+                    for value in (args.path, args.search, args.check)
+                )
+                if selected > 1:
+                    raise ValueError(
+                        "choose one status path, --search query, or --check path"
+                    )
+                if args.search is not None:
+                    _print(vehicle_statuses.search_statuses(args.search))
+                elif args.check is not None:
+                    _print(vehicle_statuses.contribution_check(args.check))
+                elif args.path:
+                    _print(vehicle_statuses.status_definition(args.path))
+                else:
+                    _print(vehicle_statuses.registry_payload())
             elif args.command == "preview":
                 _print(
                     vehicle_config_coordinator.client_preview(
@@ -277,7 +310,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         result = _jellyfin_test(values)
         _print({"ok": True, **result})
         return 0
-    except (ConfigurationError, launcher.LauncherError, update_coordinator.CoordinatorError, vehicle_config_coordinator.CoordinatorError, update_status.UpdateStatusError, vehicle_events.VehicleEventRegistryError, vehicle_setup.VehicleSetupError, RuntimeError, ValueError) as exc:
+    except (ConfigurationError, launcher.LauncherError, update_coordinator.CoordinatorError, vehicle_config_coordinator.CoordinatorError, update_status.UpdateStatusError, vehicle_events.VehicleEventRegistryError, vehicle_statuses.VehicleStatusRegistryError, vehicle_setup.VehicleSetupError, RuntimeError, ValueError) as exc:
         print(f"open-mmi-config: {exc}", file=sys.stderr)
         return 1
 

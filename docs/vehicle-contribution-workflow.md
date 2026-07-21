@@ -106,16 +106,16 @@ represents a button press, a distance, an enabled state or a warning.
 Further evidence might show that the signal is:
 
 - an event such as `parking_assist_toggle`;
-- a persistent distance such as an illustrative `parking.distance.rear_left` value;
-- a warning state such as an illustrative `parking.proximity.rear.status`; or
+- a persistent distance such as `parking.distance.rear_left`;
+- an active state such as `parking.assist.active`; or
 - several separate signals rather than one concept.
 
-Status path examples in this document are illustrative until the canonical status registry
-is introduced. The naming test is still the same: an English-speaking reader should
-understand the human concept without knowing the source CAN ID or manufacturer acronym.
+The canonical status registry now records human-readable paths, value types, units,
+nullability and lifecycle. An English-speaking reader should understand the human concept
+without knowing the source CAN ID or manufacturer acronym.
 
-A genuinely new event may be added to `canbusd/data/vehicle-events.v1.json` in the same
-pull request as its first vehicle mapping. That pull request should include:
+A genuinely new event or status may be added to its registry in the same pull request as
+its first vehicle mapping. That pull request should include:
 
 - a clear title and plain-English description;
 - event versus persistent-status classification;
@@ -146,16 +146,13 @@ next_track
 parking_assist_toggle
 ```
 
-Good status names should express a human-readable subject and state. A discovery label such
-as `door.status.right` already communicates more human meaning than a CAN ID; the future
-status registry will choose one consistent grammar for position, state, type and units.
-Until then, names should be as clear as concepts such as:
+Good status paths express a human-readable subject and state using the shared registry:
 
 ```text
-door.front_right.status
+doors.front_right
 parking.distance.rear_left
-climate.temperature.driver
-vehicle.speed
+climate.outside_temp_regulation_c
+vehicle.speed_kmh
 ```
 
 Names that remain machine- or vendor-specific are not ready for the maintained boundary:
@@ -201,6 +198,8 @@ Search the registry using ordinary human terms:
 ```bash
 open-mmi-config vehicle-setup events --search mute
 open-mmi-config vehicle-setup events --search "audio volume"
+open-mmi-config vehicle-setup statuses --search "right door"
+open-mmi-config vehicle-setup statuses --search pdc_signal
 ```
 
 Check a proposed identifier:
@@ -208,16 +207,20 @@ Check a proposed identifier:
 ```bash
 open-mmi-config vehicle-setup events --check mute_toggle
 open-mmi-config vehicle-setup events --check pdc_signal
+open-mmi-config vehicle-setup statuses --check doors.front_right
+open-mmi-config vehicle-setup statuses --check pdc_signal
 ```
 
 The check command does not grant or deny permission. It explains whether to reuse an
 existing event, migrate a deprecated alias, improve an invalid identifier, or propose a new
-universal concept.
+universal concept. Event checking also points toward status candidates when wording appears
+to describe persistent vehicle state.
 
-Inspect an exact canonical event:
+Inspect exact canonical definitions:
 
 ```bash
 open-mmi-config vehicle-setup events mute_toggle
+open-mmi-config vehicle-setup statuses parking.distance.rear_left
 ```
 
 ## Contribution sequence

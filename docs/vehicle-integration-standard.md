@@ -29,8 +29,8 @@ Application behavior
 Each layer has one responsibility:
 
 1. **Vehicle profile** — CAN IDs, bytes, values, masks, scaling and bus metadata.
-2. **Canonical registry** — universal event meaning and payload contract.
-3. **Bindings** — module, function and configured arguments for an application action.
+2. **Canonical registries** — universal event intent and persistent-status contracts.
+3. **Bindings and consumers** — application actions and interfaces that use those contracts.
 
 For example, Seat and Vauxhall may encode a steering-wheel mute request differently:
 
@@ -91,6 +91,29 @@ Canonical event identifiers:
 
 Aliases are migration diagnostics only. New profiles and bindings must use the canonical
 identifier directly.
+
+## Canonical status rules
+
+The authoritative machine-readable status source is:
+
+```text
+canbusd/data/vehicle-statuses.v1.json
+```
+
+Its generated reference is `docs/vehicle-status-registry.md`. A status path describes state
+that remains meaningful between frames. Its contract records the value type, unit, bounds,
+nullability and lifecycle independently of the vehicle-specific CAN decoder.
+
+For example, different vehicles can decode different frames into the same boolean path:
+
+```text
+doors.front_right = true
+```
+
+Stable paths are consumer-facing API. `experimental` paths preserve useful interpretations
+that still need confirmation. `diagnostic` paths retain raw evidence and are not stable UI
+contracts. Deprecated aliases may be emitted only where a profile explicitly identifies them
+as compatibility aliases.
 
 ## Event payloads
 
@@ -185,16 +208,27 @@ Inspect one exact event:
 open-mmi-config vehicle-setup events mute_toggle
 ```
 
-Regenerate the event reference after a registry change:
+Search, check or inspect persistent status paths:
+
+```bash
+open-mmi-config vehicle-setup statuses --search "right door"
+open-mmi-config vehicle-setup statuses --search pdc_signal
+open-mmi-config vehicle-setup statuses --check doors.front_right
+open-mmi-config vehicle-setup statuses parking.distance.rear_left
+```
+
+Regenerate the references after a registry change:
 
 ```bash
 python tools/generate_vehicle_event_docs.py
+python tools/generate_vehicle_status_docs.py
 ```
 
 Verify that generated documentation is current:
 
 ```bash
 python tools/generate_vehicle_event_docs.py --check
+python tools/generate_vehicle_status_docs.py --check
 ```
 
 Run the conformance tests:

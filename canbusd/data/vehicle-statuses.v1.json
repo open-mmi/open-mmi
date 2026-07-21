@@ -1,0 +1,954 @@
+{
+  "schema_version": 1,
+  "registry_id": "open-mmi.vehicle-statuses",
+  "statuses": {
+    "climate.blower_load_percent": {
+      "title": "Blower load",
+      "category": "climate",
+      "description": "Requested or measured climate blower load.",
+      "value": {
+        "type": "number",
+        "nullable": false,
+        "unit": "percent",
+        "minimum": 0,
+        "maximum": 100
+      },
+      "status": "stable",
+      "search_terms": [
+        "fan blower climate speed load"
+      ]
+    },
+    "climate.blower_load_raw": {
+      "title": "Blower load raw byte",
+      "category": "climate",
+      "description": "Unscaled source byte for blower load.",
+      "value": {
+        "type": "integer",
+        "nullable": false,
+        "minimum": 0,
+        "maximum": 255
+      },
+      "status": "diagnostic"
+    },
+    "climate.compressor_active": {
+      "title": "Climate compressor active",
+      "category": "climate",
+      "description": "Whether the air-conditioning compressor is active.",
+      "value": {
+        "type": "boolean",
+        "nullable": false
+      },
+      "status": "stable",
+      "search_terms": [
+        "air conditioning ac compressor active"
+      ]
+    },
+    "climate.debug_555_b1": {
+      "title": "Climate debug 0x555 B1",
+      "category": "climate",
+      "description": "Provisional decoded value retained for reverse-engineering.",
+      "value": {
+        "type": "number",
+        "nullable": false
+      },
+      "status": "diagnostic",
+      "search_terms": [
+        "climate debug reverse engineering"
+      ]
+    },
+    "climate.debug_555_b1_raw": {
+      "title": "Climate debug 0x555 B1 raw",
+      "category": "climate",
+      "description": "Raw byte retained for reverse-engineering.",
+      "value": {
+        "type": "integer",
+        "nullable": false,
+        "minimum": 0,
+        "maximum": 255
+      },
+      "status": "diagnostic"
+    },
+    "climate.debug_555_b3": {
+      "title": "Climate debug 0x555 B3",
+      "category": "climate",
+      "description": "Provisional decoded value retained for reverse-engineering.",
+      "value": {
+        "type": "number",
+        "nullable": false
+      },
+      "status": "diagnostic",
+      "search_terms": [
+        "climate debug reverse engineering"
+      ]
+    },
+    "climate.debug_555_b3_raw": {
+      "title": "Climate debug 0x555 B3 raw",
+      "category": "climate",
+      "description": "Raw byte retained for reverse-engineering.",
+      "value": {
+        "type": "integer",
+        "nullable": false,
+        "minimum": 0,
+        "maximum": 255
+      },
+      "status": "diagnostic"
+    },
+    "climate.debug_555_b4": {
+      "title": "Climate debug 0x555 B4",
+      "category": "climate",
+      "description": "Provisional decoded value retained for reverse-engineering.",
+      "value": {
+        "type": "number",
+        "nullable": false
+      },
+      "status": "diagnostic",
+      "search_terms": [
+        "climate debug reverse engineering"
+      ]
+    },
+    "climate.debug_555_b4_raw": {
+      "title": "Climate debug 0x555 B4 raw",
+      "category": "climate",
+      "description": "Raw byte retained for reverse-engineering.",
+      "value": {
+        "type": "integer",
+        "nullable": false,
+        "minimum": 0,
+        "maximum": 255
+      },
+      "status": "diagnostic"
+    },
+    "climate.front_windscreen_heater_requested": {
+      "title": "Front-windscreen heater requested",
+      "category": "climate",
+      "description": "Whether the front-windscreen heater has been requested.",
+      "value": {
+        "type": "boolean",
+        "nullable": false
+      },
+      "status": "stable",
+      "search_terms": [
+        "front windshield windscreen demist defrost heater request"
+      ]
+    },
+    "climate.klima_status_raw": {
+      "title": "Climate status raw byte",
+      "category": "climate",
+      "description": "Shared raw source byte for climate request states.",
+      "value": {
+        "type": "integer",
+        "nullable": false,
+        "minimum": 0,
+        "maximum": 255
+      },
+      "status": "diagnostic"
+    },
+    "climate.outside_temp_regulation_c": {
+      "title": "Outside temperature for regulation",
+      "category": "climate",
+      "description": "Outside-air temperature used by climate regulation.",
+      "value": {
+        "type": "number",
+        "nullable": false,
+        "unit": "°C"
+      },
+      "status": "stable",
+      "search_terms": [
+        "outside ambient temperature climate"
+      ]
+    },
+    "climate.outside_temp_regulation_raw": {
+      "title": "Outside regulation temperature raw byte",
+      "category": "climate",
+      "description": "Unscaled source byte for regulation outside temperature.",
+      "value": {
+        "type": "integer",
+        "nullable": false,
+        "minimum": 0,
+        "maximum": 255
+      },
+      "status": "diagnostic"
+    },
+    "climate.outside_temp_unfiltered_c": {
+      "title": "Outside temperature unfiltered",
+      "category": "climate",
+      "description": "Unfiltered outside-air temperature source.",
+      "value": {
+        "type": "number",
+        "nullable": false,
+        "unit": "°C"
+      },
+      "status": "experimental",
+      "search_terms": [
+        "outside ambient temperature raw unfiltered"
+      ]
+    },
+    "climate.outside_temp_unfiltered_raw": {
+      "title": "Outside unfiltered temperature raw byte",
+      "category": "climate",
+      "description": "Unscaled source byte for unfiltered outside temperature.",
+      "value": {
+        "type": "integer",
+        "nullable": false,
+        "minimum": 0,
+        "maximum": 255
+      },
+      "status": "diagnostic"
+    },
+    "climate.rear_window_heater_raw": {
+      "title": "Rear-window heater raw byte",
+      "category": "climate",
+      "description": "Uninterpreted source byte associated with rear-window heating.",
+      "value": {
+        "type": "integer",
+        "nullable": false,
+        "minimum": 0,
+        "maximum": 255
+      },
+      "status": "diagnostic"
+    },
+    "climate.rear_window_heater_requested": {
+      "title": "Rear-window heater requested",
+      "category": "climate",
+      "description": "Whether the rear-window heater has been requested.",
+      "value": {
+        "type": "boolean",
+        "nullable": false
+      },
+      "status": "stable",
+      "search_terms": [
+        "rear window demist defrost heater request"
+      ]
+    },
+    "climate.recirculation_active": {
+      "title": "Air recirculation active",
+      "category": "climate",
+      "description": "Whether cabin-air recirculation is active.",
+      "value": {
+        "type": "boolean",
+        "nullable": false
+      },
+      "status": "stable",
+      "search_terms": [
+        "recirculation cabin air intake"
+      ]
+    },
+    "climate.recirculation_raw": {
+      "title": "Recirculation raw byte",
+      "category": "climate",
+      "description": "Raw source byte for recirculation state.",
+      "value": {
+        "type": "integer",
+        "nullable": false,
+        "minimum": 0,
+        "maximum": 255
+      },
+      "status": "diagnostic"
+    },
+    "doors.any_open": {
+      "title": "Any opening open",
+      "category": "doors",
+      "description": "Whether any registered door, bonnet, or boot opening is open.",
+      "value": {
+        "type": "boolean",
+        "nullable": false
+      },
+      "status": "stable",
+      "search_terms": [
+        "door bonnet boot any open"
+      ]
+    },
+    "doors.bonnet": {
+      "title": "Bonnet",
+      "category": "doors",
+      "description": "Whether the bonnet is open.",
+      "value": {
+        "type": "boolean",
+        "nullable": false
+      },
+      "status": "stable",
+      "search_terms": [
+        "hood bonnet status open closed"
+      ]
+    },
+    "doors.boot": {
+      "title": "Boot",
+      "category": "doors",
+      "description": "Whether the boot or tailgate is open.",
+      "value": {
+        "type": "boolean",
+        "nullable": false
+      },
+      "status": "stable",
+      "search_terms": [
+        "trunk boot tailgate status open closed"
+      ]
+    },
+    "doors.front_left": {
+      "title": "Front-left door",
+      "category": "doors",
+      "description": "Whether the front-left driver door is open.",
+      "value": {
+        "type": "boolean",
+        "nullable": false
+      },
+      "status": "stable",
+      "search_terms": [
+        "left front driver door status open closed"
+      ]
+    },
+    "doors.front_right": {
+      "title": "Front-right door",
+      "category": "doors",
+      "description": "Whether the front-right passenger door is open.",
+      "value": {
+        "type": "boolean",
+        "nullable": false
+      },
+      "status": "stable",
+      "search_terms": [
+        "right front passenger door status open closed"
+      ]
+    },
+    "doors.raw": {
+      "title": "Door status raw byte",
+      "category": "doors",
+      "description": "Uninterpreted source byte used by the maintained door decoder.",
+      "value": {
+        "type": "integer",
+        "nullable": false,
+        "minimum": 0,
+        "maximum": 255
+      },
+      "status": "diagnostic",
+      "search_terms": [
+        "door raw byte"
+      ]
+    },
+    "doors.rear_left": {
+      "title": "Rear-left door",
+      "category": "doors",
+      "description": "Whether the rear-left door is open.",
+      "value": {
+        "type": "boolean",
+        "nullable": false
+      },
+      "status": "stable",
+      "search_terms": [
+        "left rear door status open closed"
+      ]
+    },
+    "doors.rear_right": {
+      "title": "Rear-right door",
+      "category": "doors",
+      "description": "Whether the rear-right door is open.",
+      "value": {
+        "type": "boolean",
+        "nullable": false
+      },
+      "status": "stable",
+      "search_terms": [
+        "right rear door status open closed"
+      ]
+    },
+    "electrical.supply_voltage_raw": {
+      "title": "Supply voltage raw byte",
+      "category": "electrical",
+      "description": "Unscaled source byte for electrical supply voltage.",
+      "value": {
+        "type": "integer",
+        "nullable": false,
+        "minimum": 0,
+        "maximum": 255
+      },
+      "status": "diagnostic"
+    },
+    "electrical.supply_voltage_v": {
+      "title": "Supply voltage",
+      "category": "electrical",
+      "description": "Decoded vehicle electrical supply voltage.",
+      "value": {
+        "type": "number",
+        "nullable": false,
+        "unit": "V",
+        "minimum": 0
+      },
+      "status": "stable",
+      "search_terms": [
+        "battery voltage supply electrical"
+      ]
+    },
+    "engine.coolant_temp_c": {
+      "title": "Coolant temperature",
+      "category": "engine",
+      "description": "Decoded engine coolant temperature.",
+      "value": {
+        "type": "number",
+        "nullable": false,
+        "unit": "°C"
+      },
+      "status": "stable",
+      "search_terms": [
+        "engine coolant temperature water"
+      ]
+    },
+    "engine.coolant_temp_raw": {
+      "title": "Coolant temperature raw byte",
+      "category": "engine",
+      "description": "Unscaled source byte for coolant temperature.",
+      "value": {
+        "type": "integer",
+        "nullable": false,
+        "minimum": 0,
+        "maximum": 255
+      },
+      "status": "diagnostic"
+    },
+    "engine.speed_raw": {
+      "title": "Engine speed raw value",
+      "category": "engine",
+      "description": "Unscaled source value for engine speed.",
+      "value": {
+        "type": "integer",
+        "nullable": false,
+        "minimum": 0,
+        "maximum": 65535
+      },
+      "status": "diagnostic"
+    },
+    "engine.speed_rpm": {
+      "title": "Engine speed",
+      "category": "engine",
+      "description": "Decoded engine rotational speed.",
+      "value": {
+        "type": "number",
+        "nullable": false,
+        "unit": "rpm",
+        "minimum": 0
+      },
+      "status": "stable",
+      "search_terms": [
+        "engine rpm revolutions"
+      ]
+    },
+    "fuel.range_km_candidate": {
+      "title": "Range candidate",
+      "category": "fuel",
+      "description": "Experimental decoded driving-range candidate.",
+      "value": {
+        "type": "number",
+        "nullable": false,
+        "unit": "km",
+        "minimum": 0
+      },
+      "status": "experimental",
+      "search_terms": [
+        "fuel driving range distance remaining"
+      ]
+    },
+    "fuel.range_km_rounded_candidate": {
+      "title": "Rounded range candidate",
+      "category": "fuel",
+      "description": "Experimental rounded driving-range candidate.",
+      "value": {
+        "type": "number",
+        "nullable": false,
+        "unit": "km",
+        "minimum": 0
+      },
+      "status": "experimental",
+      "search_terms": [
+        "fuel driving range rounded"
+      ]
+    },
+    "fuel.range_raw_candidate": {
+      "title": "Range candidate raw value",
+      "category": "fuel",
+      "description": "Raw source value for the experimental range candidate.",
+      "value": {
+        "type": "integer",
+        "nullable": false,
+        "minimum": 0,
+        "maximum": 65535
+      },
+      "status": "diagnostic"
+    },
+    "fuel.range_rounded_raw_candidate": {
+      "title": "Rounded range candidate raw byte",
+      "category": "fuel",
+      "description": "Raw source byte for the rounded range candidate.",
+      "value": {
+        "type": "integer",
+        "nullable": false,
+        "minimum": 0,
+        "maximum": 255
+      },
+      "status": "diagnostic"
+    },
+    "lighting.brake": {
+      "title": "Brake lights",
+      "category": "lighting",
+      "description": "Whether brake lights are active.",
+      "value": {
+        "type": "boolean",
+        "nullable": false
+      },
+      "status": "stable",
+      "search_terms": [
+        "brake stop lamp lights"
+      ]
+    },
+    "lighting.bulb_out": {
+      "title": "Bulb failure",
+      "category": "lighting",
+      "description": "Whether the vehicle reports a bulb failure.",
+      "value": {
+        "type": "boolean",
+        "nullable": false
+      },
+      "status": "stable",
+      "search_terms": [
+        "bulb lamp failure warning"
+      ]
+    },
+    "lighting.bulb_out_raw": {
+      "title": "Bulb failure raw byte",
+      "category": "lighting",
+      "description": "Uninterpreted source byte for bulb-failure state.",
+      "value": {
+        "type": "integer",
+        "nullable": false,
+        "minimum": 0,
+        "maximum": 255
+      },
+      "status": "diagnostic"
+    },
+    "lighting.dimmer_635_raw": {
+      "title": "Display dimmer mirror raw byte",
+      "category": "lighting",
+      "description": "Raw byte for the experimental dimmer mirror.",
+      "value": {
+        "type": "integer",
+        "nullable": false,
+        "minimum": 0,
+        "maximum": 255
+      },
+      "status": "diagnostic"
+    },
+    "lighting.dimmer_percent": {
+      "title": "Display dimmer",
+      "category": "lighting",
+      "description": "Requested dashboard or display dimmer level.",
+      "value": {
+        "type": "number",
+        "nullable": false,
+        "unit": "percent",
+        "minimum": 0,
+        "maximum": 100
+      },
+      "status": "stable",
+      "search_terms": [
+        "brightness dimmer illumination percent"
+      ]
+    },
+    "lighting.dimmer_percent_mirror": {
+      "title": "Display dimmer mirror",
+      "category": "lighting",
+      "description": "Experimental second source for display dimmer level.",
+      "value": {
+        "type": "number",
+        "nullable": false,
+        "unit": "percent",
+        "minimum": 0,
+        "maximum": 100
+      },
+      "status": "experimental"
+    },
+    "lighting.dimmer_raw": {
+      "title": "Dimmer raw byte",
+      "category": "lighting",
+      "description": "Unscaled source byte for the display dimmer.",
+      "value": {
+        "type": "integer",
+        "nullable": false,
+        "minimum": 0,
+        "maximum": 255
+      },
+      "status": "diagnostic"
+    },
+    "lighting.hazards": {
+      "title": "Hazard lights",
+      "category": "lighting",
+      "description": "Whether hazard warning lights are active.",
+      "value": {
+        "type": "boolean",
+        "nullable": false
+      },
+      "status": "stable",
+      "search_terms": [
+        "hazard warning flashers"
+      ]
+    },
+    "lighting.left_indicator": {
+      "title": "Left indicator",
+      "category": "lighting",
+      "description": "Whether the left direction indicator is active.",
+      "value": {
+        "type": "boolean",
+        "nullable": false
+      },
+      "status": "stable",
+      "search_terms": [
+        "left turn signal indicator"
+      ]
+    },
+    "lighting.lights_on": {
+      "title": "Exterior lights on",
+      "category": "lighting",
+      "description": "Whether exterior lighting is active.",
+      "value": {
+        "type": "boolean",
+        "nullable": false
+      },
+      "status": "stable",
+      "search_terms": [
+        "headlights exterior lights on"
+      ]
+    },
+    "lighting.lights_on_raw": {
+      "title": "Exterior lights raw byte",
+      "category": "lighting",
+      "description": "Uninterpreted source byte for exterior-light state.",
+      "value": {
+        "type": "integer",
+        "nullable": false,
+        "minimum": 0,
+        "maximum": 255
+      },
+      "status": "diagnostic"
+    },
+    "lighting.mode": {
+      "title": "Lighting mode",
+      "category": "lighting",
+      "description": "Decoded exterior-lighting mode.",
+      "value": {
+        "type": "enum",
+        "nullable": false,
+        "values": [
+          "off",
+          "sides",
+          "dip",
+          "rear_fog",
+          "main_beam_lights_off",
+          "main_beam_sides",
+          "main_beam_dip",
+          "main_beam_rear_fog",
+          "reverse_with_dip",
+          "lights_off_reverse",
+          "sides_with_reverse",
+          "rear_fog_with_reverse",
+          "unknown"
+        ]
+      },
+      "status": "stable",
+      "search_terms": [
+        "headlight lighting mode dipped beam main beam fog"
+      ]
+    },
+    "lighting.mode_raw": {
+      "title": "Lighting mode raw byte",
+      "category": "lighting",
+      "description": "Uninterpreted source byte for lighting mode.",
+      "value": {
+        "type": "integer",
+        "nullable": false,
+        "minimum": 0,
+        "maximum": 255
+      },
+      "status": "diagnostic"
+    },
+    "lighting.right_indicator": {
+      "title": "Right indicator",
+      "category": "lighting",
+      "description": "Whether the right direction indicator is active.",
+      "value": {
+        "type": "boolean",
+        "nullable": false
+      },
+      "status": "stable",
+      "search_terms": [
+        "right turn signal indicator"
+      ]
+    },
+    "lighting.secondary_raw": {
+      "title": "Secondary lighting raw byte",
+      "category": "lighting",
+      "description": "Uninterpreted source byte for secondary lighting states.",
+      "value": {
+        "type": "integer",
+        "nullable": false,
+        "minimum": 0,
+        "maximum": 255
+      },
+      "status": "diagnostic"
+    },
+    "parking.assist.active": {
+      "title": "Parking assistance active",
+      "category": "parking",
+      "description": "Whether the parking-assistance system is active.",
+      "value": {
+        "type": "boolean",
+        "nullable": false
+      },
+      "status": "stable",
+      "search_terms": [
+        "pdc signal parking distance control assist active sensor"
+      ]
+    },
+    "parking.distance.front_left": {
+      "title": "Front-left parking distance",
+      "category": "parking",
+      "description": "Distance from the front-left parking sensor to the nearest detected obstacle.",
+      "value": {
+        "type": "number",
+        "nullable": false,
+        "unit": "cm",
+        "minimum": 0
+      },
+      "status": "stable",
+      "search_terms": [
+        "pdc signal parking distance control parking sensor proximity obstacle"
+      ]
+    },
+    "parking.distance.front_right": {
+      "title": "Front-right parking distance",
+      "category": "parking",
+      "description": "Distance from the front-right parking sensor to the nearest detected obstacle.",
+      "value": {
+        "type": "number",
+        "nullable": false,
+        "unit": "cm",
+        "minimum": 0
+      },
+      "status": "stable",
+      "search_terms": [
+        "pdc signal parking distance control parking sensor proximity obstacle"
+      ]
+    },
+    "parking.distance.rear_left": {
+      "title": "Rear-left parking distance",
+      "category": "parking",
+      "description": "Distance from the rear-left parking sensor to the nearest detected obstacle.",
+      "value": {
+        "type": "number",
+        "nullable": false,
+        "unit": "cm",
+        "minimum": 0
+      },
+      "status": "stable",
+      "search_terms": [
+        "pdc signal parking distance control parking sensor proximity obstacle"
+      ]
+    },
+    "parking.distance.rear_right": {
+      "title": "Rear-right parking distance",
+      "category": "parking",
+      "description": "Distance from the rear-right parking sensor to the nearest detected obstacle.",
+      "value": {
+        "type": "number",
+        "nullable": false,
+        "unit": "cm",
+        "minimum": 0
+      },
+      "status": "stable",
+      "search_terms": [
+        "pdc signal parking distance control parking sensor proximity obstacle"
+      ]
+    },
+    "steering.angle_degrees": {
+      "title": "Steering angle",
+      "category": "steering",
+      "description": "Decoded steering-wheel angle; positive is right and negative is left.",
+      "value": {
+        "type": "number",
+        "nullable": false,
+        "unit": "degree"
+      },
+      "status": "stable",
+      "search_terms": [
+        "steering wheel angle direction"
+      ]
+    },
+    "steering.angle_magnitude_raw": {
+      "title": "Steering magnitude raw value",
+      "category": "steering",
+      "description": "Unsigned steering-angle magnitude before scaling.",
+      "value": {
+        "type": "integer",
+        "nullable": false,
+        "minimum": 0,
+        "maximum": 32767
+      },
+      "status": "diagnostic"
+    },
+    "steering.angle_raw": {
+      "title": "Steering angle raw value",
+      "category": "steering",
+      "description": "Uninterpreted packed steering-angle source value.",
+      "value": {
+        "type": "integer",
+        "nullable": false,
+        "minimum": 0,
+        "maximum": 65535
+      },
+      "status": "diagnostic"
+    },
+    "steering.direction": {
+      "title": "Steering direction",
+      "category": "steering",
+      "description": "Coarse direction derived from steering angle.",
+      "value": {
+        "type": "enum",
+        "nullable": false,
+        "values": [
+          "left",
+          "center",
+          "right"
+        ]
+      },
+      "status": "stable",
+      "search_terms": [
+        "steering direction left right center"
+      ]
+    },
+    "vehicle.handbrake": {
+      "title": "Handbrake applied",
+      "category": "vehicle",
+      "description": "Whether the parking brake or handbrake is applied.",
+      "value": {
+        "type": "boolean",
+        "nullable": false
+      },
+      "status": "stable",
+      "search_terms": [
+        "parking brake handbrake applied"
+      ]
+    },
+    "vehicle.handbrake_raw": {
+      "title": "Handbrake raw byte",
+      "category": "vehicle",
+      "description": "Uninterpreted source byte for the handbrake state.",
+      "value": {
+        "type": "integer",
+        "nullable": false,
+        "minimum": 0,
+        "maximum": 255
+      },
+      "status": "diagnostic"
+    },
+    "vehicle.odometer_km": {
+      "title": "Odometer",
+      "category": "vehicle",
+      "description": "Decoded total vehicle distance.",
+      "value": {
+        "type": "number",
+        "nullable": false,
+        "unit": "km",
+        "minimum": 0
+      },
+      "status": "stable",
+      "search_terms": [
+        "odometer mileage distance"
+      ]
+    },
+    "vehicle.odometer_raw": {
+      "title": "Odometer raw value",
+      "category": "vehicle",
+      "description": "Unscaled source value for the odometer.",
+      "value": {
+        "type": "integer",
+        "nullable": false,
+        "minimum": 0,
+        "maximum": 16777215
+      },
+      "status": "diagnostic"
+    },
+    "vehicle.present": {
+      "title": "Vehicle present",
+      "category": "vehicle",
+      "description": "Whether the configured vehicle CAN bus has been observed within the profile timeout.",
+      "value": {
+        "type": "boolean",
+        "nullable": false
+      },
+      "status": "stable",
+      "search_terms": [
+        "vehicle awake bus present ignition availability"
+      ]
+    },
+    "vehicle.reverse": {
+      "title": "Reverse selected",
+      "category": "vehicle",
+      "description": "Whether reverse gear is selected.",
+      "value": {
+        "type": "boolean",
+        "nullable": false
+      },
+      "status": "stable",
+      "search_terms": [
+        "reverse gear selected reversing"
+      ]
+    },
+    "vehicle.reverse_raw": {
+      "title": "Reverse raw byte",
+      "category": "vehicle",
+      "description": "Uninterpreted source byte for reverse selection.",
+      "value": {
+        "type": "integer",
+        "nullable": false,
+        "minimum": 0,
+        "maximum": 255
+      },
+      "status": "diagnostic"
+    },
+    "vehicle.speed_kmh": {
+      "title": "Vehicle speed",
+      "category": "vehicle",
+      "description": "Decoded road speed of the vehicle.",
+      "value": {
+        "type": "number",
+        "nullable": false,
+        "unit": "km/h",
+        "minimum": 0
+      },
+      "status": "stable",
+      "search_terms": [
+        "road speed vehicle velocity"
+      ]
+    },
+    "vehicle.speed_raw": {
+      "title": "Vehicle speed raw value",
+      "category": "vehicle",
+      "description": "Unscaled source value for vehicle speed.",
+      "value": {
+        "type": "integer",
+        "nullable": false,
+        "minimum": 0,
+        "maximum": 65535
+      },
+      "status": "diagnostic"
+    }
+  },
+  "aliases": {
+    "climate.front_demist_air_request": {
+      "path": "climate.recirculation_active",
+      "description": "Deprecated compatibility output; the observed signal is represented canonically as recirculation state.",
+      "status": "deprecated"
+    },
+    "climate.front_demist_air_request_raw": {
+      "path": "climate.recirculation_raw",
+      "description": "Deprecated raw compatibility output for the recirculation source byte.",
+      "status": "deprecated"
+    }
+  }
+}

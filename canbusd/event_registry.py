@@ -510,6 +510,27 @@ def contribution_check(
 
     search_query = str(name).replace("_", " ").replace(":", " ").replace(".", " ")
     candidates = search_events(search_query, registry=selected)["matches"]
+    from canbusd import status_registry as vehicle_statuses
+
+    status_candidates = vehicle_statuses.search_statuses(search_query)["matches"]
+    if status_candidates:
+        return {
+            "requested_event": name,
+            "status": "unknown",
+            "decision": "consider_status",
+            "candidates": candidates,
+            "status_candidates": status_candidates,
+            "message": (
+                "No canonical event has this identifier. The wording matches persistent "
+                "vehicle-state concepts, so first decide whether the signal remains meaningful "
+                "between frames. Reuse a canonical status path when it fits; otherwise propose "
+                "a new universal event or status in the same pull request as the mapping."
+            ),
+            "principles": [
+                *principles,
+                "Momentary requests are events; persistent values belong in the status registry.",
+            ],
+        }
     return {
         "requested_event": name,
         "status": "unknown",

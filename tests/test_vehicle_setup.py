@@ -53,7 +53,12 @@ class VehicleSetupTests(unittest.TestCase):
                 }
             ],
             "status": [
-                {"id": "0x102", "byte": 0, "type": "raw", "path": "vehicle.raw"}
+                {
+                    "id": "0x102",
+                    "byte": 0,
+                    "type": "raw",
+                    "path": "vehicle.reverse_raw",
+                }
             ],
         }
         document.update(updates)
@@ -152,6 +157,36 @@ class VehicleSetupTests(unittest.TestCase):
                 "invalid-event",
                 "invalid-rule-value",
             },
+            {issue["code"] for issue in result["errors"]},
+        )
+
+    def test_profile_validator_enforces_canonical_status_paths_and_types(self):
+        valid_document = json.loads(self.profile().read_text(encoding="utf-8"))
+        valid_document["status"] = [
+            {
+                "id": "0x431",
+                "byte": 4,
+                "type": "bool",
+                "path": "doors.front_right",
+                "true": "0x20",
+                "false": "0x00",
+            }
+        ]
+        self.assertTrue(vehicle_setup.validate_profile(valid_document)["valid"])
+
+        valid_document["status"][0]["path"] = "vauxhall.pdc_signal"
+        result = vehicle_setup.validate_profile(valid_document)
+        self.assertFalse(result["valid"])
+        self.assertIn(
+            "unregistered-status",
+            {issue["code"] for issue in result["errors"]},
+        )
+
+        valid_document["status"][0]["path"] = "vehicle.speed_kmh"
+        result = vehicle_setup.validate_profile(valid_document)
+        self.assertFalse(result["valid"])
+        self.assertIn(
+            "status-type-mismatch",
             {issue["code"] for issue in result["errors"]},
         )
 

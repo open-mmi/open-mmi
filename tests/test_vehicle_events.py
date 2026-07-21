@@ -234,9 +234,13 @@ class VehicleEventRegistryTests(unittest.TestCase):
         self.assertIn("not a walled garden", reuse["principles"][0])
 
         proposal = vehicle_events.contribution_check("pdc_signal")
-        self.assertEqual(proposal["decision"], "reuse_or_propose")
+        self.assertEqual(proposal["decision"], "consider_status")
         self.assertEqual(proposal["status"], "unknown")
         self.assertIn("same pull request", proposal["message"])
+        self.assertIn(
+            "parking.distance.rear_left",
+            {item["path"] for item in proposal["status_candidates"]},
+        )
 
         invalid = vehicle_events.contribution_check("PDC_signal")
         self.assertEqual(invalid["decision"], "rename_before_proposal")
@@ -301,7 +305,11 @@ class VehicleEventRegistryTests(unittest.TestCase):
             )
         self.assertEqual(result, 0)
         payload = json.loads(output.getvalue())
-        self.assertEqual(payload["decision"], "reuse_or_propose")
+        self.assertEqual(payload["decision"], "consider_status")
+        self.assertIn(
+            "parking.assist.active",
+            {item["path"] for item in payload["status_candidates"]},
+        )
 
     def test_cli_rejects_conflicting_event_lookup_modes(self):
         error = io.StringIO()

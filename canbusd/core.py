@@ -15,6 +15,7 @@ import can
 from canbusd.can_runtime import CanRuntimeConfig, item_matches_bus, resolve_can_runtime
 from canbusd.dispatcher import ActionQueue, dispatch
 from canbusd import event_registry
+from canbusd import status_registry
 from canbusd.status_bus import publish as publish_status
 from canbusd.status_bus import publish_runtime as publish_runtime_status
 from canbusd.status_bus import reset as reset_status
@@ -326,6 +327,7 @@ def _load_config(
             )
 
         all_status_items = cfg.get("status", [])
+        status_registry.require_profile_statuses(cfg)
         status_items = _filter_items_for_bus(all_status_items, runtime)
         status_rules = parse_status_rules(status_items)
 

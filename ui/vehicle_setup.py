@@ -21,6 +21,7 @@ from typing import Any, Iterable, Mapping, Optional, Sequence
 
 from canbusd.can_runtime import resolve_can_runtime
 from canbusd import event_registry as vehicle_events
+from canbusd import status_registry as vehicle_statuses
 from ui import vehicle_configuration
 
 
@@ -294,6 +295,83 @@ def _validate_event_reference(
     return None
 
 
+def _validate_status_reference(
+    value: Any,
+    *,
+    path: str,
+    value_type: str,
+    registry: Mapping[str, Any],
+    issues: list[dict[str, str]],
+    enum_values: Optional[Sequence[str]] = None,
+    allow_alias: bool = False,
+) -> Optional[Mapping[str, Any]]:
+    if (
+        not _bounded_text(value, maximum=MAX_STATUS_PATH_LENGTH)
+        or not vehicle_statuses.STATUS_PATH_RE.fullmatch(value)
+    ):
+        issues.append(
+            _issue(
+                "error",
+                "invalid-status-path",
+                path,
+                "must be a lowercase dot-separated canonical status path",
+            )
+        )
+        return None
+    state, canonical = vehicle_statuses.status_state(value, registry)
+    if state == "alias" and canonical is not None:
+        if not allow_alias:
+            issues.append(
+                _issue(
+                    "error",
+                    "deprecated-status-alias",
+                    path,
+                    f"must use canonical status path {canonical!r}",
+                )
+            )
+            return None
+        issues.append(
+            _issue(
+                "warning",
+                "deprecated-status-alias",
+                path,
+                f"compatibility output aliases canonical status path {canonical!r}",
+            )
+        )
+    elif state == "unknown":
+        issues.append(
+            _issue(
+                "error",
+                "unregistered-status",
+                path,
+                (
+                    "is not yet registered; search the shared human vocabulary with "
+                    "'open-mmi-config vehicle-setup statuses --search <meaning>' and, "
+                    "when no existing path fits, propose a universal registry entry "
+                    "in the same pull request"
+                ),
+            )
+        )
+        return None
+    output: dict[str, Any] = {
+        "path": value,
+        "value_type": value_type,
+        "role": "alias" if allow_alias else "primary",
+    }
+    if enum_values is not None:
+        output["enum_values"] = list(enum_values)
+    try:
+        return vehicle_statuses.require_output(output, registry=registry)
+    except vehicle_statuses.VehicleStatusRegistryError as exc:
+        code = (
+            "status-enum-mismatch"
+            if "enum values" in str(exc)
+            else "status-type-mismatch"
+        )
+        issues.append(_issue("error", code, path, str(exc)))
+        return None
+
+
 def _validate_profile_item(
     item: Any,
     path: str,
@@ -301,6 +379,7 @@ def _validate_profile_item(
     default_bus: str,
     declared_buses: set[str],
     event_registry: Mapping[str, Any],
+    status_registry: Mapping[str, Any],
     issues: list[dict[str, str]],
 ) -> None:
     if not isinstance(item, Mapping):
@@ -385,6 +464,14 @@ def _validate_profile_item(
         status_path = item.get("status_path", "vehicle.present")
         if not _bounded_text(status_path, maximum=MAX_STATUS_PATH_LENGTH):
             issues.append(_issue("error", "invalid-status-path", f"{path}.status_path", "must be a bounded string"))
+        else:
+            _validate_status_reference(
+                status_path,
+                path=f"{path}.status_path",
+                value_type="boolean",
+                registry=status_registry,
+                issues=issues,
+            )
         return
 
     rule_type = item.get("type", "raw")
@@ -469,17 +556,34 @@ def _validate_profile_item(
             if start_byte < 0 or start_byte + length > 8:
                 issues.append(_issue("error", "status-width-exceeds-frame", path, "selected bytes exceed an eight-byte CAN frame"))
 
+    for output in vehicle_statuses.rule_outputs(item):
+        _validate_status_reference(
+            output["path"],
+            path=f"{path}.{output['role']}",
+            value_type=output["value_type"],
+            registry=status_registry,
+            issues=issues,
+            enum_values=output.get("enum_values"),
+            allow_alias=output["role"] == "alias",
+        )
+
 
 def validate_profile(
     document: Any,
     *,
     event_registry: Optional[Mapping[str, Any]] = None,
+    status_registry: Optional[Mapping[str, Any]] = None,
 ) -> dict[str, Any]:
     issues: list[dict[str, str]] = []
     selected_event_registry = (
         vehicle_events.normalize_registry(event_registry)
         if event_registry is not None
         else vehicle_events.registry_payload()
+    )
+    selected_status_registry = (
+        vehicle_statuses.normalize_registry(status_registry)
+        if status_registry is not None
+        else vehicle_statuses.registry_payload()
     )
     if not isinstance(document, Mapping):
         return _validation([_issue("error", "invalid-document", "$", "profile must contain a JSON object")])
@@ -540,6 +644,7 @@ def validate_profile(
                 default_bus,
                 declared_buses,
                 selected_event_registry,
+                selected_status_registry,
                 issues,
             )
 

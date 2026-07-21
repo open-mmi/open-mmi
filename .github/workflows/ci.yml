@@ -43,6 +43,9 @@ jobs:
       - name: Verify generated vehicle-event documentation
         run: python tools/generate_vehicle_event_docs.py --check
 
+      - name: Verify generated vehicle-status documentation
+        run: python tools/generate_vehicle_status_docs.py --check
+
       - name: Verify CSS module cascade
         run: python tools/verify_css_split.py
 
@@ -98,16 +101,19 @@ jobs:
           cd "$(mktemp -d)"
           python - <<'PY'
           from pathlib import Path
+          import json
           import bindings
           import canbusd
           import ui.web_dashboard
           from canbusd import event_registry as vehicle_events
+          from canbusd import status_registry as vehicle_statuses
           from ui.web_dashboard import bluetooth, jellyfin, radio, usb
           import vehicles
 
           roots = {
               "bindings": Path(bindings.__file__).parent / "default.json",
               "vehicle_events": vehicle_events.DEFAULT_REGISTRY_PATH,
+              "vehicle_statuses": vehicle_statuses.DEFAULT_REGISTRY_PATH,
               "bluetooth": Path(bluetooth.__file__),
               "vehicle": Path(vehicles.__file__).parent / "seat_1p" / "config.json",
               "dashboard": Path(ui.web_dashboard.__file__).parent / "static" / "index.html",
@@ -140,6 +146,10 @@ jobs:
           registry = vehicle_events.registry_payload()
           if "mute_toggle" not in registry["events"]:
               raise SystemExit("Installed vehicle-event registry is incomplete")
+          statuses = vehicle_statuses.registry_payload()
+          if "doors.front_right" not in statuses["statuses"]:
+              raise SystemExit("Installed vehicle-status registry is incomplete")
+          vehicle_statuses.require_profile_statuses(json.loads(roots["vehicle"].read_text()))
           print("Installed package imports and runtime assets verified")
           PY
 

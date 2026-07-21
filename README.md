@@ -414,6 +414,10 @@ The core idea is that vehicle-specific CAN knowledge should live in vehicle prof
 Named CAN bus metadata is documented in [`docs/can-bus-model.md`](docs/can-bus-model.md).
 
 See [`docs/vehicle-profiles.md`](docs/vehicle-profiles.md) for the profile boundary and [`docs/vehicle-integration-standard.md`](docs/vehicle-integration-standard.md) for the canonical event and contribution contract. The generated event catalogue is [`docs/vehicle-event-registry.md`](docs/vehicle-event-registry.md).
+Persistent vehicle state uses the same continuity checkpoint: the generated
+[`vehicle-status registry`](docs/vehicle-status-registry.md) defines shared paths,
+types, units and lifecycle while each vehicle profile supplies only the CAN-specific
+decoder.
 
 ---
 
@@ -425,8 +429,13 @@ open-mmi/
 │   ├── core.py              ← daemon loop: CAN input, profile loading
 │   ├── dispatcher.py        ← event → event bus + action execution
 │   ├── event_bus.py         ← in-process pub/sub for events
+│   ├── event_registry.py    ← canonical event contracts and lookup
 │   ├── status_bus.py        ← persistent vehicle state snapshots
+│   ├── status_registry.py   ← canonical status contracts and lookup
 │   ├── status_rules.py      ← generic profile-driven status evaluator
+│   ├── data/
+│   │   ├── vehicle-events.v1.json
+│   │   └── vehicle-statuses.v1.json
 │   └── __init__.py
 │
 ├── vehicles/
@@ -435,9 +444,6 @@ open-mmi/
 │
 ├── bindings/
 │   └── default.json         ← canonical event → action mapping
-│
-├── ui/data/
-│   └── vehicle-events.v1.json ← canonical vehicle-event registry
 │
 ├── actions/
 │   ├── audio.py

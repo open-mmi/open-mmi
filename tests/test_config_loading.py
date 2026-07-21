@@ -250,7 +250,7 @@ class ConfigLoadingTests(unittest.TestCase):
                 {
                     "id": "0x201",
                     "timeout_ms": 2500,
-                    "status_path": "powertrain.present",
+                    "status_path": "vehicle.present",
                     "bus": "powertrain",
                 },
             ],
@@ -259,13 +259,13 @@ class ConfigLoadingTests(unittest.TestCase):
                     "id": "0x300",
                     "byte": 0,
                     "type": "raw",
-                    "path": "comfort.value",
+                    "path": "vehicle.reverse_raw",
                 },
                 {
                     "id": "0x301",
                     "byte": 0,
                     "type": "raw",
-                    "path": "powertrain.value",
+                    "path": "engine.speed_raw",
                     "bus": "powertrain",
                 },
             ],
@@ -298,7 +298,7 @@ class ConfigLoadingTests(unittest.TestCase):
                     "timeout_ms": 2500,
                     "on_present": None,
                     "on_absent": None,
-                    "status_path": "powertrain.present",
+                    "status_path": "vehicle.present",
                 }
             ],
         )
