@@ -6,6 +6,7 @@ import sys
 import unittest
 from pathlib import Path
 
+from ui import vehicle_setup
 from ui.web_dashboard import bluetooth, jellyfin, radio, runtime_diagnostics, server, system_settings, update_status, usb
 
 
@@ -137,6 +138,36 @@ class DashboardModuleBoundaryTests(unittest.TestCase):
         self.assertIn("system_settings_backend._handle_get(self, parsed.path)", get_source)
         self.assertIn("system_settings_backend._handle_post(self, parsed.path)", post_source)
         self.assertFalse(hasattr(system_settings, "DashboardHandler"))
+
+    def test_vehicle_setup_status_provider_is_server_independent(self):
+        routes_source = inspect.getsource(system_settings._handle_get)
+        post_routes_source = inspect.getsource(system_settings._handle_post)
+        self.assertIn(
+            '"/api/system/vehicle-setup": vehicle_setup.status_payload',
+            routes_source,
+        )
+        self.assertIn(
+            '"/api/system/vehicle-setup/preview"',
+            post_routes_source,
+        )
+        self.assertIn(
+            "vehicle_config_coordinator.client_preview(_json_body(handler))",
+            post_routes_source,
+        )
+        self.assertIn(
+            '"/api/system/vehicle-setup/apply"',
+            post_routes_source,
+        )
+        self.assertIn(
+            "vehicle_config_coordinator.client_apply(_json_body(handler))",
+            post_routes_source,
+        )
+        self.assertFalse(hasattr(vehicle_setup, "DashboardHandler"))
+        source = inspect.getsource(vehicle_setup)
+        self.assertNotIn("from ui.web_dashboard.server", source)
+        self.assertNotIn("import server", source)
+        self.assertNotIn("subprocess", source)
+        self.assertNotIn("shell=True", source)
 
     def test_update_status_provider_is_server_independent_and_uses_argument_lists(self):
         self.assertFalse(hasattr(update_status, "DashboardHandler"))

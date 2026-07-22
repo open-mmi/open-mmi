@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import socket
 import shlex
 import subprocess
 import tempfile
@@ -33,6 +34,242 @@ class ManageScriptLifecycleTests(unittest.TestCase):
         start = self.text.index(marker) + len(marker)
         end = self.text.index("\nPY_UPDATE_SOURCE", start)
         compile(self.text[start:end], "manage.sh:PY_UPDATE_SOURCE", "exec")
+
+    def test_vehicle_coordinator_environment_python_has_valid_syntax(self) -> None:
+        marker = "<<'PY_VEHICLE_CONFIG_COORDINATOR_ENV'\n"
+        start = self.text.index(marker) + len(marker)
+        end = self.text.index("\nPY_VEHICLE_CONFIG_COORDINATOR_ENV", start)
+        compile(
+            self.text[start:end],
+            "manage.sh:PY_VEHICLE_CONFIG_COORDINATOR_ENV",
+            "exec",
+        )
+
+    def test_vehicle_coordinator_sandbox_python_has_valid_syntax(self) -> None:
+        marker = "<<'PY_VEHICLE_CONFIG_COORDINATOR_SANDBOX'\n"
+        start = self.text.index(marker) + len(marker)
+        end = self.text.index("\nPY_VEHICLE_CONFIG_COORDINATOR_SANDBOX", start)
+        compile(
+            self.text[start:end],
+            "manage.sh:PY_VEHICLE_CONFIG_COORDINATOR_SANDBOX",
+            "exec",
+        )
+
+    def transaction_locks_program(self) -> str:
+        marker = "<<'PY_OPEN_MMI_TRANSACTION_LOCKS'\n"
+        start = self.text.index(marker) + len(marker)
+        end = self.text.index("\nPY_OPEN_MMI_TRANSACTION_LOCKS", start)
+        return self.text[start:end]
+
+    def test_transaction_locks_python_has_valid_syntax(self) -> None:
+        compile(
+            self.transaction_locks_program(),
+            "manage.sh:PY_OPEN_MMI_TRANSACTION_LOCKS",
+            "exec",
+        )
+
+    def test_transaction_locks_are_created_private_without_replacement(self) -> None:
+        program = self.transaction_locks_program()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "run" / "open-mmi"
+            root.mkdir(parents=True)
+            root.chmod(0o755)
+            existing = root / "lifecycle.lock"
+            existing.write_text("held\n", encoding="utf-8")
+            inode = existing.stat().st_ino
+            existing.chmod(0o666)
+            unrelated = root / "coordinator.sock.fixture"
+            unrelated.write_text("unchanged\n", encoding="utf-8")
+
+            completed = subprocess.run(
+                [
+                    "python3", "-c", program, str(root),
+                    str(root.stat().st_uid), str(root.stat().st_gid),
+                ],
+                text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            for name in (
+                "lifecycle.lock", "update.lock", "vehicle-configuration.lock"
+            ):
+                path = root / name
+                self.assertTrue(path.is_file())
+                self.assertEqual(path.stat().st_mode & 0o777, 0o644)
+                self.assertEqual(path.stat().st_nlink, 1)
+            self.assertEqual(existing.stat().st_ino, inode)
+            self.assertEqual(existing.read_text(encoding="utf-8"), "held\n")
+            self.assertEqual(unrelated.read_text(encoding="utf-8"), "unchanged\n")
+
+    def test_transaction_locks_reject_symlink_before_creating_siblings(self) -> None:
+        program = self.transaction_locks_program()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "run" / "open-mmi"
+            outside = Path(temporary) / "outside"
+            root.mkdir(parents=True)
+            root.chmod(0o755)
+            outside.write_text("outside\n", encoding="utf-8")
+            (root / "lifecycle.lock").symlink_to(outside)
+            completed = subprocess.run(
+                [
+                    "python3", "-c", program, str(root),
+                    str(root.stat().st_uid), str(root.stat().st_gid),
+                ],
+                text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+            )
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("untrusted", completed.stderr.lower())
+            self.assertFalse((root / "update.lock").exists())
+            self.assertFalse((root / "vehicle-configuration.lock").exists())
+            self.assertEqual(outside.read_text(encoding="utf-8"), "outside\n")
+
+    def custom_catalogue_permissions_program(self) -> str:
+        marker = "<<'PY_CUSTOM_CATALOGUE_PERMISSIONS'\n"
+        start = self.text.index(marker) + len(marker)
+        end = self.text.index("\nPY_CUSTOM_CATALOGUE_PERMISSIONS", start)
+        return self.text[start:end]
+
+    def test_custom_catalogue_permissions_python_has_valid_syntax(self) -> None:
+        compile(
+            self.custom_catalogue_permissions_program(),
+            "manage.sh:PY_CUSTOM_CATALOGUE_PERMISSIONS",
+            "exec",
+        )
+
+    def test_custom_catalogue_permission_repair_is_private_and_scoped(self) -> None:
+        program = self.custom_catalogue_permissions_program()
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary) / "home"
+            config = home / ".config"
+            root = config / "open-mmi"
+            profile = root / "vehicles" / "example" / "config.json"
+            bindings = root / "bindings" / "example.json"
+            provenance = (
+                root
+                / ".open-mmi-provenance"
+                / "profile"
+                / "example.json"
+            )
+            unrelated = root / "dashboard.env"
+            backup = root / "qualification-backup" / "99-vcan-test.conf"
+
+            profile.parent.mkdir(parents=True)
+            bindings.parent.mkdir(parents=True)
+            provenance.parent.mkdir(parents=True)
+            backup.parent.mkdir(parents=True)
+            profile.write_text("{}\n", encoding="utf-8")
+            bindings.write_text("{}\n", encoding="utf-8")
+            provenance.write_text("{}\n", encoding="utf-8")
+            unrelated.write_text("UNCHANGED=1\n", encoding="utf-8")
+            backup.write_text("legacy\n", encoding="utf-8")
+            home.chmod(0o700)
+            config.chmod(0o755)
+            root.chmod(0o777)
+            for directory in (
+                root / "vehicles",
+                profile.parent,
+                root / "bindings",
+                root / ".open-mmi-provenance",
+                provenance.parent,
+            ):
+                directory.chmod(0o777)
+            for file_path in (profile, bindings, provenance):
+                file_path.chmod(0o666)
+            unrelated.chmod(0o644)
+            backup.parent.chmod(0o755)
+            backup.chmod(0o644)
+
+            completed = subprocess.run(
+                [
+                    "python3",
+                    "-c",
+                    program,
+                    str(home),
+                    str(root),
+                    str(home.stat().st_uid),
+                    str(home.stat().st_gid),
+                ],
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+
+            for directory in (
+                root,
+                root / "vehicles",
+                profile.parent,
+                root / "bindings",
+                root / ".open-mmi-provenance",
+                provenance.parent,
+                root / ".open-mmi-provenance" / "bindings",
+            ):
+                self.assertEqual(directory.stat().st_mode & 0o777, 0o700)
+            for file_path in (profile, bindings, provenance):
+                self.assertEqual(file_path.stat().st_mode & 0o777, 0o600)
+
+            self.assertEqual(unrelated.stat().st_mode & 0o777, 0o644)
+            self.assertEqual(unrelated.read_text(encoding="utf-8"), "UNCHANGED=1\n")
+            self.assertEqual(backup.parent.stat().st_mode & 0o777, 0o755)
+            self.assertEqual(backup.stat().st_mode & 0o777, 0o644)
+
+    def test_custom_catalogue_permission_repair_rejects_symlinks_before_changes(self) -> None:
+        program = self.custom_catalogue_permissions_program()
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            home = base / "home"
+            root = home / ".config" / "open-mmi"
+            outside = base / "outside"
+            root.mkdir(parents=True)
+            outside.mkdir()
+            home.chmod(0o700)
+            (home / ".config").chmod(0o755)
+            root.chmod(0o755)
+            (root / "vehicles").symlink_to(outside, target_is_directory=True)
+
+            completed = subprocess.run(
+                [
+                    "python3",
+                    "-c",
+                    program,
+                    str(home),
+                    str(root),
+                    str(home.stat().st_uid),
+                    str(home.stat().st_gid),
+                ],
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("symlink", completed.stderr.lower())
+            self.assertEqual(root.stat().st_mode & 0o777, 0o755)
+            self.assertFalse((root / "bindings").exists())
+            self.assertFalse((root / ".open-mmi-provenance").exists())
+
+    def test_install_and_update_paths_harden_only_the_custom_catalogue(self) -> None:
+        coordinator_start = self.text.index("install_vehicle_config_coordinator() {")
+        coordinator_end = self.text.index("remove_login_autostart() {", coordinator_start)
+        coordinator_block = self.text[coordinator_start:coordinator_end]
+        self.assertIn("harden_custom_catalogue_permissions", coordinator_block)
+
+        update_start = self.text.index("cmd_update() {")
+        update_end = self.text.index("cmd_deploy_prepared() {", update_start)
+        update_block = self.text[update_start:update_end]
+        self.assertLess(
+            update_block.index("harden_custom_catalogue_permissions"),
+            update_block.index("Already up to date"),
+        )
+
+        provisioning_start = self.text.index("apply_profile_provisioning() {")
+        provisioning_end = self.text.index("reload_profile_provisioning() {", provisioning_start)
+        provisioning_block = self.text[provisioning_start:provisioning_end]
+        self.assertIn("harden_custom_catalogue_permissions", provisioning_block)
+        self.assertNotIn(
+            'chown -R "$REAL_USER:$REAL_USER" "$USER_CONFIG_DIR"',
+            provisioning_block,
+        )
 
     def test_update_source_writer_migrates_and_preserves_named_channel_policy(self) -> None:
         marker = "<<'PY_UPDATE_SOURCE'\n"
@@ -264,6 +501,17 @@ sudo() {{ printf '%s\\0' "$@"; }}
         self.assertIn('sudo cp "$REPO_ROOT/README.md" "$INSTALL_DIR/"', update_block)
         self.assertIn('sudo cp "$REPO_ROOT/LICENSE" "$INSTALL_DIR/"', update_block)
 
+    def test_installed_maintained_catalogue_is_root_owned_and_world_readable(self) -> None:
+        self.assertIn("configure_maintained_catalogue_permissions()", self.text)
+        self.assertEqual(
+            self.text.count("    configure_maintained_catalogue_permissions\n"),
+            3,
+        )
+        self.assertIn('for catalogue_root in "$INSTALL_DIR/vehicles" "$INSTALL_DIR/bindings"', self.text)
+        self.assertIn('-exec chown root:root {} +', self.text)
+        self.assertIn('-exec chmod 0755 {} +', self.text)
+        self.assertIn('-exec chmod 0644 {} +', self.text)
+
     def test_expected_console_commands_are_declared(self) -> None:
         for command in (
             "open-mmi-canbusd",
@@ -273,6 +521,7 @@ sudo() {{ printf '%s\\0' "$@"; }}
             "open-mmi-status",
             "open-mmi-update-coordinator",
             "open-mmi-update-installer",
+            "open-mmi-vehicle-config-coordinator",
         ):
             self.assertIn(command, self.text)
         self.assertIn(
@@ -288,6 +537,38 @@ sudo() {{ printf '%s\\0' "$@"; }}
             self.text,
         )
 
+    def test_custom_template_creation_prefers_installed_maintained_files(self) -> None:
+        self.assertIn(
+            'source_vehicle="$(resolve_maintained_profile_source "$vehicle")"',
+            self.text,
+        )
+        self.assertIn(
+            'profile_catalogue.resolve_profile(root, vehicle)',
+            self.text,
+        )
+        self.assertIn(
+            'if Path(resolved["path"]).is_file():',
+            self.text,
+        )
+        self.assertIn(
+            'local source_bindings="$INSTALL_DIR/bindings/$bindings.json"',
+            self.text,
+        )
+        self.assertIn(
+            'source_bindings="$REPO_ROOT/bindings/$bindings.json"',
+            self.text,
+        )
+
+    def test_config_paths_describes_custom_files_as_explicit_only(self) -> None:
+        self.assertIn(
+            'echo "  User config files are used only when explicitly selected."',
+            self.text,
+        )
+        self.assertNotIn(
+            'echo "    2. User config directory"',
+            self.text,
+        )
+
     def test_uninstall_handles_absent_units_quietly(self) -> None:
         self.assertIn(
             "for service in canbusd.service open-mmi-dashboard.service; do",
@@ -299,6 +580,11 @@ sudo() {{ printf '%s\\0' "$@"; }}
         )
         self.assertIn('systemctl stop "$UPDATE_INSTALLER_UNIT"', self.text)
         self.assertIn('"/etc/systemd/system/$UPDATE_INSTALLER_UNIT"', self.text)
+        self.assertIn('systemctl disable --now "$VEHICLE_CONFIG_COORDINATOR_UNIT"', self.text)
+        self.assertIn('systemctl stop "$VEHICLE_CAN_PROVISION_UNIT"', self.text)
+        self.assertIn('"/etc/systemd/system/$VEHICLE_CONFIG_COORDINATOR_UNIT"', self.text)
+        self.assertIn('"/etc/systemd/system/$VEHICLE_CAN_PROVISION_UNIT"', self.text)
+        self.assertIn('"$VEHICLE_CONFIG_UI_QUALIFICATION_GATE"', self.text)
 
     def test_prepared_deployment_is_fixed_root_only_and_rolls_back_on_error(self) -> None:
         start = self.text.index("cmd_deploy_prepared() {")
@@ -322,7 +608,61 @@ sudo() {{ printf '%s\\0' "$@"; }}
         self.assertIn('for _attempt in {1..15}; do', block)
         self.assertIn('[[ "$api_ready" == true ]]', block)
         self.assertIn('[[ "$version_ready" == true ]]', block)
+        self.assertIn('"$VEHICLE_CONFIG_COORDINATOR_UNIT"', block)
+        self.assertIn('"$VEHICLE_CAN_PROVISION_UNIT"', block)
+        self.assertIn('vehicle-config-coordinator.env', block)
+        self.assertIn('deployment_stage="vehicle-config-coordinator"', block)
+        self.assertIn('systemctl restart "$VEHICLE_CONFIG_COORDINATOR_UNIT"', block)
         self.assertNotIn("eval ", block)
+
+    def test_vehicle_coordinator_health_check_requires_live_socket_and_protocol(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            install = root / "install"
+            command = install / "venv/bin/open-mmi-config"
+            command.parent.mkdir(parents=True)
+            command.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            command.chmod(0o755)
+            socket_path = root / "coordinator.sock"
+            listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            listener.bind(str(socket_path))
+            listener.close()
+
+            common = f"""
+source {shlex.quote(str(MANAGE_SCRIPT))}
+INSTALL_DIR={shlex.quote(str(install))}
+VEHICLE_CONFIG_COORDINATOR_SOCKET={shlex.quote(str(socket_path))}
+OPEN_MMI_COORDINATOR_HEALTH_ATTEMPTS=1
+OPEN_MMI_COORDINATOR_HEALTH_DELAY=0
+systemctl() {{ return 0; }}
+sleep() {{ :; }}
+"""
+            success = subprocess.run(
+                ["bash", "-c", common + "wait_for_vehicle_config_coordinator"],
+                cwd=ROOT,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            self.assertEqual(success.returncode, 0, success.stderr)
+
+            socket_path.unlink()
+            failure = subprocess.run(
+                [
+                    "bash",
+                    "-c",
+                    common
+                    + "if wait_for_vehicle_config_coordinator; then exit 9; else exit 0; fi",
+                ],
+                cwd=ROOT,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            self.assertEqual(failure.returncode, 0, failure.stderr)
+            self.assertIn("post-install health check", failure.stderr)
 
     def test_installer_unit_is_one_shot_and_accepts_no_arguments(self) -> None:
         unit = (ROOT / "systemd/system/open-mmi-update-installer.service").read_text(encoding="utf-8")
@@ -337,9 +677,89 @@ sudo() {{ printf '%s\\0' "$@"; }}
         self.assertNotIn("%i", unit)
         self.assertIn("ProtectSystem=strict", unit)
 
+    def test_vehicle_configuration_coordinator_is_publicly_read_only_and_hardened(self) -> None:
+        unit = (ROOT / "systemd/system/open-mmi-vehicle-config-coordinator.service").read_text(encoding="utf-8")
+        self.assertIn("ExecStart=/opt/open-mmi/venv/bin/open-mmi-vehicle-config-coordinator serve", unit)
+        self.assertIn("ProtectHome=read-only", unit)
+        self.assertIn(
+            "EnvironmentFile=/etc/open-mmi/vehicle-config-coordinator.env",
+            unit,
+        )
+        self.assertIn("PrivateNetwork=true", unit)
+        self.assertIn("RestrictAddressFamilies=AF_UNIX", unit)
+        self.assertIn("ProtectSystem=strict", unit)
+        self.assertIn(
+            "ReadWritePaths=/var/lib/open-mmi /run/open-mmi /etc/open-mmi /etc/udev/rules.d",
+            unit,
+        )
+        self.assertIn("RuntimeDirectoryPreserve=yes", unit)
+        start = self.text.index("install_vehicle_config_coordinator() {")
+        end = self.text.index("remove_login_autostart() {", start)
+        block = self.text[start:end]
+        self.assertIn('groupadd --system "$VEHICLE_CONFIG_COORDINATOR_GROUP"', block)
+        self.assertIn('usermod -aG "$VEHICLE_CONFIG_COORDINATOR_GROUP" "$REAL_USER"', block)
+        self.assertIn('systemctl restart "$VEHICLE_CONFIG_COORDINATOR_UNIT"', block)
+        self.assertIn("wait_for_vehicle_config_coordinator", block)
+        self.assertIn("write_vehicle_config_coordinator_environment", block)
+        self.assertIn("write_vehicle_config_coordinator_sandbox", block)
+        self.assertIn("install_open_mmi_transaction_locks", block)
+        self.assertLess(
+            block.index("install_open_mmi_transaction_locks"),
+            block.index('systemctl restart "$VEHICLE_CONFIG_COORDINATOR_UNIT"'),
+        )
+        environment_end = self.text.index("\nPY_VEHICLE_CONFIG_COORDINATOR_ENV")
+        sandbox_definition = self.text.index(
+            "write_vehicle_config_coordinator_sandbox() {"
+        )
+        self.assertGreater(sandbox_definition, environment_end)
+        self.assertIn(
+            'install -d -m 0755 -o "$REAL_USER" -g "$REAL_USER" "$runtime_directory"',
+            self.text,
+        )
+        self.assertIn("vehicle-config-coordinator-sandbox.conf", self.text)
+        self.assertIn("ReadWritePaths=\"-", self.text)
+        self.assertIn('"$USER_CONFIG_DIR"', self.text)
+        self.assertIn('"/run/user/$USER_ID/open-mmi/status.json"', self.text)
+        self.assertNotIn('${OPEN_MMI_PREPARED_DEPLOYMENT:-0}', block)
+        profile_reload = self.text.index('reload_profile_provisioning')
+        coordinator_restart = self.text.index(
+            'systemctl restart "$VEHICLE_CONFIG_COORDINATOR_UNIT"',
+            profile_reload,
+        )
+        self.assertGreater(coordinator_restart, profile_reload)
+
+    def test_can_provision_helper_has_host_network_with_only_net_admin(self) -> None:
+        unit = (
+            ROOT / "systemd/system/open-mmi-vehicle-can-provision.service"
+        ).read_text(encoding="utf-8")
+        self.assertIn("Type=oneshot", unit)
+        self.assertIn(
+            "ExecStart=/opt/open-mmi/venv/bin/open-mmi-vehicle-config-coordinator provision-can",
+            unit,
+        )
+        self.assertNotIn("PrivateNetwork=true", unit)
+        self.assertIn("RestrictAddressFamilies=AF_NETLINK AF_UNIX", unit)
+        self.assertIn(
+            "CapabilityBoundingSet=CAP_NET_ADMIN CAP_DAC_READ_SEARCH", unit
+        )
+        self.assertIn("ProtectSystem=strict", unit)
+        self.assertIn("ReadWritePaths=/run/open-mmi", unit)
+        self.assertNotIn("/sys", unit)
+        self.assertNotIn("%i", unit)
+        start = self.text.index("install_vehicle_config_coordinator() {")
+        end = self.text.index("remove_login_autostart() {", start)
+        block = self.text[start:end]
+        self.assertIn(
+            '"$REPO_ROOT/systemd/system/$VEHICLE_CAN_PROVISION_UNIT"', block
+        )
+        self.assertIn(
+            '"/etc/systemd/system/$VEHICLE_CAN_PROVISION_UNIT"', block
+        )
+
     def test_coordinator_can_read_the_managed_checkout_and_is_restarted(self) -> None:
         unit = (ROOT / "systemd/system/open-mmi-update-coordinator.service").read_text(encoding="utf-8")
         self.assertIn("ProtectHome=read-only", unit)
+        self.assertIn("RuntimeDirectoryPreserve=yes", unit)
         self.assertNotIn("ProtectHome=true", unit)
         start = self.text.index("install_update_coordinator() {")
         end = self.text.index("remove_login_autostart() {", start)

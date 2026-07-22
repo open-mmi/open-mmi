@@ -13,6 +13,7 @@ DASHBOARD_CONNECTION = STATIC / "dashboard-connection.js"
 FRONTEND_VERSION = STATIC / "frontend-version.js"
 PREFERENCES = STATIC / "preferences.js"
 SYSTEM_SETTINGS = STATIC / "system-settings.js"
+VEHICLE_SETUP_SETTINGS = STATIC / "vehicle-setup-settings.js"
 RUNTIME_DIAGNOSTICS = STATIC / "runtime-diagnostics.js"
 STATUS = STATIC / "status.js"
 NAVIGATION = STATIC / "navigation.js"
@@ -34,6 +35,7 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
         frontend_version_index = html.index('<script src="/frontend-version.js"></script>')
         preferences_index = html.index('<script src="/preferences.js"></script>')
         system_settings_index = html.index('<script src="/system-settings.js"></script>')
+        vehicle_setup_settings_index = html.index('<script src="/vehicle-setup-settings.js"></script>')
         runtime_diagnostics_index = html.index('<script src="/runtime-diagnostics.js"></script>')
         status_index = html.index('<script src="/status.js"></script>')
         navigation_index = html.index('<script src="/navigation.js"></script>')
@@ -50,7 +52,8 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
         self.assertLess(dashboard_connection_index, frontend_version_index)
         self.assertLess(frontend_version_index, preferences_index)
         self.assertLess(preferences_index, system_settings_index)
-        self.assertLess(system_settings_index, runtime_diagnostics_index)
+        self.assertLess(system_settings_index, vehicle_setup_settings_index)
+        self.assertLess(vehicle_setup_settings_index, runtime_diagnostics_index)
         self.assertLess(runtime_diagnostics_index, status_index)
         self.assertLess(status_index, navigation_index)
         self.assertLess(navigation_index, overlays_index)
@@ -70,6 +73,7 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
         self.assertIn("window.openMmiPreferences", source)
         self.assertIn("window.openMmiStatus", source)
         self.assertIn("window.openMmiSystemSettings", source)
+        self.assertIn("window.openMmiVehicleSetupSettings", source)
         self.assertIn("window.openMmiRuntimeDiagnostics", source)
         self.assertIn("window.openMmiNavigation", source)
         self.assertIn("window.openMmiOverlays", source)
@@ -85,6 +89,7 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
         self.assertIn("openMmiOverlaysClient.createController()", source)
         self.assertIn("openMmiVehicleClient.createRenderer({ preferences: openMmiPrefs })", source)
         self.assertIn("openMmiMediaClient.createController({ preferences: openMmiPrefs })", source)
+        self.assertIn("openMmiVehicleSetupSettingsClient.install({ api: openMmiApiClient })", source)
         self.assertIn("openMmiRadioMediaClient.installPrivacy({ preferences: openMmiPrefs })", source)
         self.assertIn("openMmiJellyfinMediaClient.installController({", source)
         self.assertIn("openMmiRadioMediaClient.installController({ preferences: openMmiPrefs })", source)
@@ -102,6 +107,7 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
         frontend_version = FRONTEND_VERSION.read_text(encoding="utf-8")
         preferences = PREFERENCES.read_text(encoding="utf-8")
         system_settings = SYSTEM_SETTINGS.read_text(encoding="utf-8")
+        vehicle_setup_settings = VEHICLE_SETUP_SETTINGS.read_text(encoding="utf-8")
         runtime_diagnostics = RUNTIME_DIAGNOSTICS.read_text(encoding="utf-8")
         status = STATUS.read_text(encoding="utf-8")
         navigation = NAVIGATION.read_text(encoding="utf-8")
@@ -119,6 +125,7 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
             (frontend_version, "openMmiFrontendVersion"),
             (preferences, "openMmiPreferences"),
             (system_settings, "openMmiSystemSettings"),
+            (vehicle_setup_settings, "openMmiVehicleSetupSettings"),
             (runtime_diagnostics, "openMmiRuntimeDiagnostics"),
             (status, "openMmiStatus"),
             (navigation, "openMmiNavigation"),
@@ -136,6 +143,7 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
             if global_name not in {
                 "openMmiDashboardConnection",
                 "openMmiFrontendVersion",
+                "openMmiVehicleSetupSettings",
                 "openMmiRuntimeDiagnostics",
                 "openMmiMediaShell",
                 "openMmiJellyfinReconnect",
@@ -168,6 +176,57 @@ class FrontendModuleBoundaryTests(unittest.TestCase):
         self.assertIn("roll back automatically if validation fails", source)
         self.assertNotIn('data-openmmi-update-channel', source)
         self.assertNotIn("repository_path", source)
+
+    def test_vehicle_setup_settings_owns_reviewed_apply_workflow(self):
+        source = VEHICLE_SETUP_SETTINGS.read_text(encoding="utf-8")
+        app = APP.read_text(encoding="utf-8")
+        self.assertIn('const ENDPOINT = "/api/system/vehicle-setup";', source)
+        self.assertIn('const PREVIEW_ENDPOINT = "/api/system/vehicle-setup/preview";', source)
+        self.assertIn('const APPLY_ENDPOINT = "/api/system/vehicle-setup/apply";', source)
+        self.assertIn('const COPY_ENDPOINT = "/api/system/vehicle-custom/create";', source)
+        self.assertIn('const LOAD_CUSTOM_ENDPOINT = "/api/system/vehicle-custom/load";', source)
+        self.assertIn('const SAVE_CUSTOM_ENDPOINT = "/api/system/vehicle-custom/save";', source)
+        self.assertIn('const MANAGE_CUSTOM_ENDPOINT = "/api/system/vehicle-custom/manage";', source)
+        self.assertIn('const IMPORT_CUSTOM_ENDPOINT = "/api/system/vehicle-custom/import";', source)
+        self.assertIn(
+            'const COORDINATOR_ENDPOINT = "/api/system/vehicle-setup/coordinator";',
+            source,
+        )
+        self.assertIn("api.getJson(ENDPOINT", source)
+        self.assertIn("api.postJson(PREVIEW_ENDPOINT, request", source)
+        self.assertIn("api.postJson(APPLY_ENDPOINT, body", source)
+        self.assertIn("api.postJson(COPY_ENDPOINT", source)
+        self.assertIn("api.postJson(LOAD_CUSTOM_ENDPOINT", source)
+        self.assertIn("api.postJson(SAVE_CUSTOM_ENDPOINT", source)
+        self.assertIn("api.postJson(MANAGE_CUSTOM_ENDPOINT", source)
+        self.assertIn("api.postJson(IMPORT_CUSTOM_ENDPOINT", source)
+        self.assertIn("Use maintained ${label} as template", source)
+        self.assertIn("Stored in your user catalogue", source)
+        self.assertIn('data-openmmi-vehicle-custom-edit', source)
+        self.assertIn('data-openmmi-vehicle-custom-manage="duplicate"', source)
+        self.assertIn('data-openmmi-vehicle-custom-manage="rename"', source)
+        self.assertIn('data-openmmi-vehicle-custom-manage="delete"', source)
+        self.assertIn("expected_revision", source)
+        self.assertIn("Lifecycle changes do not apply or restart", source)
+        self.assertIn("Import ${label} JSON", source)
+        self.assertIn("selected as an unapplied draft", source)
+        self.assertNotIn("Edit maintained", source)
+        self.assertNotIn("Delete maintained", source)
+        self.assertIn("expected_configuration_revision", source)
+        self.assertIn("target_configuration_revision", source)
+        self.assertIn("confirm: true", source)
+        self.assertIn("windowRef.confirm", source)
+        self.assertIn('code === "stale-preview"', source)
+        self.assertIn('code === "apply-failed-restored"', source)
+        self.assertIn('code === "apply-failed-restore-unverified"', source)
+        self.assertNotIn("localStorage", source)
+        self.assertNotIn("/restore", source)
+        self.assertIn('activeSection() !== "vehicle-setup"', source)
+        self.assertIn('data-testid="vehicle-setup-profile"', source)
+        self.assertIn('data-testid="vehicle-setup-bindings"', source)
+        self.assertIn('data-testid="vehicle-setup-preview"', source)
+        self.assertIn('data-openmmi-vehicle-setup-apply="true"', source)
+        self.assertIn('data-openmmi-settings-section="vehicle-setup"', app)
 
     def test_application_does_not_override_module_owned_control_state(self):
         source = APP.read_text(encoding="utf-8")

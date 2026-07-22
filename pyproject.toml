@@ -29,6 +29,7 @@ open-mmi-launcher = "ui.launcher:main"
 open-mmi-status = "ui.dashboard.status_cli:main"
 open-mmi-update-coordinator = "ui.update_coordinator:main"
 open-mmi-update-installer = "ui.update_installer:main"
+open-mmi-vehicle-config-coordinator = "ui.vehicle_config_coordinator:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -42,7 +43,12 @@ include = [
 
 [tool.setuptools.package-data]
 bindings = ["*.json"]
-"vehicles.seat_1p" = ["*.json", "notes/*.md"]
+canbusd = ["data/*.json"]
+vehicles = [
+    "catalogue.v1.json",
+    "**/*.json",
+    "**/*.md"
+]
 "ui.web_dashboard" = [
     "static/*.css",
     "static/*.html",

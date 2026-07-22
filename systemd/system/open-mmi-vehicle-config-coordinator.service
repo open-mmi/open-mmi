@@ -1,0 +1,38 @@
+[Unit]
+Description=Open MMI Vehicle Configuration Coordinator
+Documentation=https://github.com/open-mmi/open-mmi
+After=local-fs.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/open-mmi/vehicle-config-coordinator.env
+ExecStart=/opt/open-mmi/venv/bin/open-mmi-vehicle-config-coordinator serve
+Restart=on-failure
+RestartSec=2
+RuntimeDirectory=open-mmi
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes
+StateDirectory=open-mmi
+StateDirectoryMode=0755
+UMask=0027
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateNetwork=true
+PrivateTmp=true
+ProtectClock=true
+ProtectControlGroups=true
+ProtectHome=read-only
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/open-mmi /run/open-mmi /etc/open-mmi /etc/udev/rules.d
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

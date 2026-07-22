@@ -8,6 +8,8 @@ body:
       value: |
         Use this when asking for support for a new vehicle or platform.
 
+        Open MMI's registry is a continuity checkpoint, not a walled garden. You do not need a finished universal name to request help or share raw CAN evidence. Provisional observations are welcome; confirmed maintained mappings later reuse or propose one shared human-readable descriptor.
+
         open-mmi is currently alpha/backend software. The Seat Leon 1P / VAG PQ35 profile is the maintainer-tested reference profile.
 
   - type: input
@@ -70,6 +72,15 @@ body:
         - warnings
     validations:
       required: true
+
+  - type: textarea
+    id: human_meaning
+    attributes:
+      label: Suspected human meaning
+      description: Describe what the signal appears to mean to a person. A provisional description is fine; mark uncertainty clearly.
+      placeholder: "Example: steering-wheel mute button, rear-left parking distance, or unknown PDC-related state."
+    validations:
+      required: false
 
   - type: textarea
     id: evidence

@@ -8,7 +8,7 @@ from ui.web_dashboard import server
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PROFILE_PATH = ROOT / "vehicles" / "seat_1p" / "config.json"
+PROFILE_PATH = ROOT / "vehicles" / "seat" / "leon" / "1p-pq35" / "config.json"
 VEHICLE_PATH = ROOT / "ui" / "web_dashboard" / "static" / "vehicle.js"
 STATUS_CLI_PATH = ROOT / "ui" / "dashboard" / "status_cli.py"
 

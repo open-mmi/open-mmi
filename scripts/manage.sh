@@ -15,6 +15,14 @@ UPDATE_POLICY_FILE="/etc/open-mmi/update-policy.json"
 UPDATE_COORDINATOR_GROUP="open-mmi-update"
 UPDATE_COORDINATOR_UNIT="open-mmi-update-coordinator.service"
 UPDATE_INSTALLER_UNIT="open-mmi-update-installer.service"
+VEHICLE_CONFIG_COORDINATOR_GROUP="open-mmi-config"
+VEHICLE_CONFIG_COORDINATOR_UNIT="open-mmi-vehicle-config-coordinator.service"
+VEHICLE_CAN_PROVISION_UNIT="open-mmi-vehicle-can-provision.service"
+VEHICLE_CONFIG_COORDINATOR_ENV="/etc/open-mmi/vehicle-config-coordinator.env"
+VEHICLE_CONFIG_UI_QUALIFICATION_GATE="/etc/open-mmi/vehicle-configuration-ui-qualification"
+VEHICLE_CONFIG_COORDINATOR_OVERRIDE_DIR="/etc/systemd/system/$VEHICLE_CONFIG_COORDINATOR_UNIT.d"
+VEHICLE_CONFIG_COORDINATOR_SANDBOX="$VEHICLE_CONFIG_COORDINATOR_OVERRIDE_DIR/10-write-paths.conf"
+VEHICLE_CONFIG_COORDINATOR_SOCKET="/run/open-mmi/vehicle-configuration-coordinator.sock"
 UPDATE_COORDINATOR_STATE_DIR="/var/lib/open-mmi"
 UPDATE_COORDINATOR_RUNTIME_DIR="/run/open-mmi"
 
@@ -50,6 +58,7 @@ OPEN_MMI_COMMANDS=(
     open-mmi-status
     open-mmi-update-coordinator
     open-mmi-update-installer
+    open-mmi-vehicle-config-coordinator
 )
 
 # =============================================================================
@@ -287,9 +296,8 @@ copy_if_missing() {
         return 0
     fi
 
-    mkdir -p "$(dirname "$dst")"
-    cp "$src" "$dst"
-    chown "$REAL_USER:$REAL_USER" "$dst"
+    install -d -m 0700 -o "$REAL_USER" -g "$REAL_USER" "$(dirname "$dst")"
+    install -m 0600 -o "$REAL_USER" -g "$REAL_USER" "$src" "$dst"
     log_success "Created $dst"
 }
 
@@ -432,6 +440,194 @@ install_open_mmi_package() {
     fi
 }
 
+configure_maintained_catalogue_permissions() {
+    local catalogue_root
+
+    for catalogue_root in "$INSTALL_DIR/vehicles" "$INSTALL_DIR/bindings"; do
+        [ -d "$catalogue_root" ] || continue
+
+        # Prepared updates run with UMask=0027 and preserve staged modes.  The
+        # maintained catalogue is non-secret installed product data and must be
+        # readable by the unprivileged dashboard and canbusd services.
+        find "$catalogue_root" -type d \
+            -exec chown root:root {} + \
+            -exec chmod 0755 {} +
+        find "$catalogue_root" -type f \
+            -exec chown root:root {} + \
+            -exec chmod 0644 {} +
+    done
+}
+
+
+harden_custom_catalogue_permissions() {
+    local user_group_id
+    user_group_id=$(id -g "$REAL_USER")
+
+    python3 - \
+        "$REAL_HOME" \
+        "$USER_CONFIG_DIR" \
+        "$USER_ID" \
+        "$user_group_id" <<'PY_CUSTOM_CATALOGUE_PERMISSIONS'
+import os
+import stat
+import sys
+from pathlib import Path
+
+home = Path(sys.argv[1])
+custom_root = Path(sys.argv[2])
+user_uid = int(sys.argv[3])
+user_gid = int(sys.argv[4])
+expected_root = home / ".config" / "open-mmi"
+allowed_owners = {0, user_uid}
+maximum_items = 10_000
+
+if not home.is_absolute() or custom_root != expected_root:
+    raise SystemExit("custom catalogue path is not the fixed user configuration root")
+
+
+def metadata(path: Path):
+    try:
+        return path.lstat()
+    except OSError as exc:
+        raise SystemExit(f"custom catalogue path cannot be inspected: {path}") from exc
+
+
+def validate_directory(path: Path, *, owner_must_be_user: bool = False) -> os.stat_result:
+    item = metadata(path)
+    if stat.S_ISLNK(item.st_mode) or not stat.S_ISDIR(item.st_mode):
+        raise SystemExit(f"custom catalogue directory is untrusted: {path}")
+    expected_owners = {user_uid} if owner_must_be_user else allowed_owners
+    if item.st_uid not in expected_owners:
+        raise SystemExit(f"custom catalogue directory has an untrusted owner: {path}")
+    return item
+
+
+def create_private_directory(path: Path) -> None:
+    try:
+        os.mkdir(path, 0o700)
+    except FileExistsError:
+        return
+    except OSError as exc:
+        raise SystemExit(f"custom catalogue directory cannot be created: {path}") from exc
+    os.chown(path, user_uid, user_gid, follow_symlinks=False)
+    os.chmod(path, 0o700)
+
+
+home_metadata = validate_directory(home, owner_must_be_user=True)
+if home_metadata.st_mode & 0o022:
+    raise SystemExit("user home directory must not be group or world writable")
+
+config_root = home / ".config"
+if not config_root.exists():
+    create_private_directory(config_root)
+config_metadata = validate_directory(config_root, owner_must_be_user=True)
+if config_metadata.st_mode & 0o022:
+    raise SystemExit("user configuration directory must not be group or world writable")
+
+if not custom_root.exists():
+    create_private_directory(custom_root)
+root_metadata = validate_directory(custom_root)
+
+catalogue_roots = [
+    custom_root / "vehicles",
+    custom_root / "bindings",
+    custom_root / ".open-mmi-provenance",
+]
+provenance_children = [
+    custom_root / ".open-mmi-provenance" / "profile",
+    custom_root / ".open-mmi-provenance" / "bindings",
+]
+
+# Inspect every existing targeted tree before changing ownership or modes. This
+# prevents an update from following a user-created symlink or touching an inode
+# linked outside the fixed custom catalogue.
+collected: dict[Path, tuple[int, int, bool]] = {
+    custom_root: (root_metadata.st_dev, root_metadata.st_ino, True),
+}
+for root in catalogue_roots:
+    try:
+        root_metadata = root.lstat()
+    except FileNotFoundError:
+        continue
+    except OSError as exc:
+        raise SystemExit(f"custom catalogue path cannot be inspected: {root}") from exc
+    if stat.S_ISLNK(root_metadata.st_mode):
+        raise SystemExit(f"custom catalogue symlinks are not trusted: {root}")
+    if not stat.S_ISDIR(root_metadata.st_mode):
+        raise SystemExit(f"custom catalogue directory is untrusted: {root}")
+    if root_metadata.st_uid not in allowed_owners:
+        raise SystemExit(f"custom catalogue directory has an untrusted owner: {root}")
+    collected[root] = (root_metadata.st_dev, root_metadata.st_ino, True)
+    stack = [root]
+    while stack:
+        directory = stack.pop()
+        try:
+            entries = list(os.scandir(directory))
+        except OSError as exc:
+            raise SystemExit(f"custom catalogue directory cannot be read: {directory}") from exc
+        for entry in entries:
+            path = Path(entry.path)
+            try:
+                item = entry.stat(follow_symlinks=False)
+            except OSError as exc:
+                raise SystemExit(f"custom catalogue item cannot be inspected: {path}") from exc
+            if stat.S_ISLNK(item.st_mode):
+                raise SystemExit(f"custom catalogue symlinks are not trusted: {path}")
+            if item.st_uid not in allowed_owners:
+                raise SystemExit(f"custom catalogue item has an untrusted owner: {path}")
+            if stat.S_ISDIR(item.st_mode):
+                collected[path] = (item.st_dev, item.st_ino, True)
+                stack.append(path)
+            elif stat.S_ISREG(item.st_mode) and item.st_nlink == 1:
+                collected[path] = (item.st_dev, item.st_ino, False)
+            else:
+                raise SystemExit(f"custom catalogue item is untrusted: {path}")
+            if len(collected) > maximum_items:
+                raise SystemExit("custom catalogue contains too many items")
+
+for root in catalogue_roots:
+    if not root.exists():
+        create_private_directory(root)
+for directory in provenance_children:
+    if not directory.exists():
+        create_private_directory(directory)
+
+# Include directories created after the no-follow preflight.
+for path in [*catalogue_roots, *provenance_children]:
+    item = validate_directory(path)
+    collected[path] = (item.st_dev, item.st_ino, True)
+
+# Files first, then deepest directories, so no unrelated file in the shared
+# open-mmi settings root is ever traversed or modified.
+ordered = sorted(
+    collected.items(),
+    key=lambda pair: (pair[1][2], -len(pair[0].parts)),
+)
+for path, (device, inode, is_directory) in ordered:
+    item = metadata(path)
+    if item.st_dev != device or item.st_ino != inode:
+        raise SystemExit(f"custom catalogue changed during permission repair: {path}")
+    if is_directory != stat.S_ISDIR(item.st_mode):
+        raise SystemExit(f"custom catalogue changed during permission repair: {path}")
+    if not is_directory and (not stat.S_ISREG(item.st_mode) or item.st_nlink != 1):
+        raise SystemExit(f"custom catalogue changed during permission repair: {path}")
+    os.chown(path, user_uid, user_gid, follow_symlinks=False)
+    os.chmod(path, 0o700 if is_directory else 0o600)
+
+for path, (_device, _inode, is_directory) in collected.items():
+    item = metadata(path)
+    expected_mode = 0o700 if is_directory else 0o600
+    if (
+        item.st_uid != user_uid
+        or item.st_gid != user_gid
+        or stat.S_IMODE(item.st_mode) != expected_mode
+    ):
+        raise SystemExit(f"custom catalogue permission repair could not be verified: {path}")
+PY_CUSTOM_CATALOGUE_PERMISSIONS
+
+    log_success "Verified private user-owned custom vehicle catalogue"
+}
+
 install_command_links() {
     local command wrapper link current_target
 
@@ -550,6 +746,206 @@ install_update_coordinator() {
     fi
 }
 
+install_open_mmi_transaction_locks() {
+    install -d -m 0755 -o root -g root "$UPDATE_COORDINATOR_RUNTIME_DIR"
+    python3 - "$UPDATE_COORDINATOR_RUNTIME_DIR" 0 0 <<'PY_OPEN_MMI_TRANSACTION_LOCKS'
+import os
+import stat
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+expected_uid = int(sys.argv[2])
+expected_gid = int(sys.argv[3])
+names = (
+    "lifecycle.lock",
+    "update.lock",
+    "vehicle-configuration.lock",
+)
+
+root_metadata = root.lstat()
+if (
+    not stat.S_ISDIR(root_metadata.st_mode)
+    or root_metadata.st_uid != expected_uid
+    or root_metadata.st_gid != expected_gid
+    or root_metadata.st_mode & (stat.S_IWGRP | stat.S_IWOTH)
+):
+    raise SystemExit("Open MMI runtime directory is untrusted")
+
+existing = []
+for name in names:
+    path = root / name
+    try:
+        metadata = path.lstat()
+    except FileNotFoundError:
+        continue
+    if (
+        not stat.S_ISREG(metadata.st_mode)
+        or metadata.st_uid != expected_uid
+        or metadata.st_gid != expected_gid
+        or metadata.st_nlink != 1
+    ):
+        raise SystemExit(f"Open MMI transaction lock is untrusted: {path}")
+    existing.append(path)
+
+for path in existing:
+    os.chmod(path, 0o644, follow_symlinks=False)
+
+for name in names:
+    path = root / name
+    if path in existing:
+        continue
+    descriptor = os.open(
+        path,
+        os.O_WRONLY
+        | os.O_CREAT
+        | os.O_EXCL
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0),
+        0o644,
+    )
+    try:
+        os.fchown(descriptor, expected_uid, expected_gid)
+        os.fchmod(descriptor, 0o644)
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+directory_fd = os.open(root, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+try:
+    os.fsync(directory_fd)
+finally:
+    os.close(directory_fd)
+PY_OPEN_MMI_TRANSACTION_LOCKS
+}
+
+
+write_vehicle_config_coordinator_environment() {
+    local runtime_dropin status_path
+    runtime_dropin="$REAL_HOME/.config/systemd/user/canbusd.service.d/10-can-runtime.conf"
+    status_path="/run/user/$USER_ID/open-mmi/status.json"
+
+    install -d -m 0755 -o root -g root "$(dirname "$VEHICLE_CONFIG_COORDINATOR_ENV")"
+    python3 - \
+        "$VEHICLE_CONFIG_COORDINATOR_ENV" \
+        "$INSTALL_DIR" \
+        "$USER_CONFIG_DIR" \
+        "$runtime_dropin" \
+        "$status_path" <<'PY_VEHICLE_CONFIG_COORDINATOR_ENV'
+import json
+import os
+import sys
+from pathlib import Path
+
+destination = Path(sys.argv[1])
+values = {
+    "OPEN_MMI_INSTALL_DIR": sys.argv[2],
+    "OPEN_MMI_CONFIG_DIR": sys.argv[3],
+    "OPEN_MMI_RUNTIME_DROPIN": sys.argv[4],
+    "OPEN_MMI_STATUS_PATH": sys.argv[5],
+}
+
+for key, value in values.items():
+    if not value.startswith("/") or "\n" in value or "\r" in value or "\x00" in value:
+        raise SystemExit(f"invalid coordinator path for {key}")
+
+temporary = destination.with_name(f".{destination.name}.tmp")
+temporary.write_text(
+    "".join(f"{key}={json.dumps(value)}\n" for key, value in values.items()),
+    encoding="utf-8",
+)
+os.chmod(temporary, 0o644)
+os.replace(temporary, destination)
+PY_VEHICLE_CONFIG_COORDINATOR_ENV
+    chown root:root "$VEHICLE_CONFIG_COORDINATOR_ENV"
+    chmod 0644 "$VEHICLE_CONFIG_COORDINATOR_ENV"
+}
+
+write_vehicle_config_coordinator_sandbox() {
+    local runtime_directory
+    runtime_directory="$REAL_HOME/.config/systemd/user/canbusd.service.d"
+    install -d -m 0755 -o "$REAL_USER" -g "$REAL_USER" "$runtime_directory"
+    install -d -m 0755 -o root -g root "$VEHICLE_CONFIG_COORDINATOR_OVERRIDE_DIR"
+    python3 - "$VEHICLE_CONFIG_COORDINATOR_SANDBOX" "$runtime_directory" <<'PY_VEHICLE_CONFIG_COORDINATOR_SANDBOX'
+import os
+import sys
+from pathlib import Path
+
+destination = Path(sys.argv[1])
+runtime_directory = sys.argv[2]
+path = Path(runtime_directory)
+if (
+    not path.is_absolute()
+    or ".." in path.parts
+    or any(ord(character) < 32 for character in runtime_directory)
+):
+    raise SystemExit("invalid coordinator writable path")
+quoted = runtime_directory.replace("\\", "\\\\").replace('"', '\\"')
+temporary = destination.with_name(f".{destination.name}.tmp")
+temporary.write_text(
+    "[Service]\n"
+    f'ReadWritePaths="-{quoted}"\n',
+    encoding="utf-8",
+)
+os.chmod(temporary, 0o644)
+os.replace(temporary, destination)
+PY_VEHICLE_CONFIG_COORDINATOR_SANDBOX
+    chown root:root "$VEHICLE_CONFIG_COORDINATOR_SANDBOX"
+    chmod 0644 "$VEHICLE_CONFIG_COORDINATOR_SANDBOX"
+}
+
+wait_for_vehicle_config_coordinator() {
+    local coordinator_cli="$INSTALL_DIR/venv/bin/open-mmi-config"
+    local attempts="${OPEN_MMI_COORDINATOR_HEALTH_ATTEMPTS:-15}"
+    local delay="${OPEN_MMI_COORDINATOR_HEALTH_DELAY:-1}"
+    local attempt
+
+    for ((attempt = 1; attempt <= attempts; attempt++)); do
+        if systemctl is-active --quiet "$VEHICLE_CONFIG_COORDINATOR_UNIT" \
+            && [ -S "$VEHICLE_CONFIG_COORDINATOR_SOCKET" ] \
+            && [ -x "$coordinator_cli" ] \
+            && env -u PYTHONPATH "$coordinator_cli" vehicle-setup coordinator >/dev/null 2>&1; then
+            return 0
+        fi
+        sleep "$delay"
+    done
+
+    log_error "Vehicle configuration coordinator failed its post-install health check"
+    systemctl --no-pager --full status "$VEHICLE_CONFIG_COORDINATOR_UNIT" >&2 || true
+    return 1
+}
+
+
+install_vehicle_config_coordinator() {
+    local authorization_added=false
+    harden_custom_catalogue_permissions
+    if ! getent group "$VEHICLE_CONFIG_COORDINATOR_GROUP" >/dev/null 2>&1; then
+        groupadd --system "$VEHICLE_CONFIG_COORDINATOR_GROUP"
+    fi
+    if ! id -nG "$REAL_USER" | tr ' ' '\n' | grep -Fqx "$VEHICLE_CONFIG_COORDINATOR_GROUP"; then
+        usermod -aG "$VEHICLE_CONFIG_COORDINATOR_GROUP" "$REAL_USER"
+        authorization_added=true
+    fi
+    write_vehicle_config_coordinator_environment
+    write_vehicle_config_coordinator_sandbox
+    install_open_mmi_transaction_locks
+    install -d -m 0755 -o root -g root /etc/systemd/system
+    install -m 0644 -o root -g root \
+        "$REPO_ROOT/systemd/system/$VEHICLE_CONFIG_COORDINATOR_UNIT" \
+        "/etc/systemd/system/$VEHICLE_CONFIG_COORDINATOR_UNIT"
+    install -m 0644 -o root -g root \
+        "$REPO_ROOT/systemd/system/$VEHICLE_CAN_PROVISION_UNIT" \
+        "/etc/systemd/system/$VEHICLE_CAN_PROVISION_UNIT"
+    install -d -m 0755 -o root -g root "$UPDATE_COORDINATOR_STATE_DIR"
+    systemctl daemon-reload
+    systemctl enable "$VEHICLE_CONFIG_COORDINATOR_UNIT"
+    systemctl restart "$VEHICLE_CONFIG_COORDINATOR_UNIT"
+    wait_for_vehicle_config_coordinator
+    if [ "$authorization_added" = true ]; then
+        log_warn "Log out and back in before inspecting vehicle configuration coordinator status."
+    fi
+}
+
 remove_login_autostart() {
     if [ -f "$LOGIN_AUTOSTART_ENTRY" ] && grep -Fqx "Exec=/usr/local/bin/open-mmi-launcher" "$LOGIN_AUTOSTART_ENTRY"; then
         rm -f "$LOGIN_AUTOSTART_ENTRY"
@@ -560,8 +956,31 @@ remove_login_autostart() {
 # =============================================================================
 # PROFILE-DRIVEN PROVISIONING
 # =============================================================================
+resolve_maintained_profile_source() {
+    local vehicle="$1"
+    PYTHONPATH="$REPO_ROOT${PYTHONPATH:+:$PYTHONPATH}" python3 - \
+        "$REPO_ROOT" "$INSTALL_DIR" "$vehicle" <<'PYRESOLVE'
+import sys
+from pathlib import Path
+from canbusd import profile_catalogue
+
+repo_root = Path(sys.argv[1])
+install_dir = Path(sys.argv[2])
+vehicle = sys.argv[3]
+for root in (install_dir, repo_root):
+    try:
+        resolved = profile_catalogue.resolve_profile(root, vehicle)
+    except profile_catalogue.VehicleProfileCatalogueError:
+        continue
+    if Path(resolved["path"]).is_file():
+        print(resolved["path"])
+        raise SystemExit(0)
+raise SystemExit(f"Vehicle profile not found: {vehicle}")
+PYRESOLVE
+}
+
 apply_profile_provisioning() {
-    local vehicle="${1:-seat_1p}"
+    local vehicle="${1:-seat-leon-1p-pq35}"
     local bindings="${2:-default}"
 
     log_info "Applying profile-driven provisioning: vehicle=$vehicle bindings=$bindings"
@@ -575,7 +994,8 @@ apply_profile_provisioning() {
         --bindings "$bindings" \
         --real-user "$REAL_USER"
 
-    chown -R "$REAL_USER:$REAL_USER" "$USER_CONFIG_DIR" "$REAL_HOME/.config/systemd/user" || true
+    harden_custom_catalogue_permissions
+    chown -R "$REAL_USER:$REAL_USER" "$REAL_HOME/.config/systemd/user" || true
 }
 
 reload_profile_provisioning() {
@@ -673,6 +1093,8 @@ cmd_install() {
     cp "$REPO_ROOT/README.md" "$INSTALL_DIR/"
     cp "$REPO_ROOT/LICENSE" "$INSTALL_DIR/"
 
+    configure_maintained_catalogue_permissions
+
     if ! install_open_mmi_package; then
         return 1
     fi
@@ -680,6 +1102,7 @@ cmd_install() {
         return 1
     fi
     install_update_coordinator
+    install_vehicle_config_coordinator
     
     # Store version and the managed source descriptor used by read-only checks.
     get_current_version > "$VERSION_FILE"
@@ -701,8 +1124,13 @@ cmd_install() {
     # Apply default profile-driven CAN provisioning.
     # This creates user config if missing, writes the daemon runtime drop-in,
     # and generates udev rules from the selected vehicle profile metadata.
-    apply_profile_provisioning "seat_1p" "default"
+    apply_profile_provisioning "seat-leon-1p-pq35" "default"
     reload_profile_provisioning
+    # The generated runtime drop-in directory may not have existed when the
+    # coordinator first started. Restart once so its mount namespace receives
+    # the now-present exact writable-path exception used only for recovery.
+    systemctl restart "$VEHICLE_CONFIG_COORDINATOR_UNIT"
+    wait_for_vehicle_config_coordinator
     
     # Set permissions
     log_info "Configuring user permissions..."
@@ -741,6 +1169,8 @@ cmd_update() {
         log_error "$APP_NAME not installed"
         return 1
     fi
+
+    harden_custom_catalogue_permissions
 
     local old_version
     old_version=$(get_installed_version)
@@ -817,6 +1247,8 @@ cmd_update() {
     sudo cp "$REPO_ROOT/README.md" "$INSTALL_DIR/"
     sudo cp "$REPO_ROOT/LICENSE" "$INSTALL_DIR/"
 
+    configure_maintained_catalogue_permissions
+
     if ! install_open_mmi_package; then
         return 1
     fi
@@ -824,6 +1256,7 @@ cmd_update() {
         return 1
     fi
     install_update_coordinator
+    install_vehicle_config_coordinator
 
     local user_systemd_dir="$REAL_HOME/.config/systemd/user"
     sudo install -d -m 0755 -o "$REAL_USER" -g "$REAL_USER" "$user_systemd_dir"
@@ -887,14 +1320,29 @@ cmd_deploy_prepared() {
         cp -a -- "$INSTALL_DIR" "$rollback_root/installation"
         env -u PYTHONPATH "$rollback_root/installation/venv/bin/python" -I -c 'import ui.config_cli'
     fi
-    install -d -m 0700 -o root -g root "$rollback_root/system-units" "$rollback_root/user-units"
-    for unit in "$UPDATE_COORDINATOR_UNIT" "$UPDATE_INSTALLER_UNIT"; do
+    install -d -m 0700 -o root -g root \
+        "$rollback_root/system-units" \
+        "$rollback_root/system-files" \
+        "$rollback_root/user-units"
+    for unit in "$UPDATE_COORDINATOR_UNIT" "$UPDATE_INSTALLER_UNIT" "$VEHICLE_CONFIG_COORDINATOR_UNIT" "$VEHICLE_CAN_PROVISION_UNIT"; do
         if [ -e "/etc/systemd/system/$unit" ]; then
             cp -a -- "/etc/systemd/system/$unit" "$rollback_root/system-units/$unit"
         else
             : > "$rollback_root/system-units/$unit.absent"
         fi
     done
+    if [ -e "$VEHICLE_CONFIG_COORDINATOR_ENV" ]; then
+        cp -a -- "$VEHICLE_CONFIG_COORDINATOR_ENV" \
+            "$rollback_root/system-files/vehicle-config-coordinator.env"
+    else
+        : > "$rollback_root/system-files/vehicle-config-coordinator.env.absent"
+    fi
+    if [ -e "$VEHICLE_CONFIG_COORDINATOR_SANDBOX" ]; then
+        cp -a -- "$VEHICLE_CONFIG_COORDINATOR_SANDBOX" \
+            "$rollback_root/system-files/vehicle-config-coordinator-sandbox.conf"
+    else
+        : > "$rollback_root/system-files/vehicle-config-coordinator-sandbox.conf.absent"
+    fi
     for unit in canbusd.service open-mmi-dashboard.service; do
         if [ -e "$REAL_HOME/.config/systemd/user/$unit" ]; then
             cp -a -- "$REAL_HOME/.config/systemd/user/$unit" "$rollback_root/user-units/$unit"
@@ -924,13 +1372,27 @@ cmd_deploy_prepared() {
         if [ -d "${OPEN_MMI_MANAGED_REPOSITORY:-}/.git" ]; then
             sudo -u "$REAL_USER" git -C "$OPEN_MMI_MANAGED_REPOSITORY" reset --hard "$previous_commit" >/dev/null 2>&1 || true
         fi
-        for unit in "$UPDATE_COORDINATOR_UNIT" "$UPDATE_INSTALLER_UNIT"; do
+        for unit in "$UPDATE_COORDINATOR_UNIT" "$UPDATE_INSTALLER_UNIT" "$VEHICLE_CONFIG_COORDINATOR_UNIT" "$VEHICLE_CAN_PROVISION_UNIT"; do
             if [ -e "$rollback_root/system-units/$unit" ]; then
                 cp -a -- "$rollback_root/system-units/$unit" "/etc/systemd/system/$unit"
             elif [ -e "$rollback_root/system-units/$unit.absent" ]; then
                 rm -f -- "/etc/systemd/system/$unit"
             fi
         done
+        if [ -e "$rollback_root/system-files/vehicle-config-coordinator.env" ]; then
+            install -d -m 0755 -o root -g root "$(dirname "$VEHICLE_CONFIG_COORDINATOR_ENV")"
+            cp -a -- "$rollback_root/system-files/vehicle-config-coordinator.env" \
+                "$VEHICLE_CONFIG_COORDINATOR_ENV"
+        elif [ -e "$rollback_root/system-files/vehicle-config-coordinator.env.absent" ]; then
+            rm -f -- "$VEHICLE_CONFIG_COORDINATOR_ENV"
+        fi
+        if [ -e "$rollback_root/system-files/vehicle-config-coordinator-sandbox.conf" ]; then
+            install -d -m 0755 -o root -g root "$VEHICLE_CONFIG_COORDINATOR_OVERRIDE_DIR"
+            cp -a -- "$rollback_root/system-files/vehicle-config-coordinator-sandbox.conf" \
+                "$VEHICLE_CONFIG_COORDINATOR_SANDBOX"
+        elif [ -e "$rollback_root/system-files/vehicle-config-coordinator-sandbox.conf.absent" ]; then
+            rm -f -- "$VEHICLE_CONFIG_COORDINATOR_SANDBOX"
+        fi
         for unit in canbusd.service open-mmi-dashboard.service; do
             if [ -e "$rollback_root/user-units/$unit" ]; then
                 cp -a -- "$rollback_root/user-units/$unit" "$REAL_HOME/.config/systemd/user/$unit"
@@ -940,6 +1402,11 @@ cmd_deploy_prepared() {
             fi
         done
         systemctl daemon-reload >/dev/null 2>&1 || true
+        if [ -e "/etc/systemd/system/$VEHICLE_CONFIG_COORDINATOR_UNIT" ]; then
+            systemctl restart "$VEHICLE_CONFIG_COORDINATOR_UNIT" >/dev/null 2>&1 || true
+        else
+            systemctl stop "$VEHICLE_CONFIG_COORDINATOR_UNIT" >/dev/null 2>&1 || true
+        fi
         export XDG_RUNTIME_DIR="/run/user/$USER_ID"
         sudo -u "$REAL_USER" env HOME="$REAL_HOME" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
             systemctl --user daemon-reload >/dev/null 2>&1 || true
@@ -980,6 +1447,8 @@ cmd_deploy_prepared() {
         cp -a -- "$resolved_stage/$item" "$INSTALL_DIR/"
     done
 
+    configure_maintained_catalogue_permissions
+
     REPO_ROOT="$resolved_stage"
     DESKTOP_ENTRY_SOURCE="$REPO_ROOT/packaging/linux-desktop/open-mmi-status.desktop"
     CHOOSER_ENTRY_SOURCE="$REPO_ROOT/packaging/linux-desktop/open-mmi-chooser.desktop"
@@ -989,6 +1458,8 @@ cmd_deploy_prepared() {
     install_command_links
     deployment_stage="system-services"
     install_update_coordinator
+    deployment_stage="vehicle-config-coordinator"
+    install_vehicle_config_coordinator
 
     deployment_stage="user-services"
     local user_systemd_dir="$REAL_HOME/.config/systemd/user"
@@ -1071,8 +1542,18 @@ cmd_uninstall() {
         sudo -u "$REAL_USER" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user disable --now "$service" >/dev/null 2>&1 || true
     done
     systemctl disable --now "$UPDATE_COORDINATOR_UNIT" >/dev/null 2>&1 || true
+    systemctl disable --now "$VEHICLE_CONFIG_COORDINATOR_UNIT" >/dev/null 2>&1 || true
+    systemctl stop "$VEHICLE_CAN_PROVISION_UNIT" >/dev/null 2>&1 || true
     systemctl stop "$UPDATE_INSTALLER_UNIT" >/dev/null 2>&1 || true
-    rm -f "/etc/systemd/system/$UPDATE_COORDINATOR_UNIT" "/etc/systemd/system/$UPDATE_INSTALLER_UNIT"
+    rm -f \
+        "/etc/systemd/system/$UPDATE_COORDINATOR_UNIT" \
+        "/etc/systemd/system/$UPDATE_INSTALLER_UNIT" \
+        "/etc/systemd/system/$VEHICLE_CONFIG_COORDINATOR_UNIT" \
+        "/etc/systemd/system/$VEHICLE_CAN_PROVISION_UNIT" \
+        "$VEHICLE_CONFIG_COORDINATOR_ENV" \
+        "$VEHICLE_CONFIG_UI_QUALIFICATION_GATE" \
+        "$VEHICLE_CONFIG_COORDINATOR_SANDBOX"
+    rmdir "$VEHICLE_CONFIG_COORDINATOR_OVERRIDE_DIR" >/dev/null 2>&1 || true
     systemctl daemon-reload
     rm -rf "$UPDATE_COORDINATOR_RUNTIME_DIR" "$UPDATE_COORDINATOR_STATE_DIR"
 
@@ -1170,7 +1651,7 @@ cmd_config() {
 
     case "$action" in
         apply-profile|set-profile)
-            local vehicle="${2:-seat_1p}"
+            local vehicle="${2:-seat-leon-1p-pq35}"
             local bindings="${3:-default}"
 
             apply_profile_provisioning "$vehicle" "$bindings"
@@ -1182,16 +1663,19 @@ cmd_config() {
             log_info "Use 'sudo $0 config edit-can' only for advanced hardware overrides."
             ;;
         init)
-            local vehicle="${2:-seat_1p}"
+            local vehicle="${2:-seat-leon-1p-pq35}"
             local bindings="${3:-default}"
 
             log_info "Creating user config directory at $USER_CONFIG_DIR"
-            mkdir -p "$USER_CONFIG_DIR/vehicles/$vehicle"
-            mkdir -p "$USER_CONFIG_DIR/bindings"
-            chown -R "$REAL_USER:$REAL_USER" "$USER_CONFIG_DIR"
+            harden_custom_catalogue_permissions
 
-            local source_vehicle="$REPO_ROOT/vehicles/$vehicle/config.json"
-            local source_bindings="$REPO_ROOT/bindings/$bindings.json"
+            local source_vehicle
+            source_vehicle="$(resolve_maintained_profile_source "$vehicle")" || return 1
+            local source_bindings="$INSTALL_DIR/bindings/$bindings.json"
+
+            if [ ! -f "$source_bindings" ]; then
+                source_bindings="$REPO_ROOT/bindings/$bindings.json"
+            fi
 
             if [ ! -f "$source_vehicle" ]; then
                 log_error "Vehicle profile not found: $source_vehicle"
@@ -1220,7 +1704,7 @@ cmd_config() {
             log_info "Normal profile setup uses: sudo $0 config apply-profile $vehicle $bindings"
             ;;
         edit-profile)
-            local vehicle="${2:-${OPEN_MMI_VEHICLE:-seat_1p}}"
+            local vehicle="${2:-${OPEN_MMI_VEHICLE:-seat-leon-1p-pq35}}"
             local profile="$USER_CONFIG_DIR/vehicles/$vehicle/config.json"
 
             if [ ! -f "$profile" ]; then
@@ -1238,7 +1722,7 @@ cmd_config() {
             if [ ! -f "$file" ]; then
                 log_warn "User bindings do not exist yet: $file"
                 log_info "Creating it from installed/repo bindings..."
-                cmd_config init "${OPEN_MMI_VEHICLE:-seat_1p}" "$bindings"
+                cmd_config init "${OPEN_MMI_VEHICLE:-seat-leon-1p-pq35}" "$bindings"
             fi
 
             open_editor_as_user "$file"
@@ -1338,8 +1822,9 @@ EOF
             echo ""
             echo "  Lookup order:"
             echo "    1. Explicit env path overrides"
-            echo "    2. User config directory"
-            echo "    3. Installed app defaults"
+            echo "    2. Installed app defaults"
+            echo ""
+            echo "  User config files are used only when explicitly selected."
             ;;
         help|--help|-h|*)
             cat <<EOF
@@ -1349,7 +1834,7 @@ Commands:
   apply-profile [vehicle] [bindings]
       Select a vehicle profile and apply its runtime/provisioning defaults.
       This is the normal setup path.
-      Default vehicle: seat_1p
+      Default vehicle: seat-leon-1p-pq35
       Default bindings: default
 
   init [vehicle] [bindings]
@@ -1359,7 +1844,7 @@ Commands:
 
   edit-profile [vehicle]
       Edit a user-owned vehicle profile.
-      Default vehicle: seat_1p
+      Default vehicle: seat-leon-1p-pq35
 
   edit-bindings [bindings]
       Edit a user-owned bindings file.
@@ -1385,9 +1870,9 @@ Commands:
       Show where Open-MMI looks for config files.
 
 Examples:
-  sudo $0 config apply-profile seat_1p default
-  sudo $0 config init seat_1p default
-  sudo $0 config edit-profile seat_1p
+  sudo $0 config apply-profile seat-leon-1p-pq35 default
+  sudo $0 config init seat-leon-1p-pq35 default
+  sudo $0 config edit-profile seat-leon-1p-pq35
   sudo $0 config edit-bindings default
   sudo $0 config edit-can
   sudo $0 config edit-service
@@ -1423,9 +1908,9 @@ ${BLUE}Examples:${NC}
   sudo ./scripts/manage.sh update
   sudo ./scripts/manage.sh status
   sudo ./scripts/manage.sh logs
-  sudo ./scripts/manage.sh config apply-profile seat_1p default
+  sudo ./scripts/manage.sh config apply-profile seat-leon-1p-pq35 default
   sudo ./scripts/manage.sh config init
-  sudo ./scripts/manage.sh config edit-profile seat_1p
+  sudo ./scripts/manage.sh config edit-profile seat-leon-1p-pq35
   sudo ./scripts/manage.sh config edit-service
 
 ${BLUE}Installation Details:${NC}
@@ -1436,10 +1921,10 @@ ${BLUE}Installation Details:${NC}
 ${BLUE}Troubleshooting:${NC}
   View logs:        sudo ./scripts/manage.sh logs
   Check status:     sudo ./scripts/manage.sh status
-  Apply profile:    sudo ./scripts/manage.sh config apply-profile seat_1p default
-  Edit profile:     sudo ./scripts/manage.sh config edit-profile seat_1p
+  Apply profile:    sudo ./scripts/manage.sh config apply-profile seat-leon-1p-pq35 default
+  Edit profile:     sudo ./scripts/manage.sh config edit-profile seat-leon-1p-pq35
   sudo ./scripts/manage.sh config init
-  sudo ./scripts/manage.sh config edit-profile seat_1p
+  sudo ./scripts/manage.sh config edit-profile seat-leon-1p-pq35
   sudo ./scripts/manage.sh config edit-service
 
 EOF

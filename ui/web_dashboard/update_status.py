@@ -426,6 +426,33 @@ def _remote_commit(source: Mapping[str, str]) -> str:
     raise UpdateStatusError("Update source returned an invalid branch response")
 
 
+def _fetch_remote_candidate(source: Mapping[str, str], remote_commit: str) -> None:
+    """Fetch the advertised branch tip without changing the working tree.
+
+    ``ls-remote`` proves which commit the remote currently advertises, but a
+    fresh commit cannot be classified as ahead, behind or diverged until its
+    object exists locally.  Fetch only the fixed branch recorded in trusted
+    source metadata, then verify that the advertised commit was received.
+    """
+
+    repository = Path(source["repository_path"])
+    reference = f"refs/heads/{source['remote_branch']}"
+    try:
+        result = _run_git(
+            repository,
+            ("fetch", "--no-tags", "--quiet", source["remote"], reference),
+            timeout=REMOTE_GIT_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise UpdateStatusError("Update source fetch timed out") from exc
+    except OSError as exc:
+        raise UpdateStatusError("Git is unavailable for update checks") from exc
+    if result.returncode != 0:
+        raise UpdateStatusError("Update source could not be fetched")
+    if not _git_success(repository, "cat-file", "-e", f"{remote_commit}^{{commit}}"):
+        raise UpdateStatusError("Update source changed before it could be inspected")
+
+
 def _comparison_state(repository: Path, installed_commit: str, remote_commit: str) -> Tuple[str, Optional[bool]]:
     if installed_commit == remote_commit:
         return "up-to-date", False
@@ -582,6 +609,7 @@ def check_for_updates() -> Dict[str, Any]:
         try:
             if channel == "nightly":
                 remote_commit = _remote_commit(source)
+                _fetch_remote_candidate(source, remote_commit)
                 state, update_available = _comparison_state(
                     Path(source["repository_path"]), source["installed_commit"], remote_commit
                 )

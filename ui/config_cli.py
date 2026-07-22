@@ -7,9 +7,26 @@ import getpass
 import json
 import os
 import sys
+from datetime import date
+from pathlib import Path
 from typing import Any, Mapping, Optional, Sequence
 
-from ui import launcher, update_coordinator, update_readiness
+from canbusd import action_registry as vehicle_actions
+from canbusd import profile_catalogue, profile_replay
+from canbusd import event_registry as vehicle_events
+from canbusd import status_registry as vehicle_statuses
+
+from ui import (
+    launcher,
+    update_coordinator,
+    update_readiness,
+    vehicle_config_coordinator,
+    vehicle_capture_analysis,
+    vehicle_profile_conformance,
+    vehicle_profile_qualification,
+    vehicle_profile_scaffold,
+    vehicle_setup,
+)
 from ui.configuration import (
     ConfigurationError,
     JELLYFIN_ENV_KEYS,
@@ -90,6 +107,224 @@ def build_parser() -> argparse.ArgumentParser:
     updates_commands.add_parser("install")
     channel = updates_commands.add_parser("channel")
     channel.add_argument("channel", choices=("stable", "beta", "nightly"))
+
+    vehicle_setup_parser = groups.add_parser(
+        "vehicle-setup",
+        help="inspect vehicle profiles, bindings and CAN runtime selection",
+    )
+    vehicle_setup_commands = vehicle_setup_parser.add_subparsers(
+        dest="command",
+        required=True,
+    )
+    vehicle_setup_commands.add_parser("status")
+    vehicle_setup_commands.add_parser("catalogue")
+    vehicle_events_parser = vehicle_setup_commands.add_parser(
+        "events",
+        help="inspect the canonical vehicle-event registry",
+    )
+    vehicle_events_parser.add_argument("event", nargs="?")
+    vehicle_events_parser.add_argument(
+        "--search",
+        metavar="TEXT",
+        help="search canonical events by human wording",
+    )
+    vehicle_events_parser.add_argument(
+        "--check",
+        metavar="EVENT",
+        help="explain whether to reuse, migrate or propose an event",
+    )
+    vehicle_actions_parser = vehicle_setup_commands.add_parser(
+        "actions",
+        help="inspect the canonical vehicle-action registry",
+    )
+    vehicle_actions_parser.add_argument("action", nargs="?")
+    vehicle_actions_parser.add_argument(
+        "--search",
+        metavar="TEXT",
+        help="search canonical actions by human wording",
+    )
+    vehicle_actions_parser.add_argument(
+        "--check",
+        metavar="ACTION",
+        help="explain whether to reuse, migrate or propose an action",
+    )
+    vehicle_statuses_parser = vehicle_setup_commands.add_parser(
+        "statuses",
+        help="inspect the canonical persistent vehicle-status registry",
+    )
+    vehicle_statuses_parser.add_argument("path", nargs="?")
+    vehicle_statuses_parser.add_argument(
+        "--search",
+        metavar="TEXT",
+        help="search canonical status paths by human wording",
+    )
+    vehicle_statuses_parser.add_argument(
+        "--check",
+        metavar="PATH",
+        help="explain whether to reuse, migrate or propose a status path",
+    )
+    vehicle_conform = vehicle_setup_commands.add_parser(
+        "conform",
+        help="check maintained vehicle-profile identity, evidence and registry conformance",
+    )
+    vehicle_conform.add_argument(
+        "profiles",
+        nargs="*",
+        help="maintained profile identifiers; omit to check the complete catalogue",
+    )
+    vehicle_conform.add_argument(
+        "--root",
+        type=Path,
+        help="repository or installed Open MMI root; defaults to the maintained catalogue root",
+    )
+    vehicle_replay = vehicle_setup_commands.add_parser(
+        "replay",
+        help="replay deterministic mapping fixtures for one maintained profile",
+    )
+    vehicle_replay.add_argument("profile")
+    vehicle_replay.add_argument(
+        "--root",
+        type=Path,
+        help="repository or installed Open MMI root; defaults to the maintained catalogue root",
+    )
+    vehicle_scaffold = vehicle_setup_commands.add_parser(
+        "scaffold",
+        help="create and register an experimental maintained-profile source scaffold",
+    )
+    vehicle_scaffold.add_argument("--brand", required=True)
+    vehicle_scaffold.add_argument("--model", required=True)
+    vehicle_scaffold.add_argument("--generation", required=True)
+    vehicle_scaffold.add_argument("--platform", required=True)
+    vehicle_scaffold.add_argument("--year-from", type=int, required=True)
+    vehicle_scaffold.add_argument("--year-to", type=int, required=True)
+    vehicle_scaffold.add_argument("--id", dest="profile_id")
+    vehicle_scaffold.add_argument("--display-name")
+    vehicle_scaffold.add_argument("--maintainer", action="append")
+    vehicle_scaffold.add_argument("--market-alias", action="append")
+    vehicle_scaffold.add_argument("--default-bus", default="comfort")
+    vehicle_scaffold.add_argument("--interface", default="can0")
+    vehicle_scaffold.add_argument("--bitrate", type=int)
+    vehicle_scaffold.add_argument(
+        "--root",
+        type=Path,
+        default=Path.cwd(),
+        help="source checkout root; defaults to the current directory",
+    )
+    vehicle_scaffold.add_argument("--dry-run", action="store_true")
+
+    vehicle_qualification = vehicle_setup_commands.add_parser(
+        "qualification",
+        help="inspect or transition formal maintained-profile qualification",
+    )
+    qualification_commands = vehicle_qualification.add_subparsers(
+        dest="qualification_command",
+        required=True,
+    )
+    qualification_report = qualification_commands.add_parser(
+        "report",
+        help="report review, compatibility and stale qualification state",
+    )
+    qualification_report.add_argument("profiles", nargs="*")
+    qualification_report.add_argument("--root", type=Path)
+    qualification_report.add_argument("--as-of", type=date.fromisoformat)
+
+    qualification_transition = qualification_commands.add_parser(
+        "transition",
+        help="promote or demote one maintained profile under formal review",
+    )
+    qualification_transition.add_argument("profile")
+    qualification_transition.add_argument("--to", dest="target", choices=("none", "replay", "hardware"), required=True)
+    qualification_transition.add_argument("--reason", required=True)
+    qualification_transition.add_argument("--reviewer", action="append", required=True)
+    qualification_transition.add_argument("--reviewed-on", required=True)
+    qualification_transition.add_argument("--tested-on")
+    qualification_transition.add_argument("--recheck-after")
+    qualification_transition.add_argument("--scope", action="append")
+    qualification_transition.add_argument("--equipment", action="append")
+    qualification_transition.add_argument("--variant", action="append")
+    qualification_transition.add_argument(
+        "--evidence",
+        action="append",
+        help="append KIND=PATH=DESCRIPTION to profile qualification evidence",
+    )
+    qualification_transition.add_argument("--root", type=Path, default=Path.cwd())
+    qualification_transition.add_argument("--dry-run", action="store_true")
+
+    vehicle_capture = vehicle_setup_commands.add_parser(
+        "capture",
+        help="normalize and compare bounded candump research captures",
+    )
+    vehicle_capture_commands = vehicle_capture.add_subparsers(
+        dest="capture_command",
+        required=True,
+    )
+
+    def add_capture_filters(selected: argparse.ArgumentParser) -> None:
+        selected.add_argument("--bus", action="append", help="include one capture interface")
+        selected.add_argument("--id", dest="can_ids", action="append", help="include one CAN ID")
+        selected.add_argument("--from-ms", type=float, help="include frames from this relative time")
+        selected.add_argument("--to-ms", type=float, help="include frames through this relative time")
+
+    capture_normalize = vehicle_capture_commands.add_parser(
+        "normalize",
+        help="parse candump text into deterministic JSON",
+    )
+    capture_normalize.add_argument("input", type=Path)
+    add_capture_filters(capture_normalize)
+    capture_normalize.add_argument("--output", type=Path)
+    capture_normalize.add_argument("--force", action="store_true")
+    capture_normalize.add_argument("--root", type=Path, default=Path.cwd())
+
+    capture_compare = vehicle_capture_commands.add_parser(
+        "compare",
+        help="compare before and after captures by changed bytes and bits",
+    )
+    capture_compare.add_argument("before", type=Path)
+    capture_compare.add_argument("after", type=Path)
+    add_capture_filters(capture_compare)
+    capture_compare.add_argument("--minimum-score", type=float, default=0.0)
+    capture_compare.add_argument("--limit", type=int, default=128)
+    capture_compare.add_argument("--output", type=Path)
+    capture_compare.add_argument("--force", action="store_true")
+    capture_compare.add_argument("--root", type=Path, default=Path.cwd())
+
+    capture_export = vehicle_capture_commands.add_parser(
+        "export",
+        help="export experimental candidate replay cases outside vehicles/",
+    )
+    capture_export.add_argument("before", type=Path)
+    capture_export.add_argument("after", type=Path)
+    add_capture_filters(capture_export)
+    capture_export.add_argument("--minimum-score", type=float, default=0.0)
+    capture_export.add_argument("--limit", type=int, default=128)
+    capture_export.add_argument("--profile-id", required=True)
+    capture_export.add_argument("--fixture-bus")
+    capture_export.add_argument("--output", type=Path, required=True)
+    capture_export.add_argument("--force", action="store_true")
+    capture_export.add_argument("--root", type=Path, default=Path.cwd())
+
+    vehicle_setup_commands.add_parser(
+        "coordinator",
+        help="inspect the privileged vehicle configuration coordinator",
+    )
+    vehicle_preview = vehicle_setup_commands.add_parser(
+        "preview",
+        help="validate a non-mutating vehicle setup plan",
+    )
+    vehicle_preview.add_argument("vehicle")
+    vehicle_preview.add_argument("bindings")
+    vehicle_preview.add_argument(
+        "--vehicle-source",
+        choices=("maintained", "custom"),
+        default="maintained",
+    )
+    vehicle_preview.add_argument(
+        "--bindings-source",
+        choices=("maintained", "custom"),
+        default="maintained",
+    )
+    vehicle_preview.add_argument("--bus", required=True)
+    vehicle_preview.add_argument("--interface", required=True)
     return parser
 
 
@@ -148,6 +383,201 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 _print({"ok": True, **update_status.configure_channel(args.channel)})
             return 0
 
+        if args.group == "vehicle-setup":
+            if args.command == "coordinator":
+                _print(vehicle_config_coordinator.client_status())
+            elif args.command == "catalogue":
+                _print(vehicle_setup.catalogue_payload())
+            elif args.command == "conform":
+                root = args.root or vehicle_setup.default_roots().maintained
+                report = vehicle_profile_conformance.catalogue_report(
+                    root, identifiers=args.profiles or None
+                )
+                _print(report)
+                return 0 if report["valid"] else 1
+            elif args.command == "replay":
+                root = (args.root or vehicle_setup.default_roots().maintained).expanduser().resolve()
+                resolved = profile_catalogue.resolve_profile(root, args.profile)
+                fixture_path = Path(resolved["path"]).parent / "fixtures" / "mappings.v1.json"
+                report = profile_replay.replay_files(Path(resolved["path"]), fixture_path)
+                report["requested_profile"] = args.profile
+                report["profile_id"] = resolved["id"]
+                report["profile_path"] = resolved["relative_path"]
+                report["fixture_path"] = fixture_path.relative_to(root).as_posix()
+                _print(report)
+                return 0 if report["valid"] else 1
+            elif args.command == "scaffold":
+                _print(
+                    vehicle_profile_scaffold.scaffold_profile(
+                        args.root,
+                        brand=args.brand,
+                        model=args.model,
+                        generation=args.generation,
+                        platform=args.platform,
+                        year_from=args.year_from,
+                        year_to=args.year_to,
+                        profile_id=args.profile_id,
+                        display_name=args.display_name,
+                        maintainers=args.maintainer,
+                        market_aliases=args.market_alias,
+                        default_bus=args.default_bus,
+                        interface=args.interface,
+                        bitrate=args.bitrate,
+                        dry_run=args.dry_run,
+                    )
+                )
+            elif args.command == "qualification":
+                if args.qualification_command == "report":
+                    root = args.root or vehicle_setup.default_roots().maintained
+                    report = vehicle_profile_conformance.catalogue_report(
+                        root,
+                        identifiers=args.profiles or None,
+                        as_of=args.as_of,
+                    )
+                    _print(report)
+                    return 0 if report["valid"] else 1
+                parsed_evidence = [
+                    vehicle_profile_qualification.parse_evidence_argument(value)
+                    for value in (args.evidence or [])
+                ]
+                _print(
+                    vehicle_profile_qualification.transition_profile(
+                        args.root,
+                        args.profile,
+                        target=args.target,
+                        reason=args.reason,
+                        reviewers=args.reviewer,
+                        reviewed_on=args.reviewed_on,
+                        tested_on=args.tested_on,
+                        recheck_after=args.recheck_after,
+                        scope=args.scope,
+                        equipment=args.equipment,
+                        variants=args.variant,
+                        evidence=parsed_evidence,
+                        dry_run=args.dry_run,
+                    )
+                )
+            elif args.command == "capture":
+                filters = {
+                    "buses": args.bus,
+                    "can_ids": args.can_ids,
+                    "start_ms": args.from_ms,
+                    "end_ms": args.to_ms,
+                }
+                if args.capture_command == "normalize":
+                    report = vehicle_capture_analysis.normalize_capture(
+                        args.input,
+                        **filters,
+                    )
+                    if args.output is not None:
+                        written = vehicle_capture_analysis.write_json_report(
+                            report, args.output, root=args.root, force=args.force
+                        )
+                        _print({**written, "summary": report["summary"]})
+                    else:
+                        _print(report)
+                else:
+                    comparison = vehicle_capture_analysis.compare_captures(
+                        args.before,
+                        args.after,
+                        minimum_score=args.minimum_score,
+                        limit=args.limit,
+                        **filters,
+                    )
+                    if args.capture_command == "export":
+                        _print(
+                            vehicle_capture_analysis.export_candidate_fixture(
+                                comparison,
+                                args.output,
+                                profile_id=args.profile_id,
+                                root=args.root,
+                                fixture_bus=args.fixture_bus,
+                                force=args.force,
+                            )
+                        )
+                    elif args.output is not None:
+                        written = vehicle_capture_analysis.write_json_report(
+                            comparison, args.output, root=args.root, force=args.force
+                        )
+                        _print({**written, "summary": comparison["summary"]})
+                    else:
+                        _print(comparison)
+            elif args.command == "events":
+                selected = sum(
+                    value is not None
+                    for value in (args.event, args.search, args.check)
+                )
+                if selected > 1:
+                    raise ValueError(
+                        "choose one event, --search query, or --check event"
+                    )
+                if args.search is not None:
+                    _print(vehicle_events.search_events(args.search))
+                elif args.check is not None:
+                    _print(vehicle_events.contribution_check(args.check))
+                elif args.event:
+                    _print(vehicle_events.event_definition(args.event))
+                else:
+                    _print(vehicle_events.registry_payload())
+            elif args.command == "actions":
+                selected = sum(
+                    value is not None
+                    for value in (args.action, args.search, args.check)
+                )
+                if selected > 1:
+                    raise ValueError(
+                        "choose one action, --search query, or --check action"
+                    )
+                if args.search is not None:
+                    _print(vehicle_actions.search_actions(args.search))
+                elif args.check is not None:
+                    _print(vehicle_actions.contribution_check(args.check))
+                elif args.action:
+                    _print(vehicle_actions.action_definition(args.action))
+                else:
+                    _print(vehicle_actions.registry_payload())
+            elif args.command == "statuses":
+                selected = sum(
+                    value is not None
+                    for value in (args.path, args.search, args.check)
+                )
+                if selected > 1:
+                    raise ValueError(
+                        "choose one status path, --search query, or --check path"
+                    )
+                if args.search is not None:
+                    _print(vehicle_statuses.search_statuses(args.search))
+                elif args.check is not None:
+                    _print(vehicle_statuses.contribution_check(args.check))
+                elif args.path:
+                    _print(vehicle_statuses.status_definition(args.path))
+                else:
+                    _print(vehicle_statuses.registry_payload())
+            elif args.command == "preview":
+                _print(
+                    vehicle_config_coordinator.client_preview(
+                        {
+                            "vehicle": {
+                                "source": args.vehicle_source,
+                                "id": args.vehicle,
+                            },
+                            "bindings": {
+                                "source": args.bindings_source,
+                                "id": args.bindings,
+                            },
+                            "runtime": {
+                                "active_bus": args.bus,
+                                "buses": {
+                                    args.bus: {"interface": args.interface}
+                                },
+                            },
+                        }
+                    )
+                )
+            else:
+                _print(vehicle_setup.status_payload())
+            return 0
+
         if args.command == "status":
             _print(jellyfin_environment_status())
             return 0
@@ -174,7 +604,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         result = _jellyfin_test(values)
         _print({"ok": True, **result})
         return 0
-    except (ConfigurationError, launcher.LauncherError, update_coordinator.CoordinatorError, update_status.UpdateStatusError, RuntimeError, ValueError) as exc:
+    except (ConfigurationError, launcher.LauncherError, update_coordinator.CoordinatorError, vehicle_config_coordinator.CoordinatorError, update_status.UpdateStatusError, vehicle_actions.VehicleActionRegistryError, vehicle_events.VehicleEventRegistryError, profile_catalogue.VehicleProfileCatalogueError, profile_replay.VehicleProfileReplayError, vehicle_statuses.VehicleStatusRegistryError, vehicle_capture_analysis.VehicleCaptureAnalysisError, vehicle_profile_conformance.VehicleProfileConformanceError, vehicle_profile_qualification.VehicleProfileQualificationError, vehicle_profile_scaffold.VehicleProfileScaffoldError, vehicle_setup.VehicleSetupError, RuntimeError, ValueError) as exc:
         print(f"open-mmi-config: {exc}", file=sys.stderr)
         return 1
 

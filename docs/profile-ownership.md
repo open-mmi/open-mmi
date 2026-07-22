@@ -1,177 +1,201 @@
 # Profile and bindings ownership
 
-OpenMMI has two kinds of user-visible configuration:
+Open MMI exposes two user-visible configuration kinds:
 
-1. vehicle profiles
-2. bindings
+1. vehicle profiles;
+2. event-to-action bindings.
 
-Both have repo/default versions and optional user override versions.
+Each kind may come from either an installed **maintained** source or a private
+user-owned **custom** source.
 
-The rule is:
+The ownership rule is:
 
-    Repo defaults are used by default.
-    User overrides are sacred but opt-in only.
+> Maintained content is installed and updated by Open MMI. Custom content is
+> sacred, explicit, and never silently selected or overwritten.
 
-## Repo/default vehicle profiles
+## Maintained vehicle profiles
 
-Vehicle profiles describe maintained CAN/status/action mappings for a vehicle platform.
+Maintained profiles live in the checked catalogue tree:
 
-Installed location:
+```text
+source checkout:
+vehicles/<brand>/<model>/<generation-platform>/config.json
 
-    /opt/open-mmi/vehicles/<vehicle>/config.json
+installed production tree:
+/opt/open-mmi/vehicles/<brand>/<model>/<generation-platform>/config.json
+```
 
-Development checkout location:
+`vehicles/catalogue.v1.json` maps those human-browsable paths to stable profile
+IDs and deprecated compatibility aliases. Runtime callers select the stable ID;
+they do not construct the nested path.
 
-    vehicles/<vehicle>/config.json
+Normal production resolution uses the installed `/opt/open-mmi` content so the
+active profile remains aligned with the installed Open MMI build. A mutable
+checkout is used only before installation or through an explicit development
+workflow.
 
-Vehicle profiles are part of the OpenMMI repository. Normal users should receive profile improvements when OpenMMI updates.
+## Maintained bindings
 
-Therefore, normal runtime should load the installed vehicle profile by default.
+Maintained bindings live at:
 
-## Repo/default bindings
+```text
+source checkout:       bindings/<id>.json
+installed production: /opt/open-mmi/bindings/<id>.json
+```
 
-Default bindings describe the maintained default action/button mapping.
+Maintained bindings use canonical event keys and canonical action identifiers.
+They receive project improvements when Open MMI is updated.
 
-Installed location:
+## Custom vehicle profiles and bindings
 
-    /opt/open-mmi/bindings/<bindings>.json
+Custom content lives under the configured service user's private Open MMI root:
 
-Development checkout location:
+```text
+~/.config/open-mmi/vehicles/<custom-id>/config.json
+~/.config/open-mmi/bindings/<custom-id>.json
+```
 
-    bindings/<bindings>.json
+Custom files are user-owned. Open MMI install and update operations must not
+silently overwrite, refresh, migrate, or delete them.
 
-Default bindings are part of the OpenMMI repository. Normal users should receive default binding improvements when OpenMMI updates.
+The dashboard can create custom content by:
 
-Therefore, normal runtime should load installed bindings by default.
+- copying an exact installed maintained template;
+- importing valid bounded JSON as a new identity;
+- duplicating an existing custom identity.
 
-## User vehicle profile overrides
+Creation never activates the result.
 
-A user vehicle profile override may exist at:
+## Canonical selection
 
-    ~/.config/open-mmi/vehicles/<vehicle>/config.json
+Normal Vehicle Setup does not treat file presence or environment lookup order as
+the source of truth. A root-owned canonical descriptor records the intended
+maintained/custom identities, exact content revisions, one active logical bus,
+and its selected interface:
 
-This file is user-owned. It must never be overwritten by update, install, or apply-profile.
+```text
+/etc/open-mmi/vehicle-configuration.json
+```
 
-However, it is not used by default. It should only be active when explicitly selected.
+The coordinator derives the exact installed/custom paths, CAN service drop-in,
+and receive-side udev provisioning from that descriptor. The browser supplies
+source classes and identifiers, never arbitrary paths.
 
-Example explicit selection:
+Configured state is separate from loaded state. `canbusd` publishes bounded
+evidence describing the exact identities, revisions, bus, and interface it
+successfully loaded.
 
-    OPEN_MMI_VEHICLE_CONFIG=/home/open-mmi/.config/open-mmi/vehicles/seat_1p/config.json
+## Custom content is opt-in
 
-## User binding overrides
+Creating this file:
 
-A user binding override may exist at:
+```text
+~/.config/open-mmi/vehicles/example/config.json
+```
 
-    ~/.config/open-mmi/bindings/<bindings>.json
+does not activate it. Vehicle Setup must explicitly select:
 
-This file is user-owned. It must never be overwritten by update, install, or apply-profile.
+```json
+{"source": "custom", "id": "example"}
+```
 
-However, it is not used by default. It should only be active when explicitly selected.
+and complete a fresh review and confirmed Apply.
 
-Example explicit selection:
+This prevents stale private copies from silently shadowing improved maintained
+content after an update.
 
-    OPEN_MMI_BINDINGS_FILE=/home/open-mmi/.config/open-mmi/bindings/default.json
+## Save and Apply are separate
 
-## Intended runtime precedence
+Saving a custom item validates and atomically replaces only that private file.
+It returns a new content revision and `applied: false`.
 
-Vehicle profile:
+When coordinator-managed exact paths are active, the running CAN service pins
+the revisions it parsed until restart. A saved active custom file therefore
+appears as **saved but unapplied**. It is loaded only after a fresh review,
+explicit confirmation, and coordinator restart/verification.
 
-    1. OPEN_MMI_VEHICLE_CONFIG, if explicitly set
-    2. /opt/open-mmi/vehicles/<vehicle>/config.json
+## Sacred-file rules
 
-Bindings:
+Open MMI must not:
 
-    1. OPEN_MMI_BINDINGS_FILE, if explicitly set
-    2. /opt/open-mmi/bindings/<bindings>.json
+- overwrite custom content during install or update;
+- replace a custom item with a maintained template during Apply;
+- automatically merge maintained changes into a custom copy;
+- rename or delete an active custom identity;
+- delete unrelated files from the user configuration root;
+- activate a custom file merely because it exists.
 
-## Why user overrides are opt-in
+Returning to maintained changes only the canonical selection and derived runtime
+paths. The custom files remain untouched.
 
-If OpenMMI automatically prefers files in ~/.config/open-mmi, stale user-space copies can silently shadow updated repo defaults.
+## Custom lifecycle restrictions
 
-That creates confusing behaviour:
+- **Duplicate** may copy an active or inactive custom item because the source is
+  unchanged.
+- **Rename** is allowed only when the custom identity is inactive.
+- **Delete** is allowed only when the custom identity is inactive and the user
+  explicitly confirms it.
+- Every operation requires the exact current revision and participates in the
+  shared lifecycle lock.
+- Existing destinations, stale revisions, unsafe ownership/modes, symlinks,
+  hard links, and unsupported extra profile-directory content fail closed.
 
-    OpenMMI update changes /opt/open-mmi/vehicles/seat_1p/config.json
-    canbusd still loads ~/.config/open-mmi/vehicles/seat_1p/config.json
-    new signals do not appear
+## Advanced direct overrides
 
-The same problem can happen with bindings:
+Direct environment selection remains supported for development, migration, and
+unusual recovery:
 
-    OpenMMI update improves /opt/open-mmi/bindings/default.json
-    runtime still loads ~/.config/open-mmi/bindings/default.json
-    user never receives the improved default mapping
+```text
+OPEN_MMI_VEHICLE_CONFIG=/absolute/path/to/config.json
+OPEN_MMI_BINDINGS_FILE=/absolute/path/to/bindings.json
+```
 
-So user files must be protected, but not silently preferred.
+These are advanced explicit overrides, not the normal custom-profile workflow.
+They should be configured only through trusted local administration. Files under
+`~/.config/open-mmi` are not scanned and preferred automatically.
 
-## Sacred file rule
+The maintained ID variables remain compatibility inputs used by generated
+runtime configuration:
 
-These files are sacred:
+```text
+OPEN_MMI_VEHICLE
+OPEN_MMI_BINDINGS
+OPEN_MMI_VEHICLE_CONFIG
+OPEN_MMI_BINDINGS_FILE
+OPEN_MMI_CAN_BUS
+OPEN_MMI_CAN_INTERFACE
+```
 
-    ~/.config/open-mmi/vehicles/<vehicle>/config.json
-    ~/.config/open-mmi/bindings/<bindings>.json
+For coordinator-managed installations, the canonical descriptor—not a manually
+edited environment file—is the Vehicle Setup source of truth.
 
-OpenMMI must not overwrite, refresh, migrate, or delete them automatically.
+## Administrator fallback
 
-If a user wants to update a custom override, that must be an explicit user action.
+The UI is the intended normal path. Administrators can inspect or recover a
+maintained selection with:
 
-## Normal setup
+```bash
+open-mmi-config vehicle-setup status
+open-mmi-config vehicle-setup catalogue
+sudo ./scripts/manage.sh config apply-profile seat-leon-1p-pq35 default
+sudo ./scripts/manage.sh config paths
+```
 
-Normal setup should:
-
-    use repo/default vehicle profile
-    use repo/default bindings
-    not create user override files
-    not select user override files
-
-## Override workflow
-
-Create custom binding override:
-
-    copy /opt/open-mmi/bindings/<bindings>.json
-    to   ~/.config/open-mmi/bindings/<bindings>.json
-
-    set:
-    OPEN_MMI_BINDINGS_FILE=~/.config/open-mmi/bindings/<bindings>.json
-
-Create custom vehicle profile override:
-
-    copy /opt/open-mmi/vehicles/<vehicle>/config.json
-    to   ~/.config/open-mmi/vehicles/<vehicle>/config.json
-
-    set:
-    OPEN_MMI_VEHICLE_CONFIG=~/.config/open-mmi/vehicles/<vehicle>/config.json
+The management-script Apply path is retained for recovery and development. It
+must preserve custom files.
 
 ## Runtime logging
 
-At daemon startup, canbusd should log the active files:
-
-    Loaded config from: <path>
-    Loaded bindings from: <path>
-
-If user override files exist but are not selected, canbusd may warn:
-
-    User vehicle profile override exists but is not active: ~/.config/open-mmi/vehicles/<vehicle>/config.json
-    Set OPEN_MMI_VEHICLE_CONFIG to use it.
-
-    User bindings override exists but is not active: ~/.config/open-mmi/bindings/<bindings>.json
-    Set OPEN_MMI_BINDINGS_FILE to use it.
-
-## Migration behaviour
-
-Existing user override files must not be deleted or overwritten.
-
-Safe migration path:
-
-1. stop silently preferring user files
-2. keep user files untouched
-3. log clear active source paths
-4. document how to opt into user overrides explicitly
+At startup, `canbusd` logs the active profile and bindings paths and publishes
+machine-readable loaded-revision evidence. Use Vehicle Setup technical details
+or administrator logs to confirm which content is actually running.
 
 ## Summary
 
-Repo vehicle profiles are used by default.
-
-Repo bindings are used by default.
-
-User vehicle profiles are sacred opt-in overrides.
-
-User bindings are sacred opt-in overrides.
+- Maintained content comes from the installed Open MMI tree.
+- Custom content remains private and sacred.
+- Custom content is selected explicitly by identity.
+- The canonical descriptor records the intended active configuration.
+- Saving and activation are separate.
+- The UI is the normal workflow; environment and management-script paths remain
+  supported for advanced administration and recovery.

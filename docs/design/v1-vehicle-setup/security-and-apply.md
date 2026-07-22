@@ -27,13 +27,21 @@ paths, actions and failure modes.
 The coordinator socket is local, group-authorized and unavailable to remote clients.
 Its public protocol contains fixed actions and bounded JSON objects only.
 
-Suggested actions:
+The coordinator exposes `status`, non-mutating `preview`, and one fixed confirmed
+`apply` action. It persists strict public transaction state and reports
+configuration/update/lifecycle lock ownership. Preview rereads the fixed installed
+catalogue, the configured service user's custom catalogue and runtime drop-in inside
+the privileged boundary; it never accepts a path from the dashboard. Apply has write
+access only to the fixed canonical descriptor, generated udev rule, rollback/state
+roots and configured canbusd runtime-drop-in directory.
+
+Fixed protocol actions are staged as follows:
 
 ```text
-status
-preview
-apply
-restore
+status   implemented
+preview  implemented, read-only
+apply    implemented, exact reviewed target plus confirmation
+restore  internal recovery only; no caller-selected target
 ```
 
 `restore` is an internal recovery action tied to coordinator-owned transaction state;
@@ -44,13 +52,15 @@ it is not a browser-selected arbitrary rollback target.
 Both the dashboard and coordinator validate:
 
 - exact allowed object keys;
+- duplicate JSON keys and non-finite JSON values;
 - source class (`maintained` or `custom`);
 - identifier syntax;
 - fixed runtime mode (`single` in V1);
 - bus names declared by the selected profile;
 - valid Linux interface names;
 - one interface assignment for the active bus;
-- expected canonical configuration revision; and
+- expected canonical configuration revision;
+- reviewed target configuration revision; and
 - explicit `confirm: true` for apply.
 
 The privileged side must not trust validation performed by the dashboard.
@@ -100,6 +110,99 @@ It records only safe public detail:
 - a bounded user-facing error.
 
 It does not expose temporary paths, commands or subprocess output to the browser.
+
+## Concrete operation layer
+
+The coordinator uses a concrete operation implementation behind the fixed public apply
+protocol. It:
+
+- securely reopens maintained and custom catalogue files without following symlinks;
+- verifies expected ownership, permissions, semantic validity and reviewed revisions;
+- renders canonical JSON, the canbusd systemd runtime drop-in and active-bus udev rules;
+- stores a durable root-owned rollback manifest plus checksummed file payloads;
+- atomically replaces each fixed destination through sibling files and directory fsync;
+- invokes only fixed `systemctl --user`, `udevadm control --reload-rules`, and a fixed system-service start;
+- hands host-network CAN link setup to a separate oneshot helper that consumes one root-owned normalized target and executes only fixed `ip link` argument lists;
+- requires loaded-runtime evidence newer than the service restart; and
+- verifies both restored files and the exact previous loaded identities, revisions, bus and interface.
+
+The internal state machine can reopen a durable snapshot after an interrupted mutation.
+The socket and fixed HTTP route trigger the same confirmed Apply transaction used by Settings; the button is enabled only from a fresh read-only preview plus separate coordinator capability and lock state.
+
+## Vcan qualification boundary
+
+Before the fixed public apply protocol was enabled, the reference tablet qualified the
+same concrete transaction through a root-only local round-trip command. It remains
+deliberately separate from `open-mmi-config`, the dashboard server and the
+group-readable coordinator socket.
+
+The command consumes an exact root-owned `0600` one-shot marker, reads one bounded JSON
+preview from standard input, and accepts no caller-provided path, command, service name
+or generated content. The target must resolve to an up kernel `vcanN` interface under
+the virtual network-device tree. Additional user-service drop-ins that could override a
+coordinator-owned runtime environment key are rejected through directory-relative,
+no-follow reads before consent is consumed. The coordinator then regenerates the preview under all
+three transaction locks, including the reviewed profile and bindings content revisions.
+
+Qualification suppresses hardware CAN provisioning and does not reload or trigger the
+temporary udev rules. After the vcan target is loaded and verified, the previous files
+and runtime are restored and verified before the transaction locks are released. A
+successful round trip removes its snapshot and records
+`stage=qualification-restored`; a failed or interrupted transaction remains available
+to the root-owned recovery path.
+
+The long-running coordinator service sandbox is widened only to `/etc/open-mmi`,
+`/etc/udev/rules.d`, the coordinator state/runtime directories, and the generated
+per-user canbusd drop-in directory. It remains network-isolated. A separate static
+oneshot helper enters the host network namespace with only `CAP_NET_ADMIN` and
+`CAP_DAC_READ_SEARCH`, consumes a root-owned request from `/run/open-mmi`, independently
+revalidates catalogue revisions and interface identity, and configures only the reviewed
+physical `canN` interface. It never accepts paths, commands, service names, or bitrates
+from the socket caller. The public protocol exposes fixed apply but continues to reject
+caller-selected restore.
+
+## Fixed public apply protocol
+
+The apply body contains exactly `target`, `expected_configuration_revision`,
+`target_configuration_revision` and `confirm`. `target` is the canonical normalized
+selection returned by preview, including profile and bindings content revisions. The
+coordinator converts it back to an identity-only request and rebuilds the plan under all
+three locks. It rejects:
+
+- stale active configuration revisions;
+- changed profile or bindings content revisions;
+- inconsistent target revision hashes;
+- additional canbusd drop-ins that override coordinator-owned environment keys;
+- existing selected interfaces that are not SocketCAN;
+- absent selected interfaces whose names do not match `canN`;
+- all `vcanN` targets outside the root-only qualification command; and
+- concurrent update, lifecycle or configuration transactions.
+
+The dashboard route remains literal-loopback and same-origin. Conflict results use the
+bounded `busy` or `stale-preview` code. A failed mutation returns safe persisted state
+with `apply-failed-restored` or `apply-failed-restore-unverified`; raw command output,
+paths and subprocess errors do not cross the boundary. Public apply rejects `vcanN`
+targets and absent interface names outside the conservative `canN` contract. Virtual
+CAN remains confined to the root-only qualification command.
+
+## Root-only browser failure qualification
+
+Browser failure messaging is qualified without making failure selection part of the
+public protocol. Root may arm exactly one of two fixed modes through the installed
+coordinator command: `stale-preview` or `apply-failed-restored`. The command creates
+`/etc/open-mmi/vehicle-configuration-ui-qualification` as a single-link, root-owned
+`0600` regular file containing one exact allowlisted value. Symlinks, writable files,
+unknown content, duplicate arming, and untrusted parent directories fail closed.
+
+The long-running root coordinator checks and consumes the marker only while holding the
+configuration, lifecycle, and update locks. It accepts qualification only when its fresh
+preview has no changes and the current setup is ready. The stale mode returns the normal
+machine-readable stale conflict before snapshot. The restored-failure mode injects one
+fixed error after the normal apply restart has entered verification, causing the ordinary
+exception path to restore and verify the durable snapshot. The socket and HTTP bodies do
+not contain a qualification field, and non-root callers cannot arm or choose a mode.
+There is intentionally no mode that sabotages restoration verification on a connected
+vehicle.
 
 ## Apply sequence
 
@@ -167,8 +270,8 @@ The previous configuration remains the only selectable automatic restoration tar
 ## CAN safety
 
 The configuration coordinator may provision receive interfaces, but neither the UI nor
-the coordinator transmits CAN frames. The operational dashboard remains read-only with
-respect to the vehicle.
+the coordinator transmits CAN frames. The operational dashboard remains receive-only with
+respect to vehicle CAN.
 
 Every apply confirmation should state that Open MMI services will restart and that no
 CAN transmission is performed.

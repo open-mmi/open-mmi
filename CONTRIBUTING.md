@@ -22,13 +22,12 @@ This is not yet a polished infotainment replacement, final tablet UI, or multi-v
 
 Useful background docs:
 
-```text
-docs/project-philosophy.md
-docs/versioning.md
-docs/release-checklist.md
-docs/status-snapshot.md
-SECURITY.md
-```
+- [`docs/README.md`](docs/README.md) — documentation map by audience;
+- [`docs/project-philosophy.md`](docs/project-philosophy.md);
+- [`docs/versioning.md`](docs/versioning.md);
+- [`docs/release-checklist.md`](docs/release-checklist.md);
+- [`docs/status-snapshot.md`](docs/status-snapshot.md);
+- [`SECURITY.md`](SECURITY.md).
 
 ---
 
@@ -39,8 +38,13 @@ Open MMI is designed to be profile-driven.
 Vehicle-specific CAN knowledge should live in:
 
 ```text
-vehicles/{profile}/config.json
+maintained: vehicles/<brand>/<model>/<generation-platform>/config.json
+custom:     ~/.config/open-mmi/vehicles/<custom-id>/config.json
 ```
+
+The checked `vehicles/catalogue.v1.json` assigns stable IDs and compatibility aliases only
+to maintained profiles. A custom profile remains user-owned and does not become a support
+claim merely because it exists.
 
 Core Python should stay generic wherever possible.
 
@@ -55,9 +59,62 @@ Good contributions usually improve one of these areas:
 * documentation
 * tests
 * screenshots or example output
-* replay/demo data once tooling supports it
+* replay fixtures, capture-analysis reports, and qualification evidence
 
 The goal is to make vehicle integration knowledge reusable, not to hardcode one car into the daemon.
+
+## Maintained profiles state their evidence
+
+Custom profiles and raw CAN research do not require a formal metadata envelope. A profile proposed for `vehicles/` must additionally identify the vehicle family, declare a maturity level, state the exact qualification scope, and link reviewable evidence.
+
+Run the same gate used by CI:
+
+```bash
+open-mmi-config vehicle-setup conform --root .
+```
+
+A genuinely new vehicle can add its profile, canonical vocabulary proposals, evidence and metadata in one pull request. This is a continuity and honesty checkpoint, not advance permission or an exclusive list of supported developers. See [`docs/maintained-profile-standard.md`](docs/maintained-profile-standard.md).
+
+## The registry is not a walled garden
+
+The canonical event and status registries are continuity checkpoints. They do not reserve
+vehicle discovery or new concepts for maintainers.
+
+You may freely submit raw CAN captures, unknown bytes, manufacturer terminology, provisional
+names and partial interpretations. A signal only needs a canonical descriptor when it is
+being promoted into a maintained or distributable profile.
+
+At that boundary:
+
+1. confirm what the signal means to a person;
+2. decide whether it is a momentary event or persistent status;
+3. search for an existing canonical descriptor;
+4. reuse it when the meaning matches; or
+5. add a genuinely new universal descriptor in the same pull request as the mapping.
+
+No separate permission request is required to propose a registry entry. Review exists to
+keep the current SEAT profile and every future evidence-backed vehicle speaking one
+understandable language rather than hundreds of private dialects.
+
+For example, if another vehicle emits mute from CAN ID `0x431`, the contributor should reuse
+`mute_toggle` and replace only the CAN ID, byte and value. A discovery label such as
+`PDC_signal` is welcome in research notes, but it needs a clear human meaning—button event,
+parking distance, warning state, or something else—before it becomes maintained vocabulary.
+
+Read [`docs/vehicle-contribution-workflow.md`](docs/vehicle-contribution-workflow.md) for the
+complete workflow and naming test.
+
+Useful commands:
+
+```bash
+open-mmi-config vehicle-setup events --search mute
+open-mmi-config vehicle-setup events --check mute_toggle
+open-mmi-config vehicle-setup events --check pdc_signal
+open-mmi-config vehicle-setup statuses --search "right door"
+open-mmi-config vehicle-setup statuses --search pdc_signal
+open-mmi-config vehicle-setup statuses --check doors.front_right
+open-mmi-config vehicle-setup statuses --check pdc_signal
+```
 
 ---
 
@@ -149,16 +206,69 @@ For vehicle support, useful information includes:
 
 Please avoid posting sensitive vehicle data such as full VINs, private locations, personal details, credentials, or complete logs containing sensitive information.
 
+### Maintained vehicle folder placement
+
+Maintained profiles live at:
+
+```text
+vehicles/<brand>/<model>/<generation-platform>/
+```
+
+The checked `vehicles/catalogue.v1.json` maps that human-browsable path to a
+stable machine ID and any deprecated compatibility aliases. Do not create empty
+brand folders or split profiles only for trim, engine, steering side, or market
+badges unless the CAN mappings genuinely differ. Start a real integration with:
+
+```bash
+open-mmi-config vehicle-setup scaffold \
+  --root . \
+  --brand "Brand" \
+  --model "Model" \
+  --generation "Generation" \
+  --platform "Platform" \
+  --year-from 2000 \
+  --year-to 2005
+```
+
+The values are placeholders, not supported-vehicle claims. Run the same command
+with `--dry-run` first when reviewing the derived ID and path. The
+[scaffolding guide](docs/vehicle-profile-scaffolding.md) documents the safety and
+follow-up workflow.
+
+Candidate and qualified profiles include `fixtures/mappings.v1.json`. The replay
+gate must cover every canonical event and status output claimed by the profile.
+Generated catalogue and capability documentation must remain current:
+
+```bash
+python tools/generate_vehicle_catalogue_docs.py --check
+```
+
 ---
 
 ## Before opening a pull request
 
+For a maintained vehicle mapping, complete the **reuse or propose** checkpoint:
+
+- [ ] The human meaning is confirmed rather than guessed.
+- [ ] Event versus persistent status is identified.
+- [ ] The canonical vocabulary was searched using ordinary human terms.
+- [ ] An existing descriptor is reused where its meaning matches.
+- [ ] Any genuinely new descriptor is included with its contract, docs and tests in this pull request.
+- [ ] Manufacturer names, CAN IDs, ECU abbreviations and action implementation names do not leak into the canonical name.
+
 Please check:
 
 ```bash
+python tools/generate_vehicle_action_docs.py --check
+python tools/generate_vehicle_event_docs.py --check
+python tools/generate_vehicle_status_docs.py --check
+python tools/generate_vehicle_catalogue_docs.py --check
 python3 -m py_compile canbusd/core.py canbusd/can_runtime.py canbusd/status_rules.py canbusd/status_bus.py
 python3 -m unittest discover -s tests
-python3 -m json.tool vehicles/seat_1p/config.json >/dev/null
+python3 -m json.tool vehicles/seat/leon/1p-pq35/config.json >/dev/null
+open-mmi-config vehicle-setup conform --root .
+open-mmi-config vehicle-setup qualification report --root .
+open-mmi-config vehicle-setup replay --root . seat-leon-1p-pq35
 python3 -m json.tool bindings/default.json >/dev/null
 bash -n scripts/manage.sh
 ```
@@ -211,12 +321,17 @@ SECURITY.md
 
 Vehicle profiles should contain vehicle-specific CAN IDs, byte positions, masks, values, and status mappings.
 
-Do:
+Use the correct ownership boundary:
 
 ```text
-vehicles/seat_1p/config.json
-vehicles/my_vehicle/config.json
+maintained profile:
+  vehicles/seat/leon/1p-pq35/config.json
+
+user-owned custom profile:
+  ~/.config/open-mmi/vehicles/my-vehicle/config.json
 ```
+
+Do not add a flat `vehicles/my_vehicle/` directory to the maintained repository tree.
 
 Avoid hardcoding vehicle-specific CAN IDs or values in:
 
@@ -270,7 +385,22 @@ Example action notes:
 00:30 handbrake applied
 ```
 
-Good capture notes make decoding much easier.
+Good capture notes make decoding much easier. Normalize and compare bounded classic-CAN logs with:
+
+```bash
+open-mmi-config vehicle-setup capture normalize captures/action.log
+open-mmi-config vehicle-setup capture compare captures/before.log captures/after.log
+open-mmi-config vehicle-setup capture export \
+  captures/before.log captures/after.log \
+  --profile-id example-profile \
+  --output tmp/action.candidate.json \
+  --root .
+```
+
+The example ID is a placeholder, not a support claim. Generated reports and candidate
+fixtures are refused beneath `vehicles/`; manually confirm the human meaning and canonical
+contract before moving reviewed cases into a maintained profile. See
+[`docs/vehicle-capture-analysis.md`](docs/vehicle-capture-analysis.md).
 
 ---
 
@@ -328,11 +458,19 @@ Decoded status is informational and should not be treated as a replacement for O
 
 Vehicle profiles and bindings are trusted local configuration.
 
-Bindings can map decoded vehicle events to Python action modules. This is intentional, but it means bindings are not just passive data.
+Maintained bindings map canonical events to canonical action identifiers such as
+`media.mute.toggle`. The action registry owns the private Python module/function mapping.
+This keeps bindings readable and prevents implementation names from becoming public API.
+Existing custom `module`/`func` bindings remain supported during migration, but they are
+deprecated and receive a validation warning.
 
-A malicious or careless binding may trigger unwanted local actions.
+A malicious or careless binding may still trigger unwanted local actions. Only use profiles,
+bindings, action implementations, scripts, and udev rules that you trust or have reviewed.
 
-Only use profiles, bindings, action modules, scripts, and udev rules that you trust or have reviewed.
+Before proposing an action, search with `open-mmi-config vehicle-setup actions --search
+<meaning>`. Reuse a matching behavior, or add a genuinely new universal action, its
+implementation, documentation and tests in the same pull request. This is a continuity
+checkpoint, not a permission gate.
 
 ---
 
@@ -491,3 +629,10 @@ See:
 ```text
 LICENSE
 ```
+
+## Qualification transitions
+
+Do not change a maintained profile from experimental/candidate/qualified by editing labels alone.
+Use `open-mmi-config vehicle-setup qualification transition` with `--dry-run`, review the
+machine-readable plan, and include complete replay or hardware evidence. The formal workflow is
+documented in `docs/vehicle-qualification-workflow.md`.

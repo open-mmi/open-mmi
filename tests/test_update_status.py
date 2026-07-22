@@ -203,7 +203,7 @@ class UpdateStatusTests(unittest.TestCase):
         self.assertTrue(payload["update"]["update_available"])
         self.assertEqual(payload["update"]["available_commit"], remote_commit)
 
-    def test_unknown_ancestry_is_remote_different_not_assumed_update(self):
+    def test_remote_descendant_is_fetched_before_comparison(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             source, remote, installed_commit = self.create_repository(root)
@@ -222,7 +222,42 @@ class UpdateStatusTests(unittest.TestCase):
             self.write_descriptor(source_file, source, installed_commit)
             with self.environment(version_file, source_file):
                 payload = update_status.check_for_updates()
-        self.assertEqual(payload["update"]["state"], "remote-different")
+        self.assertEqual(payload["update"]["state"], "update-available")
+        self.assertTrue(payload["update"]["update_available"])
+        self.assertTrue(payload["update"]["remote_differs"])
+        self.assertEqual(payload["update"]["available_commit"], remote_commit)
+
+    def test_fetched_remote_divergence_is_not_assumed_update(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source, remote, _initial_commit = self.create_repository(root)
+            (source / "local.txt").write_text("local\n", encoding="utf-8")
+            self.git(source, "add", "local.txt")
+            self.git(source, "commit", "-m", "installed local commit")
+            installed_commit = self.git(source, "rev-parse", "HEAD")
+
+            other = root / "other"
+            subprocess.run(
+                ["git", "clone", "-b", "main", str(remote), str(other)],
+                check=True,
+                stdout=subprocess.DEVNULL,
+            )
+            self.git(other, "config", "user.name", "Open MMI Test")
+            self.git(other, "config", "user.email", "test@example.invalid")
+            (other / "remote.txt").write_text("remote\n", encoding="utf-8")
+            self.git(other, "add", "remote.txt")
+            self.git(other, "commit", "-m", "diverged remote commit")
+            remote_commit = self.git(other, "rev-parse", "HEAD")
+            self.git(other, "push", "origin", "main")
+
+            version_file = root / ".version"
+            source_file = root / ".update-source.json"
+            version_file.write_text("test-build\n", encoding="utf-8")
+            self.write_descriptor(source_file, source, installed_commit)
+            with self.environment(version_file, source_file):
+                payload = update_status.check_for_updates()
+
+        self.assertEqual(payload["update"]["state"], "diverged")
         self.assertIsNone(payload["update"]["update_available"])
         self.assertTrue(payload["update"]["remote_differs"])
         self.assertEqual(payload["update"]["available_commit"], remote_commit)

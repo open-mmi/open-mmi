@@ -4,6 +4,11 @@
 
 - [ ] Python 3.9 and current Python CI are green.
 - [ ] Unit, Node, Playwright, CSS-cascade, package-content, and dashboard-smoke jobs are green.
+- [ ] Maintained profiles and bindings pass canonical event, status, and action registry checks.
+- [ ] `open-mmi-config vehicle-setup conform --root .` passes for the complete maintained profile catalogue.
+- [ ] `open-mmi-config vehicle-setup scaffold ... --dry-run` produces a safe non-mutating plan and the scaffold test suite passes.
+- [ ] Generated action, event, and status references are current.
+- [ ] `bindings/default.json` uses canonical `action` identifiers and contains no module/function implementation names.
 - [ ] The wheel installs in a clean environment and all console entry points start.
 - [ ] `npm ci` reproduces the browser-test environment from `package-lock.json`.
 
@@ -15,7 +20,7 @@
 - [ ] With Bluetooth audio playing, verify steering-wheel pause, resume, next, previous, and stop through BlueZ AVRCP.
 - [ ] Confirm Diagnostics displays canonical RPM, supply voltage, outside temperatures, and all currently decoded profile paths.
 - [ ] Exercise dashboard navigation, overlays, settings persistence, and each enabled media provider.
-- [ ] Confirm the dashboard remains read-only with respect to vehicle CAN transmission.
+- [ ] Confirm the dashboard remains receive-only with respect to vehicle CAN transmission.
 - [ ] Confirm loopback binding is retained unless deployment security has been explicitly reviewed.
 
 ## Installation checks

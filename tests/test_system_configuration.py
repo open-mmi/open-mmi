@@ -120,6 +120,719 @@ class SystemConfigurationTests(unittest.TestCase):
         save.assert_not_called()
         self.assertTrue(result["ok"])
 
+    def test_vehicle_setup_route_is_local_fixed_and_read_only(self):
+        class Handler:
+            client_address = ("127.0.0.1", 1234)
+            headers = {
+                "Host": "127.0.0.1:8765",
+                "Origin": "http://127.0.0.1:8765",
+            }
+
+            def __init__(self):
+                self.sent = None
+
+            def _send_json(self, payload, status=200):
+                self.sent = (payload, status)
+
+        fixture = {
+            "api_version": 1,
+            "read_only": True,
+            "runtime_mode": "single",
+            "catalogue": {"profiles": [], "bindings": []},
+            "active": {"state": "ready"},
+            "interfaces": [],
+        }
+        handler = Handler()
+        with patch.object(
+            system_settings.vehicle_setup,
+            "status_payload",
+            return_value=fixture,
+        ) as status_payload:
+            self.assertTrue(
+                system_settings._handle_get(handler, "/api/system/vehicle-setup")
+            )
+        status_payload.assert_called_once_with()
+        self.assertEqual(handler.sent, (fixture, 200))
+
+        handler = Handler()
+        handler.client_address = ("192.0.2.10", 1234)
+        with patch.object(
+            system_settings.vehicle_setup,
+            "status_payload",
+        ) as status_payload:
+            self.assertTrue(
+                system_settings._handle_get(handler, "/api/system/vehicle-setup")
+            )
+        status_payload.assert_not_called()
+        self.assertEqual(handler.sent[1], 403)
+
+    def test_vehicle_setup_preview_route_is_fixed_local_and_non_mutating(self):
+        request = {
+            "vehicle": {"source": "maintained", "id": "seat_1p"},
+            "bindings": {"source": "maintained", "id": "default"},
+            "runtime": {
+                "active_bus": "comfort",
+                "buses": {"comfort": {"interface": "can0"}},
+            },
+        }
+        body = json.dumps(request).encode("utf-8")
+
+        class Handler:
+            client_address = ("127.0.0.1", 1234)
+            headers = {
+                "Host": "127.0.0.1:8765",
+                "Origin": "http://127.0.0.1:8765",
+                "Content-Type": "application/json",
+                "Content-Length": str(len(body)),
+            }
+
+            def __init__(self):
+                self.sent = None
+                self.rfile = io.BytesIO(body)
+
+            def _send_json(self, payload, status=200):
+                self.sent = (payload, status)
+
+        result = {
+            "api_version": 1,
+            "read_only": True,
+            "apply_available": False,
+            "state": "ready",
+        }
+        handler = Handler()
+        with patch.object(
+            system_settings.vehicle_config_coordinator,
+            "client_preview",
+            return_value=result,
+        ) as preview:
+            self.assertTrue(
+                system_settings._handle_post(
+                    handler,
+                    "/api/system/vehicle-setup/preview",
+                )
+            )
+        preview.assert_called_once_with(request)
+        self.assertEqual(handler.sent, (result, 200))
+
+        handler = Handler()
+        handler.client_address = ("192.0.2.10", 1234)
+        with patch.object(
+            system_settings.vehicle_config_coordinator,
+            "client_preview",
+        ) as preview:
+            self.assertTrue(
+                system_settings._handle_post(
+                    handler,
+                    "/api/system/vehicle-setup/preview",
+                )
+            )
+        preview.assert_not_called()
+        self.assertEqual(handler.sent[1], 403)
+
+    def test_vehicle_setup_apply_route_forwards_only_exact_local_json(self):
+        target = {
+            "vehicle": {
+                "source": "maintained",
+                "id": "seat_1p",
+                "revision": "sha256:" + "a" * 64,
+            },
+            "bindings": {
+                "source": "maintained",
+                "id": "default",
+                "revision": "sha256:" + "b" * 64,
+            },
+            "runtime": {
+                "mode": "single",
+                "active_bus": "comfort",
+                "buses": {"comfort": {"interface": "can0"}},
+            },
+        }
+        request = {
+            "target": target,
+            "expected_configuration_revision": "sha256:" + "c" * 64,
+            "target_configuration_revision": system_settings.vehicle_config_coordinator.vehicle_configuration.selection_revision(
+                target
+            ),
+            "confirm": True,
+        }
+        body = json.dumps(request).encode("utf-8")
+
+        class Handler:
+            client_address = ("127.0.0.1", 1234)
+            headers = {
+                "Host": "127.0.0.1:8765",
+                "Origin": "http://127.0.0.1:8765",
+                "Content-Type": "application/json",
+                "Content-Length": str(len(body)),
+            }
+
+            def __init__(self):
+                self.sent = None
+                self.rfile = io.BytesIO(body)
+
+            def _send_json(self, payload, status=200):
+                self.sent = (payload, status)
+
+        result = {
+            "ok": True,
+            "api_version": 1,
+            "action": "apply",
+            "state": {"state": "complete", "stage": "complete"},
+        }
+        handler = Handler()
+        with patch.object(
+            system_settings.vehicle_config_coordinator,
+            "client_apply",
+            return_value=result,
+        ) as apply:
+            self.assertTrue(
+                system_settings._handle_post(
+                    handler,
+                    "/api/system/vehicle-setup/apply",
+                )
+            )
+        apply.assert_called_once_with(request)
+        self.assertEqual(handler.sent, (result, 200))
+
+        handler = Handler()
+        handler.client_address = ("192.0.2.10", 1234)
+        with patch.object(
+            system_settings.vehicle_config_coordinator,
+            "client_apply",
+        ) as apply:
+            self.assertTrue(
+                system_settings._handle_post(
+                    handler,
+                    "/api/system/vehicle-setup/apply",
+                )
+            )
+        apply.assert_not_called()
+        self.assertEqual(handler.sent[1], 403)
+
+    def test_vehicle_setup_custom_copy_route_is_local_exact_and_maps_conflicts(self):
+        request = {
+            "kind": "profile",
+            "id": "my-seat",
+            "template_source": "maintained",
+            "template_id": "seat_1p",
+            "template_revision": "sha256:" + "a" * 64,
+        }
+        body = json.dumps(request).encode("utf-8")
+
+        class Handler:
+            client_address = ("127.0.0.1", 1234)
+            headers = {
+                "Host": "127.0.0.1:8765",
+                "Origin": "http://127.0.0.1:8765",
+                "Content-Type": "application/json",
+                "Content-Length": str(len(body)),
+            }
+
+            def __init__(self):
+                self.sent = None
+                self.rfile = io.BytesIO(body)
+
+            def _send_json(self, payload, status=200):
+                self.sent = (payload, status)
+
+        result = {
+            "ok": True,
+            "api_version": 1,
+            "action": "copy-maintained-template",
+            "kind": "profile",
+            "custom": {
+                "source": "custom",
+                "id": "my-seat",
+                "revision": "sha256:" + "a" * 64,
+            },
+        }
+        handler = Handler()
+        with patch.object(
+            system_settings.vehicle_catalogue,
+            "copy_maintained_template",
+            return_value=result,
+        ) as copy:
+            self.assertTrue(
+                system_settings._handle_post(
+                    handler,
+                    "/api/system/vehicle-custom/create",
+                )
+            )
+        copy.assert_called_once_with(request)
+        self.assertEqual(handler.sent, (result, 200))
+
+        handler = Handler()
+        handler.client_address = ("192.0.2.10", 1234)
+        with patch.object(
+            system_settings.vehicle_catalogue,
+            "copy_maintained_template",
+        ) as copy:
+            system_settings._handle_post(
+                handler,
+                "/api/system/vehicle-custom/create",
+            )
+        copy.assert_not_called()
+        self.assertEqual(handler.sent[1], 403)
+
+        handler = Handler()
+        with patch.object(
+            system_settings.vehicle_catalogue,
+            "copy_maintained_template",
+            side_effect=system_settings.vehicle_catalogue.VehicleCatalogueConflictError(
+                "Maintained template changed",
+                "template-stale",
+            ),
+        ):
+            system_settings._handle_post(
+                handler,
+                "/api/system/vehicle-custom/create",
+            )
+        self.assertEqual(handler.sent, ({
+            "ok": False,
+            "code": "template-stale",
+            "error": "Maintained template changed",
+        }, 409))
+
+    def test_vehicle_custom_load_and_save_routes_are_local_revision_bound(self):
+        load_request = {
+            "kind": "profile",
+            "source": "custom",
+            "id": "my-seat",
+        }
+        save_request = {
+            **load_request,
+            "expected_revision": "sha256:" + "a" * 64,
+            "content": '{"rules":[]}\n',
+        }
+
+        class Handler:
+            client_address = ("127.0.0.1", 1234)
+
+            def __init__(self, request):
+                body = json.dumps(request).encode("utf-8")
+                self.headers = {
+                    "Host": "127.0.0.1:8765",
+                    "Origin": "http://127.0.0.1:8765",
+                    "Content-Type": "application/json",
+                    "Content-Length": str(len(body)),
+                }
+                self.sent = None
+                self.rfile = io.BytesIO(body)
+
+            def _send_json(self, payload, status=200):
+                self.sent = (payload, status)
+
+        loaded = {
+            "ok": True,
+            "api_version": 1,
+            "action": "load-custom-item",
+            "kind": "profile",
+            "custom": {
+                "source": "custom",
+                "id": "my-seat",
+                "revision": "sha256:" + "a" * 64,
+            },
+            "content": save_request["content"],
+            "validation": {"valid": True, "errors": [], "warnings": []},
+        }
+        handler = Handler(load_request)
+        with patch.object(
+            system_settings.vehicle_catalogue,
+            "load_custom_item",
+            return_value=loaded,
+        ) as load:
+            self.assertTrue(system_settings._handle_post(
+                handler, "/api/system/vehicle-custom/load"
+            ))
+        load.assert_called_once_with(load_request)
+        self.assertEqual(handler.sent, (loaded, 200))
+
+        saved = {
+            "ok": True,
+            "api_version": 1,
+            "action": "save-custom-item",
+            "kind": "profile",
+            "custom": {
+                "source": "custom",
+                "id": "my-seat",
+                "revision": "sha256:" + "b" * 64,
+            },
+            "validation": {"valid": True, "errors": [], "warnings": []},
+            "applied": False,
+        }
+        handler = Handler(save_request)
+        with patch.object(
+            system_settings.vehicle_catalogue,
+            "save_custom_item",
+            return_value=saved,
+        ) as save:
+            self.assertTrue(system_settings._handle_post(
+                handler, "/api/system/vehicle-custom/save"
+            ))
+        save.assert_called_once_with(save_request)
+        self.assertEqual(handler.sent, (saved, 200))
+
+        handler = Handler(save_request)
+        with patch.object(
+            system_settings.vehicle_catalogue,
+            "save_custom_item",
+            side_effect=system_settings.vehicle_catalogue.VehicleCatalogueConflictError(
+                "Custom catalogue item changed", "custom-stale"
+            ),
+        ):
+            system_settings._handle_post(
+                handler, "/api/system/vehicle-custom/save"
+            )
+        self.assertEqual(handler.sent[1], 409)
+        self.assertEqual(handler.sent[0]["code"], "custom-stale")
+
+        handler = Handler(load_request)
+        handler.client_address = ("192.0.2.10", 1234)
+        with patch.object(
+            system_settings.vehicle_catalogue, "load_custom_item"
+        ) as load:
+            system_settings._handle_post(
+                handler, "/api/system/vehicle-custom/load"
+            )
+        load.assert_not_called()
+        self.assertEqual(handler.sent[1], 403)
+
+    def test_vehicle_custom_import_route_is_local_bounded_and_creation_only(self):
+        request = {
+            "kind": "profile",
+            "id": "imported-seat",
+            "content": '{"rules":[],"presence":[],"status":[]}\n',
+        }
+
+        class Handler:
+            client_address = ("127.0.0.1", 1234)
+
+            def __init__(self):
+                body = json.dumps(request).encode("utf-8")
+                self.headers = {
+                    "Host": "127.0.0.1:8765",
+                    "Origin": "http://127.0.0.1:8765",
+                    "Content-Type": "application/json",
+                    "Content-Length": str(len(body)),
+                }
+                self.sent = None
+                self.rfile = io.BytesIO(body)
+
+            def _send_json(self, payload, status=200):
+                self.sent = (payload, status)
+
+        result = {
+            "ok": True,
+            "api_version": 1,
+            "action": "import-custom-item",
+            "kind": "profile",
+            "custom": {
+                "source": "custom",
+                "id": "imported-seat",
+                "revision": "sha256:" + "a" * 64,
+            },
+            "validation": {"valid": True, "errors": [], "warnings": []},
+            "applied": False,
+        }
+        handler = Handler()
+        with patch.object(
+            system_settings.vehicle_catalogue,
+            "import_custom_item",
+            return_value=result,
+        ) as import_item:
+            self.assertTrue(system_settings._handle_post(
+                handler, "/api/system/vehicle-custom/import"
+            ))
+        import_item.assert_called_once_with(request)
+        self.assertEqual(handler.sent, (result, 200))
+
+        handler = Handler()
+        with patch.object(
+            system_settings.vehicle_catalogue,
+            "import_custom_item",
+            side_effect=system_settings.vehicle_catalogue.VehicleCatalogueConflictError(
+                "A custom catalogue item with that id already exists",
+                "custom-exists",
+            ),
+        ):
+            system_settings._handle_post(
+                handler, "/api/system/vehicle-custom/import"
+            )
+        self.assertEqual(handler.sent[1], 409)
+        self.assertEqual(handler.sent[0]["code"], "custom-exists")
+
+        handler = Handler()
+        handler.client_address = ("192.0.2.10", 1234)
+        with patch.object(
+            system_settings.vehicle_catalogue, "import_custom_item"
+        ) as import_item:
+            system_settings._handle_post(
+                handler, "/api/system/vehicle-custom/import"
+            )
+        import_item.assert_not_called()
+        self.assertEqual(handler.sent[1], 403)
+
+    def test_vehicle_custom_manage_route_is_local_and_revision_bound(self):
+        request = {
+            "action": "rename",
+            "kind": "profile",
+            "source": "custom",
+            "id": "my-seat",
+            "expected_revision": "sha256:" + "a" * 64,
+            "new_id": "driver-seat",
+        }
+        body = json.dumps(request).encode("utf-8")
+
+        class Handler:
+            client_address = ("127.0.0.1", 1234)
+            headers = {
+                "Host": "127.0.0.1:8765",
+                "Origin": "http://127.0.0.1:8765",
+                "Content-Type": "application/json",
+                "Content-Length": str(len(body)),
+            }
+
+            def __init__(self):
+                self.sent = None
+                self.rfile = io.BytesIO(body)
+
+            def _send_json(self, payload, status=200):
+                self.sent = (payload, status)
+
+        result = {
+            "ok": True,
+            "action": "manage-custom-item",
+            "operation": "rename",
+            "custom": {
+                "source": "custom",
+                "id": "driver-seat",
+                "revision": "sha256:" + "a" * 64,
+            },
+            "applied": False,
+        }
+        handler = Handler()
+        with patch.object(
+            system_settings.vehicle_catalogue,
+            "manage_custom_item",
+            return_value=result,
+        ) as manage:
+            self.assertTrue(system_settings._handle_post(
+                handler, "/api/system/vehicle-custom/manage"
+            ))
+        manage.assert_called_once_with(request)
+        self.assertEqual(handler.sent, (result, 200))
+
+        handler = Handler()
+        with patch.object(
+            system_settings.vehicle_catalogue,
+            "manage_custom_item",
+            side_effect=system_settings.vehicle_catalogue.VehicleCatalogueConflictError(
+                "Active custom catalogue items cannot be renamed or deleted",
+                "custom-active",
+            ),
+        ):
+            system_settings._handle_post(
+                handler, "/api/system/vehicle-custom/manage"
+            )
+        self.assertEqual(handler.sent[1], 409)
+        self.assertEqual(handler.sent[0]["code"], "custom-active")
+
+        handler = Handler()
+        handler.client_address = ("192.0.2.10", 1234)
+        with patch.object(
+            system_settings.vehicle_catalogue, "manage_custom_item"
+        ) as manage:
+            system_settings._handle_post(
+                handler, "/api/system/vehicle-custom/manage"
+            )
+        manage.assert_not_called()
+        self.assertEqual(handler.sent[1], 403)
+
+    def test_vehicle_custom_save_has_a_bounded_larger_body_limit(self):
+        content = " " * (system_settings.SYSTEM_MAX_BODY_BYTES + 1)
+        request = {
+            "kind": "profile",
+            "source": "custom",
+            "id": "my-seat",
+            "expected_revision": "sha256:" + "a" * 64,
+            "content": content,
+        }
+        body = json.dumps(request).encode("utf-8")
+
+        class Handler:
+            client_address = ("127.0.0.1", 1234)
+            headers = {
+                "Host": "127.0.0.1:8765",
+                "Origin": "http://127.0.0.1:8765",
+                "Content-Type": "application/json",
+                "Content-Length": str(len(body)),
+            }
+
+            def __init__(self):
+                self.sent = None
+                self.rfile = io.BytesIO(body)
+
+            def _send_json(self, payload, status=200):
+                self.sent = (payload, status)
+
+        handler = Handler()
+        with patch.object(
+            system_settings.vehicle_catalogue,
+            "save_custom_item",
+            return_value={"ok": True},
+        ) as save:
+            system_settings._handle_post(
+                handler, "/api/system/vehicle-custom/save"
+            )
+        save.assert_called_once_with(request)
+        self.assertEqual(handler.sent, ({"ok": True}, 200))
+
+    def test_vehicle_setup_apply_route_maps_conflict_failure_and_unavailable(self):
+        body = b'{"confirm":true}'
+
+        class Handler:
+            client_address = ("127.0.0.1", 1234)
+            headers = {
+                "Host": "127.0.0.1:8765",
+                "Origin": "http://127.0.0.1:8765",
+                "Content-Type": "application/json",
+                "Content-Length": str(len(body)),
+            }
+
+            def __init__(self):
+                self.sent = None
+                self.rfile = io.BytesIO(body)
+
+            def _send_json(self, payload, status=200):
+                self.sent = (payload, status)
+
+        handler = Handler()
+        with patch.object(
+            system_settings.vehicle_config_coordinator,
+            "client_apply",
+            side_effect=system_settings.vehicle_config_coordinator.CoordinatorConflictError(
+                "Vehicle configuration preview is stale",
+                "stale-preview",
+            ),
+        ):
+            system_settings._handle_post(
+                handler,
+                "/api/system/vehicle-setup/apply",
+            )
+        self.assertEqual(handler.sent[1], 409)
+        self.assertEqual(handler.sent[0]["code"], "stale-preview")
+
+        handler = Handler()
+        state = {"state": "failed", "stage": "restored"}
+        with patch.object(
+            system_settings.vehicle_config_coordinator,
+            "client_apply",
+            side_effect=system_settings.vehicle_config_coordinator.CoordinatorApplyError(
+                "Vehicle configuration operation failed during installing",
+                "apply-failed-restored",
+                state,
+            ),
+        ):
+            system_settings._handle_post(
+                handler,
+                "/api/system/vehicle-setup/apply",
+            )
+        self.assertEqual(handler.sent[1], 500)
+        self.assertEqual(handler.sent[0]["state"], state)
+
+        handler = Handler()
+        with patch.object(
+            system_settings.vehicle_config_coordinator,
+            "client_apply",
+            side_effect=system_settings.vehicle_config_coordinator.CoordinatorUnavailableError(
+                "Vehicle configuration coordinator is unavailable"
+            ),
+        ):
+            system_settings._handle_post(
+                handler,
+                "/api/system/vehicle-setup/apply",
+            )
+        self.assertEqual(handler.sent[1], 502)
+
+    def test_system_json_rejects_duplicate_fields_before_apply(self):
+        body = b'{"confirm":true,"confirm":false}'
+
+        class Handler:
+            client_address = ("127.0.0.1", 1234)
+            headers = {
+                "Host": "127.0.0.1:8765",
+                "Origin": "http://127.0.0.1:8765",
+                "Content-Type": "application/json",
+                "Content-Length": str(len(body)),
+            }
+
+            def __init__(self):
+                self.sent = None
+                self.rfile = io.BytesIO(body)
+
+            def _send_json(self, payload, status=200):
+                self.sent = (payload, status)
+
+        handler = Handler()
+        with patch.object(
+            system_settings.vehicle_config_coordinator,
+            "client_apply",
+        ) as apply:
+            self.assertTrue(
+                system_settings._handle_post(
+                    handler,
+                    "/api/system/vehicle-setup/apply",
+                )
+            )
+        apply.assert_not_called()
+        self.assertEqual(handler.sent[1], 400)
+        self.assertEqual(handler.sent[0]["error"], "Invalid JSON request")
+
+
+    def test_vehicle_configuration_coordinator_status_route_uses_fixed_socket_client(self):
+        class Handler:
+            client_address = ("127.0.0.1", 1234)
+            headers = {"Host": "127.0.0.1:8765", "Origin": "http://127.0.0.1:8765"}
+            sent = None
+
+            def _send_json(self, payload, status=200):
+                self.sent = (payload, status)
+
+        handler = Handler()
+        fixture = {
+            "ok": True,
+            "read_only": True,
+            "apply_enabled": False,
+            "state": {"state": "idle"},
+        }
+        with patch.object(
+            system_settings.vehicle_config_coordinator,
+            "client_status",
+            return_value=fixture,
+        ) as status:
+            self.assertTrue(
+                system_settings._handle_get(
+                    handler,
+                    "/api/system/vehicle-setup/coordinator",
+                )
+            )
+        status.assert_called_once_with()
+        self.assertEqual(handler.sent, (fixture, 200))
+
+        handler = Handler()
+        handler.client_address = ("192.0.2.10", 1234)
+        with patch.object(
+            system_settings.vehicle_config_coordinator,
+            "client_status",
+        ) as status:
+            self.assertTrue(
+                system_settings._handle_get(
+                    handler,
+                    "/api/system/vehicle-setup/coordinator",
+                )
+            )
+        status.assert_not_called()
+        self.assertEqual(handler.sent[1], 403)
 
     def test_update_status_routes_are_local_fixed_and_read_only(self):
         class Handler:
@@ -338,6 +1051,24 @@ class SystemConfigurationTests(unittest.TestCase):
         self.assertEqual(result, 0)
         install.assert_called_once_with()
         self.assertIn('"state": "complete"', output.getvalue())
+
+    def test_cli_vehicle_configuration_coordinator_uses_fixed_status_action(self):
+        output = io.StringIO()
+        fixture = {
+            "ok": True,
+            "read_only": True,
+            "apply_enabled": False,
+            "state": {"state": "idle"},
+        }
+        with patch.object(
+            config_cli.vehicle_config_coordinator,
+            "client_status",
+            return_value=fixture,
+        ) as status, contextlib.redirect_stdout(output):
+            result = config_cli.main(["vehicle-setup", "coordinator"])
+        self.assertEqual(result, 0)
+        status.assert_called_once_with()
+        self.assertIn('"apply_enabled": false', output.getvalue().lower())
 
     def test_cli_dashboard_enable_remains_advanced_service_control(self):
         output = io.StringIO()

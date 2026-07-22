@@ -49,6 +49,7 @@ class StatusBus:
         self._clock = clock
         self._subscribers: List[Callable[[Dict[str, Any]], None]] = []
         self._state: Dict[str, Any] = {}
+        self._runtime: Optional[Dict[str, Any]] = None
         self._lock = threading.RLock()
         self._publish_lock = threading.Lock()
 
@@ -77,10 +78,11 @@ class StatusBus:
             with self._lock:
                 self._state.clear()
                 subscribers = list(self._subscribers) if notify else []
+                runtime = copy.deepcopy(self._runtime)
 
             if persist:
                 try:
-                    self._write_status_file({})
+                    self._write_status_file({}, runtime)
                 except Exception:
                     logger.exception("Failed to persist cleared status snapshot to %s", self.path)
 
@@ -97,6 +99,10 @@ class StatusBus:
         with self._lock:
             return copy.deepcopy(self._state)
 
+    def runtime_snapshot(self) -> Optional[Dict[str, Any]]:
+        with self._lock:
+            return copy.deepcopy(self._runtime)
+
     def publish(self, update: Dict[str, Any]) -> Dict[str, Any]:
         if not isinstance(update, dict):
             raise TypeError("status update must be a dictionary")
@@ -105,10 +111,11 @@ class StatusBus:
             with self._lock:
                 _deep_merge(self._state, update)
                 snapshot = copy.deepcopy(self._state)
+                runtime = copy.deepcopy(self._runtime)
                 subscribers = list(self._subscribers)
 
             try:
-                self._write_status_file(snapshot)
+                self._write_status_file(snapshot, runtime)
             except Exception:
                 logger.exception("Failed to persist status snapshot to %s", self.path)
 
@@ -123,13 +130,43 @@ class StatusBus:
 
             return snapshot
 
-    def _write_status_file(self, snapshot: Dict[str, Any]) -> None:
+    def publish_runtime(self, runtime: Dict[str, Any]) -> Dict[str, Any]:
+        """Persist daemon-loaded configuration evidence outside decoded state.
+
+        Runtime evidence is wrapper metadata rather than a decoded status path, so
+        vehicle profiles cannot overwrite it through a status rule. Publishing it
+        does not notify decoded-state subscribers.
+        """
+
+        if not isinstance(runtime, dict):
+            raise TypeError("runtime update must be a dictionary")
+
+        with self._publish_lock:
+            with self._lock:
+                self._runtime = copy.deepcopy(runtime)
+                snapshot = copy.deepcopy(self._state)
+                persisted_runtime = copy.deepcopy(self._runtime)
+
+            try:
+                self._write_status_file(snapshot, persisted_runtime)
+            except Exception:
+                logger.exception("Failed to persist runtime evidence to %s", self.path)
+
+            return copy.deepcopy(persisted_runtime)
+
+    def _write_status_file(
+        self,
+        snapshot: Dict[str, Any],
+        runtime: Optional[Dict[str, Any]] = None,
+    ) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
 
         payload = {
             "updated_at": self._clock(),
             "state": snapshot,
         }
+        if runtime is not None:
+            payload["runtime"] = runtime
         tmp_path: Optional[Path] = None
 
         try:
@@ -186,7 +223,10 @@ def _sync_default_path() -> None:
 
 def _write_status_file(snapshot: Dict[str, Any]) -> None:
     _sync_default_path()
-    _default_bus._write_status_file(copy.deepcopy(snapshot))
+    _default_bus._write_status_file(
+        copy.deepcopy(snapshot),
+        _default_bus.runtime_snapshot(),
+    )
 
 
 def subscribe(fn: Callable[[Dict[str, Any]], None]) -> None:
@@ -207,5 +247,14 @@ def publish(update: Dict[str, Any]) -> Dict[str, Any]:
     return _default_bus.publish(update)
 
 
+def publish_runtime(runtime: Dict[str, Any]) -> Dict[str, Any]:
+    _sync_default_path()
+    return _default_bus.publish_runtime(runtime)
+
+
 def snapshot() -> Dict[str, Any]:
     return _default_bus.snapshot()
+
+
+def runtime_snapshot() -> Optional[Dict[str, Any]]:
+    return _default_bus.runtime_snapshot()

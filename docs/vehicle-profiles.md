@@ -9,7 +9,7 @@ specific vehicle platform.
 Vehicle-specific information belongs in:
 
 ```text
-vehicles/<profile>/config.json
+vehicles/<brand>/<model>/<generation-platform>/config.json
 ```
 
 ---
@@ -18,15 +18,55 @@ vehicles/<profile>/config.json
 
 The maintainer-tested reference vehicle is currently:
 
-* Seat Leon 1P
+* SEAT Leon 1P
 * VAG PQ35 platform
 * comfort CAN at 100000 bitrate
 * SocketCAN interface currently provisioned as `can0`
 
 This does not mean `open-mmi` is a finished Seat/VW infotainment product. The project is
-currently alpha/backend software with an experimentally tested reference profile.
+currently alpha/backend software. The SEAT profile is the sole reverse-engineered maintained
+profile and is hardware-qualified only for the scope and compatibility boundary recorded in
+[`vehicle-catalogue.md`](vehicle-catalogue.md) and
+[`vehicle-qualification-workflow.md`](vehicle-qualification-workflow.md).
 
 ---
+
+## Maintained catalogue identity and evidence
+
+Normal custom profiles remain lightweight and editable. A profile distributed in the maintained `vehicles/` catalogue must also carry `schema_version: 1` and the metadata envelope defined by [`maintained-profile-standard.md`](maintained-profile-standard.md). The envelope records vehicle identity, model-year range, maturity, maintainers, qualification scope, date, evidence and honest limitations.
+
+Check the source catalogue with:
+
+```bash
+open-mmi-config vehicle-setup conform --root .
+```
+
+The command is stricter than ordinary custom-profile validation by design. It gates a maintained compatibility claim; it does not restrict discovery.
+
+Maintained profile placement is recursive and human-browsable:
+
+```text
+vehicles/<brand>/<model>/<generation-platform>/
+```
+
+`vehicles/catalogue.v1.json` maps each directory to a stable `metadata.id` and any
+deprecated compatibility aliases. Custom profiles remain flat under
+`~/.config/open-mmi/vehicles/<custom-id>/` and are never reorganised by updates.
+Copy `vehicles/_template/` when starting a real integration; do not create empty
+brand trees that imply unsupported vehicles.
+
+Candidate and qualified profiles include `fixtures/mappings.v1.json`. Replay proof
+must cover every canonical event and non-alias status output:
+
+```bash
+open-mmi-config vehicle-setup replay --root . seat-leon-1p-pq35
+```
+
+Generated maintained-vehicle navigation, identity, qualification and evidence summaries are
+kept in [`vehicle-catalogue.md`](vehicle-catalogue.md). Canonical event and status coverage
+across all maintained profiles is generated in
+[`vehicle-capability-matrix.md`](vehicle-capability-matrix.md). Both documents are derived
+from the same checked catalogue and profile metadata rather than maintained by hand.
 
 ## Profile shape
 
@@ -61,21 +101,72 @@ configure bitrate and does not silently bring interfaces up.
 
 ---
 
-## Applying a profile
+## Selecting and applying a profile
 
-Normal setup should apply the selected vehicle profile as the source of truth:
+For an installed system, the intended normal path is:
 
-```bash
-sudo ./scripts/manage.sh config apply-profile seat_1p default
+```text
+Settings → Vehicle setup
 ```
 
-This creates user-owned profile/bindings files when missing, writes the daemon
-runtime drop-in, and generates udev rules from `can_buses` metadata.
+The user selects a maintained or custom profile, bindings, one logical bus, and
+one SocketCAN interface. Changing a selector creates an unapplied draft. A fresh
+review validates exact content revisions, event/action compatibility, bus
+metadata, and receive-side provisioning. **Apply setup** then asks the restricted
+coordinator to write the canonical configuration and derived systemd/udev files,
+restart `canbusd`, and verify the exact loaded revisions.
 
-`config init` only creates user config files. `config edit-can` remains available
-as an advanced override for unusual hardware or replay testing.
+Saving or importing a custom profile does not activate it. The managed daemon
+pins the revisions it loaded until a reviewed Apply restarts it.
+
+The terminal management path remains supported for maintained-profile recovery,
+development, and installations whose dashboard is unavailable:
+
+```bash
+sudo ./scripts/manage.sh config apply-profile seat-leon-1p-pq35 default
+```
+
+That command selects installed maintained content, writes the runtime drop-in,
+and generates udev rules from `can_buses` metadata. It does not create or replace
+custom copies. Direct `config init`, `config edit-can`, and environment overrides
+remain advanced tools rather than the normal vehicle-owner workflow.
+
+See [`vehicle-setup.md`](vehicle-setup.md) and
+[`manual-administration.md`](manual-administration.md).
 
 ---
+
+## Universal events, not vehicle-specific actions
+
+A profile translates vehicle-specific CAN signals into canonical Open MMI events. It must
+not embed Python modules, function names, or manufacturer-specific synonyms for an existing
+universal intent.
+
+For example, different evidence-backed vehicle profiles may both emit `mute_toggle`; the
+application behavior belongs in the separate bindings file as a canonical action such as
+`media.mute.toggle`. The action registry, not the binding, owns the private Python
+module/function mapping. Event contracts are documented in
+[`vehicle-event-registry.md`](vehicle-event-registry.md), action contracts in
+[`vehicle-action-registry.md`](vehicle-action-registry.md), and the complete contribution
+rules in [`vehicle-integration-standard.md`](vehicle-integration-standard.md).
+
+Unknown event names, deprecated aliases, payload-bearing `any` rules for no-payload events,
+and no-payload rules for value events fail profile validation.
+
+## Universal statuses, not vehicle-specific paths
+
+Status rules translate vehicle-specific bytes, masks and scaling into canonical persistent
+state. The machine-readable source is `canbusd/data/vehicle-statuses.v1.json`; the generated
+reference is [`vehicle-status-registry.md`](vehicle-status-registry.md).
+
+For example, one vehicle may publish `doors.front_right` from a bitfield while another uses a
+dedicated boolean byte. The CAN decoder changes; dashboards and other consumers receive the
+same human-readable path and value contract.
+
+The registry records value type, unit, nullability and lifecycle. Stable paths are public
+consumer contracts. Experimental paths are provisional interpretations, while diagnostic
+paths preserve raw reverse-engineering evidence without presenting it as stable human state.
+Unregistered paths and incompatible decoder types fail maintained-profile validation.
 
 ## What belongs in a vehicle profile
 
@@ -232,18 +323,31 @@ Avoid turning guesses into core behaviour.
 
 ## Adding a new profile
 
-A new vehicle profile should start small.
+A new vehicle profile should start small. The registry is a continuity checkpoint, not a
+walled garden: raw research and provisional observations are welcome, while maintained
+profiles translate confirmed signals into one shared human-readable vocabulary.
+
+Read [`vehicle-contribution-workflow.md`](vehicle-contribution-workflow.md) before promoting
+an observation into a maintained rule.
 
 Recommended process:
 
-1. Copy an existing profile only if the platform is genuinely related.
-2. Record the vehicle, platform, model year, and tested CAN bus.
-3. Document named bus metadata and capture point.
-4. Add one signal at a time.
-5. Test against replay data where possible.
-6. Test on a real vehicle only when safe.
-7. Keep uncertain mappings clearly marked.
-8. Do not modify core logic unless the rule type is genuinely reusable.
+1. Record raw CAN evidence, physical actions and uncertainty without waiting for a final name.
+2. Read the vehicle integration standard and canonical event registry.
+3. Copy an existing profile only if the platform is genuinely related.
+4. Record the vehicle, platform, model year, and tested CAN bus.
+5. Document named bus metadata and capture point.
+6. Confirm what each signal means to a person and classify it as event or persistent status.
+7. Search the registry and reuse an existing canonical event when its meaning matches.
+8. When the human concept is genuinely new, add a universal registry proposal in the same pull request.
+9. Add one signal at a time and test against replay data where possible.
+10. Test on a real vehicle only when safe and keep uncertain mappings clearly marked.
+11. Do not modify core logic unless the rule type is genuinely reusable.
+
+A contributor who finds the same mute control in another vehicle should normally copy the
+canonical `mute_toggle` meaning and replace only the CAN ID, byte and value. Names such as
+`PDC_signal` remain acceptable discovery labels, but need a clear event or status meaning
+before they cross the maintained-profile boundary.
 
 ---
 

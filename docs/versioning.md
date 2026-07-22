@@ -54,6 +54,24 @@ A GitHub Release should only be created when the release has:
 
 See [`release-checklist.md`](release-checklist.md) before creating a GitHub Release.
 
+
+## Vehicle-event registry compatibility
+
+The machine-readable vehicle-event registry is a public integration API inside the
+project. Its `schema_version` describes the registry document shape, while individual
+stable event identifiers describe semantic contracts used by profiles, bindings and
+consumers.
+
+Within one registry schema version:
+
+- new canonical events may be added;
+- existing stable event names and meanings are not changed;
+- payload contracts are not narrowed or repurposed; and
+- migration names are recorded explicitly as deprecated aliases.
+
+A semantic break requires a new event identifier and migration documentation rather
+than silently changing the meaning of an existing event.
+
 ## Versioning goal
 
 Version numbers should describe project maturity honestly.

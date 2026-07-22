@@ -1,6 +1,17 @@
 # V1 vehicle setup management
 
-Status: design proposal
+| Field | Value |
+|---|---|
+| Source branch | `v1-vehicle-setup-foundation` |
+| Target | `main` |
+| Status | Implemented; final tablet acceptance and release sign-off pending |
+| Current user documentation | [`../../vehicle-setup.md`](../../vehicle-setup.md) |
+| Current operator documentation | [`../../manual-administration.md`](../../manual-administration.md) |
+
+This folder is the historical design and qualification record. Current user and
+operator instructions belong in the permanent documents linked above. Statements
+inside historical qualification sections describe the order in which capability
+was enabled, not a claim that the current UI remains gated.
 
 This design defines a local, explicit setup path for selecting an Open MMI vehicle
 profile, bindings and SocketCAN input without editing systemd or udev files by hand.
@@ -21,8 +32,10 @@ A user should be able to:
 6. apply the setup explicitly;
 7. see whether the configuration loaded and whether the interface is present;
 8. create a named custom copy from a maintained template;
-9. edit and validate that custom copy without changing the active runtime; and
-10. return to a maintained profile without leaving a custom path override active.
+9. edit and validate that custom copy without changing the active runtime;
+10. import validated profile or bindings JSON as a new custom entry;
+11. duplicate, rename or delete inactive custom entries explicitly; and
+12. return to a maintained profile without leaving a custom path override active.
 
 The normal path must not require a terminal. Existing management commands remain an
 administrator and recovery interface over the same backend contract.
@@ -41,8 +54,11 @@ The V1 setup-management scope includes:
 - a canonical root-owned selection descriptor;
 - preview, validation, apply, verification and automatic restoration;
 - creation of custom copies from installed maintained templates;
+- creation-only validated JSON import into new custom identities;
 - draft editing with atomic saves and revision checks;
-- machine-readable active configuration and CAN health status; and
+- revision-bound duplicate, rename and inactive-only deletion for custom entries;
+- machine-readable active configuration and CAN health status;
+- canonical vehicle-event registry validation for profile emissions and binding keys; and
 - an 800×480 Settings workflow with inline feedback.
 
 ## Non-goals
@@ -64,10 +80,11 @@ The first delivery does not include:
 The design retains these current contracts:
 
 - maintained vehicle profiles are installed under
-  `/opt/open-mmi/vehicles/<profile>/config.json`;
+  `/opt/open-mmi/vehicles/<brand>/<model>/<generation-platform>/config.json` and are
+  selected through the stable ID in `vehicles/catalogue.v1.json`;
 - maintained bindings are installed under `/opt/open-mmi/bindings/<bindings>.json`;
 - custom vehicle profiles live under
-  `~/.config/open-mmi/vehicles/<profile>/config.json`;
+  `~/.config/open-mmi/vehicles/<custom-id>/config.json`;
 - custom bindings live under `~/.config/open-mmi/bindings/<bindings>.json`;
 - custom files are sacred and opt-in;
 - `canbusd` remains a passive SocketCAN consumer;
@@ -95,8 +112,10 @@ udev rules are generated outputs which may be checked, recreated or restored.
 
 ### Save and activate are separate
 
-A custom draft may be saved without touching the running daemon. Activation is a
-separate reviewed operation. Invalid drafts cannot be activated.
+A custom draft may be saved without changing the configuration loaded by the
+running daemon. Coordinator-managed exact profile and bindings paths are pinned for
+the lifetime of the daemon process; activation is a separate reviewed operation that
+restarts the daemon. Invalid drafts cannot be activated.
 
 ### Absence is not activation failure
 
@@ -142,16 +161,32 @@ Settings UI
 - [`multi-can-runtime.md`](multi-can-runtime.md) records the later simultaneous-bus
   architecture without expanding V1 scope.
 - [`qualification.md`](qualification.md) defines delivery slices and acceptance gates.
+- [`../../vehicle-integration-standard.md`](../../vehicle-integration-standard.md) defines the
+  universal profile/event/binding boundary used by every vehicle integration.
 
-## Required implementation order
+## Implementation close-out
 
-1. Reconcile existing ownership and lookup documentation.
-2. Extract shared profile/bindings resolution and validation from shell-facing code.
-3. Add read-only catalogue and active-runtime status.
-4. Add the canonical descriptor and privileged apply transaction.
-5. Qualify maintained selection through CLI and `vcan` before exposing writes in UI.
-6. Add the Vehicle setup selector and review screen.
-7. Add custom copy, draft validation and activation.
-8. Add bindings editing through an explicit action registry.
-9. Add broader profile editing only after rule schemas are complete.
-10. Treat simultaneous multi-CAN as its own reviewed beta milestone.
+Implemented in this milestone:
+
+1. reconciled maintained/custom ownership and installed production resolution;
+2. shared profile/bindings catalogue, validation, compatibility, and revisioning;
+3. canonical root-owned configuration and derived systemd/udev outputs;
+4. restricted coordinator status, preview, confirmed Apply, verification, and restoration;
+5. maintained/custom selectors and one-bus/interface review in Settings;
+6. custom template copy, strict import, revision-safe JSON save, duplicate, rename,
+   inactive deletion, and explicit return to maintained;
+7. canonical event, status, and action registries with generated references;
+8. maintained-profile conformance, deterministic replay, scaffolding, capture
+   analysis, qualification records, and CI/package coverage.
+
+Deferred beyond this milestone:
+
+- simultaneous multi-CAN reception;
+- last-known-good archives for each custom editor save;
+- a graphical bindings matrix and broader structured rule editors;
+- automatic vehicle or bitrate detection;
+- automatic merging of maintained-template changes into custom copies.
+
+The original implementation sequence is preserved through commit history and the
+qualification document. Current behavior is documented in
+[`../../vehicle-setup.md`](../../vehicle-setup.md).

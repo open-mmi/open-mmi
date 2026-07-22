@@ -1,4 +1,55 @@
 {
+  "schema_version": 1,
+  "metadata": {
+    "id": "seat-leon-1p-pq35",
+    "display_name": "SEAT Leon 1P / Mk2 (PQ35)",
+    "manufacturer": "SEAT",
+    "model": "Leon",
+    "generation": "1P",
+    "platform": "VAG PQ35",
+    "model_years": {
+      "from": 2005,
+      "to": 2012
+    },
+    "maturity": "qualified",
+    "license": "GPL-3.0-only",
+    "maintainers": [
+      "Open MMI contributors"
+    ],
+    "qualification": {
+      "level": "hardware",
+      "last_tested": "2026-07-20",
+      "scope": [
+        "Passive comfort CAN reception at 100 kbit/s",
+        "Canonical steering-wheel and presence events",
+        "Canonical vehicle status decoding",
+        "Reviewed Vehicle Setup apply and rollback",
+        "Real vehicle CAN traffic with maintained and custom sources"
+      ],
+      "evidence": [
+        {
+          "kind": "hardware",
+          "path": "docs/design/v1-vehicle-setup/qualification.md",
+          "description": "Maintainer hardware qualification and V1 acceptance record."
+        },
+        {
+          "kind": "replay",
+          "path": "vehicles/seat/leon/1p-pq35/fixtures/mappings.v1.json",
+          "description": "Deterministic replay coverage for every canonical event and status output."
+        },
+        {
+          "kind": "research",
+          "path": "vehicles/seat/leon/1p-pq35/notes/experimental_can_candidates_2026-07-04.md",
+          "description": "Reverse-engineering notes for mappings that remain experimental or diagnostic."
+        }
+      ]
+    },
+    "limitations": [
+      "Only the comfort CAN bus is qualified.",
+      "Fuel-range candidates and selected climate paths remain experimental or diagnostic.",
+      "Open MMI remains passive receive-only and does not transmit vehicle CAN frames."
+    ]
+  },
   "default_bus": "comfort",
   "can_buses": {
     "comfort": {

@@ -31,7 +31,10 @@ At minimum validate:
 - CAN identifiers parse and are in the supported range;
 - byte indexes and masks are valid for the supported frame type;
 - rule bus references exist;
-- events and status paths are non-empty bounded strings;
+- event identifiers are canonical entries in the Open MMI vehicle-event registry;
+- `value: "any"` rules match the registered payload contract and exact-value rules use no-payload events;
+- presence transitions use registered no-payload events;
+- status paths are non-empty bounded strings;
 - supported status rule types contain their required fields; and
 - aliases do not create ambiguous output without an explicit warning.
 
@@ -40,9 +43,10 @@ privileged configuration must be strict.
 
 ## Bindings validation
 
-Bindings currently identify a module and function dynamically. UI editing requires an
-explicit action registry before a bindings document is considered safe for visual
-editing.
+Maintained bindings identify stable canonical actions. The implemented action registry
+owns the private module/function mapping and validates maintained and custom binding
+action contracts. Legacy custom bindings using `module`, `func`, and `args` remain a
+compatibility input and receive warnings.
 
 The registry defines:
 
@@ -57,14 +61,18 @@ The registry defines:
 Bindings validation then checks:
 
 - top-level event map;
-- valid event names;
+- canonical registered vehicle-event keys;
 - registered action identifier;
 - bounded argument arrays;
 - argument types and values; and
 - no unsupported extra fields.
 
-The runtime may retain a compatibility reader for existing `module` and `func` fields,
-but newly saved UI bindings should resolve through the registry.
+The vehicle-event registry is authoritative for binding keys and the vehicle-action
+registry is authoritative for maintained action identifiers and argument contracts. The
+runtime retains a compatibility reader for existing custom `module` and `func` fields,
+but maintained bindings and newly created canonical content use action identifiers. A
+future graphical bindings matrix is a UI enhancement, not a prerequisite for registry
+safety.
 
 ## Compatibility validation
 
@@ -109,7 +117,7 @@ Store provenance in a sidecar file which the daemon does not parse:
   "display_name": "My Seat",
   "template": {
     "source": "maintained",
-    "id": "seat_1p",
+    "id": "seat-leon-1p-pq35",
     "open_mmi_version": "v1-foundation-alpha-…",
     "revision": "sha256:…"
   },
@@ -119,15 +127,32 @@ Store provenance in a sidecar file which the daemon does not parse:
 
 The sidecar supports later comparison. It does not authorize automatic merging.
 
+The implemented copy route stores these private sidecars under
+`~/.config/open-mmi/.open-mmi-provenance/<kind>/<id>.json`. The daemon never scans this
+hidden tree. Profile data remains under `vehicles/<id>/config.json`; bindings data
+remains under `bindings/<id>.json`. Maintained files are never opened for writing.
+
+## JSON import
+
+The dashboard can import a local `.json` file only as a new `custom` identity. The browser
+sends the selected kind, a validated identifier and bounded JSON text; it never sends a
+filesystem path. The backend parses with duplicate-key and non-finite-number rejection,
+runs the same full profile or bindings validator used by catalogue discovery, and uses
+private no-overwrite creation. Invalid content, an existing identifier or an untrusted
+custom directory leaves no imported item behind.
+
+Imported content is selected as an unapplied draft. It does not restart `canbusd`, alter
+maintained content, or replace any existing custom item. Import provenance records the
+creation origin separately from maintained-template provenance.
+
 ## Draft loading and saving
 
 Loading returns:
 
 - kind and identifier;
-- content;
-- content revision;
-- validation result; and
-- provenance summary.
+- exact UTF-8 JSON content;
+- content revision; and
+- validation result.
 
 Saving requires the revision returned by load. A changed revision produces a conflict
 instead of overwriting another browser or terminal edit.
@@ -138,13 +163,39 @@ Save sequence:
 2. reject symlinks and non-regular targets;
 3. compare expected content revision;
 4. parse and validate submitted JSON;
-5. write and flush a temporary sibling file;
-6. preserve the previous valid content as the last-known-good user revision;
-7. atomically replace the draft; and
-8. return the new revision and validation result.
+5. verify the target identity has not changed during the save;
+6. write and flush a private temporary sibling file;
+7. atomically replace the draft and flush its directory; and
+8. return the new revision, validation result and `applied: false`.
 
-Saving an invalid draft may be allowed only when the UI and API label it invalid and the
-active runtime is not changed. Activation always requires zero validation errors.
+The current editor rejects invalid JSON and semantic validation errors before writing.
+Saving never restarts `canbusd` and never changes maintained content or provenance.
+For coordinator-managed exact document paths, the running daemon pins its successfully
+parsed profile and bindings revisions until restart; periodic and SIGHUP reloads cannot
+activate a saved draft. Activation remains a separate reviewed operation. Last-known-good
+user revision archives remain a later slice.
+
+## Custom lifecycle operations
+
+Duplicate, rename and delete are available only for fixed `custom` identities and
+require the exact current content revision. They never accept a path or document body.
+All three operations acquire the shared lifecycle lock so they cannot race a reviewed
+apply or managed update.
+
+- Duplicate is allowed for active or inactive custom items because it leaves the source
+  untouched and creates a new private destination.
+- Rename is allowed only for inactive custom items. It moves the exact profile directory
+  or bindings file, moves and updates provenance, and never changes the content revision.
+- Delete is allowed only for inactive custom items and requires explicit browser
+  confirmation. The backend hides the exact item under a private temporary name before
+  removing its content and provenance.
+- Existing destination identifiers, stale revisions, unsafe permissions, symlinks, hard
+  links, unsupported profile-directory contents and active identities fail closed.
+- Lifecycle operations return `applied: false`; selection and activation remain a
+  separate reviewed workflow.
+
+Maintained entries never expose Edit, Duplicate, Rename or Delete. Their only custom
+entry point remains **Use maintained … as template**, which creates a separate copy.
 
 ## Editor delivery order
 

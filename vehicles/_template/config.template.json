@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "metadata": {
+    "id": "brand-model-generation-platform",
+    "display_name": "Brand Model Generation (Platform)",
+    "manufacturer": "Brand",
+    "model": "Model",
+    "generation": "Generation",
+    "platform": "Platform",
+    "market_aliases": [],
+    "model_years": {
+      "from": 2000,
+      "to": 2000
+    },
+    "maturity": "experimental",
+    "license": "GPL-3.0-only",
+    "maintainers": [
+      "Contributor name or team"
+    ],
+    "qualification": {
+      "level": "none",
+      "last_tested": null,
+      "scope": [],
+      "evidence": []
+    },
+    "limitations": [
+      "Describe what is not yet confirmed."
+    ]
+  },
+  "default_bus": "comfort",
+  "can_buses": {
+    "comfort": {
+      "interface": "can0",
+      "bitrate": 100000,
+      "capture_point": "Document the physical capture point",
+      "provisioning": "manual",
+      "bring_up": false,
+      "notes": "Document the tested bus and adapter setup."
+    }
+  },
+  "rules": [],
+  "presence": [],
+  "status": []
+}

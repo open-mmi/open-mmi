@@ -15,9 +15,16 @@ import json
 import os
 import pwd
 import shutil
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Optional
+
+SCRIPT_ROOT = Path(__file__).resolve().parents[1]
+if str(SCRIPT_ROOT) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_ROOT))
+
+from canbusd import profile_catalogue
 
 
 DEFAULT_BUS = "comfort"
@@ -84,26 +91,63 @@ def load_json(path: Path) -> dict[str, Any]:
     return data
 
 
-def source_vehicle_path(repo_root: Path, install_dir: Path, vehicle: str) -> Path:
-    repo_path = repo_root / "vehicles" / vehicle / "config.json"
-    if repo_path.exists():
-        return repo_path
-
-    install_path = install_dir / "vehicles" / vehicle / "config.json"
-    if install_path.exists():
-        return install_path
-
+def resolve_source_vehicle(
+    repo_root: Path,
+    install_dir: Path,
+    vehicle: str,
+    *,
+    development_checkout: bool = False,
+) -> dict[str, Any]:
+    roots = (
+        (repo_root, install_dir)
+        if development_checkout
+        else (install_dir, repo_root)
+    )
+    for root in roots:
+        try:
+            resolved = profile_catalogue.resolve_profile(root, vehicle)
+        except profile_catalogue.VehicleProfileCatalogueError:
+            continue
+        if Path(resolved["path"]).is_file():
+            return resolved
     raise FileNotFoundError(f"Vehicle profile not found: {vehicle}")
 
 
-def source_bindings_path(repo_root: Path, install_dir: Path, bindings: str) -> Path:
-    repo_path = repo_root / "bindings" / f"{bindings}.json"
-    if repo_path.exists():
-        return repo_path
+def source_vehicle_path(
+    repo_root: Path,
+    install_dir: Path,
+    vehicle: str,
+    *,
+    development_checkout: bool = False,
+) -> Path:
+    return Path(
+        resolve_source_vehicle(
+            repo_root,
+            install_dir,
+            vehicle,
+            development_checkout=development_checkout,
+        )["path"]
+    )
 
+
+def source_bindings_path(
+    repo_root: Path,
+    install_dir: Path,
+    bindings: str,
+    *,
+    development_checkout: bool = False,
+) -> Path:
     install_path = install_dir / "bindings" / f"{bindings}.json"
-    if install_path.exists():
-        return install_path
+    repo_path = repo_root / "bindings" / f"{bindings}.json"
+
+    candidates = (
+        (repo_path, install_path)
+        if development_checkout
+        else (install_path, repo_path)
+    )
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
 
     raise FileNotFoundError(f"Bindings file not found: {bindings}")
 
@@ -297,7 +341,6 @@ def apply_plan(
     udev_rule_path.write_text(render_udev_rules(plan), encoding="utf-8")
 
     chown_tree(systemd_user_dir, real_user)
-    chown_tree(plan.profile_path.parent.parent.parent, real_user)
 
 
 def print_summary(plan: ProfileProvisionPlan, systemd_user_dir: Path) -> None:
@@ -331,21 +374,35 @@ def main() -> int:
     parser.add_argument("--install-dir", type=Path, required=True)
     parser.add_argument("--user-config-dir", type=Path, required=True)
     parser.add_argument("--systemd-user-dir", type=Path, required=True)
-    parser.add_argument("--vehicle", default="seat_1p")
+    parser.add_argument("--vehicle", default="seat-leon-1p-pq35")
     parser.add_argument("--bindings", default="default")
     parser.add_argument("--real-user", default="")
+    parser.add_argument(
+        "--development-checkout",
+        action="store_true",
+        help="prefer maintained files from --repo-root instead of the installed tree",
+    )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
-    src_profile = source_vehicle_path(args.repo_root, args.install_dir, args.vehicle)
-    src_bindings = source_bindings_path(args.repo_root, args.install_dir, args.bindings)
-
-    user_profile = args.user_config_dir / "vehicles" / args.vehicle / "config.json"
-    user_bindings = args.user_config_dir / "bindings" / f"{args.bindings}.json"
+    resolved_vehicle = resolve_source_vehicle(
+        args.repo_root,
+        args.install_dir,
+        args.vehicle,
+        development_checkout=args.development_checkout,
+    )
+    src_profile = Path(resolved_vehicle["path"])
+    canonical_vehicle = str(resolved_vehicle["id"])
+    src_bindings = source_bindings_path(
+        args.repo_root,
+        args.install_dir,
+        args.bindings,
+        development_checkout=args.development_checkout,
+    )
 
     if args.dry_run:
         profile = load_json(src_profile)
-        plan = build_plan(profile, src_profile, src_bindings, args.vehicle, args.bindings)
+        plan = build_plan(profile, src_profile, src_bindings, canonical_vehicle, args.bindings)
 
         print_summary(plan, args.systemd_user_dir)
         print(f"Using source profile: {src_profile}")
@@ -354,7 +411,7 @@ def main() -> int:
         return 0
 
     profile = load_json(src_profile)
-    plan = build_plan(profile, src_profile, src_bindings, args.vehicle, args.bindings)
+    plan = build_plan(profile, src_profile, src_bindings, canonical_vehicle, args.bindings)
 
     apply_plan(plan, args.systemd_user_dir, args.real_user)
     print_summary(plan, args.systemd_user_dir)

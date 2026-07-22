@@ -29,7 +29,32 @@ If this adds or changes vehicle CAN transmit/control behaviour, explain the safe
 ## Vehicle-Specific Data
 
 - [ ] No vehicle-specific CAN knowledge was added to core Python
-- [ ] Vehicle-specific CAN data is kept inside `vehicles/<profile>/config.json`
+- [ ] Vehicle-specific CAN data is kept inside `vehicles/<brand>/<model>/<generation-platform>/config.json`
+- [ ] Not applicable
+
+## Shared Human Vocabulary — Reuse or Propose
+
+The registry is a continuity checkpoint, not a walled garden. Raw discovery may use
+provisional names; maintained profile events must use the shared vocabulary.
+
+- [ ] I confirmed the signal's human meaning rather than guessing from one capture
+- [ ] I classified it as a momentary event or persistent status
+- [ ] I searched the canonical registry using ordinary human terms
+- [ ] I reused an existing descriptor where its meaning matches
+- [ ] Any genuinely new descriptor is proposed in this same PR with its contract, docs and tests
+- [ ] Canonical names contain no manufacturer, model, CAN ID, ECU abbreviation, Python module or action function
+- [ ] Not applicable
+
+Explain any new descriptor and why no existing one fits:
+
+## Maintained Profile Admission
+
+- [ ] New or changed maintained profiles use schema version 1 metadata
+- [ ] `metadata.id` matches its entry in `vehicles/catalogue.v1.json`
+- [ ] Maturity and qualification level match the evidence supplied
+- [ ] Qualification scope states exactly what was tested
+- [ ] Evidence files and `fixtures/mappings.v1.json` are included; limitations are explicit
+- [ ] `open-mmi-config vehicle-setup conform --root .` passes
 - [ ] Not applicable
 
 ## Testing
@@ -38,8 +63,18 @@ Commands run:
 
 ```bash
 python3 -m py_compile canbusd/core.py canbusd/status_rules.py canbusd/status_bus.py
-python3 -m json.tool vehicles/seat_1p/config.json >/dev/null
+python3 -m json.tool vehicles/seat/leon/1p-pq35/config.json >/dev/null
+open-mmi-config vehicle-setup conform --root .
+open-mmi-config vehicle-setup qualification report --root .
+open-mmi-config vehicle-setup replay --root . <profile-id>
 python3 -m json.tool bindings/default.json >/dev/null
+open-mmi-config vehicle-setup events --search "<human meaning>"
+open-mmi-config vehicle-setup statuses --search "<human meaning>"
+open-mmi-config vehicle-setup actions --search "<local behavior>"
+python tools/generate_vehicle_action_docs.py --check
+python tools/generate_vehicle_event_docs.py --check
+python tools/generate_vehicle_status_docs.py --check
+python tools/generate_vehicle_catalogue_docs.py --check
 bash -n scripts/manage.sh
 ```
 

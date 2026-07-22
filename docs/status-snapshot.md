@@ -60,13 +60,38 @@ The status snapshot is currently written as a wrapper object:
 ```json
 {
   "updated_at": 1781440496.0,
-  "state": {}
+  "state": {},
+  "runtime": {
+    "api_version": 1,
+    "state": "ready",
+    "errors": [],
+    "vehicle": {
+      "source": "maintained",
+      "id": "seat-leon-1p-pq35",
+      "revision": "sha256:…"
+    },
+    "bindings": {
+      "source": "maintained",
+      "id": "default",
+      "revision": "sha256:…"
+    },
+    "active_bus": "comfort",
+    "interface": "can0"
+  }
 }
 ```
 
 `updated_at` records when the snapshot file was written.
 
 `state` contains the decoded vehicle state published by the daemon.
+
+`runtime` contains daemon-owned loaded-configuration evidence. It is outside
+`state`, so vehicle profile status rules cannot overwrite it. The profile and
+bindings revisions hash the exact bytes successfully parsed by the running daemon.
+For coordinator-managed exact document paths, those revisions remain pinned until the
+daemon process restarts through reviewed Apply; later file saves do not rewrite loaded
+runtime evidence. Adapter presence and recent frames remain separate runtime-health
+signals.
 
 ---
 
@@ -92,10 +117,11 @@ state.steering.angle_degrees
 
 not raw CAN IDs and bytes.
 
-Vehicle-specific CAN knowledge belongs in:
+Vehicle-specific CAN knowledge belongs in maintained or custom profile files:
 
 ```text
-vehicles/<profile>/config.json
+vehicles/<brand>/<model>/<generation-platform>/config.json
+~/.config/open-mmi/vehicles/<custom-id>/config.json
 ```
 
 not in UI code.
