@@ -41,6 +41,15 @@ A missing adapter, failed interface, BUS-OFF controller, invalid runtime status,
 untrusted transaction lock, or unverified wake path fails closed and is not
 interpreted as vehicle sleep.
 
+The installer also deploys `90-open-mmi-can-wake.rules`. When a physical
+`canN` interface is added or changed, udev runs the packaged
+`open-mmi-powerd wake-enable` helper. The helper validates that the topology
+contains both a direct USB device and a PCI host controller before enabling
+every exposed `power/wakeup` control in that ancestry. Unsupported adapters
+remain fail-closed, and no partial topology is modified. The rule is reloaded
+and retriggered during installation and updates, so an already-connected
+adapter is handled without requiring a replug.
+
 `systemctl suspend` returns after resume. The daemon then closes and reopens its
 CAN observation socket and requires fresh CAN traffic before another suspend can
 occur. This prevents immediate suspend loops after resume or after a failed
@@ -78,3 +87,24 @@ The root-owned policy is stored at `/etc/open-mmi/power-policy.json`:
 The policy is installation configuration, not vehicle-specific CAN knowledge.
 Future trigger types can be added without changing the meaning of
 `can_bus_silence`.
+
+## Wake-path diagnostics
+
+Check the currently selected interface after the adapter has been attached:
+
+```bash
+sudo /opt/open-mmi/venv/bin/python - <<'PY'
+from powerd.wake import remote_wake_ready
+print(remote_wake_ready("can0"))
+PY
+```
+
+The result must be `True` when `require_remote_wake` is enabled. To re-run the
+managed helper manually while diagnosing a device, use:
+
+```bash
+sudo /opt/open-mmi/venv/bin/open-mmi-powerd wake-enable --interface can0
+```
+
+A non-zero exit means the direct USB device or PCI host controller did not expose
+a complete writable wake path.

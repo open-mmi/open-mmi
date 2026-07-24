@@ -132,37 +132,108 @@ class RuntimeTests(unittest.TestCase):
 
 
 class WakeTests(unittest.TestCase):
+    @staticmethod
+    def _wake_tree(root: Path, *, enabled: bool) -> tuple[Path, Path, Path, Path]:
+        pci = root / "devices" / "pci0000:00" / "0000:00:14.0"
+        root_hub = pci / "usb1"
+        usb = root_hub / "1-1"
+        interface = usb / "1-1:1.0"
+        net = root / "class" / "net" / "can0"
+        interface.mkdir(parents=True)
+        net.mkdir(parents=True)
+        (net / "device").symlink_to(interface)
+
+        state = "enabled\n" if enabled else "disabled\n"
+        for node, subsystem in (
+            (pci, "pci"),
+            (root_hub, "usb"),
+            (usb, "usb"),
+        ):
+            (node / "power").mkdir()
+            (node / "power" / "wakeup").write_text(state, encoding="utf-8")
+            target = root / "subsystems" / subsystem
+            target.mkdir(parents=True, exist_ok=True)
+            (node / "subsystem").symlink_to(target)
+
+        return pci, root_hub, usb, root / "class" / "net"
+
     def test_remote_wake_requires_enabled_usb_device_and_pci_controller(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            pci = root / "devices" / "pci0000:00" / "0000:00:14.0"
-            root_hub = pci / "usb1"
-            usb = root_hub / "1-1"
-            interface = usb / "1-1:1.0"
-            net = root / "class" / "net" / "can0"
-            interface.mkdir(parents=True)
-            net.mkdir(parents=True)
-            (net / "device").symlink_to(interface)
+            _, root_hub, _, sys_class_net = self._wake_tree(
+                root, enabled=True
+            )
 
-            for node, subsystem in (
-                (pci, "pci"),
-                (root_hub, "usb"),
-                (usb, "usb"),
-            ):
-                (node / "power").mkdir()
-                (node / "power" / "wakeup").write_text(
-                    "enabled\n", encoding="utf-8"
-                )
-                target = root / "subsystems" / subsystem
-                target.mkdir(parents=True, exist_ok=True)
-                (node / "subsystem").symlink_to(target)
-
-            sys_class_net = root / "class" / "net"
             self.assertTrue(wake.remote_wake_ready("can0", sys_class_net))
             (root_hub / "power" / "wakeup").write_text(
                 "disabled\n", encoding="utf-8"
             )
             self.assertFalse(wake.remote_wake_ready("can0", sys_class_net))
+
+    def test_enable_remote_wake_enables_verified_ancestry(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            pci, root_hub, usb, sys_class_net = self._wake_tree(
+                root, enabled=False
+            )
+
+            self.assertTrue(wake.enable_remote_wake("can0", sys_class_net))
+            self.assertTrue(wake.remote_wake_ready("can0", sys_class_net))
+            for node in (pci, root_hub, usb):
+                self.assertEqual(
+                    (node / "power" / "wakeup").read_text(encoding="utf-8"),
+                    "enabled\n",
+                )
+
+    def test_enable_remote_wake_fails_before_writing_incomplete_topology(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            pci, root_hub, usb, sys_class_net = self._wake_tree(
+                root, enabled=False
+            )
+            (usb / "power" / "wakeup").unlink()
+
+            self.assertFalse(wake.enable_remote_wake("can0", sys_class_net))
+            self.assertEqual(
+                (pci / "power" / "wakeup").read_text(encoding="utf-8"),
+                "disabled\n",
+            )
+            self.assertEqual(
+                (root_hub / "power" / "wakeup").read_text(encoding="utf-8"),
+                "disabled\n",
+            )
+
+    def test_wake_enable_cli_uses_the_same_fail_closed_topology(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self._wake_tree(root, enabled=False)
+            sys_class_net = root / "class" / "net"
+
+            self.assertEqual(
+                cli.main(
+                    [
+                        "wake-enable",
+                        "--interface",
+                        "can0",
+                        "--sys-class-net",
+                        str(sys_class_net),
+                    ]
+                ),
+                0,
+            )
+            self.assertTrue(wake.remote_wake_ready("can0", sys_class_net))
+            self.assertEqual(
+                cli.main(
+                    [
+                        "wake-enable",
+                        "--interface",
+                        "vcan0",
+                        "--sys-class-net",
+                        str(sys_class_net),
+                    ]
+                ),
+                2,
+            )
 
 
 class InhibitorTests(unittest.TestCase):

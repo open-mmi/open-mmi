@@ -16,6 +16,9 @@ class PowerdIntegrationTests(unittest.TestCase):
         cls.unit = (
             ROOT / "systemd/system/open-mmi-powerd.service"
         ).read_text(encoding="utf-8")
+        cls.wake_rule = (
+            ROOT / "packaging/udev/90-open-mmi-can-wake.rules"
+        ).read_text(encoding="utf-8")
 
     def test_daemon_is_not_an_action_module(self) -> None:
         self.assertFalse((ROOT / "actions/power.py").exists())
@@ -54,6 +57,19 @@ class PowerdIntegrationTests(unittest.TestCase):
         )
         self.assertNotIn(malformed, self.manage)
 
+    def test_wake_rule_is_installed_and_uses_the_packaged_helper(self) -> None:
+        self.assertIn(
+            "open-mmi-powerd wake-enable --interface %k",
+            self.wake_rule,
+        )
+        self.assertIn(
+            '"$REPO_ROOT/packaging/udev/$POWERD_WAKE_UDEV_RULE"',
+            self.manage,
+        )
+        self.assertIn('udevadm control --reload-rules', self.manage)
+        self.assertIn("--sysname-match='can*'", self.manage)
+        self.assertIn("$POWERD_WAKE_UDEV_RULE.absent", self.manage)
+
     def test_system_service_runs_standalone_hardened_daemon(self) -> None:
         self.assertIn(
             "ExecStart=/opt/open-mmi/venv/bin/open-mmi-powerd run",
@@ -61,6 +77,8 @@ class PowerdIntegrationTests(unittest.TestCase):
         )
         self.assertIn("RestrictAddressFamilies=AF_CAN AF_NETLINK AF_UNIX", self.unit)
         self.assertIn("ProtectSystem=strict", self.unit)
+        self.assertIn("ProtectHome=false", self.unit)
+        self.assertIn("InaccessiblePaths=/home /root", self.unit)
         self.assertNotIn("actions.power", self.unit)
 
     def test_wheel_verifier_requires_powerd_modules(self) -> None:

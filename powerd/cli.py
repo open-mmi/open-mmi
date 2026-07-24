@@ -17,7 +17,8 @@ from powerd.policy import (
     policy_payload,
     update_policy,
 )
-from powerd.runtime import DEFAULT_STATUS_PATH
+from powerd.runtime import DEFAULT_STATUS_PATH, PHYSICAL_CAN_INTERFACE_RE
+from powerd.wake import DEFAULT_SYS_CLASS_NET, enable_remote_wake
 
 
 def _policy_command(args: argparse.Namespace) -> int:
@@ -40,6 +41,24 @@ def _policy_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def _wake_enable_command(args: argparse.Namespace) -> int:
+    if not PHYSICAL_CAN_INTERFACE_RE.fullmatch(args.interface):
+        print(
+            f"open-mmi-powerd: invalid physical CAN interface: {args.interface}",
+            file=__import__("sys").stderr,
+        )
+        return 2
+
+    if enable_remote_wake(args.interface, args.sys_class_net):
+        return 0
+
+    print(
+        f"open-mmi-powerd: remote wake is unavailable for {args.interface}",
+        file=__import__("sys").stderr,
+    )
+    return 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -56,6 +75,18 @@ def build_parser() -> argparse.ArgumentParser:
         "--status",
         type=Path,
         default=Path(os.getenv("OPEN_MMI_STATUS_PATH", str(DEFAULT_STATUS_PATH))),
+    )
+
+    wake_parser = subparsers.add_parser(
+        "wake-enable",
+        help="enable verified USB and PCI wake controls for a CAN interface",
+    )
+    wake_parser.add_argument("--interface", required=True)
+    wake_parser.add_argument(
+        "--sys-class-net",
+        type=Path,
+        default=DEFAULT_SYS_CLASS_NET,
+        help=argparse.SUPPRESS,
     )
 
     policy_parser = subparsers.add_parser("policy", help="inspect or update policy")
@@ -82,6 +113,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "policy":
         return _policy_command(args)
+    if args.command == "wake-enable":
+        return _wake_enable_command(args)
 
     logging.basicConfig(
         level=getattr(

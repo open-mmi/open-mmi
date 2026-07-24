@@ -20,6 +20,8 @@ VEHICLE_CONFIG_COORDINATOR_UNIT="open-mmi-vehicle-config-coordinator.service"
 VEHICLE_CAN_PROVISION_UNIT="open-mmi-vehicle-can-provision.service"
 POWERD_UNIT="open-mmi-powerd.service"
 POWER_POLICY_FILE="/etc/open-mmi/power-policy.json"
+POWERD_WAKE_UDEV_RULE="90-open-mmi-can-wake.rules"
+POWERD_WAKE_UDEV_RULE_PATH="/etc/udev/rules.d/$POWERD_WAKE_UDEV_RULE"
 VEHICLE_CONFIG_COORDINATOR_ENV="/etc/open-mmi/vehicle-config-coordinator.env"
 VEHICLE_CONFIG_UI_QUALIFICATION_GATE="/etc/open-mmi/vehicle-configuration-ui-qualification"
 VEHICLE_CONFIG_COORDINATOR_OVERRIDE_DIR="/etc/systemd/system/$VEHICLE_CONFIG_COORDINATOR_UNIT.d"
@@ -988,7 +990,8 @@ reconcile_power_manager() {
 }
 
 install_power_manager() {
-    install -d -m 0755 -o root -g root /etc/open-mmi /etc/systemd/system
+    install -d -m 0755 -o root -g root \
+        /etc/open-mmi /etc/systemd/system /etc/udev/rules.d
     if [ ! -f "$POWER_POLICY_FILE" ]; then
         cat > "$POWER_POLICY_FILE" <<'EOF_POWER_POLICY'
 {
@@ -1006,6 +1009,14 @@ EOF_POWER_POLICY
     install -m 0644 -o root -g root \
         "$REPO_ROOT/systemd/system/$POWERD_UNIT" \
         "/etc/systemd/system/$POWERD_UNIT"
+    install -m 0644 -o root -g root \
+        "$REPO_ROOT/packaging/udev/$POWERD_WAKE_UDEV_RULE" \
+        "$POWERD_WAKE_UDEV_RULE_PATH"
+    udevadm control --reload-rules
+    udevadm trigger \
+        --subsystem-match=net \
+        --sysname-match='can*' \
+        --action=change || true
     systemctl daemon-reload
     reconcile_power_manager
 }
@@ -1453,6 +1464,12 @@ cmd_deploy_prepared() {
     else
         : > "$rollback_root/system-files/power-policy.json.absent"
     fi
+    if [ -e "$POWERD_WAKE_UDEV_RULE_PATH" ]; then
+        cp -a -- "$POWERD_WAKE_UDEV_RULE_PATH" \
+            "$rollback_root/system-files/$POWERD_WAKE_UDEV_RULE"
+    else
+        : > "$rollback_root/system-files/$POWERD_WAKE_UDEV_RULE.absent"
+    fi
     for unit in canbusd.service open-mmi-dashboard.service; do
         if [ -e "$REAL_HOME/.config/systemd/user/$unit" ]; then
             cp -a -- "$REAL_HOME/.config/systemd/user/$unit" "$rollback_root/user-units/$unit"
@@ -1510,6 +1527,18 @@ cmd_deploy_prepared() {
         elif [ -e "$rollback_root/system-files/power-policy.json.absent" ]; then
             rm -f -- "$POWER_POLICY_FILE"
         fi
+        if [ -e "$rollback_root/system-files/$POWERD_WAKE_UDEV_RULE" ]; then
+            install -d -m 0755 -o root -g root "$(dirname "$POWERD_WAKE_UDEV_RULE_PATH")"
+            cp -a -- "$rollback_root/system-files/$POWERD_WAKE_UDEV_RULE" \
+                "$POWERD_WAKE_UDEV_RULE_PATH"
+        elif [ -e "$rollback_root/system-files/$POWERD_WAKE_UDEV_RULE.absent" ]; then
+            rm -f -- "$POWERD_WAKE_UDEV_RULE_PATH"
+        fi
+        udevadm control --reload-rules >/dev/null 2>&1 || true
+        udevadm trigger \
+            --subsystem-match=net \
+            --sysname-match='can*' \
+            --action=change >/dev/null 2>&1 || true
         for unit in canbusd.service open-mmi-dashboard.service; do
             if [ -e "$rollback_root/user-units/$unit" ]; then
                 cp -a -- "$rollback_root/user-units/$unit" "$REAL_HOME/.config/systemd/user/$unit"
@@ -1699,9 +1728,11 @@ cmd_uninstall() {
     sudo rmdir "$(dirname "$UPDATE_POLICY_FILE")" >/dev/null 2>&1 || true
     
     # Remove udev rules
-    if [ -f /etc/udev/rules.d/80-canbus.rules ]; then
+    if [ -f /etc/udev/rules.d/80-canbus.rules ] || [ -f "$POWERD_WAKE_UDEV_RULE_PATH" ]; then
         log_info "Removing udev rules..."
-        sudo rm -f /etc/udev/rules.d/80-canbus.rules
+        sudo rm -f \
+            /etc/udev/rules.d/80-canbus.rules \
+            "$POWERD_WAKE_UDEV_RULE_PATH"
         sudo udevadm control --reload-rules
         sudo udevadm trigger
     fi
