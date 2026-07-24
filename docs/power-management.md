@@ -108,3 +108,13 @@ sudo /opt/open-mmi/venv/bin/open-mmi-powerd wake-enable --interface can0
 
 A non-zero exit means the direct USB device or PCI host controller did not expose
 a complete writable wake path.
+
+### CAN interface availability during boot
+
+The runtime status may identify a CAN interface before the kernel device exists
+or before vehicle configuration has brought it up. `open-mmi-powerd` treats that
+as an unavailable observation source: it waits with a bounded retry interval and
+does not open SocketCAN until the interface is present, administratively up and
+in a healthy controller state. If an active observation socket later reports a
+disconnect or `ENETDOWN`, the daemon closes it, requires fresh CAN traffic and
+reopens it only after the interface becomes healthy again.

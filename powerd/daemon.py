@@ -43,6 +43,14 @@ def _close_bus(bus: Optional[Any]) -> None:
         logger.exception("Could not close CAN observation socket")
 
 
+def _health_description(health: CanHealth) -> str:
+    if not health.present:
+        return "not present"
+    if not health.up:
+        return f"down ({health.state})"
+    return health.state
+
+
 def run(
     *,
     policy_path: Path,
@@ -66,6 +74,8 @@ def run(
     last_health_check = 0.0
     health = CanHealth(False, False, "UNKNOWN")
     wake_ready = False
+    reported_wait_state: Optional[tuple[bool, bool, str]] = None
+    reported_observation_error: Optional[str] = None
 
     try:
         while True:
@@ -90,6 +100,8 @@ def run(
                 last_health_check = 0.0
                 health = CanHealth(False, False, "UNKNOWN")
                 wake_ready = False
+                reported_wait_state = None
+                reported_observation_error = None
 
             if not policy.enabled or interface is None:
                 _close_bus(bus)
@@ -99,23 +111,58 @@ def run(
                 continue
 
             if bus is None:
-                try:
-                    bus = bus_factory(channel=interface, interface="socketcan")
-                except Exception as exc:
-                    logger.warning("Could not observe %s: %s", interface, exc)
+                previous_health = health
+                health = can_health(interface)
+                last_health_check = clock()
+
+                if not health.healthy:
+                    wait_state = (health.present, health.up, health.state)
+                    if wait_state != reported_wait_state:
+                        logger.info(
+                            "Waiting for healthy CAN interface %s: %s",
+                            interface,
+                            _health_description(health),
+                        )
+                        reported_wait_state = wait_state
+                    last_frame = None
+                    wake_ready = False
                     sleeper(DEFAULT_LOOP_INTERVAL_SECONDS)
                     continue
 
+                if not previous_health.healthy:
+                    awake_since = clock()
+                    last_frame = None
+                    logger.info(
+                        "CAN interface %s is healthy; starting observation",
+                        interface,
+                    )
+                reported_wait_state = None
+
+                try:
+                    bus = bus_factory(channel=interface, interface="socketcan")
+                except Exception as exc:
+                    error = f"{type(exc).__name__}: {exc}"
+                    if error != reported_observation_error:
+                        logger.warning("Could not observe %s: %s", interface, exc)
+                        reported_observation_error = error
+                    sleeper(DEFAULT_LOOP_INTERVAL_SECONDS)
+                    continue
             try:
                 message = bus.recv(timeout=DEFAULT_LOOP_INTERVAL_SECONDS)
             except Exception as exc:
-                logger.warning("CAN observation failed on %s: %s", interface, exc)
+                error = f"{type(exc).__name__}: {exc}"
+                if error != reported_observation_error:
+                    logger.warning("CAN observation failed on %s: %s", interface, exc)
+                    reported_observation_error = error
                 _close_bus(bus)
                 bus = None
                 last_frame = None
                 health = CanHealth(False, False, "DISCONNECTED")
+                wake_ready = False
+                sleeper(DEFAULT_LOOP_INTERVAL_SECONDS)
                 continue
 
+            reported_observation_error = None
             now = clock()
             if message is not None:
                 last_frame = now
@@ -125,6 +172,21 @@ def run(
                 health = can_health(interface)
                 wake_ready = remote_wake_ready(interface, sys_class_net)
                 last_health_check = now
+                if not health.healthy:
+                    wait_state = (health.present, health.up, health.state)
+                    if wait_state != reported_wait_state:
+                        logger.info(
+                            "CAN interface %s became unavailable: %s",
+                            interface,
+                            _health_description(health),
+                        )
+                        reported_wait_state = wait_state
+                    _close_bus(bus)
+                    bus = None
+                    last_frame = None
+                    wake_ready = False
+                    sleeper(DEFAULT_LOOP_INTERVAL_SECONDS)
+                    continue
 
             silent_for = 0.0 if last_frame is None else now - last_frame
             if not suspend_allowed(
@@ -157,5 +219,7 @@ def run(
             last_health_check = 0.0
             health = CanHealth(False, False, "UNKNOWN")
             wake_ready = False
+            reported_wait_state = None
+            reported_observation_error = None
     finally:
         _close_bus(bus)
