@@ -1,0 +1,32 @@
+[Unit]
+Description=Open MMI CAN-Silence Power Policy
+Documentation=https://github.com/open-mmi/open-mmi
+After=local-fs.target open-mmi-vehicle-config-coordinator.service
+Wants=open-mmi-vehicle-config-coordinator.service
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/open-mmi/vehicle-config-coordinator.env
+Environment=OPEN_MMI_POWER_POLICY=/etc/open-mmi/power-policy.json
+ExecStart=/opt/open-mmi/venv/bin/open-mmi-powerd run
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectClock=true
+ProtectControlGroups=true
+ProtectHome=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+RestrictAddressFamilies=AF_CAN AF_NETLINK AF_UNIX
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target
