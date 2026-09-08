@@ -833,6 +833,10 @@ install_update_coordinator() {
         "$REPO_ROOT/systemd/system/$TRUST_STATUS_UNIT" \
         "/etc/systemd/system/$TRUST_STATUS_UNIT"
     install -d -m 0755 -o root -g root "$UPDATE_COORDINATOR_STATE_DIR"
+    # The coordinator hard-binds the media egress authority directory read-only.
+    # It must exist before systemd constructs the service mount namespace on a
+    # fresh install; the media egress installer populates it immediately after.
+    install -d -m 0700 -o root -g root "$MEDIA_EGRESS_CONFIG_DIR"
     systemctl daemon-reload
     systemctl enable "$UPDATE_COORDINATOR_UNIT" "$TRUST_STATUS_UNIT"
     if [ "${OPEN_MMI_PREPARED_DEPLOYMENT:-0}" != 1 ]; then

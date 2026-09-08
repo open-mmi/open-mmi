@@ -1405,10 +1405,18 @@ sleep() {{ :; }}
             unit,
         )
         self.assertNotIn("ProtectHome=true", unit)
+        self.assertIn("ReadOnlyPaths=/var/lib/open-mmi/network-egress", unit)
+        self.assertNotIn("ReadOnlyPaths=-/var/lib/open-mmi/network-egress", unit)
         start = self.text.index("install_update_coordinator() {")
         end = self.text.index("remove_login_autostart() {", start)
         block = self.text[start:end]
-        self.assertIn('systemctl restart "$UPDATE_COORDINATOR_UNIT"', block)
+        sandbox_prerequisite = (
+            'install -d -m 0700 -o root -g root "$MEDIA_EGRESS_CONFIG_DIR"'
+        )
+        restart = 'systemctl restart "$UPDATE_COORDINATOR_UNIT" "$TRUST_STATUS_UNIT"'
+        self.assertIn(sandbox_prerequisite, block)
+        self.assertIn(restart, block)
+        self.assertLess(block.index(sandbox_prerequisite), block.index(restart))
         self.assertIn('${OPEN_MMI_PREPARED_DEPLOYMENT:-0}', block)
         self.assertIn("Log out and back in", block)
 
