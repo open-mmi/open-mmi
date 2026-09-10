@@ -765,14 +765,33 @@ remove_command_links() {
     done
 }
 
+configure_launcher_open_at_login() {
+    local enabled="$1"
+    case "$enabled" in
+        true|false) ;;
+        *)
+            log_error "Invalid launcher autostart state: $enabled"
+            return 1
+            ;;
+    esac
+
+    export XDG_RUNTIME_DIR="/run/user/$USER_ID"
+    sudo -u "$REAL_USER" env -u PYTHONPATH \
+        HOME="$REAL_HOME" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
+        "$INSTALL_DIR/venv/bin/python" -I -c \
+        'import sys; from ui import launcher; launcher.configure_open_at_login(sys.argv[1] == "true")' \
+        "$enabled"
+}
+
 migrate_legacy_dashboard_startup() {
     local config_file="$USER_CONFIG_DIR/launcher.json"
+    local legacy_start_at_login
 
     if [ ! -f "$config_file" ]; then
-        return 0
+        return 1
     fi
 
-    if sudo -u "$REAL_USER" env HOME="$REAL_HOME" python3 - "$config_file" <<'PY_CONFIG'
+    if legacy_start_at_login=$(sudo -u "$REAL_USER" env HOME="$REAL_HOME" python3 - "$config_file" <<'PY_CONFIG'
 import json
 import os
 import sys
@@ -787,30 +806,40 @@ except (OSError, json.JSONDecodeError):
 if not isinstance(payload, dict) or "start_at_login" not in payload:
     raise SystemExit(1)
 
-payload.pop("start_at_login", None)
+start_at_login = payload.pop("start_at_login")
+if not isinstance(start_at_login, bool):
+    raise SystemExit(1)
+
 temporary = path.with_suffix(path.suffix + ".tmp")
 temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 os.chmod(temporary, 0o600)
 temporary.replace(path)
+print("true" if start_at_login else "false")
 PY_CONFIG
-    then
+    ); then
         log_info "Migrating legacy dashboard-service startup preference..."
+        configure_launcher_open_at_login "$legacy_start_at_login"
         export XDG_RUNTIME_DIR="/run/user/$USER_ID"
         sudo -u "$REAL_USER" env HOME="$REAL_HOME" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user disable open-mmi-dashboard.service >/dev/null 2>&1 || true
+        return 0
     fi
+
+    return 1
 }
 
 configure_install_service_defaults() {
     export XDG_RUNTIME_DIR="/run/user/$USER_ID"
     sudo -u "$REAL_USER" env HOME="$REAL_HOME" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user enable canbusd.service "$OWNER_CONFIG_UNIT"
     sudo -u "$REAL_USER" env HOME="$REAL_HOME" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user disable open-mmi-dashboard.service >/dev/null 2>&1 || true
-    migrate_legacy_dashboard_startup
+    if ! migrate_legacy_dashboard_startup; then
+        configure_launcher_open_at_login true
+    fi
 }
 
 configure_update_service_defaults() {
     export XDG_RUNTIME_DIR="/run/user/$USER_ID"
     sudo -u "$REAL_USER" env HOME="$REAL_HOME" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" systemctl --user enable canbusd.service "$OWNER_CONFIG_UNIT"
-    migrate_legacy_dashboard_startup
+    migrate_legacy_dashboard_startup || true
 }
 
 install_update_coordinator() {

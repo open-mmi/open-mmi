@@ -833,10 +833,30 @@ write_checkout_update_source_metadata
     def test_dashboard_service_is_not_the_user_facing_autostart_setting(self) -> None:
         self.assertIn("configure_install_service_defaults()", self.text)
         self.assertIn("configure_update_service_defaults()", self.text)
+        self.assertIn("configure_launcher_open_at_login()", self.text)
         self.assertIn("migrate_legacy_dashboard_startup()", self.text)
-        self.assertIn('payload.pop("start_at_login", None)', self.text)
+        self.assertIn('start_at_login = payload.pop("start_at_login")', self.text)
+        self.assertIn('print("true" if start_at_login else "false")', self.text)
+        self.assertIn('configure_launcher_open_at_login "$legacy_start_at_login"', self.text)
+        self.assertIn("configure_launcher_open_at_login true", self.text)
         self.assertIn("remove_login_autostart", self.text)
         self.assertNotIn("configure_dashboard_autostart", self.text)
+
+    def test_clean_install_defaults_to_launcher_autostart_without_enabling_dashboard_unit(self) -> None:
+        start = self.text.index("configure_install_service_defaults() {")
+        end = self.text.index("configure_update_service_defaults() {", start)
+        block = self.text[start:end]
+        self.assertIn("systemctl --user disable open-mmi-dashboard.service", block)
+        self.assertNotIn("systemctl --user enable open-mmi-dashboard.service", block)
+        self.assertIn("if ! migrate_legacy_dashboard_startup; then", block)
+        self.assertIn("configure_launcher_open_at_login true", block)
+
+    def test_update_preserves_new_launcher_autostart_when_no_legacy_setting_exists(self) -> None:
+        start = self.text.index("configure_update_service_defaults() {")
+        end = self.text.index("install_update_coordinator() {", start)
+        block = self.text[start:end]
+        self.assertIn("migrate_legacy_dashboard_startup || true", block)
+        self.assertNotIn("configure_launcher_open_at_login true", block)
 
     def test_desktop_entry_is_managed_by_install_prepared_deployment_and_uninstall(self) -> None:
         install_start = self.text.index("cmd_install() {")
