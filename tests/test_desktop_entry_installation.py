@@ -140,6 +140,7 @@ class DesktopEntryInstallationTests(unittest.TestCase):
             config_dir = home / ".config" / "open-mmi"
             config_file = config_dir / "launcher.json"
             systemctl_log = temporary / "systemctl.log"
+            launcher_autostart_log = temporary / "launcher-autostart.log"
             config_dir.mkdir(parents=True)
             config_file.write_text(
                 '{"default_ui": "web", "start_at_login": true}\n',
@@ -153,6 +154,10 @@ class DesktopEntryInstallationTests(unittest.TestCase):
                 REAL_HOME={str(home)!r}
                 USER_ID="$(id -u)"
                 USER_CONFIG_DIR={str(config_dir)!r}
+
+                configure_launcher_open_at_login() {{
+                    printf '%s\n' "$1" >> {str(launcher_autostart_log)!r}
+                }}
 
                 sudo() {{
                     if [[ "${{1:-}}" == "-u" ]]; then shift 2; fi
@@ -175,6 +180,7 @@ payload = json.loads(Path({str(config_file)!r}).read_text(encoding="utf-8"))
 assert payload == {{"default_ui": "web"}}, payload
 PY_CHECK
                 grep -Fq 'systemctl --user disable open-mmi-dashboard.service' {str(systemctl_log)!r}
+                test "$(cat {str(launcher_autostart_log)!r})" = "true"
                 """
             )
             result = subprocess.run(
