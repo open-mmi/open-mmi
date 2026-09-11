@@ -155,8 +155,9 @@ class VehicleConfigurationApplyOperationsTests(unittest.TestCase):
         self.assertEqual(descriptor["runtime"], self.target["runtime"])
         self.assertIn("OPEN_MMI_CAN_BUS=comfort", rendered.runtime_dropin.decode())
         self.assertIn("OPEN_MMI_CAN_INTERFACE=can0", rendered.runtime_dropin.decode())
-        self.assertIn("bitrate 100000", rendered.udev_rules.decode())
-        self.assertIn("listen-only on", rendered.udev_rules.decode())
+        self.assertIn("OPEN_MMI_CAN_RECEIVE_INTERFACE=openmmi-rx", rendered.runtime_dropin.decode())
+        self.assertIn("open-mmi-vehicle-can-provision.service", rendered.udev_rules.decode())
+        self.assertNotIn("listen-only on", rendered.udev_rules.decode())
 
         changed = json.loads(json.dumps(self.target))
         changed["vehicle"]["revision"] = "sha256:" + "f" * 64
@@ -190,7 +191,7 @@ class VehicleConfigurationApplyOperationsTests(unittest.TestCase):
 
         with self.assertRaisesRegex(
             apply.ApplyOperationError,
-            "Physical CAN activation requires bitrate and udev listen-only provisioning",
+            "Physical CAN activation requires bitrate and udev private-namespace provisioning",
         ):
             apply.render_artifacts(target, self.roots)
 
@@ -575,64 +576,109 @@ class VehicleConfigurationApplyOperationsTests(unittest.TestCase):
         (class_net / interface).symlink_to(os.path.relpath(device, class_net))
         return class_net
 
-    def test_host_can_provisioner_uses_only_fixed_ip_commands(self) -> None:
-        class_net = self._can_sysfs("can0")
+    def _namespace_runners(self):
         commands = []
+        state = {"clsact": False, "drop": False}
+
+        def command_runner(argv):
+            command = tuple(argv)
+            commands.append(command)
+            if command[:4] == ("/sbin/tc", "qdisc", "add", "dev"):
+                state["clsact"] = True
+            if command[:4] == ("/sbin/tc", "filter", "add", "dev"):
+                state["drop"] = True
+            if command[:4] == ("/sbin/tc", "filter", "del", "dev"):
+                state["drop"] = False
+
+        def output_runner(argv):
+            command = tuple(argv)
+            if command[:2] == ("/usr/bin/systemctl", "show"):
+                return b"4242\n"
+            if command[:6] == ("/sbin/ip", "-details", "-json", "link", "show", "dev"):
+                interface = command[-1]
+                kind = "vxcan" if interface == "openmmi-rx" else "can"
+                info_data = {"ctrlmode": ["BERR-REPORTING"]} if kind == "can" else {}
+                return json.dumps([{"ifname": interface, "linkinfo": {"info_kind": kind, "info_data": info_data}}]).encode()
+            if command[:4] == ("/sbin/tc", "-json", "qdisc", "show"):
+                return json.dumps([{"kind": "clsact"}] if state["clsact"] else []).encode()
+            if command[:4] == ("/sbin/tc", "-json", "filter", "show"):
+                if not state["drop"]:
+                    return b"[]"
+                return json.dumps([
+                    {"protocol": "all", "pref": 1, "kind": "matchall", "chain": 0},
+                    {"protocol": "all", "pref": 1, "kind": "matchall", "chain": 0,
+                     "options": {"handle": 1, "actions": [
+                         {"kind": "gact", "control_action": {"type": "drop"}}
+                     ]}},
+                ]).encode()
+            raise AssertionError(f"unexpected evidence command: {command}")
+
+        return commands, command_runner, output_runner
+
+    def test_host_can_provisioner_uses_fixed_namespace_commands(self) -> None:
+        class_net = self._can_sysfs("can0")
+        commands, command_runner, output_runner = self._namespace_runners()
+        private_request = self.root / "run" / "open-mmi" / "private-request.json"
         result = apply.provision_can_target(
             self.target,
             self.roots,
             service_uid=os.getuid(),
+            private_request_path=private_request,
             sys_class_net=class_net,
-            command_runner=lambda argv: commands.append(tuple(argv)),
+            command_runner=command_runner,
+            output_runner=output_runner,
         )
         self.assertEqual(result, "configured")
-        self.assertEqual(
+        self.assertFalse(private_request.exists())
+        self.assertIn(
+            ("/sbin/ip", "link", "add", "openmmi-rx", "type", "vxcan", "peer", "name", "openmmi-rxp"),
             commands,
-            [
-                ("/sbin/ip", "link", "set", "dev", "can0", "down"),
-                (
-                    "/sbin/ip",
-                    "link",
-                    "set",
-                    "dev",
-                    "can0",
-                    "type",
-                    "can",
-                    "bitrate",
-                    "100000",
-                    "listen-only",
-                    "on",
-                ),
-                ("/sbin/ip", "link", "set", "dev", "can0", "up"),
-            ],
         )
+        self.assertIn(
+            ("/sbin/tc", "filter", "add", "dev", "openmmi-rx", "egress", "pref", "1", "handle", "1", "protocol", "all", "matchall", "action", "drop"),
+            commands,
+        )
+        physical_down = commands.index(("/sbin/ip", "link", "set", "dev", "can0", "down"))
+        physical_move = commands.index(("/sbin/ip", "link", "set", "dev", "can0", "netns", "4242"))
+        private_start = commands.index(("/usr/bin/systemctl", "start", "open-mmi-can-private-provision.service"))
+        proxy_up = commands.index(("/sbin/ip", "link", "set", "dev", "openmmi-rx", "up"))
+        self.assertLess(physical_down, physical_move)
+        self.assertLess(physical_move, private_start)
+        self.assertLess(private_start, proxy_up)
+        self.assertNotIn(("/sbin/ip", "link", "set", "dev", "can0", "up"), commands)
 
-    def test_host_can_provisioner_leaves_an_absent_interface_for_udev(self) -> None:
+    def test_host_can_provisioner_stages_proxy_when_physical_interface_is_absent(self) -> None:
         class_net = self.root / "sys" / "class" / "net"
         (self.root / "sys" / "devices" / "virtual" / "net").mkdir(
             parents=True, exist_ok=True
         )
         class_net.mkdir(parents=True)
-        commands = []
+        commands, command_runner, output_runner = self._namespace_runners()
         result = apply.provision_can_target(
             self.target,
             self.roots,
             service_uid=os.getuid(),
+            private_request_path=self.root / "run" / "open-mmi" / "private-request.json",
             sys_class_net=class_net,
-            command_runner=lambda argv: commands.append(tuple(argv)),
+            command_runner=command_runner,
+            output_runner=output_runner,
         )
-        self.assertEqual(result, "absent")
-        self.assertEqual(commands, [])
+        self.assertEqual(result, "configured")
+        self.assertIn(("/usr/bin/systemctl", "start", "open-mmi-can-private-provision.service"), commands)
+        self.assertFalse(any("can0" in command and "netns" in command for command in commands))
 
     def test_host_can_provisioner_rejects_virtual_can_named_can0(self) -> None:
         class_net = self._can_sysfs("can0", virtual=True)
-        with self.assertRaisesRegex(apply.ApplyOperationError, "Virtual CAN"):
+        _commands, command_runner, output_runner = self._namespace_runners()
+        with self.assertRaisesRegex(apply.ApplyOperationError, "CAN namespace host staging failed"):
             apply.provision_can_target(
                 self.target,
                 self.roots,
                 service_uid=os.getuid(),
+                private_request_path=self.root / "run" / "open-mmi" / "private-request.json",
                 sys_class_net=class_net,
-                command_runner=lambda argv: None,
+                command_runner=command_runner,
+                output_runner=output_runner,
             )
 
     def test_provision_request_is_root_owned_one_shot_input(self) -> None:
@@ -650,13 +696,17 @@ class VehicleConfigurationApplyOperationsTests(unittest.TestCase):
             parents=True, exist_ok=True
         )
         class_net.mkdir(parents=True)
+        _commands, command_runner, output_runner = self._namespace_runners()
         result = apply.provision_from_request(
             self.roots,
             service_uid=os.getuid(),
             request_path=request,
+            private_request_path=self.root / "run" / "open-mmi" / "private-request.json",
             sys_class_net=class_net,
+            command_runner=command_runner,
+            output_runner=output_runner,
         )
-        self.assertEqual(result, "absent")
+        self.assertEqual(result, "configured")
         self.assertFalse(request.exists())
 
 

@@ -1403,8 +1403,12 @@ sleep() {{ :; }}
         )
         self.assertIn("ProtectSystem=strict", unit)
         self.assertIn("ReadWritePaths=/run/open-mmi", unit)
-        self.assertNotIn("/sys", unit)
+        self.assertNotIn("ReadWritePaths=/sys", unit)
         self.assertNotIn("%i", unit)
+        self.assertIn(
+            "ExecStartPre=/usr/bin/systemctl start open-mmi-can-private-quiesce.service",
+            unit,
+        )
         start = self.text.index("install_vehicle_config_coordinator() {")
         end = self.text.index("remove_login_autostart() {", start)
         block = self.text[start:end]
@@ -1414,6 +1418,38 @@ sleep() {{ :; }}
         self.assertIn(
             '"/etc/systemd/system/$VEHICLE_CAN_PROVISION_UNIT"', block
         )
+
+    def test_private_can_namespace_units_keep_mutation_narrow(self) -> None:
+        anchor = (ROOT / "systemd/system/open-mmi-can-namespace.service").read_text(encoding="utf-8")
+        self.assertIn("PrivateNetwork=true", anchor)
+        self.assertIn("CapabilityBoundingSet=\n", anchor)
+        self.assertIn("AmbientCapabilities=\n", anchor)
+
+        for name, command in (
+            ("open-mmi-can-private-quiesce.service", "quiesce-can-private"),
+            ("open-mmi-can-private-provision.service", "provision-can-private"),
+        ):
+            unit = (ROOT / "systemd/system" / name).read_text(encoding="utf-8")
+            self.assertIn("PrivateNetwork=true", unit)
+            self.assertIn("JoinsNamespaceOf=open-mmi-can-namespace.service", unit)
+            self.assertIn(f"open-mmi-vehicle-config-coordinator {command}", unit)
+            self.assertIn("RestrictAddressFamilies=AF_NETLINK AF_UNIX", unit)
+            self.assertIn("CapabilityBoundingSet=CAP_NET_ADMIN CAP_DAC_READ_SEARCH", unit)
+            self.assertNotIn("CAP_SYS_ADMIN", unit)
+            self.assertNotIn("AF_CAN", unit)
+
+        start = self.text.index("install_vehicle_config_coordinator() {")
+        end = self.text.index("remove_login_autostart() {", start)
+        block = self.text[start:end]
+        for name in (
+            "CAN_NAMESPACE_UNIT",
+            "CAN_PRIVATE_QUIESCE_UNIT",
+            "CAN_PRIVATE_PROVISION_UNIT",
+        ):
+            self.assertIn(f'"${name}"', block)
+        self.assertIn('"$CAN_MODULES_LOAD_CONFIG_PATH"', block)
+        self.assertIn("/sbin/modprobe vxcan", block)
+        self.assertIn("/sbin/modprobe can-gw", block)
 
     def test_coordinator_can_read_the_managed_checkout_and_is_restarted(self) -> None:
         unit = (ROOT / "systemd/system/open-mmi-update-coordinator.service").read_text(encoding="utf-8")

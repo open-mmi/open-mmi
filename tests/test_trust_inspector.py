@@ -211,10 +211,8 @@ class TrustInspectorTests(unittest.TestCase):
             udev = Path(tmp) / "80-canbus.rules"
             udev.write_text(
                 'SUBSYSTEM=="net", KERNEL=="can0", ACTION=="add", '
-                'RUN+="/sbin/ip link set can0 down", '
-                'RUN+="/sbin/ip link set can0 type can '
-                'bitrate 100000 listen-only on", '
-                'RUN+="/sbin/ip link set can0 up"\n',
+                'RUN+="/sbin/ip link set can0 down", TAG+="systemd", '
+                'ENV{SYSTEMD_WANTS}+="open-mmi-vehicle-can-provision.service"\n',
                 encoding="utf-8",
             )
             udev.chmod(0o644)
@@ -236,7 +234,7 @@ class TrustInspectorTests(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertEqual(result["status"], PASS)
 
-    def test_can_os_enforcement_rejects_non_listen_only_udev(self):
+    def test_can_os_enforcement_rejects_direct_can_activation_in_udev(self):
         manifest = json.loads(
             MANIFEST.read_text(encoding="utf-8")
         )
@@ -245,8 +243,7 @@ class TrustInspectorTests(unittest.TestCase):
             udev.write_text(
                 'SUBSYSTEM=="net", KERNEL=="can0", ACTION=="add", '
                 'RUN+="/sbin/ip link set can0 down", '
-                'RUN+="/sbin/ip link set can0 type can '
-                'bitrate 100000", '
+                'RUN+="/sbin/ip link set can0 type can bitrate 100000", '
                 'RUN+="/sbin/ip link set can0 up"\n',
                 encoding="utf-8",
             )
@@ -269,7 +266,7 @@ class TrustInspectorTests(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertEqual(result["status"], FAIL)
         self.assertIn(
-            "udev-rule:physical-can-rule-not-listen-only",
+            "udev-rule:physical-can-rule-direct-activation",
             result["evidence"]["udev_failures"],
         )
 

@@ -1445,105 +1445,106 @@ def _can_transmit_unit_contract(
             "CapabilityBoundingSet=",
             "AmbientCapabilities=",
         ),
-        "systemd/system/open-mmi-vehicle-can-provision.service": (
+        "systemd/system/open-mmi-can-namespace.service": (
+            "PrivateNetwork=true",
+            "RestrictAddressFamilies=AF_UNIX",
+            "CapabilityBoundingSet=",
+            "AmbientCapabilities=",
+        ),
+        "systemd/system/open-mmi-can-private-quiesce.service": (
+            "PrivateNetwork=true",
+            "JoinsNamespaceOf=open-mmi-can-namespace.service",
             "RestrictAddressFamilies=AF_NETLINK AF_UNIX",
             "CapabilityBoundingSet=CAP_NET_ADMIN CAP_DAC_READ_SEARCH",
+            "AmbientCapabilities=",
+        ),
+        "systemd/system/open-mmi-can-private-provision.service": (
+            "PrivateNetwork=true",
+            "JoinsNamespaceOf=open-mmi-can-namespace.service",
+            "RestrictAddressFamilies=AF_NETLINK AF_UNIX",
+            "CapabilityBoundingSet=CAP_NET_ADMIN CAP_DAC_READ_SEARCH",
+            "AmbientCapabilities=",
+        ),
+        "systemd/system/open-mmi-vehicle-can-provision.service": (
+            "Requires=open-mmi-can-namespace.service",
+            "ExecStartPre=/usr/bin/systemctl start open-mmi-can-private-quiesce.service",
+            "RestrictAddressFamilies=AF_NETLINK AF_UNIX",
+            "CapabilityBoundingSet=CAP_NET_ADMIN CAP_DAC_READ_SEARCH",
+            "AmbientCapabilities=",
         ),
     }
     forbidden = {
-        "systemd/user/canbusd.service": (
-            "CAP_NET_ADMIN",
-            "AF_INET",
-            "AF_INET6",
-        ),
-        "systemd/system/open-mmi-vehicle-can-provision.service": (
-            "AF_CAN",
-        ),
+        "systemd/user/canbusd.service": ("CAP_NET_ADMIN", "AF_INET", "AF_INET6"),
+        "systemd/system/open-mmi-can-namespace.service": ("CAP_NET_ADMIN", "CAP_SYS_ADMIN", "AF_CAN"),
+        "systemd/system/open-mmi-can-private-quiesce.service": ("CAP_SYS_ADMIN", "AF_CAN"),
+        "systemd/system/open-mmi-can-private-provision.service": ("CAP_SYS_ADMIN", "AF_CAN"),
+        "systemd/system/open-mmi-vehicle-can-provision.service": ("CAP_SYS_ADMIN", "AF_CAN"),
     }
 
     failures: list[str] = []
     evidence: dict[str, Any] = {}
-
     for relative, required_lines in required.items():
         path = root / relative
         try:
             source = path.read_text(encoding="utf-8")
         except (OSError, UnicodeError) as exc:
-            failures.append(
-                f"{relative}:unreadable:{type(exc).__name__}"
-            )
+            failures.append(f"{relative}:unreadable:{type(exc).__name__}")
             continue
-
         lines = {
-            line.strip()
-            for line in source.splitlines()
-            if line.strip()
-            and not line.lstrip().startswith("#")
+            line.strip() for line in source.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
         }
-
-        missing = [
-            line
-            for line in required_lines
-            if line not in lines
-        ]
-        forbidden_hits = [
-            fragment
-            for fragment in forbidden.get(relative, ())
-            if any(fragment in line for line in lines)
-        ]
-
         failures.extend(
-            f"{relative}:missing:{line}"
-            for line in missing
+            f"{relative}:missing:{line}" for line in required_lines if line not in lines
         )
         failures.extend(
             f"{relative}:forbidden:{fragment}"
-            for fragment in forbidden_hits
+            for fragment in forbidden.get(relative, ())
+            if any(fragment in line for line in lines)
         )
-
         evidence[relative] = {
             "required_lines": list(required_lines),
-            "forbidden_fragments": list(
-                forbidden.get(relative, ())
-            ),
+            "forbidden_fragments": list(forbidden.get(relative, ())),
         }
-
     return sorted(set(failures)), evidence
 
 
 def _can_transmit_source_contract(root: Path) -> list[str]:
     required = {
         "scripts/profile_provision.py": (
-            "listen-only on",
-            "physical CAN interfaces require bitrate and ",
-            "udev listen-only provisioning",
+            "OPEN_MMI_CAN_RECEIVE_INTERFACE",
+            "open-mmi-vehicle-can-provision.service",
+            "/sbin/ip link set {bus.interface} down",
         ),
         "ui/vehicle_config_apply.py": (
-            "listen-only on",
-            "Physical CAN activation requires bitrate and ",
-            "udev listen-only provisioning",
-            '"listen-only",',
+            "OPEN_MMI_CAN_RECEIVE_INTERFACE",
+            "provision_private_from_request",
+            "can_namespace.stage_host_network",
+            "can_namespace.activate_host_proxy",
+        ),
+        "ui/can_namespace.py": (
+            'HOST_RECEIVE_INTERFACE = "openmmi-rx"',
+            'PRIVATE_RECEIVE_INTERFACE = "openmmi-rxp"',
+            "ensure_egress_drop(",
+            "listen-only",
+            "off",
+            "matchall",
+            "drop",
+            "/usr/bin/cangw",
+            "exact_one_way_gateway(",
         ),
     }
-
     failures: list[str] = []
-
     for relative, fragments in required.items():
         path = root / relative
         try:
             source = path.read_text(encoding="utf-8")
         except (OSError, UnicodeError) as exc:
-            failures.append(
-                f"{relative}:unreadable:{type(exc).__name__}"
-            )
+            failures.append(f"{relative}:unreadable:{type(exc).__name__}")
             continue
-
         for fragment in fragments:
             if fragment not in source:
-                failures.append(
-                    f"{relative}:missing:{fragment}"
-                )
-
+                failures.append(f"{relative}:missing:{fragment}")
     return sorted(set(failures))
 
 
@@ -1552,21 +1553,14 @@ def _can_transmit_udev_contract(
     *,
     expected_uid: int = 0,
 ) -> tuple[list[str], dict[str, Any]]:
-    evidence: dict[str, Any] = {
-        "path": str(path),
-        "expected_uid": expected_uid,
-    }
+    evidence: dict[str, Any] = {"path": str(path), "expected_uid": expected_uid}
     failures: list[str] = []
-
     try:
         metadata = path.lstat()
     except FileNotFoundError:
         return ["udev-rule:missing"], evidence
     except OSError as exc:
-        return [
-            f"udev-rule:unreadable:{type(exc).__name__}"
-        ], evidence
-
+        return [f"udev-rule:unreadable:{type(exc).__name__}"], evidence
     if (
         stat.S_ISLNK(metadata.st_mode)
         or not stat.S_ISREG(metadata.st_mode)
@@ -1575,32 +1569,24 @@ def _can_transmit_udev_contract(
         or metadata.st_mode & 0o022
     ):
         return ["udev-rule:unsafe-metadata"], evidence
-
     try:
         source = path.read_text(encoding="utf-8")
     except (OSError, UnicodeError) as exc:
-        return [
-            f"udev-rule:unreadable:{type(exc).__name__}"
-        ], evidence
-
+        return [f"udev-rule:unreadable:{type(exc).__name__}"], evidence
     physical_rules = [
-        line.strip()
-        for line in source.splitlines()
-        if "RUN+=" in line
-        and " type can bitrate " in line
+        line.strip() for line in source.splitlines()
+        if 'SUBSYSTEM=="net"' in line and 'KERNEL=="can' in line and 'ACTION=="add"' in line
     ]
     evidence["physical_can_rules"] = physical_rules
-
     if not physical_rules:
         failures.append("udev-rule:no-physical-can-rule")
-
     for rule in physical_rules:
-        if "listen-only on" not in rule:
-            failures.append(
-                "udev-rule:"
-                "physical-can-rule-not-listen-only"
-            )
-
+        if 'RUN+="/sbin/ip link set can' not in rule or ' down"' not in rule:
+            failures.append("udev-rule:physical-can-rule-not-down-first")
+        if 'ENV{SYSTEMD_WANTS}+="open-mmi-vehicle-can-provision.service"' not in rule:
+            failures.append("udev-rule:physical-can-rule-missing-provisioner-delegation")
+        if " type can bitrate " in rule or " listen-only " in rule or " up\"" in rule:
+            failures.append("udev-rule:physical-can-rule-direct-activation")
     return sorted(set(failures)), evidence
 
 
@@ -1758,8 +1744,8 @@ def _inspect_can_transmit_os_enforcement(
             "capability.vehicle.can.transmit.enforcement",
             FAIL,
             (
-                "Deployed physical CAN provisioning does not "
-                "enforce listen-only mode."
+                "Deployed physical CAN hotplug does not fail closed into "
+                "the private namespace provisioner."
             ),
             udev_failures=udev_failures,
             udev=udev_evidence,
@@ -1769,20 +1755,21 @@ def _inspect_can_transmit_os_enforcement(
         "capability.vehicle.can.transmit.enforcement",
         PASS,
         (
-            "Physical CAN provisioning is listen-only and CAN "
-            "receive authority is separated from interface-"
-            "administration authority."
+            "Physical CAN is isolated in a private namespace with one-way "
+            "receive export and dual OS egress DROP barriers."
         ),
         assurance=capability["assurance"],
         canbusd_can_socket_authority=True,
         canbusd_net_admin_authority=False,
+        physical_interface_host_visible=False,
+        reverse_gateway_allowed=False,
         provisioner_can_socket_authority=False,
         provisioner_net_admin_authority=True,
         owner_unit_shadows=[],
         udev=udev_evidence,
         note=(
-            "Live controller LISTEN-ONLY and fresh challenge-"
-            "bound receive behavior are independently measured "
+            "Live namespace, egress-filter, one-way-gateway, and fresh "
+            "challenge-bound receive behavior are independently measured "
             "by the separate CAN trust test."
         ),
     )

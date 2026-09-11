@@ -222,6 +222,8 @@ class CanbusdCoreTests(unittest.TestCase):
                 "bindings": core.LOADED_BINDINGS,
                 "active_bus": "comfort",
                 "interface": "can0",
+                "physical_interface": "can0",
+                "receive_interface": "can0",
             }
         )
 

@@ -42,9 +42,20 @@ BINDINGS = os.getenv("OPEN_MMI_BINDINGS", "default")
 DEFAULT_CAN_BUS = "comfort"
 DEFAULT_CAN_INTERFACE = "can0"
 
+
+def _can_runtime_environment() -> Dict[str, str]:
+    """Return daemon-only runtime overrides without changing owner-visible config."""
+
+    environment = dict(os.environ)
+    receive_interface = environment.get("OPEN_MMI_CAN_RECEIVE_INTERFACE", "").strip()
+    if receive_interface:
+        environment["OPEN_MMI_CAN_INTERFACE"] = receive_interface
+    return environment
+
+
 CAN_RUNTIME = resolve_can_runtime(
     {},
-    os.environ,
+    _can_runtime_environment(),
     default_bus=DEFAULT_CAN_BUS,
     default_interface=DEFAULT_CAN_INTERFACE,
 )
@@ -348,7 +359,7 @@ def _load_config(
 
         runtime = resolve_can_runtime(
             cfg,
-            os.environ,
+            _can_runtime_environment(),
             default_bus=DEFAULT_CAN_BUS,
             default_interface=DEFAULT_CAN_INTERFACE,
         )
@@ -517,6 +528,7 @@ def _loaded_runtime_payload(runtime: CanRuntimeConfig) -> Dict[str, Any]:
         errors.append("bindings-not-loaded")
     if runtime.profile_has_buses and not runtime.declared:
         errors.append("can-bus-not-declared")
+    physical_interface = os.getenv("OPEN_MMI_CAN_INTERFACE", runtime.interface)
     return {
         "api_version": 1,
         "state": "ready" if not errors else "invalid",
@@ -524,7 +536,11 @@ def _loaded_runtime_payload(runtime: CanRuntimeConfig) -> Dict[str, Any]:
         "vehicle": dict(LOADED_VEHICLE or {}),
         "bindings": dict(LOADED_BINDINGS or {}),
         "active_bus": runtime.name,
-        "interface": runtime.interface,
+        # Keep the canonical configured interface stable for owner/configuration
+        # matching while reporting the actual receive endpoint explicitly.
+        "interface": physical_interface,
+        "physical_interface": physical_interface,
+        "receive_interface": runtime.interface,
     }
 
 

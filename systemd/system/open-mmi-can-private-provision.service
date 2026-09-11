@@ -1,14 +1,15 @@
 [Unit]
-Description=Open MMI Current CAN Interface Provisioning
+Description=Open MMI Private Physical CAN Provisioning
 Documentation=https://github.com/open-mmi/open-mmi
-After=local-fs.target systemd-udevd.service open-mmi-can-namespace.service
 Requires=open-mmi-can-namespace.service
+After=open-mmi-can-namespace.service
+JoinsNamespaceOf=open-mmi-can-namespace.service
 
 [Service]
 Type=oneshot
+PrivateNetwork=true
 EnvironmentFile=/etc/open-mmi/vehicle-config-coordinator.env
-ExecStartPre=/usr/bin/systemctl start open-mmi-can-private-quiesce.service
-ExecStart=/opt/open-mmi/venv/bin/open-mmi-vehicle-config-coordinator provision-can
+ExecStart=/opt/open-mmi/venv/bin/open-mmi-vehicle-config-coordinator provision-can-private
 UMask=0077
 NoNewPrivileges=true
 PrivateDevices=true

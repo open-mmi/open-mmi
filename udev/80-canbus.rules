@@ -1,20 +1,13 @@
-# Default open-mmi CAN provisioning rule.
+# Default Open MMI CAN provisioning rule.
 #
-# This mirrors the maintainer-tested Seat Leon 1P / VAG PQ35 setup.
-#
-# Normal setup should use:
-#
-#   sudo ./scripts/manage.sh config apply-profile seat-leon-1p-pq35 default
-#
-# That command regenerates /etc/udev/rules.d/80-canbus.rules from vehicle profile
-# can_buses metadata.
-#
-# canbusd consumes SocketCAN interfaces. It does not configure bitrate or bring
-# interfaces up.
+# Physical CAN is never brought up directly from udev. Hotplug first forces the
+# controller DOWN and asks the fixed privileged provisioner to move it into the
+# private CAN namespace, install both egress barriers, create the one-way RX
+# gateway, verify the resulting kernel state, and only then bring physical CAN up.
 
 # Seat 1P reference radio infotainment CAN.
-SUBSYSTEM=="net", KERNEL=="can0", ACTION=="add", RUN+="/sbin/ip link set can0 down", RUN+="/sbin/ip link set can0 type can bitrate 100000 listen-only on", RUN+="/sbin/ip link set can0 up"
+SUBSYSTEM=="net", KERNEL=="can0", ACTION=="add", RUN+="/sbin/ip link set can0 down", TAG+="systemd", ENV{SYSTEMD_WANTS}+="open-mmi-vehicle-can-provision.service"
 
-# Local UI/input support used by open-mmi actions.
+# Local UI/input support used by Open MMI actions.
 KERNEL=="uinput", MODE="0666"
 SUBSYSTEM=="backlight", KERNEL=="intel_backlight", GROUP="video", MODE="0664"

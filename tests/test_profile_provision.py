@@ -165,7 +165,7 @@ class ProfileProvisionTests(unittest.TestCase):
     def test_build_plan_rejects_manual_physical_can(self):
         with self.assertRaisesRegex(
             ValueError,
-            "physical CAN interfaces require bitrate and udev listen-only provisioning",
+            "physical CAN interfaces require bitrate and udev private-namespace provisioning",
         ):
             profile_provision.build_plan(
                 {
@@ -187,7 +187,7 @@ class ProfileProvisionTests(unittest.TestCase):
     def test_build_plan_falls_back_for_legacy_profile(self):
         with self.assertRaisesRegex(
             ValueError,
-            "physical CAN interfaces require bitrate and udev listen-only provisioning",
+            "physical CAN interfaces require bitrate and udev private-namespace provisioning",
         ):
             profile_provision.build_plan(
                 {"rules": [], "presence": [], "status": []},
@@ -219,6 +219,28 @@ class ProfileProvisionTests(unittest.TestCase):
         self.assertIn('Environment="OPEN_MMI_VEHICLE=seat_1p"', rendered)
         self.assertIn('Environment="OPEN_MMI_CAN_BUS=comfort"', rendered)
         self.assertIn('Environment="OPEN_MMI_CAN_INTERFACE=vcan0"', rendered)
+        self.assertNotIn("OPEN_MMI_CAN_RECEIVE_INTERFACE", rendered)
+
+    def test_render_systemd_dropin_keeps_physical_identity_and_uses_rx_proxy(self):
+        plan = profile_provision.build_plan(
+            {
+                "default_bus": "comfort",
+                "can_buses": {
+                    "comfort": {
+                        "interface": "can0",
+                        "bitrate": 100000,
+                        "provisioning": "udev",
+                    }
+                },
+            },
+            Path("/tmp/profile.json"),
+            Path("/tmp/default.json"),
+            "seat_1p",
+            "default",
+        )
+        rendered = profile_provision.render_systemd_dropin(plan)
+        self.assertIn('Environment="OPEN_MMI_CAN_INTERFACE=can0"', rendered)
+        self.assertIn('Environment="OPEN_MMI_CAN_RECEIVE_INTERFACE=openmmi-rx"', rendered)
 
     def test_render_udev_rules_for_udev_bus(self):
         plan = profile_provision.build_plan(
@@ -241,16 +263,19 @@ class ProfileProvisionTests(unittest.TestCase):
         rendered = profile_provision.render_udev_rules(plan)
 
         self.assertIn('KERNEL=="can0"', rendered)
-        self.assertIn("bitrate 100000", rendered)
-        self.assertIn("listen-only on", rendered)
+        self.assertIn('RUN+="/sbin/ip link set can0 down"', rendered)
+        self.assertIn('ENV{SYSTEMD_WANTS}+="open-mmi-vehicle-can-provision.service"', rendered)
+        self.assertNotIn("listen-only on", rendered)
         self.assertIn('KERNEL=="uinput"', rendered)
 
-    def test_checked_in_default_udev_rule_is_listen_only(self):
+    def test_checked_in_default_udev_rule_is_fail_closed_delegation(self):
         rendered = (
             MODULE_PATH.parents[1] / "udev" / "80-canbus.rules"
         ).read_text(encoding="utf-8")
 
-        self.assertIn("bitrate 100000 listen-only on", rendered)
+        self.assertIn('RUN+="/sbin/ip link set can0 down"', rendered)
+        self.assertIn('ENV{SYSTEMD_WANTS}+="open-mmi-vehicle-can-provision.service"', rendered)
+        self.assertNotIn("listen-only on", rendered)
 
     def test_render_udev_rules_skips_manual_bus(self):
         plan = profile_provision.build_plan(

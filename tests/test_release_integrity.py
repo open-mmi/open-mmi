@@ -68,6 +68,20 @@ class ReleaseIntegrityTests(unittest.TestCase):
             "[Service]\nExecStart=/opt/open-mmi/venv/bin/python -I -m ui.vehicle_store serve\n",
             encoding="utf-8",
         )
+        (repo / "systemd" / "system" / "open-mmi-can-namespace.service").write_text(
+            "[Service]\nPrivateNetwork=true\nCapabilityBoundingSet=\nAmbientCapabilities=\n",
+            encoding="utf-8",
+        )
+        (repo / "systemd" / "system" / "open-mmi-can-private-quiesce.service").write_text(
+            "[Service]\nPrivateNetwork=true\nJoinsNamespaceOf=open-mmi-can-namespace.service\n"
+            "CapabilityBoundingSet=CAP_NET_ADMIN CAP_DAC_READ_SEARCH\nAmbientCapabilities=\n",
+            encoding="utf-8",
+        )
+        (repo / "systemd" / "system" / "open-mmi-can-private-provision.service").write_text(
+            "[Service]\nPrivateNetwork=true\nJoinsNamespaceOf=open-mmi-can-namespace.service\n"
+            "CapabilityBoundingSet=CAP_NET_ADMIN CAP_DAC_READ_SEARCH\nAmbientCapabilities=\n",
+            encoding="utf-8",
+        )
         (repo / "systemd" / "system" / "open-mmi-vehicle-can-provision.service").write_text(
             "[Service]\n"
             "ExecStart=/opt/open-mmi/venv/bin/open-mmi-vehicle-config-coordinator provision-can\n"

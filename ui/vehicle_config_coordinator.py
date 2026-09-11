@@ -86,6 +86,7 @@ _MANAGED_RUNTIME_KEYS = {
     "OPEN_MMI_BINDINGS_FILE",
     "OPEN_MMI_CAN_BUS",
     "OPEN_MMI_CAN_INTERFACE",
+    "OPEN_MMI_CAN_RECEIVE_INTERFACE",
 }
 
 
@@ -1572,17 +1573,90 @@ def root_apply_operations(*, suppress_can_provisioning: bool = False) -> Qualifi
     )
 
 
+def _installed_physical_target(
+    roots: vehicle_setup.CatalogueRoots,
+    dropin_path: Path,
+    status_path: Path,
+) -> Dict[str, Any]:
+    """Rebuild the currently configured physical target for hotplug provisioning."""
+
+    environment = vehicle_setup.read_runtime_environment(dropin_path)
+    current = vehicle_setup.status_payload(
+        roots,
+        environment=environment,
+        status_path=status_path,
+    )
+    active = current.get("active")
+    if not isinstance(active, Mapping) or active.get("state") != "ready":
+        raise CoordinatorError("Installed vehicle configuration is not ready for CAN provisioning")
+    vehicle = active.get("vehicle")
+    bindings = active.get("bindings")
+    active_bus = active.get("active_bus")
+    interface = active.get("interface")
+    if not isinstance(vehicle, Mapping) or not isinstance(bindings, Mapping):
+        raise CoordinatorError("Installed vehicle identities are unavailable")
+    candidate = {
+        "vehicle": {
+            "source": vehicle.get("source"),
+            "id": vehicle.get("id"),
+            "revision": vehicle.get("revision"),
+        },
+        "bindings": {
+            "source": bindings.get("source"),
+            "id": bindings.get("id"),
+            "revision": bindings.get("revision"),
+        },
+        "runtime": {
+            "mode": "single",
+            "active_bus": active_bus,
+            "buses": {active_bus: {"interface": interface}},
+        },
+    }
+    try:
+        return vehicle_configuration.normalize_selection(candidate)
+    except vehicle_configuration.VehicleConfigurationError as exc:
+        raise CoordinatorError("Installed physical CAN target is invalid") from exc
+
+
 def run_can_provision() -> str:
-    """Consume one root-owned request and provision the host CAN interface."""
+    """Provision the host proxy and delegate physical CAN to the private netns."""
+
+    from ui import vehicle_config_apply
+
+    roots, dropin_path, status_path = _preview_context()
+    account = _service_account_from_runtime_dropin(dropin_path)
+    if vehicle_config_apply.DEFAULT_PROVISION_REQUEST_PATH.exists():
+        return vehicle_config_apply.provision_from_request(
+            roots,
+            service_uid=account.pw_uid,
+        )
+    target = _installed_physical_target(roots, dropin_path, status_path)
+    return vehicle_config_apply.provision_can_target(
+        target,
+        roots,
+        service_uid=account.pw_uid,
+    )
+
+
+def run_can_private_provision() -> str:
+    """Consume the private request inside the systemd-owned CAN namespace."""
 
     from ui import vehicle_config_apply
 
     roots, dropin_path, _status_path = _preview_context()
     account = _service_account_from_runtime_dropin(dropin_path)
-    return vehicle_config_apply.provision_from_request(
+    return vehicle_config_apply.provision_private_from_request(
         roots,
         service_uid=account.pw_uid,
     )
+
+
+def run_can_private_quiesce() -> int:
+    """Bring all physical CAN controllers in the private namespace DOWN."""
+
+    from ui import vehicle_config_apply
+
+    return vehicle_config_apply.quiesce_private_can()
 
 
 def _qualification_request(preview: object) -> tuple[Dict[str, Any], Dict[str, Any], str]:
@@ -1986,6 +2060,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "status",
             "qualify-vcan",
             "provision-can",
+            "provision-can-private",
+            "quiesce-can-private",
             "arm-ui-stale",
             "arm-ui-restored-failure",
         ),
@@ -2010,6 +2086,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         load_coordinator_environment()
         if args.command == "provision-can":
             run_can_provision()
+            return 0
+        if args.command == "provision-can-private":
+            run_can_private_provision()
+            return 0
+        if args.command == "quiesce-can-private":
+            run_can_private_quiesce()
             return 0
         persisted = read_state(DEFAULT_STATE_FILE)
         if args.command == "qualify-vcan":

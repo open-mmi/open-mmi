@@ -27,6 +27,11 @@ SYSTEMD_USER_UNIT_ROOT="/etc/systemd/user"
 VEHICLE_CONFIG_COORDINATOR_GROUP="open-mmi-config"
 VEHICLE_CONFIG_COORDINATOR_UNIT="open-mmi-vehicle-config-coordinator.service"
 VEHICLE_CAN_PROVISION_UNIT="open-mmi-vehicle-can-provision.service"
+CAN_NAMESPACE_UNIT="open-mmi-can-namespace.service"
+CAN_PRIVATE_QUIESCE_UNIT="open-mmi-can-private-quiesce.service"
+CAN_PRIVATE_PROVISION_UNIT="open-mmi-can-private-provision.service"
+CAN_MODULES_LOAD_CONFIG="open-mmi-can.conf"
+CAN_MODULES_LOAD_CONFIG_PATH="/etc/modules-load.d/$CAN_MODULES_LOAD_CONFIG"
 POWERD_UNIT="open-mmi-powerd.service"
 POWER_POLICY_FILE="/etc/open-mmi/power-policy.json"
 POWERD_WAKE_UDEV_RULE="90-open-mmi-can-wake.rules"
@@ -1152,6 +1157,17 @@ install_vehicle_config_coordinator() {
     install -m 0644 -o root -g root \
         "$REPO_ROOT/systemd/system/$VEHICLE_CAN_PROVISION_UNIT" \
         "/etc/systemd/system/$VEHICLE_CAN_PROVISION_UNIT"
+    for unit in "$CAN_NAMESPACE_UNIT" "$CAN_PRIVATE_QUIESCE_UNIT" "$CAN_PRIVATE_PROVISION_UNIT"; do
+        install -m 0644 -o root -g root \
+            "$REPO_ROOT/systemd/system/$unit" \
+            "/etc/systemd/system/$unit"
+    done
+    install -d -m 0755 -o root -g root /etc/modules-load.d
+    install -m 0644 -o root -g root \
+        "$REPO_ROOT/packaging/modules-load/$CAN_MODULES_LOAD_CONFIG" \
+        "$CAN_MODULES_LOAD_CONFIG_PATH"
+    /sbin/modprobe vxcan
+    /sbin/modprobe can-gw
     install -d -m 0755 -o root -g root "$UPDATE_COORDINATOR_STATE_DIR"
     systemctl daemon-reload
     systemctl enable "$VEHICLE_CONFIG_COORDINATOR_UNIT"
@@ -1332,6 +1348,9 @@ reload_profile_provisioning() {
     log_info "Reloading udev rules..."
     sudo udevadm control --reload-rules
     sudo udevadm trigger
+
+    log_info "Provisioning the private CAN receive path..."
+    systemctl start "$VEHICLE_CAN_PROVISION_UNIT"
 
     if daemon_running; then
         log_info "Restarting daemon..."
@@ -1682,6 +1701,7 @@ cmd_install() {
         python3-pip \
         python3-venv \
         can-utils \
+        iproute2 \
         udev \
         dbus-x11 \
         zenity; then
@@ -1892,7 +1912,7 @@ cmd_deploy_prepared() {
         "$rollback_root/system-files" \
         "$rollback_root/user-units" \
         "$rollback_root/trusted-user-units"
-    for unit in "$UPDATE_COORDINATOR_UNIT" "$UPDATE_INSTALLER_UNIT" "$TRUST_STATUS_UNIT" "$MEDIA_EGRESS_UNIT" "$VEHICLE_STORE_UNIT" "$VEHICLE_CONFIG_COORDINATOR_UNIT" "$VEHICLE_CAN_PROVISION_UNIT" "$POWERD_UNIT"; do
+    for unit in "$UPDATE_COORDINATOR_UNIT" "$UPDATE_INSTALLER_UNIT" "$TRUST_STATUS_UNIT" "$MEDIA_EGRESS_UNIT" "$VEHICLE_STORE_UNIT" "$VEHICLE_CONFIG_COORDINATOR_UNIT" "$VEHICLE_CAN_PROVISION_UNIT" "$CAN_NAMESPACE_UNIT" "$CAN_PRIVATE_QUIESCE_UNIT" "$CAN_PRIVATE_PROVISION_UNIT" "$POWERD_UNIT"; do
         if [ -e "/etc/systemd/system/$unit" ]; then
             cp -a -- "/etc/systemd/system/$unit" "$rollback_root/system-units/$unit"
         else
@@ -1941,6 +1961,12 @@ cmd_deploy_prepared() {
     else
         : > "$rollback_root/system-files/$OPEN_MMI_TMPFILES_CONFIG.absent"
     fi
+    if [ -e "$CAN_MODULES_LOAD_CONFIG_PATH" ]; then
+        cp -a -- "$CAN_MODULES_LOAD_CONFIG_PATH" \
+            "$rollback_root/system-files/$CAN_MODULES_LOAD_CONFIG"
+    else
+        : > "$rollback_root/system-files/$CAN_MODULES_LOAD_CONFIG.absent"
+    fi
     for unit in canbusd.service open-mmi-dashboard.service; do
         if [ -e "$REAL_HOME/.config/systemd/user/$unit" ]; then
             cp -a -- "$REAL_HOME/.config/systemd/user/$unit" "$rollback_root/user-units/$unit"
@@ -1971,7 +1997,13 @@ cmd_deploy_prepared() {
            [ -d "${OPEN_MMI_MANAGED_REPOSITORY:-}/.git" ]; then
             sudo -u "$REAL_USER" git -C "$OPEN_MMI_MANAGED_REPOSITORY" reset --hard "$previous_commit" >/dev/null 2>&1 || true
         fi
-        for unit in "$UPDATE_COORDINATOR_UNIT" "$UPDATE_INSTALLER_UNIT" "$TRUST_STATUS_UNIT" "$MEDIA_EGRESS_UNIT" "$VEHICLE_STORE_UNIT" "$VEHICLE_CONFIG_COORDINATOR_UNIT" "$VEHICLE_CAN_PROVISION_UNIT" "$POWERD_UNIT"; do
+        # Candidate CAN units may hold the physical controller in a private
+        # namespace. Quiesce it first, then destroy that namespace before old
+        # unit files are restored. Any failure leaves the controller DOWN.
+        systemctl start "$CAN_PRIVATE_QUIESCE_UNIT" >/dev/null 2>&1 || true
+        systemctl stop "$VEHICLE_CAN_PROVISION_UNIT" "$CAN_PRIVATE_PROVISION_UNIT" \
+            "$CAN_PRIVATE_QUIESCE_UNIT" "$CAN_NAMESPACE_UNIT" >/dev/null 2>&1 || true
+        for unit in "$UPDATE_COORDINATOR_UNIT" "$UPDATE_INSTALLER_UNIT" "$TRUST_STATUS_UNIT" "$MEDIA_EGRESS_UNIT" "$VEHICLE_STORE_UNIT" "$VEHICLE_CONFIG_COORDINATOR_UNIT" "$VEHICLE_CAN_PROVISION_UNIT" "$CAN_NAMESPACE_UNIT" "$CAN_PRIVATE_QUIESCE_UNIT" "$CAN_PRIVATE_PROVISION_UNIT" "$POWERD_UNIT"; do
             if [ -e "$rollback_root/system-units/$unit" ]; then
                 cp -a -- "$rollback_root/system-units/$unit" "/etc/systemd/system/$unit"
             elif [ -e "$rollback_root/system-units/$unit.absent" ]; then
@@ -2028,6 +2060,13 @@ cmd_deploy_prepared() {
             systemd-tmpfiles --create "$OPEN_MMI_TMPFILES_CONFIG_PATH" >/dev/null 2>&1 || true
         elif [ -e "$rollback_root/system-files/$OPEN_MMI_TMPFILES_CONFIG.absent" ]; then
             rm -f -- "$OPEN_MMI_TMPFILES_CONFIG_PATH"
+        fi
+        if [ -e "$rollback_root/system-files/$CAN_MODULES_LOAD_CONFIG" ]; then
+            install -d -m 0755 -o root -g root "$(dirname "$CAN_MODULES_LOAD_CONFIG_PATH")"
+            cp -a -- "$rollback_root/system-files/$CAN_MODULES_LOAD_CONFIG" \
+                "$CAN_MODULES_LOAD_CONFIG_PATH"
+        elif [ -e "$rollback_root/system-files/$CAN_MODULES_LOAD_CONFIG.absent" ]; then
+            rm -f -- "$CAN_MODULES_LOAD_CONFIG_PATH"
         fi
         udevadm control --reload-rules >/dev/null 2>&1 || true
         udevadm trigger \
@@ -2211,6 +2250,7 @@ cmd_uninstall() {
     systemctl disable --now "$VEHICLE_CONFIG_COORDINATOR_UNIT" >/dev/null 2>&1 || true
     systemctl disable --now "$POWERD_UNIT" >/dev/null 2>&1 || true
     systemctl stop "$VEHICLE_CAN_PROVISION_UNIT" >/dev/null 2>&1 || true
+    systemctl stop "$CAN_PRIVATE_PROVISION_UNIT" "$CAN_PRIVATE_QUIESCE_UNIT" "$CAN_NAMESPACE_UNIT" >/dev/null 2>&1 || true
     systemctl stop "$UPDATE_INSTALLER_UNIT" >/dev/null 2>&1 || true
     rm -f \
         "/etc/systemd/system/$UPDATE_COORDINATOR_UNIT" \
@@ -2223,12 +2263,16 @@ cmd_uninstall() {
         "$SYSTEMD_USER_UNIT_ROOT/$OWNER_CONFIG_UNIT" \
         "/etc/systemd/system/$VEHICLE_CONFIG_COORDINATOR_UNIT" \
         "/etc/systemd/system/$VEHICLE_CAN_PROVISION_UNIT" \
+        "/etc/systemd/system/$CAN_NAMESPACE_UNIT" \
+        "/etc/systemd/system/$CAN_PRIVATE_QUIESCE_UNIT" \
+        "/etc/systemd/system/$CAN_PRIVATE_PROVISION_UNIT" \
         "/etc/systemd/system/$POWERD_UNIT" \
         "$VEHICLE_CONFIG_COORDINATOR_ENV" \
         "$VEHICLE_CONFIG_UI_QUALIFICATION_GATE" \
         "$VEHICLE_CONFIG_COORDINATOR_SANDBOX" \
         "$POWER_POLICY_FILE" \
-        "$OPEN_MMI_TMPFILES_CONFIG_PATH"
+        "$OPEN_MMI_TMPFILES_CONFIG_PATH" \
+        "$CAN_MODULES_LOAD_CONFIG_PATH"
     rmdir "$VEHICLE_CONFIG_COORDINATOR_OVERRIDE_DIR" >/dev/null 2>&1 || true
     systemctl daemon-reload
     rm -rf "$UPDATE_COORDINATOR_RUNTIME_DIR" "$UPDATE_COORDINATOR_STATE_DIR"

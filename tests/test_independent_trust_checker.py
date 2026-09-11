@@ -87,10 +87,26 @@ UNIT_TEXTS = {
     "system/open-mmi-vehicle-store.service": (
         "StateDirectory=open-mmi/vehicle-data\nProtectSystem=strict\nRestrictAddressFamilies=AF_UNIX\n"
     ),
+    "system/open-mmi-can-namespace.service": (
+        "PrivateNetwork=true\nRestrictAddressFamilies=AF_UNIX\n"
+        "CapabilityBoundingSet=\nAmbientCapabilities=\n"
+    ),
+    "system/open-mmi-can-private-quiesce.service": (
+        "PrivateNetwork=true\nJoinsNamespaceOf=open-mmi-can-namespace.service\n"
+        "RestrictAddressFamilies=AF_NETLINK AF_UNIX\n"
+        "CapabilityBoundingSet=CAP_NET_ADMIN CAP_DAC_READ_SEARCH\nAmbientCapabilities=\n"
+    ),
+    "system/open-mmi-can-private-provision.service": (
+        "PrivateNetwork=true\nJoinsNamespaceOf=open-mmi-can-namespace.service\n"
+        "RestrictAddressFamilies=AF_NETLINK AF_UNIX\n"
+        "CapabilityBoundingSet=CAP_NET_ADMIN CAP_DAC_READ_SEARCH\nAmbientCapabilities=\n"
+    ),
     "system/open-mmi-vehicle-can-provision.service": (
         "ProtectSystem=strict\n"
         "RestrictAddressFamilies=AF_NETLINK AF_UNIX\n"
         "CapabilityBoundingSet=CAP_NET_ADMIN CAP_DAC_READ_SEARCH\n"
+        "AmbientCapabilities=\n"
+        "ExecStartPre=/usr/bin/systemctl start open-mmi-can-private-quiesce.service\n"
     ),
     "system/open-mmi-vehicle-config-coordinator.service": (
         "ProtectSystem=strict\nReadOnlyPaths=/var/lib/open-mmi/vehicle-data\nRestrictAddressFamilies=AF_UNIX\n"
@@ -177,14 +193,28 @@ class IndependentTrustCheckerTests(unittest.TestCase):
         write(self.repo / "open_mmi_trust/vehicle_identity.py", "VALUE = 'signed-package-file'\n")
         write(
             self.repo / "scripts/profile_provision.py",
-            'RULE = "listen-only on"\n'
-            'DENY = "physical CAN interfaces require bitrate and udev listen-only provisioning"\n',
+            'RX = "OPEN_MMI_CAN_RECEIVE_INTERFACE"\n'
+            'SERVICE = "open-mmi-vehicle-can-provision.service"\n'
+            'DOWN = "/sbin/ip link set {bus.interface} down"\n',
         )
         write(
             self.repo / "ui/vehicle_config_apply.py",
-            'RULE = "listen-only on"\n'
-            'DENY = "Physical CAN activation requires bitrate and udev listen-only provisioning"\n'
-            'LIVE = ("listen-only", "on")\n',
+            'RX = "OPEN_MMI_CAN_RECEIVE_INTERFACE"\n'
+            'PRIVATE = "provision_private_from_request"\n'
+            'STAGE = "can_namespace.stage_host_network"\n'
+            'ACTIVATE = "can_namespace.activate_host_proxy"\n',
+        )
+        write(
+            self.repo / "ui/can_namespace.py",
+            'HOST_RECEIVE_INTERFACE = "openmmi-rx"\n'
+            'PRIVATE_RECEIVE_INTERFACE = "openmmi-rxp"\n'
+            'A = "ensure_egress_drop("\n'
+            'B = "\\"listen-only\\","\n'
+            'C = "\\"off\\","\n'
+            'D = "\\"matchall\\","\n'
+            'E = "\\"drop\\","\n'
+            'F = "\\"/usr/bin/cangw\\","\n'
+            'G = "exact_one_way_gateway("\n',
         )
         for name in checker.SOURCE_RELEASE_FILES:
             write(self.repo / name, f"{name}\n")
@@ -228,9 +258,8 @@ class IndependentTrustCheckerTests(unittest.TestCase):
         write(
             self.target / "etc/udev/rules.d/80-canbus.rules",
             'SUBSYSTEM=="net", KERNEL=="can0", ACTION=="add", '
-            'RUN+="/sbin/ip link set can0 down", '
-            'RUN+="/sbin/ip link set can0 type can bitrate 100000 listen-only on", '
-            'RUN+="/sbin/ip link set can0 up"\n',
+            'RUN+="/sbin/ip link set can0 down", TAG+="systemd", '
+            'ENV{SYSTEMD_WANTS}+="open-mmi-vehicle-can-provision.service"\n',
         )
 
         accepted = checker.validate_accepted_state(
@@ -394,13 +423,16 @@ class IndependentTrustCheckerTests(unittest.TestCase):
         path.write_text("[Service]\nExecStart=/bin/true\n", encoding="utf-8")
         self.assert_failed("release.privileged-units")
 
-    def test_can_udev_regression_is_detected(self):
+    def test_can_udev_direct_activation_regression_is_detected(self):
         path = self.target / "etc/udev/rules.d/80-canbus.rules"
         source = path.read_text(encoding="utf-8")
-        self.assertIn("listen-only on", source)
+        self.assertIn("open-mmi-vehicle-can-provision.service", source)
 
         path.write_text(
-            source.replace(" listen-only on", ""),
+            source.replace(
+                'TAG+="systemd", ENV{SYSTEMD_WANTS}+="open-mmi-vehicle-can-provision.service"',
+                'RUN+="/sbin/ip link set can0 up"',
+            ),
             encoding="utf-8",
         )
 

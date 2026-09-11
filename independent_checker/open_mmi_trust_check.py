@@ -100,6 +100,9 @@ PRIVILEGED_SYSTEM_UNITS = (
     "open-mmi-update-installer.service",
     "open-mmi-media-egress.service",
     "open-mmi-vehicle-store.service",
+    "open-mmi-can-namespace.service",
+    "open-mmi-can-private-quiesce.service",
+    "open-mmi-can-private-provision.service",
     "open-mmi-vehicle-can-provision.service",
 )
 PRIVILEGED_USER_UNITS = (
@@ -970,10 +973,32 @@ def verify_static_enforcement(
             "ReadOnlyPaths": "/var/lib/open-mmi/vehicle-data",
             "RestrictAddressFamilies": "AF_UNIX",
         },
+        "system/open-mmi-can-namespace.service": {
+            "PrivateNetwork": "true",
+            "RestrictAddressFamilies": "AF_UNIX",
+            "CapabilityBoundingSet": "",
+            "AmbientCapabilities": "",
+        },
+        "system/open-mmi-can-private-quiesce.service": {
+            "PrivateNetwork": "true",
+            "JoinsNamespaceOf": "open-mmi-can-namespace.service",
+            "RestrictAddressFamilies": "AF_NETLINK AF_UNIX",
+            "CapabilityBoundingSet": "CAP_NET_ADMIN CAP_DAC_READ_SEARCH",
+            "AmbientCapabilities": "",
+        },
+        "system/open-mmi-can-private-provision.service": {
+            "PrivateNetwork": "true",
+            "JoinsNamespaceOf": "open-mmi-can-namespace.service",
+            "RestrictAddressFamilies": "AF_NETLINK AF_UNIX",
+            "CapabilityBoundingSet": "CAP_NET_ADMIN CAP_DAC_READ_SEARCH",
+            "AmbientCapabilities": "",
+        },
         "system/open-mmi-vehicle-can-provision.service": {
             "ProtectSystem": "strict",
             "RestrictAddressFamilies": "AF_NETLINK AF_UNIX",
             "CapabilityBoundingSet": "CAP_NET_ADMIN CAP_DAC_READ_SEARCH",
+            "AmbientCapabilities": "",
+            "ExecStartPre": "/usr/bin/systemctl start open-mmi-can-private-quiesce.service",
         },
         "user/open-mmi-dashboard.service": {
             "IPAddressDeny": "any",
@@ -1030,104 +1055,76 @@ def verify_static_enforcement(
 
     # generation-6-can-static-enforcement
     #
-    # CAN TX prohibition is not established merely by the manifest.  Bind the
-    # claim to the signed provisioning implementation plus the deployed,
-    # root-controlled udev rule.  Live controller state is measured separately
-    # by open_mmi_can_trust_test.py.
+    # The physical controller is ACK-capable but isolated from ordinary host
+    # processes.  Signed source must establish the private namespace, one-way
+    # receive gateway, and both egress DROP barriers; udev may only force the
+    # physical controller DOWN and delegate to the fixed provisioner.
     can_source_contracts = {
         "scripts/profile_provision.py": (
-            "listen-only on",
-            "physical CAN interfaces require bitrate and ",
-            "udev listen-only provisioning",
+            "OPEN_MMI_CAN_RECEIVE_INTERFACE",
+            "open-mmi-vehicle-can-provision.service",
+            "/sbin/ip link set {bus.interface} down",
         ),
         "ui/vehicle_config_apply.py": (
-            "listen-only on",
-            "Physical CAN activation requires bitrate and ",
-            "udev listen-only provisioning",
-            '"listen-only",',
+            "OPEN_MMI_CAN_RECEIVE_INTERFACE",
+            "provision_private_from_request",
+            "can_namespace.stage_host_network",
+            "can_namespace.activate_host_proxy",
+        ),
+        "ui/can_namespace.py": (
+            'HOST_RECEIVE_INTERFACE = "openmmi-rx"',
+            'PRIVATE_RECEIVE_INTERFACE = "openmmi-rxp"',
+            "ensure_egress_drop(",
+            "listen-only",
+            "off",
+            "matchall",
+            "drop",
+            "/usr/bin/cangw",
+            "exact_one_way_gateway(",
         ),
     }
 
-    install_root = target_path(
-        target_root,
-        TARGET_PATHS["install_root"],
-    )
-
+    install_root = target_path(target_root, TARGET_PATHS["install_root"])
     for relative, required_fragments in can_source_contracts.items():
         expected_file = inventory_map.get(relative)
         path = install_root / relative
-
         if expected_file is None:
-            failures.append(
-                f"{relative}:missing-signed-inventory-entry"
-            )
+            failures.append(f"{relative}:missing-signed-inventory-entry")
             continue
-
         try:
             trusted_file(path, uid)
             raw = path.read_bytes()
             source = raw.decode("utf-8")
-        except (
-            FileNotFoundError,
-            OSError,
-            UnicodeError,
-            CheckerError,
-        ):
-            failures.append(
-                f"{relative}:untrusted-or-missing"
-            )
+        except (FileNotFoundError, OSError, UnicodeError, CheckerError):
+            failures.append(f"{relative}:untrusted-or-missing")
             continue
-
-        if (
-            len(raw) != expected_file["size"]
-            or sha256_bytes(raw) != expected_file["sha256"]
-        ):
-            failures.append(
-                f"{relative}:deployed-bytes-do-not-match-signed-release"
-            )
+        if len(raw) != expected_file["size"] or sha256_bytes(raw) != expected_file["sha256"]:
+            failures.append(f"{relative}:deployed-bytes-do-not-match-signed-release")
             continue
-
         for fragment in required_fragments:
             if fragment not in source:
-                failures.append(
-                    f"{relative}:missing-can-contract:{fragment}"
-                )
+                failures.append(f"{relative}:missing-can-contract:{fragment}")
 
-    udev_path = target_path(
-        target_root,
-        TARGET_PATHS["udev_rules"],
-    )
+    udev_path = target_path(target_root, TARGET_PATHS["udev_rules"])
     try:
         trusted_file(udev_path, uid)
         udev_source = udev_path.read_text(encoding="utf-8")
-    except (
-        FileNotFoundError,
-        OSError,
-        UnicodeError,
-        CheckerError,
-    ):
-        failures.append(
-            "udev/80-canbus.rules:untrusted-or-missing"
-        )
+    except (FileNotFoundError, OSError, UnicodeError, CheckerError):
+        failures.append("udev/80-canbus.rules:untrusted-or-missing")
     else:
         physical_can_rules = [
-            line.strip()
-            for line in udev_source.splitlines()
-            if "RUN+=" in line
-            and " type can bitrate " in line
+            line.strip() for line in udev_source.splitlines()
+            if 'SUBSYSTEM=="net"' in line and 'KERNEL=="can' in line and 'ACTION=="add"' in line
         ]
-
         if not physical_can_rules:
-            failures.append(
-                "udev/80-canbus.rules:no-physical-can-rule"
-            )
-
+            failures.append("udev/80-canbus.rules:no-physical-can-rule")
         for rule in physical_can_rules:
-            if "listen-only on" not in rule:
-                failures.append(
-                    "udev/80-canbus.rules:"
-                    "physical-can-rule-not-listen-only"
-                )
+            if 'RUN+="/sbin/ip link set can' not in rule or ' down"' not in rule:
+                failures.append("udev/80-canbus.rules:physical-can-rule-not-down-first")
+            if 'ENV{SYSTEMD_WANTS}+="open-mmi-vehicle-can-provision.service"' not in rule:
+                failures.append("udev/80-canbus.rules:physical-can-rule-missing-provisioner-delegation")
+            if " type can bitrate " in rule or " listen-only " in rule or " up\"" in rule:
+                failures.append("udev/80-canbus.rules:physical-can-rule-direct-activation")
 
 
     if failures:

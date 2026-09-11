@@ -1382,7 +1382,7 @@ def read_loaded_runtime(path: Path) -> Optional[dict[str, Any]]:
     if not isinstance(payload, Mapping):
         return None
     runtime = payload.get("runtime")
-    if not isinstance(runtime, Mapping) or set(runtime) != {
+    base_runtime_fields = {
         "api_version",
         "state",
         "errors",
@@ -1390,6 +1390,10 @@ def read_loaded_runtime(path: Path) -> Optional[dict[str, Any]]:
         "bindings",
         "active_bus",
         "interface",
+    }
+    if not isinstance(runtime, Mapping) or set(runtime) not in {
+        frozenset(base_runtime_fields),
+        frozenset(base_runtime_fields | {"physical_interface", "receive_interface"}),
     }:
         return None
     if runtime.get("api_version") != API_VERSION:
@@ -1398,6 +1402,8 @@ def read_loaded_runtime(path: Path) -> Optional[dict[str, Any]]:
     errors = runtime.get("errors")
     active_bus = runtime.get("active_bus")
     interface = runtime.get("interface")
+    physical_interface = runtime.get("physical_interface", interface)
+    receive_interface = runtime.get("receive_interface", interface)
     vehicle = _loaded_identity(runtime.get("vehicle"))
     bindings = _loaded_identity(runtime.get("bindings"))
     if state not in {"ready", "invalid"}:
@@ -1410,6 +1416,14 @@ def read_loaded_runtime(path: Path) -> Optional[dict[str, Any]]:
     if not isinstance(active_bus, str) or not IDENTIFIER_RE.fullmatch(active_bus):
         return None
     if not isinstance(interface, str) or not INTERFACE_RE.fullmatch(interface):
+        return None
+    if (
+        not isinstance(physical_interface, str)
+        or not INTERFACE_RE.fullmatch(physical_interface)
+        or not isinstance(receive_interface, str)
+        or not INTERFACE_RE.fullmatch(receive_interface)
+        or physical_interface != interface
+    ):
         return None
     if vehicle is None or bindings is None:
         return None
@@ -1425,7 +1439,7 @@ def read_loaded_runtime(path: Path) -> Optional[dict[str, Any]]:
         or float(updated_at) < 0
     ):
         return None
-    return {
+    result = {
         "api_version": API_VERSION,
         "state": state,
         "errors": list(errors),
@@ -1435,6 +1449,10 @@ def read_loaded_runtime(path: Path) -> Optional[dict[str, Any]]:
         "interface": interface,
         "updated_at": float(updated_at),
     }
+    if "physical_interface" in runtime:
+        result["physical_interface"] = physical_interface
+        result["receive_interface"] = receive_interface
+    return result
 
 
 def status_payload(
