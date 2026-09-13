@@ -1,0 +1,2282 @@
+{
+  "schema_version": 1,
+  "manifest_id": "open-mmi-trust-completion-6b0de79968a5-v1",
+  "pack_version": "1.0",
+  "snapshot_date": "2026-09-13",
+  "repository": "https://github.com/open-mmi/open-mmi",
+  "assessed_branch": "owner-trust-controls-ui-v1",
+  "assessed_base_commit": "6b0de79968a5cfb72773989db4c72989204e3cb6",
+  "id_convention": "P01-P25 are this plan; C6/C7 are historical project milestones.",
+  "initial_next_code_card": "P01",
+  "initial_next_target_gate": "G0",
+  "test_groups": {
+    "T0": "State capture, diff check, Python compilation and shell syntax",
+    "T_UI": "Owner status/setup Python and JavaScript regression tests",
+    "T_SOCKET": "Real AF_UNIX protocol and root/private-state client integration",
+    "T_CAN": "Private CAN topology, provisioning and independent checker regression tests",
+    "T_TRUST": "Existing C6, manifests, Inspector, integrity/provenance and owner-state invariants",
+    "T_UPDATE": "Managed update routes, readiness and transitions",
+    "T_LIFECYCLE": "Installed artifacts, management and service lifecycle",
+    "T_IDENTITY": "Supported vehicle identity flow and remote-resolution enforcement",
+    "T_PERSIST": "Persistence allowlist and effective path denial",
+    "T_INDEPENDENT": "Standalone independent verification",
+    "T_FULL": "Full Python suite, frontend suite and CSS validation",
+    "T_BROWSER": "Real 800x480 dashboard browser tests",
+    "T_PACKAGE": "Clean wheel build, content verification and disposable installation",
+    "T_SYSTEMD": "Unit syntax and effective deployed policy",
+    "T_SYNTH": "Isolated synthetic/bench CAN with independent negative transmission evidence",
+    "T_ISOLATION": "Effective process network/file/socket confinement",
+    "T_RECOVERY": "Fresh-process and actual VM restart durability/fault matrix",
+    "T_SUPPLY": "Dependency/artifact graph, offline inputs and signed release metadata",
+    "T_DOC": "Manifest/generated-card consistency, helper tests and relevant generated references"
+  },
+  "gates": [
+    {
+      "id": "G0",
+      "title": "Existing CAN-isolation operational baseline",
+      "required_subject_commit": "6b0de79968a5cfb72773989db4c72989204e3cb6",
+      "checks": [
+        {
+          "id": "G0-01",
+          "requirement": "Record checkout and installed runtime identity separately; deliberate beta-to-feature migration and recovery route are documented.",
+          "machine_roles": [
+            "tablet"
+          ],
+          "levels": [
+            "installed-integration"
+          ]
+        },
+        {
+          "id": "G0-02",
+          "requirement": "Physical CAN is private; receive peer, exact gateway and both egress barriers are observed with stable namespace identity.",
+          "machine_roles": [
+            "tablet"
+          ],
+          "levels": [
+            "installed-integration"
+          ]
+        },
+        {
+          "id": "G0-03",
+          "requirement": "ACK-capable live vehicle reception, relevant decoded data and a fresh dashboard are observed without Open MMI-originated data frames.",
+          "machine_roles": [
+            "tablet"
+          ],
+          "levels": [
+            "vehicle-qualified"
+          ]
+        },
+        {
+          "id": "G0-04",
+          "requirement": "Authorized clean install/reinstall, cold reboot, adapter reconnect and suspend/resume preserve the observed topology and useful reception.",
+          "machine_roles": [
+            "tablet"
+          ],
+          "levels": [
+            "installed-integration",
+            "vehicle-qualified"
+          ]
+        },
+        {
+          "id": "G0-05",
+          "requirement": "Baseline limitations explicitly retain the old independent CAN checker gap; no claim of trusted continuity from legacy beta.",
+          "machine_roles": [
+            "dev",
+            "tablet"
+          ],
+          "levels": [
+            "source-reviewed"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G1",
+      "title": "Installed C7 and independently checked CAN",
+      "required_subject_commit": null,
+      "checks": [
+        {
+          "id": "G1-01",
+          "requirement": "Unprivileged installed dashboard obtains privileged coordinator evidence without private-state access; socket failure and recovery do not leave stale PASS.",
+          "machine_roles": [
+            "tablet"
+          ],
+          "levels": [
+            "installed-integration"
+          ]
+        },
+        {
+          "id": "G1-02",
+          "requirement": "Root+TTY setup prerequisites, expansion guidance, first baseline and legacy/corrupt-state handling are correct; browser mutation remains unavailable.",
+          "machine_roles": [
+            "tablet",
+            "isolated_vm"
+          ],
+          "levels": [
+            "installed-integration"
+          ]
+        },
+        {
+          "id": "G1-03",
+          "requirement": "Independent live checker observes namespace, peer, exact gateway and both barriers on the installed target after lifecycle transitions.",
+          "machine_roles": [
+            "tablet"
+          ],
+          "levels": [
+            "installed-integration"
+          ]
+        },
+        {
+          "id": "G1-04",
+          "requirement": "Independent isolated negative transmission tests establish the one-way path and both effective egress barriers.",
+          "machine_roles": [
+            "dev",
+            "isolated_vm"
+          ],
+          "levels": [
+            "synthetic-CAN"
+          ]
+        },
+        {
+          "id": "G1-05",
+          "requirement": "ACK-capable vehicle reception and the 800x480 dashboard stay useful and fresh after reboot/reconnect/suspend.",
+          "machine_roles": [
+            "tablet"
+          ],
+          "levels": [
+            "vehicle-qualified"
+          ]
+        },
+        {
+          "id": "G1-06",
+          "requirement": "Installed update/reinstall/recovery preserves protected data, units and the established C6 gates.",
+          "machine_roles": [
+            "tablet",
+            "isolated_vm"
+          ],
+          "levels": [
+            "installed-integration"
+          ]
+        },
+        {
+          "id": "G1-07",
+          "requirement": "Applicable final Python, JS/browser, packaging and systemd evidence is retained for the implemented feature subject.",
+          "machine_roles": [
+            "dev",
+            "ci"
+          ],
+          "levels": [
+            "unit-tested",
+            "protocol-tested",
+            "systemd-verified"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G2",
+      "title": "Effective confinement and stronger protected continuity",
+      "required_subject_commit": null,
+      "checks": [
+        {
+          "id": "G2-01",
+          "requirement": "Supported identity resolution paths cannot disclose identity remotely; policy and enforcement evidence are separately identified.",
+          "machine_roles": [
+            "dev",
+            "isolated_vm"
+          ],
+          "levels": [
+            "installed-integration"
+          ]
+        },
+        {
+          "id": "G2-02",
+          "requirement": "Effective network and persistence confinement passes negative and necessary positive probes under actual process identities and deployed units.",
+          "machine_roles": [
+            "isolated_vm"
+          ],
+          "levels": [
+            "installed-integration"
+          ]
+        },
+        {
+          "id": "G2-03",
+          "requirement": "Protected-core expansion is stopped by old trusted code before candidate execution; deployed bytes match the approved declarative plan.",
+          "machine_roles": [
+            "isolated_vm"
+          ],
+          "levels": [
+            "installed-integration"
+          ]
+        },
+        {
+          "id": "G2-04",
+          "requirement": "Every required crash/recovery transition is tested with fresh process state; selected durability cases survive actual VM restart.",
+          "machine_roles": [
+            "isolated_vm"
+          ],
+          "levels": [
+            "installed-integration"
+          ]
+        },
+        {
+          "id": "G2-05",
+          "requirement": "Explicit successor enrollment preserves C6 anchors and blocks missing/corrupt successor state on every managed route without fallback.",
+          "machine_roles": [
+            "isolated_vm"
+          ],
+          "levels": [
+            "installed-integration"
+          ]
+        },
+        {
+          "id": "G2-06",
+          "requirement": "Separately trusted verifier understands successor evidence and does not imply an external consent witness where none exists.",
+          "machine_roles": [
+            "independent_host"
+          ],
+          "levels": [
+            "externally-verified"
+          ]
+        },
+        {
+          "id": "G2-07",
+          "requirement": "Deliberately activated target preserves CAN, UI and trusted-update operation with a reviewed recovery route.",
+          "machine_roles": [
+            "tablet"
+          ],
+          "levels": [
+            "installed-integration",
+            "vehicle-qualified"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G3",
+      "title": "External continuity, compliance and challenge",
+      "required_subject_commit": null,
+      "checks": [
+        {
+          "id": "G3-01",
+          "requirement": "Verifier runs without importing/executing target packages; its distribution and owner anchors are retained independently.",
+          "machine_roles": [
+            "independent_host"
+          ],
+          "levels": [
+            "externally-verified"
+          ]
+        },
+        {
+          "id": "G3-02",
+          "requirement": "Retained checkpoints and independent owner-witness receipts expose rollback, rewriting and unproven expansion; missing intervals remain UNVERIFIED.",
+          "machine_roles": [
+            "independent_host"
+          ],
+          "levels": [
+            "externally-verified"
+          ]
+        },
+        {
+          "id": "G3-03",
+          "requirement": "Wiped/restored target can be assessed using retained external artifacts; missing anchors cannot be silently bootstrapped.",
+          "machine_roles": [
+            "independent_host"
+          ],
+          "levels": [
+            "externally-verified"
+          ]
+        },
+        {
+          "id": "G3-04",
+          "requirement": "Official provenance, accepted boundary, integrity and reviewed SI compliance remain separate dimensions with adversarial vectors.",
+          "machine_roles": [
+            "independent_host"
+          ],
+          "levels": [
+            "externally-verified"
+          ]
+        },
+        {
+          "id": "G3-05",
+          "requirement": "Fresh approved challenge binds target/release/evidence and rejects replay, missing response and unsupported transport.",
+          "machine_roles": [
+            "independent_host"
+          ],
+          "levels": [
+            "externally-verified"
+          ]
+        },
+        {
+          "id": "G3-06",
+          "requirement": "Any production challenge transport has controlled target hardware evidence; an explicitly reviewed synthetic-only disposition narrows the claim.",
+          "machine_roles": [
+            "tablet",
+            "independent_host"
+          ],
+          "levels": [
+            "installed-integration",
+            "externally-verified"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G4",
+      "title": "Feature, integrated nightly and release candidate",
+      "required_subject_commit": null,
+      "checks": [
+        {
+          "id": "G4-01",
+          "requirement": "Exact release-candidate CI passes the required Python, JS/browser, registry, package and adversarial lifecycle matrix.",
+          "machine_roles": [
+            "ci"
+          ],
+          "levels": [
+            "unit-tested",
+            "protocol-tested"
+          ]
+        },
+        {
+          "id": "G4-02",
+          "requirement": "Locked build inputs, offline install, SBOM, signed metadata and exact artifact/dependency graph agree on every supported platform.",
+          "machine_roles": [
+            "dev",
+            "ci"
+          ],
+          "levels": [
+            "installed-integration"
+          ]
+        },
+        {
+          "id": "G4-03",
+          "requirement": "Standalone checker validates retained signatures and installed inventory using independently accepted anchors.",
+          "machine_roles": [
+            "independent_host"
+          ],
+          "levels": [
+            "externally-verified"
+          ]
+        },
+        {
+          "id": "G4-04",
+          "requirement": "Exact integrated nightly has a recorded feature comparison, fresh nightly CI and scoped evidence reuse rationale.",
+          "machine_roles": [
+            "ci"
+          ],
+          "levels": [
+            "unit-tested"
+          ]
+        },
+        {
+          "id": "G4-05",
+          "requirement": "Nightly target requalification covers vehicle CAN, fresh UI, power/reconnect and effective runtime barriers.",
+          "machine_roles": [
+            "tablet"
+          ],
+          "levels": [
+            "vehicle-qualified"
+          ]
+        },
+        {
+          "id": "G4-06",
+          "requirement": "Nightly migration/update/equal-narrower/expansion/recovery paths retain trust and installed artifact identity.",
+          "machine_roles": [
+            "tablet"
+          ],
+          "levels": [
+            "installed-integration"
+          ]
+        },
+        {
+          "id": "G4-07",
+          "requirement": "No required unresolved identity, CAN, continuity or metadata blocker remains; beta promotion has a concrete reviewed dossier.",
+          "machine_roles": [
+            "dev"
+          ],
+          "levels": [
+            "source-reviewed"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G5",
+      "title": "Beta soak and release readiness",
+      "required_subject_commit": null,
+      "checks": [
+        {
+          "id": "G5-01",
+          "requirement": "Maintainer-defined beta soak duration, exact subjects and observed results are recorded; affected changes invalidate impacted evidence.",
+          "machine_roles": [
+            "tablet"
+          ],
+          "levels": [
+            "vehicle-qualified"
+          ]
+        },
+        {
+          "id": "G5-02",
+          "requirement": "Exact release/main candidate CI and artifact identity match the qualified beta promotion.",
+          "machine_roles": [
+            "ci"
+          ],
+          "levels": [
+            "unit-tested",
+            "installed-integration"
+          ]
+        },
+        {
+          "id": "G5-03",
+          "requirement": "Final target qualification and migration/recovery instructions agree with the final installed runtime.",
+          "machine_roles": [
+            "tablet"
+          ],
+          "levels": [
+            "installed-integration",
+            "vehicle-qualified"
+          ]
+        },
+        {
+          "id": "G5-04",
+          "requirement": "External checker/checkpoint/owner anchors and release evidence are independently retained and verified.",
+          "machine_roles": [
+            "independent_host"
+          ],
+          "levels": [
+            "externally-verified"
+          ]
+        },
+        {
+          "id": "G5-05",
+          "requirement": "All goal claims map to reviewed evidence and explicit exclusions; maintainer records final readiness without unauthorized publishing.",
+          "machine_roles": [
+            "dev"
+          ],
+          "levels": [
+            "source-reviewed"
+          ]
+        }
+      ]
+    }
+  ],
+  "cards": [
+    {
+      "id": "P01",
+      "title": "fix: read dashboard trust evidence through the privileged coordinator",
+      "phase": "A — Complete C7",
+      "suggested_commit_subject": "fix: read dashboard trust evidence through the privileged coordinator",
+      "depends_on": [],
+      "read_paths": [
+        "ui/web_dashboard/trust_status.py",
+        "ui/trust_status_coordinator.py",
+        "ui/web_dashboard/server.py",
+        "systemd/system/open-mmi-trust-status.service",
+        "tests/test_web_dashboard_trust_status.py",
+        "tests/test_trust_status_coordinator.py",
+        "tests/js/trust_status.test.js",
+        "tests/browser/dashboard.spec.js"
+      ],
+      "proposed_paths": [],
+      "boundary": "The installed unprivileged dashboard obtains authoritative trust evidence only from the fixed privileged read-only status service. Neither the browser nor a fallback local Inspector can manufacture owner authority.",
+      "implementation": [
+        "Replace the production default in trust_status_payload with the existing coordinator client; retain dependency injection only for tests with an explicit contract.",
+        "Validate the coordinator envelope, API version, allowed status, report shape and error response before exposing it; avoid accepting payload.status=PASS alongside report.status=FAIL.",
+        "Keep GET /api/trust/status and the current dashboard response contract stable unless a versioned additive change is justified.",
+        "Map unavailable socket, permission denial, timeout, malformed/truncated/oversized reply and coordinator failure to UNVERIFIED with sanitized guidance. Do not fall back to direct inspection of private files.",
+        "Keep the service protocol fixed to status. Do not add sudo subprocesses to the web process, root file permissions for the dashboard, or mutation routes.",
+        "Confirm socket ownership/group configuration permits the actual desktop account after a deliberate group refresh. Use existing open-mmi-update group conventions.",
+        "Update the old test that explicitly assumes direct Inspector imports; replace source-string assumptions with behavioral routing tests."
+      ],
+      "required_behavioral_tests": [
+        "Patch the coordinator client and local Inspector independently: an ordinary GET must call the former and must not invoke the latter.",
+        "A socket service running with permission to a fixture private store returns evidence to a client without granting file access. Real root/non-root separation belongs in an isolated Linux integration fixture or G1, not a mocked claim.",
+        "Reject mismatched report/envelope statuses, unknown versions, duplicate JSON keys, invalid framing and unauthorized mutation actions.",
+        "Stop/restart the coordinator during a visible Trust page; status becomes unavailable and recovers without a page crash or stale PASS.",
+        "Assert POST /api/trust/status and trust-acceptance POST paths remain unavailable."
+      ],
+      "acceptance_criteria": [
+        {
+          "id": "P01-A01",
+          "text": "The production adapter calls client_status and has no direct-inspection fallback."
+        },
+        {
+          "id": "P01-A02",
+          "text": "All client failure cases preserve UNVERIFIED and disclose no private raw exception or state."
+        },
+        {
+          "id": "P01-A03",
+          "text": "GET API, browser rendering and socket round-trip regressions pass on an appropriate Linux environment."
+        },
+        {
+          "id": "P01-A04",
+          "text": "The installed unprivileged dashboard/service round trip is recorded at G1 before C7.1 is called complete."
+        }
+      ],
+      "out_of_scope": [
+        "No trust-state mutation or telemetry consent change.",
+        "No CAN topology changes.",
+        "No broad frontend reorganization."
+      ],
+      "test_groups": [
+        "T0",
+        "T_UI",
+        "T_SOCKET",
+        "T_TRUST",
+        "T_FULL",
+        "T_BROWSER"
+      ],
+      "closure_gates": [
+        "G1"
+      ],
+      "required_review": "Maintainer diff review"
+    },
+    {
+      "id": "P02",
+      "title": "fix: independently verify the private CAN receive topology",
+      "phase": "A — Complete C7",
+      "suggested_commit_subject": "fix: independently verify the private CAN receive topology",
+      "depends_on": [
+        "P01"
+      ],
+      "read_paths": [
+        "independent_checker/open_mmi_can_trust_test.py",
+        "independent_checker/open_mmi_trust_check.py",
+        "independent_checker/README.md",
+        "ui/can_namespace.py",
+        "systemd/system/open-mmi-can-namespace.service",
+        "systemd/system/open-mmi-can-private-provision.service",
+        "systemd/system/open-mmi-can-private-quiesce.service",
+        "tests/test_independent_can_trust.py",
+        "tests/test_can_namespace.py"
+      ],
+      "proposed_paths": [],
+      "boundary": "Independent CAN evidence measures the actual ACK-capable namespace/gateway/DROP topology and never imports the target implementation or grants Open MMI a transmit action.",
+      "implementation": [
+        "Replace the production LISTEN-ONLY requirement with versioned, independently implemented checks for the new topology. Preserve useful vcan challenge functionality as a separately named evidence dimension.",
+        "Resolve the fixed namespace service and a stable namespace identity; inspect host and private namespace without creating or repairing interfaces. Recheck identity after collection to detect restarts.",
+        "Verify physical canN is absent from the host namespace, present as a physical CAN controller privately, and connected to the intended vxcan peer and host openmmi-rx.",
+        "Verify both live clsact/egress matchall DROP rules, the exact one-way gateway, controller mode and link state. Parse complete structures; do not accept route-name prefixes, extra routes or unrecognized filter actions.",
+        "Missing privilege, tools, interface, namespace or required driver evidence yields UNVERIFIED. Contradictory, weakened or reverse-path evidence yields FAIL. Link down may be safely blocked but is not healthy live reception.",
+        "Keep production inspection read-only. Any test transmission must be checker-owned on an explicitly isolated bench/vcan setup, never the owner's live vehicle.",
+        "Document required host tools and exact commands after confirming their paths; do not reuse target Python helpers or silently enter arbitrary namespaces."
+      ],
+      "required_behavioral_tests": [
+        "Fixtures cover correct topology, physical CAN visible on host, wrong namespace identity, wrong peer, missing/extra/reverse gateway, similar destination prefix and changed namespace during inspection.",
+        "Reject permissive, missing, reordered/extra-action, wrong-chain and unsupported tc evidence; exercise real iproute2 output fixtures from the target before declaring parser coverage complete.",
+        "Controller LISTEN-ONLY off with intact barriers is eligible; old listen-only-only evidence can never certify the new topology.",
+        "A real disposable synthetic test verifies receipt and blocked reverse transmission independently; a unit fixture is not this test.",
+        "Missing permissions/tools produce explicit UNVERIFIED without repair or mutation."
+      ],
+      "acceptance_criteria": [
+        {
+          "id": "P02-A01",
+          "text": "The live checker can describe and validate the intended new topology without requiring LISTEN-ONLY."
+        },
+        {
+          "id": "P02-A02",
+          "text": "No mutation or Open MMI CAN-transmit path is introduced."
+        },
+        {
+          "id": "P02-A03",
+          "text": "Negative fixtures and independently collected synthetic evidence pass."
+        },
+        {
+          "id": "P02-A04",
+          "text": "G1 records live target checks and reception after lifecycle transitions before the CAN boundary is closed."
+        }
+      ],
+      "out_of_scope": [
+        "No new production CAN challenge ID or transmitting protocol.",
+        "No restoration of listen-only as the enforcement architecture.",
+        "No weakening of namespace or tc policy to make the checker pass."
+      ],
+      "test_groups": [
+        "T0",
+        "T_CAN",
+        "T_TRUST",
+        "T_FULL",
+        "T_SYNTH"
+      ],
+      "closure_gates": [
+        "G1"
+      ],
+      "required_review": "Maintainer/security review of independent measurement and namespace selection"
+    },
+    {
+      "id": "P03",
+      "title": "fix: distinguish static trust contracts from live enforcement evidence",
+      "phase": "A — Complete C7",
+      "suggested_commit_subject": "fix: distinguish static trust contracts from live enforcement evidence",
+      "depends_on": [
+        "P02"
+      ],
+      "read_paths": [
+        "open_mmi_trust/inspector.py",
+        "open_mmi_trust/data/trust-inspection.v1.schema.json",
+        "ui/trust_status_coordinator.py",
+        "ui/web_dashboard/static/trust-status.js",
+        "independent_checker/open_mmi_trust_check.py",
+        "tests/test_trust_inspector.py",
+        "tests/test_independent_trust_checker.py",
+        "tests/js/trust_status.test.js",
+        "docs/trust-architecture.md"
+      ],
+      "proposed_paths": [],
+      "boundary": "An Inspector PASS for signed configuration does not assert that a namespace or enforcement rule was observed live. Overall and per-check labels preserve the provenance and limits of their evidence.",
+      "implementation": [
+        "Inventory existing consumers of check IDs and report schema; choose a backward-compatible additive evidence shape or an explicit report-version change with consumer updates.",
+        "Separate declared policy, signed/static contract, independently observed runtime enforcement and hardware qualification. Retain PASS/FAIL/UNVERIFIED semantics within each defined dimension.",
+        "Remove unconditional live claims such as physical_interface_host_visible=False where no live observation occurred.",
+        "The AF_UNIX-only coordinator must not gain NET_ADMIN or broad namespace access merely to produce a green status. Prefer accurately reporting static evidence and referring to independent measurements.",
+        "If an independent report is displayed, bind it to subject commit, inventory/policy digests, observation time and boot/namespace identity; stale or unbound results are not current proof.",
+        "Update Inspector wording, independent-checker wording, UI labels and docs together; reconcile stale listen-only claims."
+      ],
+      "required_behavioral_tests": [
+        "Valid source/unit files with no live observation cannot yield a live-enforcement PASS.",
+        "A changed boot/namespace/source commit invalidates any previously attached runtime observation.",
+        "FAIL dominates contradictory evidence; unavailable evidence remains UNVERIFIED and cannot be hidden by static PASS.",
+        "Older supported report clients remain functional or explicitly report unsupported versions, never reinterpret fields.",
+        "No new network, trust-write or namespace-management authority appears in the status service."
+      ],
+      "acceptance_criteria": [
+        {
+          "id": "P03-A01",
+          "text": "Every relevant check states what was inspected and what was not."
+        },
+        {
+          "id": "P03-A02",
+          "text": "The new CAN Inspector note accurately matches P02 checker capabilities."
+        },
+        {
+          "id": "P03-A03",
+          "text": "Schema/consumer tests and stale-evidence cases pass."
+        },
+        {
+          "id": "P03-A04",
+          "text": "G1 dashboard screenshots and independent reports show consistent but separately scoped statuses."
+        }
+      ],
+      "out_of_scope": [
+        "No automatic invocation of privileged repair from inspection.",
+        "No changing declared assurance solely to hide absent evidence.",
+        "No claiming OS inspection equals hardware attestation."
+      ],
+      "test_groups": [
+        "T0",
+        "T_UI",
+        "T_TRUST",
+        "T_CAN",
+        "T_FULL",
+        "T_BROWSER"
+      ],
+      "closure_gates": [
+        "G1"
+      ],
+      "required_review": "Maintainer diff review"
+    },
+    {
+      "id": "P04",
+      "title": "feat: model owner trust setup as explicit read-only progression",
+      "phase": "A — Complete C7",
+      "suggested_commit_subject": "feat: model owner trust setup as explicit read-only progression",
+      "depends_on": [
+        "P03"
+      ],
+      "read_paths": [
+        "ui/web_dashboard/trust_status.py",
+        "ui/trust_status_coordinator.py",
+        "open_mmi_trust/accepted_state_cli.py",
+        "open_mmi_trust/lineage_cli.py",
+        "open_mmi_trust/release_integrity_cli.py",
+        "open_mmi_trust/release_provenance_cli.py",
+        "open_mmi_trust/transition_gate_cli.py",
+        "tests/test_web_dashboard_trust_status.py"
+      ],
+      "proposed_paths": [
+        "ui/web_dashboard/trust_setup.py",
+        "tests/test_trust_setup.py"
+      ],
+      "boundary": "Next-step guidance derives from authoritative current evidence and existing CLI prerequisites. It never treats missing evidence, corruption or legacy migration as permission to bootstrap over established authority.",
+      "implementation": [
+        "Implement a pure state-to-guidance model covering accepted baseline, lineage, installed integrity, pinned provenance, prepared transition and evidence availability.",
+        "Preserve independent dimensions: signature provenance, accepted permissions, history and runtime enforcement must not collapse into a misleading one-bit trust badge.",
+        "Follow actual prerequisite order: inspect/review current release; accept-current creates the first accepted-state plus lineage baseline; separately bootstrap lineage only for an existing accepted state without lineage; integrity requires valid accepted state/lineage; provenance requires valid current integrity and independently verified signer material.",
+        "Provide bounded allowlisted action identifiers and explanatory text, not arbitrary command strings supplied by reports or candidate code. Existing CLI commands stay the only mutation authority.",
+        "Differentiate not-established from unreadable, malformed, inconsistent, broadened-after-install and history-before-baseline-unverified.",
+        "Return recovery guidance for corruption or stale prepared state; never suggest accept-current as a way to authorize an already-installed expansion."
+      ],
+      "required_behavioral_tests": [
+        "Use a table-driven fixture for every meaningful combination, including legacy baseline, accepted-without-lineage, bad lineage, missing integrity, signer missing/mismatched and candidate expansion.",
+        "No action has unsatisfied prerequisites; no corrupted state maps to normal bootstrap or generic accept guidance.",
+        "Equivalent/narrower update eligibility is independent of optional telemetry authorization.",
+        "A refreshed report changes the suggested step deterministically without mutating any trust files."
+      ],
+      "acceptance_criteria": [
+        {
+          "id": "P04-A01",
+          "text": "State fixture matrix and exact allowed action vocabulary are checked into the repo."
+        },
+        {
+          "id": "P04-A02",
+          "text": "Guidance order agrees with current owner CLIs and preserves all error distinctions."
+        },
+        {
+          "id": "P04-A03",
+          "text": "No code path writes trust state or invokes privileged commands."
+        },
+        {
+          "id": "P04-A04",
+          "text": "The model exposes enough provenance for the UI to explain each blocker."
+        }
+      ],
+      "out_of_scope": [
+        "No new bootstrap CLI, convenience bypass or --yes option.",
+        "No requirement to authorize telemetry to complete trust setup.",
+        "No assumed signer fingerprint, candidate path or user-specific username."
+      ],
+      "test_groups": [
+        "T0",
+        "T_UI",
+        "T_TRUST",
+        "T_FULL"
+      ],
+      "closure_gates": [
+        "G1"
+      ],
+      "required_review": "Maintainer diff review"
+    },
+    {
+      "id": "P05",
+      "title": "feat: guide owners through trust setup without browser mutation",
+      "phase": "A — Complete C7",
+      "suggested_commit_subject": "feat: guide owners through trust setup without browser mutation",
+      "depends_on": [
+        "P04"
+      ],
+      "read_paths": [
+        "ui/web_dashboard/static/trust-status.js",
+        "ui/web_dashboard/static/system-settings.js",
+        "ui/web_dashboard/static/index.html",
+        "ui/web_dashboard/static/styles-system-settings.css",
+        "tests/js/trust_status.test.js",
+        "tests/js/system_settings.test.js",
+        "tests/browser/dashboard.spec.js",
+        "ui/web_dashboard/README.md",
+        "docs/getting-started.md"
+      ],
+      "proposed_paths": [],
+      "boundary": "The 800×480 owner experience explains status, the next valid local action and its limits, while browser trust operations remain read-only.",
+      "implementation": [
+        "Render clear setup stages from P04: what is established, what is missing, why an update is blocked and what the owner can review next.",
+        "Use the established Settings layout, visibility-aware refresh and connection recovery conventions. Keep long digests in bounded technical details with accessible exact values.",
+        "Show existing terminal commands only when appropriate to the model. Never prefill a confirmation phrase as if reviewed or run a command from the browser.",
+        "Keep C7.4 prepared-expansion guidance intact; show changed capability/purpose/assurance and exact-candidate context without duplicating contradictory notices.",
+        "Treat revoked/absent telemetry authorization as a normal default-deny privacy state, not setup failure.",
+        "Update first-time/legacy owner docs with the evidence prerequisites and explicit beta-to-feature new-baseline semantics."
+      ],
+      "required_behavioral_tests": [
+        "JS tests cover all P04 states and malformed model input.",
+        "Playwright at 800×480 verifies overflow, touch navigation, unavailable/recovered service, refresh after a CLI-side change fixture and a stale prepared update.",
+        "Ensure no browser interaction sends a trust-mutation POST or accepts a candidate-selected command/path.",
+        "Test keyboard/screen-reader labels and full-digest access without persistent private data in localStorage.",
+        "Existing update, media, vehicle setup and dashboard connection tests remain green."
+      ],
+      "acceptance_criteria": [
+        {
+          "id": "P05-A01",
+          "text": "An owner can identify the next valid action without reading raw check IDs."
+        },
+        {
+          "id": "P05-A02",
+          "text": "Unavailable or stale evidence cannot leave a green completed stage displayed."
+        },
+        {
+          "id": "P05-A03",
+          "text": "C7.4 behavior and read-only trust boundaries remain intact."
+        },
+        {
+          "id": "P05-A04",
+          "text": "G1 records the real tablet UI and a completed new-baseline progression."
+        }
+      ],
+      "out_of_scope": [
+        "No UI redesign outside Trust and directly related update guidance.",
+        "No browser terminal, sudo helper or trust-acceptance button.",
+        "No telemetry opt-in default change."
+      ],
+      "test_groups": [
+        "T0",
+        "T_UI",
+        "T_TRUST",
+        "T_FULL",
+        "T_BROWSER"
+      ],
+      "closure_gates": [
+        "G1"
+      ],
+      "required_review": "Maintainer diff review"
+    },
+    {
+      "id": "P06",
+      "title": "test: qualify installed trust status and setup lifecycle",
+      "phase": "A — Complete C7",
+      "suggested_commit_subject": "test: qualify installed trust status and setup lifecycle",
+      "depends_on": [
+        "P05"
+      ],
+      "read_paths": [
+        "scripts/manage.sh",
+        "systemd/system/open-mmi-trust-status.service",
+        "open_mmi_trust/release_integrity.py",
+        "tests/test_manage_script.py",
+        "tests/test_command_installation.py",
+        "tests/test_desktop_entry_installation.py",
+        "tests/test_release_integrity.py",
+        "tests/test_trust_status_coordinator.py",
+        "tests/test_web_dashboard_trust_status.py"
+      ],
+      "proposed_paths": [
+        "tests/test_trust_setup_lifecycle.py"
+      ],
+      "boundary": "Install, reinstall, service restart, update rollback and uninstall preserve the intended trust-status service, authority records, ownership and inventory coverage.",
+      "implementation": [
+        "Extend behavior-based lifecycle fixtures around the installed wheel and service paths, including the root coordinator/unprivileged dashboard boundary.",
+        "Verify unit install/restart/enable, preserved shared runtime directory, socket recreation and group membership behavior using real Linux integration where feasible.",
+        "Ensure trust-status and CAN units are included in release inventory, backup and rollback. Keep unknown/missing units fail-closed.",
+        "Treat trust-state preservation/deletion on uninstall as an explicit reviewed policy; never silently erase the owner's anchors to repair installation.",
+        "Add a read-only health protocol checkpoint where installation currently checks only is-active, if needed to prove service readiness.",
+        "Fix only defects exposed within this lifecycle surface and record their effect on previously qualified evidence."
+      ],
+      "required_behavioral_tests": [
+        "Exercise socket occupied by symlink/non-socket/wrong owner, service crash during request, stale socket and status collection exception.",
+        "Round-trip a valid installed fixture with root-private trust state and an unprivileged browser process.",
+        "Reinstall and rollback restore unit bytes and preserve trust anchor files; fault during restoration is reported unverified.",
+        "Cold start and reinstall do not require arbitrary privilege changes to the desktop account.",
+        "No trust mutation or missing-anchor rebootstrap occurs during ordinary GET, install health checks or service startup."
+      ],
+      "acceptance_criteria": [
+        {
+          "id": "P06-A01",
+          "text": "Installed-path integration tests prove the intended authority boundary."
+        },
+        {
+          "id": "P06-A02",
+          "text": "Unit inventory/rollback checks cover all newly introduced services."
+        },
+        {
+          "id": "P06-A03",
+          "text": "Health failure is observable and cannot be reported as successful installation."
+        },
+        {
+          "id": "P06-A04",
+          "text": "Any target-dependent results are recorded at G1, separately from mocked tests."
+        }
+      ],
+      "out_of_scope": [
+        "No unrelated manage.sh refactor.",
+        "No bulk chmod/chown repair of unrelated user files.",
+        "No destructive tablet uninstall without a separate maintainer-approved recovery plan."
+      ],
+      "test_groups": [
+        "T0",
+        "T_LIFECYCLE",
+        "T_SOCKET",
+        "T_TRUST",
+        "T_FULL",
+        "T_PACKAGE",
+        "T_SYSTEMD"
+      ],
+      "closure_gates": [
+        "G1"
+      ],
+      "required_review": "Maintainer review of preservation and recovery semantics"
+    },
+    {
+      "id": "P07",
+      "title": "docs: record C7 completion evidence and operating limits",
+      "phase": "A — Complete C7",
+      "suggested_commit_subject": "docs: record C7 completion evidence and operating limits",
+      "depends_on": [
+        "P06"
+      ],
+      "read_paths": [
+        "docs/trust-architecture.md",
+        "docs/getting-started.md",
+        "docs/manual-administration.md",
+        "docs/release-checklist.md",
+        "CHANGELOG.md",
+        "ui/web_dashboard/README.md"
+      ],
+      "proposed_paths": [
+        "docs/design/v1-trust-completion/evidence/c7-closeout.json"
+      ],
+      "boundary": "C7 is called complete only for a recorded code subject with authoritative status, usable setup guidance, preserved root+TTY mutation and qualified CAN dependencies.",
+      "implementation": [
+        "Collect G0/G1 results with exact subject code commit, installed identity, policy/inventory digests, machine role and evidence references.",
+        "Reconcile obsolete statements about missing checker, listen-only, direct dashboard inspection, build execution and completed versus pending phases.",
+        "Preserve C6's established milestone while listing later strengthening separately.",
+        "Record baseline-existing-state for beta-to-feature migration and history_before_baseline=unverified; do not retrofit trust continuity to legacy beta.",
+        "Update progress and the closure matrix; do not mark remote identity, protected-core continuity or release readiness complete here.",
+        "This can be a documentation/evidence commit. Record the previously tested code commit as the subject and the later recording commit separately."
+      ],
+      "required_behavioral_tests": [
+        "Validate the handoff ledger and linked evidence digests; every P01–P06 criterion must map to a result or a clearly unresolved blocker.",
+        "Check cited commands against current CLI --help and actual file paths.",
+        "Verify docs do not imply a browser mutation surface, a physical listen-only requirement or hardware proof from CI.",
+        "Reuse qualified runtime evidence when only excluded documentation files change; record why the tested runtime inventory is unchanged."
+      ],
+      "acceptance_criteria": [
+        {
+          "id": "P07-A01",
+          "text": "G1 passed on the relevant code subject; unresolved failures block the C7 completion label."
+        },
+        {
+          "id": "P07-A02",
+          "text": "Owner setup, service lifecycle, prepared expansion guidance and CAN evidence are linked."
+        },
+        {
+          "id": "P07-A03",
+          "text": "C6, C7, future strengthening and release gates have unambiguous separate statuses."
+        },
+        {
+          "id": "P07-A04",
+          "text": "A new agent can resume at P08 using the ledger without the prior chat."
+        }
+      ],
+      "out_of_scope": [
+        "No invented test output or retroactive vehicle qualification.",
+        "No runtime code change solely to produce a milestone commit.",
+        "No promotion to nightly/beta/main within this card."
+      ],
+      "test_groups": [
+        "T0",
+        "T_DOC"
+      ],
+      "closure_gates": [
+        "G1"
+      ],
+      "required_review": "Maintainer diff review"
+    },
+    {
+      "id": "P08",
+      "title": "security: close the supported remote vehicle identity boundary",
+      "phase": "B — Enforcement closure",
+      "suggested_commit_subject": "security: close the supported remote vehicle identity boundary",
+      "depends_on": [
+        "P07"
+      ],
+      "read_paths": [
+        "open_mmi_trust/vehicle_identity.py",
+        "open_mmi_telemetry/guard.py",
+        "ui/media_egress.py",
+        "ui/media_egress_config.py",
+        "ui/egress_client.py",
+        "ui/update_coordinator.py",
+        "open_mmi_trust/inspector.py",
+        "systemd/system/open-mmi-media-egress.service",
+        "systemd/system/open-mmi-update-coordinator.service",
+        "tests/test_vehicle_identity_remote_resolution.py",
+        "tests/test_network_egress.py"
+      ],
+      "proposed_paths": [
+        "docs/design/v1-trust-completion/identity-boundary.md"
+      ],
+      "boundary": "Supported Open MMI identity data has no authorized remote-resolution path. Closure rests on data access and mediated egress, not on a regex or owner trust acknowledgement alone.",
+      "implementation": [
+        "Map every actual identity source, allowed local reader, IPC payload, durable store and external-network actor before coding. Include local VIN authorization, CAN-derived identity, profile metadata and media/query inputs.",
+        "Record the threat model explicitly: trusted enforcement components versus ordinary app components, owner-entered media text, encoded values and deliberately modified privileged code.",
+        "Retain useful existing recognized-identity guards, but demonstrate whether identity can reach an allowed broker through encoding, alternate fields or shared IPC. Do not claim a general information-flow guarantee from token detection.",
+        "Narrow broker inputs and filesystem/IPC access where the supported identity data path requires it. Preserve legitimate media functionality through explicit typed operations and trusted configuration.",
+        "If a compromised component can both read identity and send arbitrary media queries, present that concrete path and the proposed separation for maintainer review; do not broaden the promise or silently remove search.",
+        "Update Inspector/checker contracts and privacy wording to the demonstrable boundary. Leave unresolved paths blocked in the ledger until architectural closure is proven."
+      ],
+      "required_behavioral_tests": [
+        "Reject raw, URL-encoded, double-encoded and alternate-field recognized identity before remote call sites; assertions inspect zero outbound attempts and redacted errors.",
+        "Test actual broker process identities cannot read the protected identity stores or receive identity-bearing operational IPC.",
+        "Verify ordinary media requests, credentials and supported searches still function.",
+        "Add a regression for each discovered data-flow path, including pre-network hooks rather than only regex unit tests.",
+        "Test maliciously altered privileged software as outside v1 guard assurance and explicitly cover its protected-code treatment in P10–P16."
+      ],
+      "acceptance_criteria": [
+        {
+          "id": "P08-A01",
+          "text": "The reviewed data-flow map contains no unresolved supported identity-to-remote-resolution path."
+        },
+        {
+          "id": "P08-A02",
+          "text": "Positive functionality and pre-egress denial tests pass in an appropriate Linux isolation environment."
+        },
+        {
+          "id": "P08-A03",
+          "text": "Assurance labels and documentation match demonstrated enforcement and declared threat scope."
+        },
+        {
+          "id": "P08-A04",
+          "text": "G2 includes this boundary; acknowledgement is never used as substitute enforcement."
+        }
+      ],
+      "out_of_scope": [
+        "No general PII classifier or new remote VIN service.",
+        "No harvesting real VINs for test fixtures.",
+        "No declaring full closure while a documented encoding/IPC escape remains."
+      ],
+      "test_groups": [
+        "T0",
+        "T_IDENTITY",
+        "T_TRUST",
+        "T_FULL",
+        "T_ISOLATION"
+      ],
+      "closure_gates": [
+        "G2"
+      ],
+      "required_review": "Maintainer/security review required for the data-flow model and any media input restriction"
+    },
+    {
+      "id": "P09",
+      "title": "test: measure network and persistence confinement under adversarial inputs",
+      "phase": "B — Enforcement closure",
+      "suggested_commit_subject": "test: measure network and persistence confinement under adversarial inputs",
+      "depends_on": [
+        "P08"
+      ],
+      "read_paths": [
+        "ui/media_egress.py",
+        "ui/vehicle_store.py",
+        "ui/owner_config.py",
+        "systemd/system/open-mmi-media-egress.service",
+        "systemd/system/open-mmi-vehicle-store.service",
+        "systemd/user/canbusd.service",
+        "systemd/user/open-mmi-dashboard.service",
+        "tests/test_network_egress.py",
+        "tests/test_persistence_enforcement.py",
+        "tests/test_trust_inspector.py",
+        "independent_checker/open_mmi_trust_check.py"
+      ],
+      "proposed_paths": [
+        "tests/integration/test_trust_confinement.py",
+        "docs/design/v1-trust-completion/confinement-evidence.md"
+      ],
+      "boundary": "Declared egress and persistence purposes correspond to enforceable installed process/data boundaries; static unit text alone does not establish effective confinement.",
+      "implementation": [
+        "Build disposable Linux integration fixtures using the actual installed units and process identities, separate from the user's desktop/tablet configuration.",
+        "Attempt direct non-loopback networking from normal core processes and durable writes outside declared-purpose storage; verify failures and legitimate broker/store operations.",
+        "Check effective drop-ins, namespace/address-family restrictions, writable paths, inherited descriptors, accessible Unix sockets and service credentials.",
+        "Validate broker operations and storage records with exact purpose/type/range contracts; reject arbitrary URLs, paths, field names and unbounded payloads.",
+        "Fix specific discovered enforcement holes only; do not convert an Inspector string check into a claimed runtime probe.",
+        "Persist reusable synthetic evidence with host/kernel/systemd/tool versions and exact tested tree identity."
+      ],
+      "required_behavioral_tests": [
+        "Unprivileged core cannot reach external listeners directly or write undeclared durable vehicle data.",
+        "Normal trip/service state works; malformed/extra fields, path traversal, replayed revisions and unauthorized peer identities fail closed.",
+        "Altered effective unit/drop-in or unsupported enforcement support yields FAIL/UNVERIFIED as appropriate.",
+        "Exercise service restarts and descriptor/socket sharing to detect routes that source scans cannot see.",
+        "Regression tests include the P08 identity separation."
+      ],
+      "acceptance_criteria": [
+        {
+          "id": "P09-A01",
+          "text": "An effective runtime test exists for each claimed OS-enforced network/persistence control."
+        },
+        {
+          "id": "P09-A02",
+          "text": "Supported purpose functionality survives the confinement."
+        },
+        {
+          "id": "P09-A03",
+          "text": "Known unsupported host configurations are explicit and cannot yield an enforcement PASS."
+        },
+        {
+          "id": "P09-A04",
+          "text": "G2 records synthetic confinement; tablet applicability is rechecked at G4."
+        }
+      ],
+      "out_of_scope": [
+        "No general network firewall for the user's machine.",
+        "No new telemetry collection or persistence purpose.",
+        "No treating localhost access as automatically trustworthy IPC."
+      ],
+      "test_groups": [
+        "T0",
+        "T_IDENTITY",
+        "T_PERSIST",
+        "T_TRUST",
+        "T_FULL",
+        "T_ISOLATION"
+      ],
+      "closure_gates": [
+        "G2"
+      ],
+      "required_review": "Maintainer/security review of effective runtime evidence"
+    },
+    {
+      "id": "P10",
+      "title": "docs: specify protected trust-core evolution and deployment contracts",
+      "phase": "C — Strengthen future continuity",
+      "suggested_commit_subject": "docs: specify protected trust-core evolution and deployment contracts",
+      "depends_on": [
+        "P09"
+      ],
+      "read_paths": [
+        "open_mmi_trust/manifest.py",
+        "open_mmi_trust/data/trust-manifest.v1.schema.json",
+        "open_mmi_trust/accepted_state.py",
+        "open_mmi_trust/transition_gate.py",
+        "open_mmi_trust/release_integrity.py",
+        "ui/update_installer.py",
+        "scripts/manage.sh",
+        "docs/trust-architecture.md",
+        "CONTRIBUTING.md"
+      ],
+      "proposed_paths": [
+        "docs/design/v1-trust-completion/protected-core-contract.md",
+        "open_mmi_trust/data/protected-core.v1.schema.json",
+        "tests/fixtures/trust/protected-core/"
+      ],
+      "boundary": "Changes to the machinery that enforces trust cannot silently redefine what an unchanged release manifest means. Existing C6 remains valid within its original scope.",
+      "implementation": [
+        "Write a reviewed threat model defining protected code/data, owner authority, ordinary application code, root administrator escape and external verification assumptions.",
+        "Enumerate protected scope: parsers/comparators, state/lineage writers, provenance/integrity verifier, deployment/recovery engine, enforcement brokers, privileged units, interpreter/import/dependency authority and rules that define the protected scope itself.",
+        "Choose conservative explicit acknowledgement for any protected-set addition, removal or byte/control change until a separately reviewed mechanical compatibility rule exists. Do not ask a model to prove arbitrary program equivalence.",
+        "Design versioned canonical data contracts for protected inventory, candidate delta, authorization binding and declarative deployment operations. Specify unknown-version/field handling, size limits and stable semantic IDs.",
+        "Plan compatibility with strict manifest v1: a candidate cannot simply add unknown fields/capabilities and expect the old parser to authorize them. Separate bridge installation from explicit owner enrollment of the successor protection.",
+        "Record a fixed initial bootstrap trust limitation, protected-state storage path decision and protection of the policy file that defines the protected set. Proposed paths are decisions, not existing installed files.",
+        "Create independent accepted/rejected test vectors before active runtime gating."
+      ],
+      "required_behavioral_tests": [
+        "Vectors include unchanged manifest with altered gate, removed sandbox, new privileged service, added native/import artifact, changed dependency, unchanged protected core and narrowed capability.",
+        "A candidate-supplied classification or allowlist never overrides old-code classification.",
+        "Old v1 fixtures retain their original results; unknown successor formats fail closed rather than being reinterpreted.",
+        "Policy tests demonstrate that changing the protected-set definition itself is protected."
+      ],
+      "acceptance_criteria": [
+        {
+          "id": "P10-A01",
+          "text": "The maintainer-reviewed contract resolves protected scope, activation sequence, storage authority and supported threat claims."
+        },
+        {
+          "id": "P10-A02",
+          "text": "Versioned schema/vectors have stable canonical digests and explicit denial cases."
+        },
+        {
+          "id": "P10-A03",
+          "text": "No existing runtime behavior or owner trust state is silently migrated."
+        },
+        {
+          "id": "P10-A04",
+          "text": "P11–P16 can implement the contract without inventing missing authority decisions."
+        }
+      ],
+      "out_of_scope": [
+        "No declaration that C6 was incomplete or must be rewritten wholesale.",
+        "No automatic allowance for signed Trust Core changes.",
+        "No promise to resist a malicious kernel without an independent/hardware anchor."
+      ],
+      "test_groups": [
+        "T0",
+        "T_TRUST",
+        "T_DOC"
+      ],
+      "closure_gates": [],
+      "required_review": "Maintainer/security design decision required before implementation of P11"
+    },
+    {
+      "id": "P11",
+      "title": "feat: establish an owner-accepted protected-core anchor",
+      "phase": "C — Strengthen future continuity",
+      "suggested_commit_subject": "feat: establish an owner-accepted protected-core anchor",
+      "depends_on": [
+        "P10"
+      ],
+      "read_paths": [
+        "open_mmi_trust/accepted_state.py",
+        "open_mmi_trust/lineage.py",
+        "open_mmi_trust/release_integrity.py",
+        "open_mmi_trust/release_provenance.py",
+        "open_mmi_trust/release_integrity_cli.py",
+        "open_mmi_trust/release_provenance_cli.py",
+        "tests/test_release_integrity.py",
+        "tests/test_release_provenance.py"
+      ],
+      "proposed_paths": [
+        "open_mmi_trust/protected_core.py",
+        "open_mmi_trust/protected_core_cli.py",
+        "tests/test_protected_core.py"
+      ],
+      "boundary": "The successor protected-core anchor is created only by explicit local owner enrollment of the currently verified installed implementation. Candidate data cannot supply or overwrite the accepted protected set.",
+      "implementation": [
+        "Implement the P10 schema and secure root-private persistence using existing no-follow, owner/mode/link-count, atomic-write and deterministic-canonicalization conventions.",
+        "Derive protected inventory from already-verified installed release/inventory and a trusted protected-set definition. Include all relevant import/runtime copies and protection metadata.",
+        "Provide status and fixed root+TTY enrollment without caller-selected candidate paths, arbitrary refs or --yes. Bind confirmation to current inventory, signer root, accepted state and lineage.",
+        "Re-read all mutable inputs after confirmation; reject changes during the prompt, missing C6 anchors, mismatch, policy regression or unsafe existing state.",
+        "Preserve current C6 stores and historical evidence. Mark predecessor protected-core history unverified; enrollment cannot claim the previous install was governed by this new protection.",
+        "Keep successor operation explicitly inactive until the later controlled integration step, with no silent fallback once activated."
+      ],
+      "required_behavioral_tests": [
+        "Non-root and non-TTY enrollment, pre-existing state overwrite, symlink/hardlink/permission attacks, partial writes and changed inputs during confirmation fail closed.",
+        "Enrollment of an unverified or tampered current runtime is denied.",
+        "Repeated status is read-only; repeated enrollment cannot silently rotate the anchor.",
+        "Canonical vectors match P10 and preservation tests prove original C6 records remain unchanged."
+      ],
+      "acceptance_criteria": [
+        {
+          "id": "P11-A01",
+          "text": "Root-private protected state is independently validated and bound to verified current release anchors."
+        },
+        {
+          "id": "P11-A02",
+          "text": "Owner enrollment is fixed and explicit; no browser or candidate writer exists."
+        },
+        {
+          "id": "P11-A03",
+          "text": "Historical limitations and inactive/active states are observable."
+        },
+        {
+          "id": "P11-A04",
+          "text": "No managed update claims successor protection before P16 activation."
+        }
+      ],
+      "out_of_scope": [
+        "No automatic key rotation.",
+        "No retrospective proof of beta or earlier C6 installations.",
+        "No enrolling a staged candidate as the current trusted core."
+      ],
+      "test_groups": [
+        "T0",
+        "T_TRUST",
+        "T_FULL",
+        "T_PACKAGE"
+      ],
+      "closure_gates": [
+        "G2"
+      ],
+      "required_review": "Maintainer/security review of enrollment and state ownership"
+    },
+    {
+      "id": "P12",
+      "title": "feat: gate protected-core deltas before candidate execution",
+      "phase": "C — Strengthen future continuity",
+      "suggested_commit_subject": "feat: gate protected-core deltas before candidate execution",
+      "depends_on": [
+        "P11"
+      ],
+      "read_paths": [
+        "open_mmi_trust/transition_gate.py",
+        "open_mmi_trust/transition_gate_cli.py",
+        "ui/update_coordinator.py",
+        "ui/update_installer.py",
+        "open_mmi_trust/release_integrity.py",
+        "tests/test_trust_transition_gate.py",
+        "tests/test_update_coordinator.py",
+        "tests/test_update_installer.py"
+      ],
+      "proposed_paths": [
+        "tests/test_protected_core_transition.py"
+      ],
+      "boundary": "An unchanged capability manifest does not bypass explicit owner review of protected-core or enforcement changes.",
+      "implementation": [
+        "Read candidate artifacts only as exact Git objects/verified release data using old trusted code. Compare protected inventory and control definitions against the accepted protected anchor.",
+        "Classify any protected addition/removal/byte change conservatively under P10. Candidate code, comments, self-reported compatibility and signature status cannot suppress the delta.",
+        "Extend the fixed prepared-transition review with protected change details and a root+TTY acknowledgement bound to transaction, candidate commit, old protected anchor, policy/inventory/lineage and candidate protected digest.",
+        "Combine capability and protected-code deltas into one coherent decision while preserving each authority dimension. Do not reuse a token across candidates or after state changes.",
+        "Recheck at coordinator preflight and immediately before installer execution. Ensure the checker/classifier itself is included in the protected set.",
+        "Keep operational activation staged until P16; unsupported/uninitialized active states block rather than silently returning to the old gate."
+      ],
+      "required_behavioral_tests": [
+        "A candidate that preserves manifest JSON but alters the trust comparator, deployment script, unit sandbox or protected broker requires acknowledgement.",
+        "Unprotected feature-only bytes with unchanged policy can proceed under the reviewed contract.",
+        "Test stale/replayed authorization, replaced candidate object, changed accepted anchor, mixed narrowing plus protected expansion, removed protected definition and generation regression.",
+        "Instrument candidate hooks/imports/commands and prove zero executions before all authorization decisions."
+      ],
+      "acceptance_criteria": [
+        {
+          "id": "P12-A01",
+          "text": "Protected deltas are visible and cannot self-authorize."
+        },
+        {
+          "id": "P12-A02",
+          "text": "Exact-bound authorization and rechecks reject race/replay cases."
+        },
+        {
+          "id": "P12-A03",
+          "text": "C6 transition semantics remain intact and separately testable."
+        },
+        {
+          "id": "P12-A04",
+          "text": "No privileged candidate execution is reachable through an unreviewed protected change in the successor path."
+        }
+      ],
+      "out_of_scope": [
+        "No automatic semantic-equivalence judgment by an LLM.",
+        "No broad browser approval or reusable authorization token.",
+        "No allowing an unknown protected file type merely because signed."
+      ],
+      "test_groups": [
+        "T0",
+        "T_TRUST",
+        "T_UPDATE",
+        "T_FULL"
+      ],
+      "closure_gates": [
+        "G2"
+      ],
+      "required_review": "Maintainer/security review of classification completeness and authorization binding"
+    },
+    {
+      "id": "P13",
+      "title": "feat: build declarative deployment plans with trusted code",
+      "phase": "C — Strengthen future continuity",
+      "suggested_commit_subject": "feat: build declarative deployment plans with trusted code",
+      "depends_on": [
+        "P12"
+      ],
+      "read_paths": [
+        "open_mmi_trust/release_integrity.py",
+        "ui/update_installer.py",
+        "scripts/manage.sh",
+        "tests/test_release_integrity.py",
+        "tests/test_update_installer.py",
+        "tests/test_manage_script.py"
+      ],
+      "proposed_paths": [
+        "open_mmi_trust/deployment_plan.py",
+        "open_mmi_trust/data/deployment-plan.v1.schema.json",
+        "tests/test_trusted_deployment_plan.py"
+      ],
+      "boundary": "Candidate content may describe installable data within a fixed contract; it may not choose privileged commands, hooks, arbitrary paths or package build logic.",
+      "implementation": [
+        "Translate the existing successful deployment behavior into an old-code-generated plan from authenticated inventory and trusted installation policy.",
+        "Allowlist operation types, destination roots, ownership/mode rules, service actions, preserved configuration and rollback artifacts. Reject unexpected objects, absolute/traversing paths, symlinks and undeclared root destinations.",
+        "Reuse trusted wheel construction from exact Git inventory. Do not reintroduce candidate PEP 517 hooks, setup.py, shell evaluation or arbitrary environment expansion.",
+        "Bind plans to candidate, accepted policy/protected anchor, transaction and inventory digests. Recalculate rather than trusting a candidate-supplied plan.",
+        "Preserve desktop launchers, coordinator environment, udev, namespace modules, service units, source/site-packages parity and update metadata.",
+        "Provide a non-mutating explain/validate path so the maintainer can review the exact plan before any deployment."
+      ],
+      "required_behavioral_tests": [
+        "Malicious candidate fixtures attempt hooks, arbitrary URL/command/path, new privileged destinations, path traversal, symlink/hardlink entries and unknown file types.",
+        "Dry-run planning does not execute candidate code or alter target paths.",
+        "Plans for representative current installations preserve required runtime artifacts and existing local configuration.",
+        "Serialization is deterministic; changed transaction, candidate or anchor invalidates the plan."
+      ],
+      "acceptance_criteria": [
+        {
+          "id": "P13-A01",
+          "text": "The plan is a bounded versioned data object derived by old trusted code."
+        },
+        {
+          "id": "P13-A02",
+          "text": "All legacy deployment effects are either represented safely or explicitly unsupported and blocked."
+        },
+        {
+          "id": "P13-A03",
+          "text": "Hostile fixtures cannot introduce privileged execution through data fields."
+        },
+        {
+          "id": "P13-A04",
+          "text": "No active installer switches to this engine until P14–P16 and recovery tests are ready."
+        }
+      ],
+      "out_of_scope": [
+        "No candidate-selected shell snippets or general package-manager invocation.",
+        "No direct mutation of the user's tablet from tests.",
+        "No redesign of unrelated install features."
+      ],
+      "test_groups": [
+        "T0",
+        "T_TRUST",
+        "T_UPDATE",
+        "T_LIFECYCLE",
+        "T_FULL",
+        "T_PACKAGE"
+      ],
+      "closure_gates": [
+        "G2"
+      ],
+      "required_review": "Maintainer/security review of the operation and destination allowlists"
+    },
+    {
+      "id": "P14",
+      "title": "feat: execute prepared deployments from the installed trusted engine",
+      "phase": "C — Strengthen future continuity",
+      "suggested_commit_subject": "feat: execute prepared deployments from the installed trusted engine",
+      "depends_on": [
+        "P13"
+      ],
+      "read_paths": [
+        "ui/update_installer.py",
+        "open_mmi_trust/release_integrity.py",
+        "scripts/manage.sh",
+        "systemd/system/open-mmi-update-installer.service",
+        "tests/test_update_installer.py",
+        "tests/test_manage_script.py"
+      ],
+      "proposed_paths": [
+        "open_mmi_trust/deployment_engine.py",
+        "tests/test_trusted_deployment_engine.py"
+      ],
+      "boundary": "Prepared deployment is performed by already-trusted implementation under a fixed authority set. Accepted candidate runtime starts only after its required policy/protected-core authorization.",
+      "implementation": [
+        "Implement P13 plan operations using descriptor-relative safe file handling, same-filesystem staging and atomic replacement where appropriate.",
+        "Keep the executing old engine and its dependencies stable through the transaction; do not reload modules or invoke newly written candidate helpers during deployment/recovery.",
+        "Replace the successor-path call to staged scripts/manage.sh _deploy-prepared with the installed engine. Review service/daemon reload actions as execution boundaries.",
+        "Install only the verified prepared artifact offline. Validate mode/owner/path/byte identities both before exposure and after deployment.",
+        "Retain shared lifecycle locks and existing configuration preservation. Coordinate service handoffs without creating windows where physical CAN is up without barriers.",
+        "Keep legacy/manual deployment explicitly separate with continuity implications; do not leave it as an automatic fallback for successor failure."
+      ],
+      "required_behavioral_tests": [
+        "Candidate manage.sh/build hooks contain observable tripwires and are never executed by prepared deployment.",
+        "Faults at each file/service/package boundary leave recoverable state, never silently marked success.",
+        "Tests cover protected core replacement while old execution continues, changed plans/artifacts, concurrent lifecycle operations and configuration preservation.",
+        "Installed source, site-packages, privileged units and protected inventory all match accepted artifacts before success."
+      ],
+      "acceptance_criteria": [
+        {
+          "id": "P14-A01",
+          "text": "Successor prepared updates have no candidate-controlled privileged deployment callback."
+        },
+        {
+          "id": "P14-A02",
+          "text": "Runtime activation occurs only after both policy and protected-core authorization."
+        },
+        {
+          "id": "P14-A03",
+          "text": "Fixed operations preserve normal install behavior and offline constraints."
+        },
+        {
+          "id": "P14-A04",
+          "text": "P15 recovery qualification is a required dependency of activation, not an optional later cleanup."
+        }
+      ],
+      "out_of_scope": [
+        "No arbitrary root command dispatcher.",
+        "No network package installation during prepared deployment.",
+        "No weakening CAN barriers during service handoff."
+      ],
+      "test_groups": [
+        "T0",
+        "T_TRUST",
+        "T_UPDATE",
+        "T_LIFECYCLE",
+        "T_FULL",
+        "T_PACKAGE",
+        "T_SYSTEMD"
+      ],
+      "closure_gates": [
+        "G2"
+      ],
+      "required_review": "Maintainer/security review required; high-consequence deployment code"
+    },
+    {
+      "id": "P15",
+      "title": "test: make trusted deployment recovery atomic and fail closed",
+      "phase": "C — Strengthen future continuity",
+      "suggested_commit_subject": "test: make trusted deployment recovery atomic and fail closed",
+      "depends_on": [
+        "P14"
+      ],
+      "read_paths": [
+        "open_mmi_trust/transition_gate.py",
+        "open_mmi_trust/lineage.py",
+        "open_mmi_trust/release_integrity.py",
+        "ui/update_installer.py",
+        "ui/update_coordinator.py",
+        "tests/test_update_installer.py",
+        "tests/test_trust_lineage.py",
+        "tests/test_manage_script.py"
+      ],
+      "proposed_paths": [
+        "tests/test_trusted_deployment_recovery.py",
+        "docs/design/v1-trust-completion/deployment-crash-matrix.md"
+      ],
+      "boundary": "Power loss or a failed update cannot silently roll back owner authority, forge lineage, activate unaccepted code or reopen an unprotected update route.",
+      "implementation": [
+        "Define a durable transaction state machine for artifact staging, authorization consumption, protected-anchor evolution, accepted state/lineage updates, activation, health checks and final inventory recording.",
+        "Preserve the C6 distinction: acknowledged expansion authority is recorded before expanded code can execute; failed narrowing must not leave restored broader code outside an accidentally narrowed ceiling.",
+        "Choose recovery code independent of the candidate and preserve enough verified old engine/artifacts to recover after process restart.",
+        "Journal only bounded trusted data. Use fsync/atomicity where durability is part of the claim and detect inconsistent partial states.",
+        "Make repeated recovery idempotent. Interrupted or incomplete recovery remains visibly blocked until verified; do not silently bootstrap replacement anchors.",
+        "Document restoration effects on protected-core state, previous accepted expansion and future update eligibility."
+      ],
+      "required_behavioral_tests": [
+        "Inject failures before and after every durable state write, rename, service action, token consumption and health check.",
+        "Restart a fresh old-code recovery process from persisted fixtures rather than resuming an in-memory test only.",
+        "Test ENOSPC, read-only filesystem, truncated state, lost artifact, wrong owner/mode, concurrent operations, stale token and repeated recovery.",
+        "Validate restored bytes/units against the prior accepted inventory and preserve chain/authorization ordering.",
+        "Run real disposable-VM reboot interruption cases at G2; unit mocks alone do not satisfy crash durability."
+      ],
+      "acceptance_criteria": [
+        {
+          "id": "P15-A01",
+          "text": "Every crash-matrix row has an explicit allowed post-state and tested recovery behavior."
+        },
+        {
+          "id": "P15-A02",
+          "text": "No failed update is labeled successful, no old authority is silently rewritten and no unverified runtime is automatically re-anchored."
+        },
+        {
+          "id": "P15-A03",
+          "text": "Recovery is old-code-owned and repeatable."
+        },
+        {
+          "id": "P15-A04",
+          "text": "Successor activation remains blocked until the required recovery evidence is present."
+        }
+      ],
+      "out_of_scope": [
+        "No automatic rollback to an arbitrary caller-selected commit.",
+        "No clearing trust state or lineage to repair a transaction.",
+        "No promising crash safety based only on sequential happy-path tests."
+      ],
+      "test_groups": [
+        "T0",
+        "T_TRUST",
+        "T_UPDATE",
+        "T_LIFECYCLE",
+        "T_FULL",
+        "T_RECOVERY"
+      ],
+      "closure_gates": [
+        "G2"
+      ],
+      "required_review": "Maintainer/security review of state ordering, durability and recovery"
+    },
+    {
+      "id": "P16",
+      "title": "feat: activate protected-core continuity with explicit migration",
+      "phase": "C — Strengthen future continuity",
+      "suggested_commit_subject": "feat: activate protected-core continuity with explicit migration",
+      "depends_on": [
+        "P15"
+      ],
+      "read_paths": [
+        "open_mmi_trust/transition_gate_cli.py",
+        "open_mmi_trust/inspector.py",
+        "ui/update_installer.py",
+        "ui/update_coordinator.py",
+        "ui/web_dashboard/static/system-settings.js",
+        "ui/web_dashboard/static/trust-status.js",
+        "docs/trust-architecture.md",
+        "docs/manual-administration.md",
+        "tests/test_update_installer.py",
+        "tests/test_update_coordinator.py"
+      ],
+      "proposed_paths": [
+        "tests/test_protected_core_migration.py",
+        "docs/design/v1-trust-completion/protected-core-migration.md"
+      ],
+      "boundary": "Existing C6 users can deliberately establish stronger future protection without a false historical claim or an automatic fallback that defeats the new boundary.",
+      "implementation": [
+        "Implement the reviewed P10 bridge/enrollment/activation sequence. Explicitly identify the first commit/anchor from which successor protection applies.",
+        "Require valid existing C6 integrity, provenance, owner state and lineage for enrollment on an established installation; legacy beta migration remains a separate new-baseline operation.",
+        "After activation, route all managed prepared-update entry points through protected-delta checks and the trusted deployment/recovery engine.",
+        "If active successor state or executable support is missing/corrupt/unsupported, block. Do not fall back to the former candidate-script path.",
+        "Keep manual root administration available only as an explicit out-of-band operation whose continuity consequences are visible; do not confuse it with a gated update.",
+        "Expose activation state and history limits read-only in Inspector/UI; maintain precise root+TTY owner instructions."
+      ],
+      "required_behavioral_tests": [
+        "Existing valid C6, missing C6 anchor, legacy beta, already-active, partial enrollment and unsupported version each have distinct tested outcomes.",
+        "Old-schema clients reject unsupported successor state safely.",
+        "Exercise every managed install entry point; none bypasses protected-core checks after activation.",
+        "A manual altered install cannot automatically inherit previous protected continuity.",
+        "Cross-check new state fixtures with P17/P18 before tablet successor activation and final G2 closure."
+      ],
+      "acceptance_criteria": [
+        {
+          "id": "P16-A01",
+          "text": "The first protected checkpoint and activation event are explicit and immutable evidence."
+        },
+        {
+          "id": "P16-A02",
+          "text": "All managed update paths enforce the successor contract when active."
+        },
+        {
+          "id": "P16-A03",
+          "text": "Legacy/C6/successor histories and guarantees remain distinguishable."
+        },
+        {
+          "id": "P16-A04",
+          "text": "G2 plus independent compatibility evidence are required before describing the stronger boundary as complete."
+        }
+      ],
+      "out_of_scope": [
+        "No automatic tablet channel switch.",
+        "No retroactive protected-history fabrication.",
+        "No removal or redefinition of completed C6 functionality."
+      ],
+      "test_groups": [
+        "T0",
+        "T_TRUST",
+        "T_UPDATE",
+        "T_UI",
+        "T_FULL",
+        "T_BROWSER",
+        "T_RECOVERY"
+      ],
+      "closure_gates": [
+        "G2"
+      ],
+      "required_review": "Maintainer/security approval of migration and activation; implementation preparation is independent of tablet permission"
+    },
+    {
+      "id": "P17",
+      "title": "feat: export and verify externally retained owner continuity checkpoints",
+      "phase": "D — Independent evidence",
+      "suggested_commit_subject": "feat: export and verify externally retained owner continuity checkpoints",
+      "depends_on": [
+        "P16"
+      ],
+      "read_paths": [
+        "open_mmi_trust/lineage.py",
+        "open_mmi_trust/release_integrity.py",
+        "open_mmi_trust/release_provenance.py",
+        "independent_checker/open_mmi_trust_check.py",
+        "independent_checker/README.md",
+        "tests/test_independent_trust_checker.py",
+        "tests/test_trust_lineage.py"
+      ],
+      "proposed_paths": [
+        "open_mmi_trust/checkpoint_cli.py",
+        "open_mmi_trust/data/owner-checkpoint.v1.schema.json",
+        "tests/test_owner_checkpoint.py"
+      ],
+      "boundary": "External continuity claims are anchored in evidence the target cannot rewrite. A self-consistent local hash chain or a maintainer signature alone cannot prove historical owner acknowledgement.",
+      "implementation": [
+        "Define a bounded export containing accepted policy, protected-core anchor, lineage checkpoint and release identity/digests, without telemetry authorization material, raw VIN or secrets.",
+        "Choose and document how the owner retains checkpoints outside the target before relying on them for future verification. Do not silently upload them or store the only copy on the tablet.",
+        "Independently verify an expected external checkpoint against later lineage and signed artifacts, distinguishing local consistency from externally anchored continuity.",
+        "Resolve authorization evidence for expansions after the retained checkpoint: a root attacker can append a hash-valid invented acknowledgement. Require independently retained owner-witnessed transition receipts or an explicitly reviewed external owner-signing scheme before claiming those approvals independently proven.",
+        "Do not introduce an automatic private key on the target and call it independent. If no external owner evidence exists for an interval, label that interval UNVERIFIED.",
+        "Handle checkpoint export interruption, duplicate records, lineage forks, truncation, missing intermediates and successor protected-core changes deterministically."
+      ],
+      "required_behavioral_tests": [
+        "A coherently rewritten target-local history fails against an externally retained mismatching checkpoint.",
+        "A forged later expansion acknowledgement without independent owner evidence cannot pass the historical-authorization dimension.",
+        "Equivalent/narrower descendants, legitimate witnessed expansions, forks, truncated chains and unavailable checkpoints have distinct expected outcomes.",
+        "Raw VIN, credentials and telemetry fingerprints are absent from exported public evidence and errors.",
+        "A wiped-target recovery fixture verifies using only independently retained artifacts and a separately obtained checker."
+      ],
+      "acceptance_criteria": [
+        {
+          "id": "P17-A01",
+          "text": "The checkpoint and owner-witness contract is reviewed and implemented with explicit trust assumptions."
+        },
+        {
+          "id": "P17-A02",
+          "text": "No historical interval is called independently authorized merely because local hashes recompute."
+        },
+        {
+          "id": "P17-A03",
+          "text": "Externally retained checkpoint verification works independently of target runtime imports."
+        },
+        {
+          "id": "P17-A04",
+          "text": "G3 demonstrates recovery from the retained evidence on a separate trusted environment."
+        }
+      ],
+      "out_of_scope": [
+        "No automatic cloud/account integration or external transmission.",
+        "No mandatory TPM.",
+        "No pretending an optional unchecked expected-lineage argument proves continuity."
+      ],
+      "test_groups": [
+        "T0",
+        "T_TRUST",
+        "T_INDEPENDENT",
+        "T_FULL",
+        "T_RECOVERY"
+      ],
+      "closure_gates": [
+        "G3"
+      ],
+      "required_review": "Maintainer/security design review required for external owner authorization evidence"
+    },
+    {
+      "id": "P18",
+      "title": "feat: package an independent verifier with explicit compliance profiles",
+      "phase": "D — Independent evidence",
+      "suggested_commit_subject": "feat: package an independent verifier with explicit compliance profiles",
+      "depends_on": [
+        "P17"
+      ],
+      "read_paths": [
+        "independent_checker/open_mmi_trust_check.py",
+        "independent_checker/open_mmi_can_trust_test.py",
+        "independent_checker/README.md",
+        "tests/test_independent_trust_checker.py",
+        "tests/test_independent_can_trust.py",
+        "tools/verify_wheel.py",
+        "docs/trust-architecture.md"
+      ],
+      "proposed_paths": [
+        "independent_checker/spec/",
+        "independent_checker/test_vectors/",
+        "tools/build_independent_checker_bundle.py",
+        "tests/test_independent_checker_bundle.py"
+      ],
+      "boundary": "Official provenance, policy compliance, owner authorization, installed integrity and externally anchored continuity are independently reported and verifiable without importing the target installation.",
+      "implementation": [
+        "Extend the standalone verifier for the finalized P10–P17 schemas, protected-core classification and externally witnessed continuity requirements.",
+        "Ship versioned specification and conformance vectors with a reproducible standalone bundle and a documented independent executable-digest acquisition path.",
+        "Separate official-release provenance from a reviewed SI profile. Modified distribution bytes do not become compliant merely because the SI signed them; identify what trusted external profile/implementation evidence establishes compliance.",
+        "Permit supported non-protected/profile modifications only under explicit reviewed contracts. Unknown modified enforcement implementations remain UNVERIFIED until independently qualified.",
+        "Support read-only mounted-target inspection with trusted host tools and without consuming target Inspector output.",
+        "Prepare, but do not create or publish, a separate verifier repository/release if the maintainer chooses that distribution route. Local independence and independently acquired distribution are separate claims."
+      ],
+      "required_behavioral_tests": [
+        "Run checker in an environment with no Open MMI package installed and a deliberately malicious target package that must never execute.",
+        "Validate shared conformance vectors independently; include unknown schema, missing files, official-but-boundary-expanded release, reviewed SI profile and unreviewed SI enforcement changes.",
+        "Test externally pinned checker digest mismatch and trusted mounted-target operation.",
+        "Verify bundle completeness, deterministic contents and no dependency on the source checkout or target-controlled executables."
+      ],
+      "acceptance_criteria": [
+        {
+          "id": "P18-A01",
+          "text": "All successor formats and limits are independently implemented."
+        },
+        {
+          "id": "P18-A02",
+          "text": "Results cannot conflate signer identity with compliance or owner authorization."
+        },
+        {
+          "id": "P18-A03",
+          "text": "A portable bundle works from a separate trusted environment and has a clear independent anchoring procedure."
+        },
+        {
+          "id": "P18-A04",
+          "text": "G3 evidence covers official, supported SI and unverified/failed cases."
+        }
+      ],
+      "out_of_scope": [
+        "No self-issued universal SI PASS badge.",
+        "No importing target code or asking target code for verification answers.",
+        "No remote repository creation, publication or signer-root changes without explicit maintainer action."
+      ],
+      "test_groups": [
+        "T0",
+        "T_INDEPENDENT",
+        "T_TRUST",
+        "T_FULL",
+        "T_PACKAGE"
+      ],
+      "closure_gates": [
+        "G3"
+      ],
+      "required_review": "Maintainer/security review of independence and SI compliance claims"
+    },
+    {
+      "id": "P19",
+      "title": "feat: bind visible trust inspection to a fresh external challenge",
+      "phase": "D — Independent evidence",
+      "suggested_commit_subject": "feat: bind visible trust inspection to a fresh external challenge",
+      "depends_on": [
+        "P18"
+      ],
+      "read_paths": [
+        "independent_checker/open_mmi_can_trust_test.py",
+        "canbusd/core.py",
+        "canbusd/event_bus.py",
+        "canbusd/data/vehicle-events.v1.json",
+        "ui/web_dashboard/static/trust-status.js",
+        "ui/web_dashboard/server.py",
+        "tests/test_independent_can_trust.py",
+        "tests/browser/dashboard.spec.js",
+        "docs/vehicle-integration-standard.md"
+      ],
+      "proposed_paths": [
+        "docs/design/v1-trust-completion/inspection-challenge.md",
+        "tests/test_trust_inspection_challenge.py"
+      ],
+      "boundary": "A fresh challenge can request and bind read-only inspection evidence, but cannot grant capabilities, acknowledge trust, install software, enable telemetry or make Open MMI transmit onto CAN.",
+      "implementation": [
+        "Review the supported challenge transport and its safety contract first. Never invent a production CAN identifier or inject frames into a live vehicle to find a route.",
+        "Reuse canonical event/status conventions where the chosen transport requires them, with explicit schema/version, bounded payload, freshness/expiry, collision handling and rate limits.",
+        "Bind the visible nonce/result to a fresh inspection report and exact policy/release/lineage/protected-core identity. A displayed nonce alone is not proof of compliance.",
+        "Keep external tester transmission distinct from Open MMI reception; no reply or new send call in production runtime.",
+        "Treat no response, unsupported route, stale challenge and missing independent evidence as UNVERIFIED. Do not convert gateway/wiring failure into a proven policy violation.",
+        "If only isolated vcan/bench transport is approved, label that support accurately and keep production field-transport completion pending."
+      ],
+      "required_behavioral_tests": [
+        "Replay old nonce/result, wrong target identity, changed release during collection, truncated challenge, flooding and missing response cannot produce fresh PASS.",
+        "Challenge receipt invokes only inspection; instrument update, trust-write, telemetry and CAN-send paths and assert no invocation.",
+        "Independent observation sees only checker-owned test frames on the isolated fixture.",
+        "UI displays the exact challenge and evidence identity at 800×480; old screenshots/results cannot satisfy a new nonce."
+      ],
+      "acceptance_criteria": [
+        {
+          "id": "P19-A01",
+          "text": "Approved transport and supported environments are documented without invented vehicle protocol assumptions."
+        },
+        {
+          "id": "P19-A02",
+          "text": "Freshness and exact-evidence binding are checked independently."
+        },
+        {
+          "id": "P19-A03",
+          "text": "No mutation or CAN-transmit authority is introduced."
+        },
+        {
+          "id": "P19-A04",
+          "text": "G3/G4 distinguish synthetic challenge proof from qualified field delivery and stronger hardware attestation."
+        }
+      ],
+      "out_of_scope": [
+        "No generic vehicle command channel or challenge acknowledgement over CAN.",
+        "No claim that a nonce defeats a malicious OS by itself.",
+        "No production vehicle injection without a separately reviewed controlled test plan."
+      ],
+      "test_groups": [
+        "T0",
+        "T_CAN",
+        "T_TRUST",
+        "T_UI",
+        "T_FULL",
+        "T_BROWSER",
+        "T_SYNTH"
+      ],
+      "closure_gates": [
+        "G3",
+        "G4"
+      ],
+      "required_review": "Maintainer/security and hardware-protocol review before transport implementation"
+    },
+    {
+      "id": "P20",
+      "title": "build: lock supported release dependencies and offline installation inputs",
+      "phase": "E — Supply-chain and release",
+      "suggested_commit_subject": "build: lock supported release dependencies and offline installation inputs",
+      "depends_on": [
+        "P19"
+      ],
+      "read_paths": [
+        "pyproject.toml",
+        "package-lock.json",
+        "scripts/manage.sh",
+        "open_mmi_trust/release_integrity.py",
+        "ui/update_installer.py",
+        "tests/test_release_engineering.py",
+        "tests/test_release_readiness.py",
+        "tests/test_release_integrity.py"
+      ],
+      "proposed_paths": [
+        "packaging/locks/",
+        "tools/verify_release_dependencies.py",
+        "tests/test_release_dependencies.py"
+      ],
+      "boundary": "A reviewed release identifies the dependency bytes and platform inputs actually used for build/install; the prepared installer cannot silently substitute packages from the network.",
+      "implementation": [
+        "Inventory Python, native, JavaScript, system-tool and interpreter dependencies and decide which are bundled, hash-locked or explicitly host-assumed. Confirm actual supported Python/CPU/OS targets; do not guess the tablet architecture.",
+        "Generate reviewed exact-version/hash lock data for supported release environments while preserving declared compatibility metadata where appropriate.",
+        "Account for native evdev and other binary dependencies in provenance/integrity policy; distinguish first-party inventory from third-party dependency assurance.",
+        "Keep prepared deployment offline and fail on missing/incompatible/unverified dependencies. A changed protected dependency participates in P12 classification.",
+        "Use trusted build infrastructure to construct artifacts; candidate source/build hooks must not run during old-side trust assessment.",
+        "Document bootstrap installation trust separately from protected future updates, including host tool assumptions and patch-level dependency updates."
+      ],
+      "required_behavioral_tests": [
+        "Rebuild/install with a disabled network from approved inputs; missing hashes, substituted wheels, incompatible ABI/architecture and unexpected versions fail.",
+        "Validate clean-environment imports and project tests on the supported Python/platform matrix.",
+        "No fallback to online pip, arbitrary mirrors or unpinned latest packages occurs in protected installation.",
+        "Dependency-only changes appear in the appropriate protected delta/release metadata."
+      ],
+      "acceptance_criteria": [
+        {
+          "id": "P20-A01",
+          "text": "Supported release platforms have reproducible dependency selection and verified input bytes."
+        },
+        {
+          "id": "P20-A02",
+          "text": "Offline installation succeeds using approved inputs and fails on substitutes."
+        },
+        {
+          "id": "P20-A03",
+          "text": "Unbundled host assumptions are explicit rather than hidden inside a full-integrity claim."
+        },
+        {
+          "id": "P20-A04",
+          "text": "Full reproducible OS images remain optional; locked release inputs are mandatory for the stated scope."
+        }
+      ],
+      "out_of_scope": [
+        "No global Python/system package modification on the dev machine.",
+        "No dropping supported architectures silently.",
+        "No claiming third-party native code is covered by the existing first-party inventory without evidence."
+      ],
+      "test_groups": [
+        "T0",
+        "T_TRUST",
+        "T_UPDATE",
+        "T_FULL",
+        "T_PACKAGE",
+        "T_SUPPLY"
+      ],
+      "closure_gates": [
+        "G4"
+      ],
+      "required_review": "Maintainer review of supported platforms and protected dependency scope"
+    },
+    {
+      "id": "P21",
+      "title": "ci: pin build actions and emit verifiable supply-chain evidence",
+      "phase": "E — Supply-chain and release",
+      "suggested_commit_subject": "ci: pin build actions and emit verifiable supply-chain evidence",
+      "depends_on": [
+        "P20"
+      ],
+      "read_paths": [
+        ".github/workflows/ci.yml",
+        "pyproject.toml",
+        "package-lock.json",
+        "tests/test_release_engineering.py",
+        "tests/test_release_readiness.py",
+        "tools/verify_wheel.py"
+      ],
+      "proposed_paths": [
+        "tools/build_release_evidence.py",
+        "tests/test_release_evidence.py"
+      ],
+      "boundary": "CI inputs and generated evidence identify what built the artifact. A green run or mutable Action tag does not substitute for pinned inputs and artifact identity.",
+      "implementation": [
+        "Resolve official Action release references to reviewed full commit SHAs at implementation time and record their upstream versions; do not invent or reuse stale SHAs from this plan.",
+        "Minimize workflow token permissions and protect signing/publishing from untrusted pull-request execution while retaining ordinary PR test coverage.",
+        "Emit an SBOM/dependency inventory, source identity, lock digests, toolchain versions, workflow identity and produced artifact digests in deterministic machine-readable form.",
+        "Verify first-party wheel/static/checker content and cross-check the SBOM against locked and installed packages.",
+        "Keep build execution, verification and publication separated. This commit prepares evidence and does not publish a release.",
+        "Document which reproducibility claims are actually tested; mutable runner images or external system packages remain explicit assumptions."
+      ],
+      "required_behavioral_tests": [
+        "Tampered lock, SBOM omission, unexpected package, wrong source identity or artifact substitution fails verification.",
+        "Fork/untrusted PR jobs cannot obtain signing or publication authority.",
+        "Two supported clean builds produce matching normalized inventories; byte reproducibility is claimed only where tested.",
+        "CI evidence uses the exact tested subject SHA and retains diagnostics on failed verification."
+      ],
+      "acceptance_criteria": [
+        {
+          "id": "P21-A01",
+          "text": "Action refs are verified pins and workflow privileges are reviewed."
+        },
+        {
+          "id": "P21-A02",
+          "text": "Machine-readable build/dependency evidence is complete and tied to artifact digests."
+        },
+        {
+          "id": "P21-A03",
+          "text": "Artifact verification runs before any potential publication job."
+        },
+        {
+          "id": "P21-A04",
+          "text": "Release limitations accurately identify non-hermetic host inputs."
+        }
+      ],
+      "out_of_scope": [
+        "No user secret disclosure or logging of credentials.",
+        "No automatic release publishing.",
+        "No broad CI rewrite unrelated to trust/release inputs."
+      ],
+      "test_groups": [
+        "T0",
+        "T_FULL",
+        "T_PACKAGE",
+        "T_SUPPLY"
+      ],
+      "closure_gates": [
+        "G4"
+      ],
+      "required_review": "Maintainer review of workflow authority and artifact evidence"
+    },
+    {
+      "id": "P22",
+      "title": "feat: verify signed release metadata against accepted trust anchors",
+      "phase": "E — Supply-chain and release",
+      "suggested_commit_subject": "feat: verify signed release metadata against accepted trust anchors",
+      "depends_on": [
+        "P21"
+      ],
+      "read_paths": [
+        "open_mmi_trust/release_provenance.py",
+        "open_mmi_trust/release_integrity.py",
+        "ui/update_coordinator.py",
+        "ui/update_installer.py",
+        "independent_checker/open_mmi_trust_check.py",
+        "tests/test_release_provenance.py",
+        "tests/test_update_installer.py",
+        "tests/test_release_readiness.py"
+      ],
+      "proposed_paths": [
+        "open_mmi_trust/data/release-metadata.v1.schema.json",
+        "tools/verify_release_metadata.py",
+        "tests/test_release_metadata.py"
+      ],
+      "boundary": "Release metadata binds source, artifacts, dependencies, trust declaration and checker contract to a reviewed signer, while owner capability/protected-core authorization remains a separate gate.",
+      "implementation": [
+        "Define canonical signed metadata covering source commit, artifact digests/sizes/platforms, manifest generation/digest, protected inventory, dependency/SBOM/build evidence and supported checker contract.",
+        "Authenticate using the independently pinned signer policy. Disable network key discovery and automatic signer rotation; key lifecycle changes need their own reviewed owner path.",
+        "Verify metadata before artifact use, then verify actual downloaded/staged bytes, exact ancestry and old-side policy/protected deltas. A metadata signature alone cannot authorize an expansion.",
+        "Specify rollback/replay/channel/version rules using current repository policy; Git beta and updater beta/stable are not interchangeable.",
+        "Extend standalone verification and damaged/substituted-artifact diagnostics.",
+        "Prepare signed metadata creation commands and unsigned reviewable inputs; only the maintainer signs or publishes after explicit approval."
+      ],
+      "required_behavioral_tests": [
+        "Wrong signer, expired/unsupported metadata policy, wrong commit/platform/channel, truncated metadata, duplicate keys, missing artifact and substituted SBOM/wheel/checker fail closed.",
+        "A correctly signed broader policy still requires owner acknowledgement.",
+        "Old metadata cannot silently roll back current owner/protected state or release ancestry.",
+        "An offline verifier can validate a supported release bundle from independent anchors without the installed application."
+      ],
+      "acceptance_criteria": [
+        {
+          "id": "P22-A01",
+          "text": "Signatures bind the complete released object graph and actual artifact bytes are checked."
+        },
+        {
+          "id": "P22-A02",
+          "text": "Owner authority and provenance remain distinct in code and UI."
+        },
+        {
+          "id": "P22-A03",
+          "text": "Independent verification understands the same metadata without target imports."
+        },
+        {
+          "id": "P22-A04",
+          "text": "G4 verifies the exact release candidate bundle before promotion/publication."
+        }
+      ],
+      "out_of_scope": [
+        "No trusting GitHub Verified badges as roots.",
+        "No automatic key rotation, downgraded policy or candidate-selected metadata verifier.",
+        "No enabling unsupported stable/beta installation paths implicitly."
+      ],
+      "test_groups": [
+        "T0",
+        "T_TRUST",
+        "T_INDEPENDENT",
+        "T_UPDATE",
+        "T_FULL",
+        "T_PACKAGE",
+        "T_SUPPLY"
+      ],
+      "closure_gates": [
+        "G4"
+      ],
+      "required_review": "Maintainer/security review of metadata coverage, replay policy and signing"
+    },
+    {
+      "id": "P23",
+      "title": "test: exercise the full trust lifecycle with adversarial release fixtures",
+      "phase": "F — Final qualification",
+      "suggested_commit_subject": "test: exercise the full trust lifecycle with adversarial release fixtures",
+      "depends_on": [
+        "P22"
+      ],
+      "read_paths": [
+        "tests/test_update_installer.py",
+        "tests/test_update_coordinator.py",
+        "tests/test_trust_transition_gate.py",
+        "tests/test_trust_lineage.py",
+        "tests/test_release_integrity.py",
+        "tests/test_release_provenance.py",
+        "tests/test_independent_trust_checker.py",
+        "tests/browser/dashboard.spec.js",
+        "docs/release-checklist.md"
+      ],
+      "proposed_paths": [
+        "tests/integration/test_trust_lifecycle.py",
+        "docs/design/v1-trust-completion/adversarial-lifecycle-matrix.md"
+      ],
+      "boundary": "The complete supported lifecycle preserves owner authority and evidence under hostile candidates, interruption and recovery, rather than merely passing isolated component tests.",
+      "implementation": [
+        "Build a disposable Linux/VM qualification harness with independently generated signing identities and exact release fixtures. Never mutate production trust stores.",
+        "Exercise legacy new-baseline migration, valid C6 transition, protected enrollment, equal/narrower update, capability expansion, protected-core-only expansion, failed install, reboot recovery and offline external verification.",
+        "Include signed-but-hostile candidates with unchanged manifests, malicious scripts/hooks, widened unit permissions, modified dependency bytes, forged local history and stale owner tokens.",
+        "Correlate dashboard/API/CLI/independent-checker results using exact commit, inventory, lineage and protected anchor identities.",
+        "Add regression tests for actual defects found, each with a focused patch revision or numbered follow-up; preserve original card IDs and explain splits in the ledger.",
+        "Keep operational migration success, continuity success, synthetic CAN results and vehicle-qualified behavior separately recorded."
+      ],
+      "required_behavioral_tests": [
+        "Every adversarial matrix row has an expected allow/block/recover state and evidence source.",
+        "Instrument pre-gate execution and unauthorized egress/writes; absence of observed traffic alone is not enforcement proof.",
+        "Restart clean processes/VMs at defined crash points and verify retained owner authority and restored bytes.",
+        "Run the complete existing Python/JS/browser/package/registry/CI matrix on the subject tree, plus new integration tests.",
+        "No skipped/environment-blocked test satisfies a required boundary; reuse existing valid evidence only with a recorded no-impact rationale."
+      ],
+      "acceptance_criteria": [
+        {
+          "id": "P23-A01",
+          "text": "All required matrix rows pass or remain explicit release blockers."
+        },
+        {
+          "id": "P23-A02",
+          "text": "No unresolved critical trust, CAN or identity defect remains."
+        },
+        {
+          "id": "P23-A03",
+          "text": "Cross-layer identities agree and evidence is independently inspectable."
+        },
+        {
+          "id": "P23-A04",
+          "text": "G4 can use this evidence without rerunning unchanged qualifying tests."
+        }
+      ],
+      "out_of_scope": [
+        "No integration-test helper that grants production bypass flags.",
+        "No flattening expected UNVERIFIED scenarios into PASS.",
+        "No forcing exactly 25 commits when a discovered defect needs a focused follow-up."
+      ],
+      "test_groups": [
+        "T0",
+        "T_TRUST",
+        "T_UPDATE",
+        "T_UI",
+        "T_FULL",
+        "T_BROWSER",
+        "T_PACKAGE",
+        "T_SYNTH",
+        "T_ISOLATION",
+        "T_RECOVERY",
+        "T_SUPPLY"
+      ],
+      "closure_gates": [
+        "G4"
+      ],
+      "required_review": "Maintainer/security review of failure coverage and remaining limitations"
+    },
+    {
+      "id": "P24",
+      "title": "docs: prepare feature promotion with exact candidate evidence",
+      "phase": "F — Final qualification",
+      "suggested_commit_subject": "docs: prepare feature promotion with exact candidate evidence",
+      "depends_on": [
+        "P23"
+      ],
+      "read_paths": [
+        "docs/branch-workflow.md",
+        "docs/release-checklist.md",
+        "docs/design/v1-update-management/qualification.md",
+        "docs/runtime-hardening-qualification.md",
+        "CHANGELOG.md",
+        "docs/trust-architecture.md"
+      ],
+      "proposed_paths": [
+        "docs/design/v1-trust-completion/evidence/promotion-candidate.json"
+      ],
+      "boundary": "Only the exact qualified feature/runtime candidate is proposed for nightly integration; merge or branch movement does not inherit evidence for changed runtime bytes automatically.",
+      "implementation": [
+        "Prepare the reviewed patch/diff summary, migration/recovery notes, test evidence and unresolved-risk list for a feature-to-nightly PR. Do not commit, push, open or merge it without explicit maintainer authorization at that point.",
+        "Record feature subject SHA, required G0–G4 evidence, pending promotion actions and how merge changes affect runtime inventory.",
+        "After authorized integration, record the resulting nightly SHA and rerun CI plus impacted tablet/vehicle qualification there. Do not assume a successful feature test proves a materially changed merge.",
+        "Follow feature -> nightly -> beta -> main. Do not merge beta backwards just to remove an ahead count; preserve production hotfix policy.",
+        "Prepare explicit commands only after inspecting the actual repository/PR state; no hard-coded future commit hashes or blanket git add -A.",
+        "Ensure updater channel metadata still identifies the intended source and that beta/stable tag discovery is not confused with Git branch promotion."
+      ],
+      "required_behavioral_tests": [
+        "Check exact promoted code identity, clean tree, signed commits where required and CI run subject.",
+        "Compare runtime inventories between qualified feature and integrated nightly; classify which evidence remains valid and which must be refreshed.",
+        "Repeat required nightly hardware/update/migration checks on the integrated subject.",
+        "Verify documentation and release checklist agree on direction, tag/channel semantics and pending beta soak."
+      ],
+      "acceptance_criteria": [
+        {
+          "id": "P24-A01",
+          "text": "A concrete reviewable promotion package exists with exact source identities."
+        },
+        {
+          "id": "P24-A02",
+          "text": "Authorized nightly integration and its CI/hardware evidence are recorded, or explicitly pending."
+        },
+        {
+          "id": "P24-A03",
+          "text": "No release or beta promotion is claimed merely because the feature PR is ready."
+        },
+        {
+          "id": "P24-A04",
+          "text": "P25 receives an unambiguous tested nightly/beta candidate and remaining gate list."
+        }
+      ],
+      "out_of_scope": [
+        "No autonomous remote Git operations.",
+        "No feature-to-main shortcut.",
+        "No signing or publishing under the agent's invented identity."
+      ],
+      "test_groups": [
+        "T0",
+        "T_DOC",
+        "T_FULL",
+        "T_BROWSER",
+        "T_PACKAGE"
+      ],
+      "closure_gates": [
+        "G4"
+      ],
+      "required_review": "Maintainer decides promotion, commit, push and merge actions"
+    },
+    {
+      "id": "P25",
+      "title": "docs: close release trust boundaries with a portable qualification dossier",
+      "phase": "F — Final qualification",
+      "suggested_commit_subject": "docs: close release trust boundaries with a portable qualification dossier",
+      "depends_on": [
+        "P24"
+      ],
+      "read_paths": [
+        "docs/release-checklist.md",
+        "docs/branch-workflow.md",
+        "docs/trust-architecture.md",
+        "SECURITY.md",
+        "CHANGELOG.md",
+        "independent_checker/README.md"
+      ],
+      "proposed_paths": [
+        "docs/design/v1-trust-completion/evidence/final-boundary-closure.json",
+        "docs/design/v1-trust-completion/evidence/release-qualification.md"
+      ],
+      "boundary": "Completion means every supported trust claim has current, scoped evidence and a reproducible recovery/verification path, with no pending required boundary hidden by a release badge.",
+      "implementation": [
+        "Reconcile every original goal with its implementation, acceptance criteria, test evidence and required external/hardware gate. Include independent owner authorization, SI compliance scope, challenge transport support and dependency/host assumptions.",
+        "Complete G5 using authorized nightly-to-beta promotion, the maintainer-selected beta soak and exact beta-to-main release checks from the repository policy. Do not invent a soak duration.",
+        "Record the actual code/artifact subject separately from this evidence-only recording commit; avoid circular requirements to test a commit containing its own SHA.",
+        "Verify legacy migration is labeled new baseline, successor continuity begins at explicit enrollment, and unsupported hardware attestation/OS compromises are not claimed covered.",
+        "Prepare the final signed release/checker/metadata instructions and evidence bundle for maintainer review. Publication remains a separate explicit action.",
+        "Leave the next-chat handoff with no ambiguous in-progress task, exact release candidate identity, any deferred optional work and the location of independently retained owner/checker anchors."
+      ],
+      "required_behavioral_tests": [
+        "Validate all manifest IDs, dependency/gate closures, evidence hashes and original-goal coverage; no required item may be not-run, blocked or supported only by stale evidence.",
+        "Run independent verification against the exact release candidate from a separate trusted environment and demonstrate recovery from retained checkpoints.",
+        "Complete cold reboot, suspend/resume, adapter reconnect, live decoding, UI freshness, update expansion/narrowing and recovery qualification on the actual target(s).",
+        "Refresh only invalidated automated evidence; record why documentation-only changes do not alter the tested runtime."
+      ],
+      "acceptance_criteria": [
+        {
+          "id": "P25-A01",
+          "text": "Every required commit criterion and G0–G5 gate has explicit accepted evidence or the overall goal remains incomplete."
+        },
+        {
+          "id": "P25-A02",
+          "text": "The qualified candidate completed the agreed beta soak and final promotion checks."
+        },
+        {
+          "id": "P25-A03",
+          "text": "A new agent/owner can independently reconstruct what was trusted, authorized, installed and tested from the dossier."
+        },
+        {
+          "id": "P25-A04",
+          "text": "Optional TPM/measured boot, fully reproducible OS images and unsupported field transports are clearly separated from completed baseline claims."
+        }
+      ],
+      "out_of_scope": [
+        "No retroactive baseline or fabricated owner/hardware evidence.",
+        "No automatic publication, signing, channel switch or uninstall.",
+        "No declaring a universally tamper-proof system beyond the documented trust assumptions."
+      ],
+      "test_groups": [
+        "T0",
+        "T_DOC",
+        "T_INDEPENDENT",
+        "T_FULL",
+        "T_BROWSER",
+        "T_PACKAGE"
+      ],
+      "closure_gates": [
+        "G5"
+      ],
+      "required_review": "Maintainer final acceptance and release decision"
+    }
+  ]
+}

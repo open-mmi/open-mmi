@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "note": "Historical baseline evidence is retained. No new card boundary or hardware gate is claimed passed.",
+  "records": [
+    {
+      "id": "E-BASE-FOCUSED",
+      "result": "passed",
+      "subject_commit": "6b0de79968a5cfb72773989db4c72989204e3cb6",
+      "source_projection_sha256": null,
+      "machine_role": "dev",
+      "level": "maintainer-reported",
+      "command": null,
+      "observed": "Maintainer reports 162 focused tests passed.",
+      "log_path_or_url": null,
+      "limitations": [
+        "Original command/log not supplied; do not invent it."
+      ]
+    },
+    {
+      "id": "E-BASE-FULL",
+      "result": "passed",
+      "subject_commit": "6b0de79968a5cfb72773989db4c72989204e3cb6",
+      "source_projection_sha256": null,
+      "machine_role": "dev",
+      "level": "maintainer-reported",
+      "command": null,
+      "observed": "Maintainer reports 1072 full-suite tests passed with 1 skipped.",
+      "log_path_or_url": null,
+      "limitations": [
+        "Retain this baseline report; no tablet behavior inferred."
+      ]
+    },
+    {
+      "id": "E-BASE-SYSTEMD",
+      "result": "passed",
+      "subject_commit": "6b0de79968a5cfb72773989db4c72989204e3cb6",
+      "source_projection_sha256": null,
+      "machine_role": "dev",
+      "level": "maintainer-reported",
+      "command": "systemd-analyze verify (exact invocation not supplied)",
+      "observed": "Maintainer reports systemd verification passed.",
+      "log_path_or_url": null,
+      "limitations": [
+        "Syntax/deployed-runtime evidence remain distinct."
+      ]
+    },
+    {
+      "id": "E-BASE-CI",
+      "result": "passed",
+      "subject_commit": "6b0de79968a5cfb72773989db4c72989204e3cb6",
+      "source_projection_sha256": null,
+      "machine_role": "ci",
+      "level": "unit-tested",
+      "command": "GitHub Actions CI, run 34643874676",
+      "observed": "Exact-feature CI success; completed 2026-09-11.",
+      "log_path_or_url": "https://github.com/open-mmi/open-mmi/actions/runs/34643874676",
+      "limitations": [
+        "Green CI does not qualify the tablet or vehicle."
+      ]
+    },
+    {
+      "id": "E-BASE-ASSISTANT-SELECTED",
+      "result": "blocked",
+      "subject_commit": "6b0de79968a5cfb72773989db4c72989204e3cb6",
+      "source_projection_sha256": null,
+      "machine_role": "assistant-workspace",
+      "level": "unit-tested",
+      "command": null,
+      "observed": "218 selected cases: 216 passed, 2 environment-blocked (AF_UNIX and systemd-/proc).",
+      "log_path_or_url": null,
+      "limitations": [
+        "Not a full-suite or target result; raw output was session-local."
+      ]
+    }
+  ]
+}
