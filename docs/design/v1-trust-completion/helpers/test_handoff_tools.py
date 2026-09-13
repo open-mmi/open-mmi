@@ -1,10 +1,13 @@
 """Behavioral checks of the handoff helpers, with no target/vehicle access."""
 import copy
+import contextlib
+import io
 import json
 from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 
 import capture_state
 import check_handoff
@@ -175,6 +178,89 @@ class SourceIdentityTests(unittest.TestCase):
             (root/"ui"/"link").unlink()
             (root/"ui"/"link").symlink_to("different-target")
             self.assertNotEqual(first,capture_state.source_identity(root)[0])
+
+class CapturePrivacyTests(unittest.TestCase):
+    def test_exported_home_paths_are_abbreviated(self):
+        with tempfile.TemporaryDirectory() as temp:
+            home=Path(temp)/"home"
+            with mock.patch.object(capture_state.Path,"home",return_value=home):
+                for path,expected in [
+                    (home,"~"),
+                    (home/"github/open-mmi","~/github/open-mmi"),
+                    (home/"github/open-mmi/.venv/bin/python3","~/github/open-mmi/.venv/bin/python3"),
+                ]:
+                    with self.subTest(expected=expected):
+                        self.assertEqual(expected,capture_state.display_path(path))
+
+    def test_path_abbreviation_respects_directory_boundaries(self):
+        with tempfile.TemporaryDirectory() as temp:
+            home=Path(temp)/"home"
+            with mock.patch.object(capture_state.Path,"home",return_value=home):
+                for path in [Path(temp)/"home-other/repo",Path("/usr/bin/python3"),Path("relative")]:
+                    self.assertEqual(str(path),capture_state.display_path(path))
+
+    def test_resolved_home_symlink_is_abbreviated(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp)
+            actual=root/"actual"
+            actual.mkdir()
+            home=root/"home"
+            home.symlink_to(actual,target_is_directory=True)
+            with mock.patch.object(capture_state.Path,"home",return_value=home):
+                self.assertEqual("~/github/open-mmi",
+                                 capture_state.display_path(actual/"github/open-mmi"))
+
+    def test_capture_keeps_real_io_paths_and_exports_portable_paths(self):
+        with tempfile.TemporaryDirectory() as temp:
+            home=Path(temp)/"home"
+            repo=home/"github/open-mmi"
+            repo.mkdir(parents=True)
+            inspected=[]
+            def git_result(actual,*args,**kwargs):
+                inspected.append(actual)
+                return {
+                    ("rev-parse","--show-toplevel"):str(repo.resolve()),
+                    ("branch","--show-current"):"owner-trust-controls-ui-v1",
+                    ("rev-parse","HEAD"):SHA,
+                    ("status","--short"):"",
+                }[args]
+            output=io.StringIO()
+            with mock.patch.object(capture_state.Path,"home",return_value=home), \
+                 mock.patch.object(capture_state.sys,"executable",str(repo/".venv/bin/python3")), \
+                 mock.patch.object(capture_state,"git",side_effect=git_result), \
+                 mock.patch.object(capture_state,"source_identity",return_value=(DIGEST,[])) as identity, \
+                 contextlib.redirect_stdout(output):
+                result=capture_state.main(["--repo",str(repo),"--machine","dev"])
+            self.assertEqual(0,result)
+            payload=json.loads(output.getvalue())
+            self.assertEqual("~/github/open-mmi",payload["repo"])
+            self.assertEqual("~/github/open-mmi/.venv/bin/python3",payload["python_executable"])
+            self.assertEqual(SHA,payload["head"])
+            self.assertEqual(DIGEST,payload["source_projection_sha256"])
+            self.assertEqual("",payload["status_short"])
+            self.assertEqual("not_run",payload["tests"])
+            self.assertNotIn(str(home),output.getvalue())
+            self.assertTrue(all(path==repo.resolve() for path in inspected))
+            identity.assert_called_once_with(repo.resolve())
+
+    def test_failure_output_omits_private_command_and_filename(self):
+        with tempfile.TemporaryDirectory() as temp:
+            repo=Path(temp)/"home/github/open-mmi"
+            command=["git","-C",str(repo),"rev-parse","--show-toplevel"]
+            cases=[
+                (subprocess.CalledProcessError(128,command),"exit status 128"),
+                (subprocess.TimeoutExpired(command,30),"timed out"),
+                (PermissionError(13,"Permission denied",str(repo)),"Permission denied"),
+            ]
+            for error,expected in cases:
+                with self.subTest(kind=type(error).__name__):
+                    output=io.StringIO()
+                    with mock.patch.object(capture_state,"git",side_effect=error), \
+                         contextlib.redirect_stderr(output):
+                        result=capture_state.main(["--repo",str(repo),"--machine","dev"])
+                    self.assertEqual(1,result)
+                    self.assertIn(expected,output.getvalue())
+                    self.assertNotIn(str(repo),output.getvalue())
 
 if __name__=="__main__":
     unittest.main()

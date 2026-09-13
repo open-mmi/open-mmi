@@ -164,10 +164,13 @@ Once P20–P22 implement the named tools, verify lock hashes, offline builds/ins
 
 ~~~bash
 cd ~/github/open-mmi
+python3 -m unittest tests.test_documentation_contracts
 python3 docs/design/v1-trust-completion/helpers/check_handoff.py
 python3 -m unittest discover -s docs/design/v1-trust-completion/helpers -p 'test_*.py'
 git diff --check
 ~~~
+
+Run the documentation-contract suite for handoff documentation and new design sets, including the bootstrap. It checks the central design index and repository Markdown links. Every new docs/design/ directory must be listed in docs/design/README.md.
 
 Also check referenced current paths and generated-doc policy. For canonical registry changes, run the existing generators and conformance/replay checks:
 

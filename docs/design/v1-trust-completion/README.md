@@ -59,6 +59,11 @@ python3 docs/design/v1-trust-completion/helpers/capture_state.py --repo . --mach
 
 The last command prints JSON; copy it into the evidence retained for the next handoff. It reads Git/source identity and does not run tests, deploy, change Git or inspect installed TABLET state. Its source projection excludes this handoff directory to avoid self-referential evidence hashes. It is not runtime attestation.
 
+Exported repository and Python executable paths under your home directory use
+~, for example ~/github/open-mmi and ~/github/open-mmi/.venv/bin/python3.
+Inspection and hashing still use the actual filesystem paths. A snapshot saved
+to ~/Downloads is outside the repository and is not committed automatically.
+
 After intentionally changing the canonical manifest:
 
 ~~~bash

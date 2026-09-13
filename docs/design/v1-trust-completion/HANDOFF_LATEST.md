@@ -1,6 +1,25 @@
 # Latest continuation note
 
-## State
+## CI follow-up: design-index registration
+
+- Bootstrap CI run 34789382860 failed on 5517f921a75fbf0fa7f4b289d5baed704f0fa469 in both Python jobs because the new design directory was absent from docs/design/README.md.
+- E-BOOTSTRAP-CI-5517F92-FAILED preserves that result. Packaging, browser and dashboard smoke jobs passed; later Python-job gates were skipped.
+- The corrective patch registers this design set and adds the existing documentation-contract suite to T_DOC. It preserves the test assertion.
+- The maintainer reports all 27 privacy-helper tests passed on DEV. Keep the already-applied privacy correction.
+- Record the documentation-contract result after applying this correction. Fresh CI for the eventual signed/pushed combined fixes remains pending.
+- P01 remains unstarted and hardware qualification remains pending.
+
+## Bootstrap follow-up: portable state paths
+
+- The bootstrap was committed as 5517f921a75fbf0fa7f4b289d5baed704f0fa469.
+- The maintainer's subsequent DEV snapshot reported that HEAD and a clean working tree.
+- A helper correction abbreviates the home directory as ~ in exported repo and Python paths.
+- Git/OS failure output no longer prints private command arguments or filenames.
+- This changes handoff formatting only; source hashing and product runtime behavior are unchanged.
+- P01 remains unstarted and target qualification remains pending. Record any later implementation/evidence explicitly.
+- The original bootstrap was validated with 22 helper tests. All 27 helper tests passed for this correction in the assistant workspace and subsequently on DEV, as reported by the maintainer.
+
+## Original pack-creation snapshot
 
 - Pack version: 1.0, created 2026-09-13.
 - Assessed feature subject: 6b0de79968a5cfb72773989db4c72989204e3cb6.
@@ -17,7 +36,7 @@ Source findings: dashboard still bypasses the status coordinator; live CAN check
 
 ## Next smallest actions
 
-1. DEV: review and optionally apply the bootstrap documentation patch using the downloaded instructions. This does not install code or switch branches.
+1. DEV: verify the portable-path helper correction and regenerate the state JSON for the next agent. The bootstrap patch is already applied and committed.
 2. TABLET: perform G0 read-only identity capture. Plan deliberate baseline qualification without treating beta migration as continuity.
 3. Select P01 for implementation; provide its card and this handoff to the next agent. P01 source work does not need an invented successful tablet test.
 

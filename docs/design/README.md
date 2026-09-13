@@ -36,3 +36,4 @@ Current user and operator instructions belong in normal product documents such a
 - [`v1-vehicle-setup`](v1-vehicle-setup/README.md) — implementation complete; final tablet acceptance and release sign-off pending.
 - [`v1-runtime-hardening`](v1-runtime-hardening/README.md) — implementation complete; merge qualification recorded in its close-out documents.
 - [`v1-update-management`](v1-update-management/README.md) — implementation complete; confirmed manual nightly flow shipped and [device qualification](v1-update-management/qualification.md) continues as a close-out record.
+- [`v1-trust-completion`](v1-trust-completion/README.md) — proposed remaining trust work; per-commit implementation, handoffs and qualification tracked in its manifest.

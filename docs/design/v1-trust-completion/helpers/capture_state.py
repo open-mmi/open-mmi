@@ -28,6 +28,28 @@ def git(repo, *args, binary=False):
                             stderr=subprocess.PIPE,timeout=30)
     return result.stdout if binary else result.stdout.decode("utf-8",errors="strict").rstrip("\n")
 
+def display_path(value):
+    """Abbreviate this user's home in exported paths; retain real paths for I/O."""
+    path = Path(value)
+    home = Path.home()
+    for prefix in (home, home.resolve()):
+        try:
+            relative = path.relative_to(prefix)
+        except ValueError:
+            continue
+        return str(Path("~") / relative)
+    return str(path)
+
+def failure_message(exc):
+    """Describe an inspection failure without printing its command or filename."""
+    if isinstance(exc,subprocess.CalledProcessError):
+        return f"Git inspection failed with exit status {exc.returncode}."
+    if isinstance(exc,subprocess.TimeoutExpired):
+        return "Git inspection timed out."
+    if isinstance(exc,OSError):
+        return exc.strerror or type(exc).__name__
+    return str(exc)
+
 def source_identity(repo):
     raw = git(repo,"ls-files","--cached","--others","--exclude-standard","-z",binary=True)
     entries = []
@@ -76,11 +98,11 @@ def main(argv=None):
             "schema_version":1,
             "captured_at":datetime.now(timezone.utc).isoformat(),
             "machine_role":args.machine,
-            "repo":str(repo),
+            "repo":display_path(repo),
             "branch":git(repo,"branch","--show-current") or "DETACHED",
             "head":git(repo,"rev-parse","HEAD"),
             "status_short":git(repo,"status","--short"),
-            "python_executable":sys.executable,
+            "python_executable":display_path(sys.executable),
             "python_version":platform.python_version(),
             "platform":platform.platform(),
             "source_projection_sha256":digest,
@@ -94,7 +116,7 @@ def main(argv=None):
         print(json.dumps(payload,indent=2,sort_keys=True))
         return 0
     except (OSError,ValueError,subprocess.SubprocessError) as exc:
-        print("State capture failed: "+str(exc),file=sys.stderr)
+        print("State capture failed: "+failure_message(exc),file=sys.stderr)
         return 1
 
 if __name__=="__main__":

@@ -71,6 +71,22 @@
       "limitations": [
         "Not a full-suite or target result; raw output was session-local."
       ]
+    },
+    {
+      "id": "E-BOOTSTRAP-CI-5517F92-FAILED",
+      "result": "failed",
+      "subject_commit": "5517f921a75fbf0fa7f4b289d5baed704f0fa469",
+      "source_projection_sha256": null,
+      "machine_role": "ci",
+      "level": "unit-tested",
+      "command": "python -m unittest discover -s tests (CI Python 3.9 and Python 3.13)",
+      "observed": "Both Python jobs ran 1072 tests with one failure and one skipped: test_each_design_set_is_listed_in_the_design_index. The new v1-trust-completion directory lacked its central design-index entry.",
+      "log_path_or_url": "https://github.com/open-mmi/open-mmi/actions/runs/34789382860",
+      "limitations": [
+        "Later steps in the failed Python jobs were skipped.",
+        "Packaging, browser coverage and dashboard smoke jobs passed.",
+        "The correction requires fresh CI on the eventual signed/pushed commit; this failed result remains historical evidence."
+      ]
     }
   ]
 }
