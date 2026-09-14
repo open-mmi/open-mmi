@@ -367,9 +367,64 @@ class ProfileProvisionTests(unittest.TestCase):
             )
 
         chown_tree.assert_called_once_with(
-            Path(tmp) / "systemd" / "user",
+            Path(tmp) / "systemd" / "user" / "canbusd.service.d",
             "pitto",
         )
+
+    def test_apply_plan_does_not_follow_unrelated_systemd_symlinks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            profile_path = (
+                tmp_path / "config" / "vehicles" / "seat_1p" / "config.json"
+            )
+            bindings_path = tmp_path / "config" / "bindings" / "default.json"
+            profile_path.parent.mkdir(parents=True)
+            bindings_path.parent.mkdir(parents=True)
+            profile_path.write_text("{}", encoding="utf-8")
+            bindings_path.write_text("{}", encoding="utf-8")
+
+            plan = profile_provision.build_plan(
+                {
+                    "default_bus": "comfort",
+                    "can_buses": {
+                        "comfort": {
+                            "interface": "can0",
+                            "bitrate": 100000,
+                            "provisioning": "udev",
+                        }
+                    },
+                },
+                profile_path,
+                bindings_path,
+                "seat_1p",
+                "default",
+            )
+
+            systemd_dir = tmp_path / "systemd" / "user"
+            stale_link = (
+                systemd_dir / "default.target.wants" / "canbusd.service"
+            )
+            stale_link.parent.mkdir(parents=True)
+            stale_link.symlink_to(systemd_dir / "canbusd.service")
+
+            fake_user = mock.Mock(pw_uid=1000, pw_gid=1000)
+            with mock.patch.object(
+                profile_provision.pwd,
+                "getpwnam",
+                return_value=fake_user,
+            ), mock.patch.object(profile_provision.os, "chown") as chown:
+                profile_provision.apply_plan(
+                    plan,
+                    systemd_dir,
+                    real_user="pitto",
+                    udev_rule_path=tmp_path / "rules.d" / "80-canbus.rules",
+                )
+
+            touched = [Path(call.args[0]) for call in chown.call_args_list]
+            self.assertNotIn(stale_link, touched)
+            self.assertTrue(touched)
+            for call in chown.call_args_list:
+                self.assertIs(call.kwargs.get("follow_symlinks"), False)
 
 
     def test_dry_run_does_not_create_user_files(self):

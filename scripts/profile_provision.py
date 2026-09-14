@@ -175,8 +175,13 @@ def chown_tree(path: Path, user: str) -> None:
 
     for item in [path, *path.rglob("*")]:
         try:
-            os.chown(item, info.pw_uid, info.pw_gid)
-        except PermissionError:
+            os.chown(
+                item,
+                info.pw_uid,
+                info.pw_gid,
+                follow_symlinks=False,
+            )
+        except (FileNotFoundError, PermissionError):
             pass
 
 
@@ -363,7 +368,7 @@ def apply_plan(
     udev_rule_path.parent.mkdir(parents=True, exist_ok=True)
     udev_rule_path.write_text(render_udev_rules(plan), encoding="utf-8")
 
-    chown_tree(systemd_user_dir, real_user)
+    chown_tree(override_dir, real_user)
 
 
 def print_summary(plan: ProfileProvisionPlan, systemd_user_dir: Path) -> None:
