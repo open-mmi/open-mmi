@@ -1051,6 +1051,68 @@ async function openMedia(page) {
 }
 
 
+test("Trust page fails closed while coordinator status is unavailable and recovers", async ({ page }) => {
+  const failures = captureRuntimeFailures(page);
+  await loadDashboard(page);
+
+  await page.evaluate(() => {
+    const originalFetch = window.fetch;
+    window.__openMmiTrustStatusOnline = true;
+    window.__openMmiTrustStatusFixture = {
+      api_version: 1,
+      status: "PASS",
+      report: {
+        status: "PASS",
+        manifest: {
+          available: true,
+          policy_generation: 1,
+          digest: "sha256:browser-trust-fixture",
+          capabilities: {},
+        },
+        checks: [],
+        telemetry_authorization: {},
+      },
+      error: null,
+    };
+
+    window.fetch = async (input, init = {}) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (url.includes("/api/trust/status")) {
+        if (!window.__openMmiTrustStatusOnline) {
+          throw new TypeError("trust coordinator unavailable");
+        }
+        return new Response(JSON.stringify(window.__openMmiTrustStatusFixture), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return originalFetch(input, init);
+    };
+  });
+
+  await openSettings(page);
+  await openSettingsSection(page, "trust");
+
+  const panel = page.locator("[data-openmmi-trust-panel]");
+  const overall = panel.locator(".openmmi-settings-metric")
+    .filter({ hasText: "Overall" })
+    .first()
+    .locator("strong");
+  await expect(overall).toHaveText("PASS");
+
+  await page.evaluate(() => { window.__openMmiTrustStatusOnline = false; });
+  await page.evaluate(() => window.openMmiTrustStatusController.refresh());
+  await expect(overall).toHaveText("UNVERIFIED");
+  await expect(panel).toContainText("Trust inspection evidence is unavailable.");
+
+  await page.evaluate(() => { window.__openMmiTrustStatusOnline = true; });
+  await page.evaluate(() => window.openMmiTrustStatusController.refresh());
+  await expect(overall).toHaveText("PASS");
+  await expect(panel).not.toContainText("Trust inspection evidence is unavailable.");
+
+  await expectNoRuntimeFailures(failures);
+});
+
 test("frontend build mismatch defers reload while an editable field is active", async ({ page }) => {
   const failures = captureRuntimeFailures(page);
   await loadDashboard(page, {

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import inspect
+import json
+import socket
 import threading
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest import mock
 
 from open_mmi_trust.inspector import FAIL, PASS, UNVERIFIED
 from ui import trust_status_coordinator as coordinator
@@ -13,6 +16,41 @@ from ui import trust_status_coordinator as coordinator
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "ui" / "trust_status_coordinator.py"
 UNIT = ROOT / "systemd" / "system" / "open-mmi-trust-status.service"
+
+
+class FakeClientSocket:
+    def __init__(self, chunks=(), *, connect_error=None, recv_error=None):
+        self.chunks = list(chunks)
+        self.connect_error = connect_error
+        self.recv_error = recv_error
+        self.sent = b""
+        self.closed = False
+
+    def settimeout(self, _timeout):
+        return None
+
+    def connect(self, _path):
+        if self.connect_error is not None:
+            raise self.connect_error
+
+    def sendall(self, data):
+        self.sent += data
+
+    def recv(self, size):
+        if self.recv_error is not None:
+            error = self.recv_error
+            self.recv_error = None
+            raise error
+        if not self.chunks:
+            return b""
+        chunk = self.chunks.pop(0)
+        if len(chunk) > size:
+            self.chunks.insert(0, chunk[size:])
+            return chunk[:size]
+        return chunk
+
+    def close(self):
+        self.closed = True
 
 
 class TrustStatusCoordinatorTests(unittest.TestCase):
@@ -81,6 +119,109 @@ class TrustStatusCoordinatorTests(unittest.TestCase):
                     thread.join(timeout=5)
             self.assertTrue(response["ok"])
             self.assertEqual(response["report"], report)
+
+    def test_socket_service_reads_fixture_store_without_exposing_path_control(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            socket_path = root / "trust-status.sock"
+            store_path = root / "owner-state.json"
+            report = {
+                "status": PASS,
+                "checks": [],
+                "manifest": {"available": True, "digest": "sha256:fixture"},
+            }
+            store_path.write_text(json.dumps(report), encoding="utf-8")
+            store_path.chmod(0o600)
+
+            def inspector():
+                return json.loads(store_path.read_text(encoding="utf-8"))
+
+            with coordinator.TrustStatusServer(socket_path, inspector=inspector) as server:
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    response = coordinator.client_status(socket_path)
+                finally:
+                    server.shutdown()
+                    thread.join(timeout=5)
+
+            self.assertTrue(response["ok"])
+            self.assertEqual(response["report"], report)
+            self.assertNotIn(str(store_path), json.dumps(response))
+
+            rejected = coordinator.response_for_request(
+                {
+                    "api_version": 1,
+                    "action": "status",
+                    "path": str(store_path),
+                },
+                inspector=inspector,
+            )
+            self.assertFalse(rejected["ok"])
+
+    def test_server_rejects_duplicate_json_fields_before_inspection(self) -> None:
+        with TemporaryDirectory() as temporary:
+            socket_path = Path(temporary) / "trust-status.sock"
+            inspector = mock.Mock(return_value={"status": PASS, "checks": []})
+            with coordinator.TrustStatusServer(socket_path, inspector=inspector) as server:
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                client.settimeout(2)
+                try:
+                    client.connect(str(socket_path))
+                    client.sendall(
+                        b'{"api_version":1,"api_version":1,"action":"status"}\n'
+                    )
+                    raw = b""
+                    while b"\n" not in raw:
+                        raw += client.recv(4096)
+                finally:
+                    client.close()
+                    server.shutdown()
+                    thread.join(timeout=5)
+
+            response = json.loads(raw.split(b"\n", 1)[0].decode("utf-8"))
+            self.assertFalse(response["ok"])
+            inspector.assert_not_called()
+
+    def test_client_rejects_malformed_truncated_and_duplicate_responses(self) -> None:
+        invalid_responses = (
+            b'{"ok":true,"ok":false}\n',
+            b'{"ok":}\n',
+            b'{"ok":true}',
+            b'{"ok":true}\n{"second":true}\n',
+        )
+        for raw in invalid_responses:
+            with self.subTest(raw=raw):
+                fake = FakeClientSocket((raw,))
+                with mock.patch.object(coordinator.socket, "socket", return_value=fake):
+                    with self.assertRaises(coordinator.TrustStatusCoordinatorError):
+                        coordinator.client_status(Path("/tmp/fake-trust-status.sock"))
+                self.assertTrue(fake.closed)
+
+    def test_client_rejects_oversized_response(self) -> None:
+        fake = FakeClientSocket((b"x" * 17,))
+        with (
+            mock.patch.object(coordinator, "MAX_RESPONSE_BYTES", 16),
+            mock.patch.object(coordinator.socket, "socket", return_value=fake),
+        ):
+            with self.assertRaises(coordinator.TrustStatusCoordinatorError):
+                coordinator.client_status(Path("/tmp/fake-trust-status.sock"))
+        self.assertTrue(fake.closed)
+
+    def test_client_transport_failures_are_unavailable(self) -> None:
+        cases = (
+            FakeClientSocket(connect_error=FileNotFoundError("missing socket")),
+            FakeClientSocket(connect_error=PermissionError("denied socket")),
+            FakeClientSocket(recv_error=TimeoutError("timed out")),
+        )
+        for fake in cases:
+            with self.subTest(error=type(fake.connect_error or fake.recv_error).__name__):
+                with mock.patch.object(coordinator.socket, "socket", return_value=fake):
+                    with self.assertRaises(coordinator.TrustStatusUnavailableError):
+                        coordinator.client_status(Path("/tmp/fake-trust-status.sock"))
+                self.assertTrue(fake.closed)
 
     def test_source_imports_inspector_but_no_trust_mutation_primitive(self) -> None:
         source = SOURCE.read_text(encoding="utf-8")
