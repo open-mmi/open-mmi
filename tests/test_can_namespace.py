@@ -5,6 +5,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from ui import can_namespace as canns
 
@@ -145,6 +146,48 @@ class CanNamespaceTests(unittest.TestCase):
                 ),
             )
         )
+
+
+    def test_cangw_list_nonzero_success_status_is_usable(self) -> None:
+        listing = (
+            b"cangw -A -s can0 -d openmmi-rxp "
+            b"# 0 handled 0 dropped 0 deleted\n"
+        )
+        completed = mock.Mock(returncode=36, stdout=listing, stderr=b"")
+        with mock.patch.object(canns.subprocess, "run", return_value=completed):
+            self.assertTrue(canns.exact_one_way_gateway("can0"))
+
+    def test_cangw_list_nonzero_with_stderr_remains_fail_closed(self) -> None:
+        listing = (
+            b"cangw -A -s can0 -d openmmi-rxp "
+            b"# 0 handled 0 dropped 0 deleted\n"
+        )
+        completed = mock.Mock(
+            returncode=36,
+            stdout=listing,
+            stderr=b"netlink receive warning\n",
+        )
+        with mock.patch.object(canns.subprocess, "run", return_value=completed):
+            with self.assertRaises(canns.CanNamespaceError):
+                canns.exact_one_way_gateway("can0")
+
+    def test_non_cangw_nonzero_evidence_status_remains_fail_closed(self) -> None:
+        completed = mock.Mock(
+            returncode=36,
+            stdout=b"[]\n",
+            stderr=b"",
+        )
+        with mock.patch.object(canns.subprocess, "run", return_value=completed):
+            with self.assertRaises(canns.CanNamespaceError):
+                canns._output(
+                    (
+                        "/sbin/ip",
+                        "-details",
+                        "-json",
+                        "link",
+                        "show",
+                    )
+                )
 
 
 if __name__ == "__main__":

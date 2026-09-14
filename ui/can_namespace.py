@@ -66,7 +66,15 @@ def _output(argv: Sequence[str]) -> bytes:
         raise CanNamespaceError("CAN namespace evidence command could not run") from exc
     if len(result.stdout) + len(result.stderr) > MAX_COMMAND_OUTPUT:
         raise CanNamespaceError("CAN namespace command output exceeds safety limit")
-    if result.returncode != 0:
+    # can-utils cangw LIST returns the successful netlink sendto() byte count
+    # from main(), so a valid read-only listing can exit non-zero. Keep this
+    # exception exact and let the strict gateway parser validate stdout.
+    cangw_list_exit_quirk = (
+        tuple(argv) == ("/usr/bin/cangw", "-L")
+        and result.returncode > 0
+        and not result.stderr
+    )
+    if result.returncode != 0 and not cangw_list_exit_quirk:
         raise CanNamespaceError("CAN namespace evidence command failed")
     return result.stdout
 
