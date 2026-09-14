@@ -1,6 +1,6 @@
 # Prompt for the next chat
 
-Copy the block below into a new chat. Attach the selected commit card, current operating brief, progress.json, HANDOFF_LATEST.md, relevant evidence and latest patch if uncommitted. The full master manifest/zip is available when a broader decision is needed.
+Copy the block below into a new chat. Attach the latest saved checkpoint bundle when one exists, the selected commit card, current operating brief, progress.json, HANDOFF_LATEST.md, relevant evidence and latest patch if uncommitted. The full master manifest/zip is available when a broader decision is needed.
 
 ~~~text
 You are continuing Open MMI owner trust work. Read the attached OPERATING_BRIEF.md first, then CURRENT_STATE.md, progress.json, HANDOFF_LATEST.md and the selected commit card.
@@ -19,6 +19,13 @@ Do not reapply an existing patch or discard uncommitted work.
 Do not repeat already-valid baseline tests unless the change invalidates them.
 Preserve root+TTY trust mutation, read-only browser trust UI, ACK-capable private CAN with dual DROP and a one-way gateway.
 
+Rolling checkpoints are mandatory; read CHECKPOINTING.md before editing.
+Save an initial checkpoint before implementation, then update and publish the handoff, progress, evidence and all unfinished source changes after each coherent edit/test batch and before long operations or large context reads.
+Do not exceed two edit/test cycles or roughly 15 minutes of active work without publishing a checkpoint as the next action. Do not wait for a chat-limit warning, a user request, or a final turn.
+Use a versioned recoverable bundle saved outside the temporary chat workspace. Distinguish saved/downloaded/applied/committed states; never assume the user applied a checkpoint.
+Keep incomplete work and pending tests explicit. A cumulative recovery patch is not an incremental patch to apply over earlier work.
+If this chat follows a cutoff, start from the latest saved checkpoint and reconcile the actual DEV state. No final response from the previous agent is required. Agent-only changes after the latest saved checkpoint may be unrecoverable.
+
 First report:
 1. Actual machine/workspace role, branch/HEAD and dirty state.
 2. Which prerequisites/evidence remain valid.
@@ -29,9 +36,9 @@ If a required file is absent, search the current repo for its actual replacement
 If blocked, deliver the current diff/patch and an exact handoff describing the blocker and next smallest action. Do not end with only "continue next time".
 ~~~
 
-## Stop/resume contract
+## Rolling stop/resume contract
 
-Before ending any implementation chat, update:
+At every checkpoint, and again before an orderly end of a chat, update:
 
 - Exact actual base/current commit and working-tree state.
 - Card ID, code status, boundary status, last completed criterion and next incomplete criterion.
@@ -41,4 +48,6 @@ Before ending any implementation chat, update:
 - DEV versus TABLET state separately, including installed metadata if observed.
 - Known failure/recovery state, unresolved questions and next exact action.
 
-The receiving agent starts from those records. It does not reconstruct progress from optimistic prose or rerun the entire project to orient itself.
+Follow [CHECKPOINTING.md](CHECKPOINTING.md) for bundle contents, persistence and abrupt-cutoff recovery.
+
+The receiving agent starts from the latest saved records. It does not reconstruct progress from optimistic prose or rerun the entire project to orient itself.

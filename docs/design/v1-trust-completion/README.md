@@ -32,6 +32,12 @@ Give the next agent:
 
 The agent reads the card's existing source paths, implements that boundary, tests it, and returns a patch plus updated records. The master document and original attachments are reference material; they need not be reread for every small implementation.
 
+## A chat can end without a final handoff
+
+Use [CHECKPOINTING.md](CHECKPOINTING.md). Agents must publish recovery checkpoints during implementation, starting before the first edit. Keep the latest saved bundle accessible for the next chat. It contains unfinished source changes as well as decisions, progress and test evidence.
+
+After a cutoff, attach that bundle and a fresh DEV state JSON to the next chat. Resume the selected criterion from those records. Any work never saved after the last checkpoint may be lost. Prefer a new chat for each completed card, with intermediate checkpoints for longer cards.
+
 ## Authoritative records
 
 | File | Purpose | Edit rule |
@@ -40,7 +46,8 @@ The agent reads the card's existing source paths, implements that boundary, test
 | commits/*.md and INDEX.md | Readable cards/index | Generated from manifest; use the renderer |
 | progress.json | Code/boundary/criterion/gate state | Update with actual progress; preserve IDs |
 | evidence-records.json | Retained evidence index | Append new records; preserve failed/blocked history |
-| HANDOFF_LATEST.md | Human stop/resume context | Update at every pause |
+| HANDOFF_LATEST.md | Human stop/resume context | Update and export at each rolling checkpoint |
+| CHECKPOINTING.md | Checkpoint schedule, recoverable bundles and abrupt-cutoff recovery | Mandatory during implementation |
 | GATES.md and GATE_CHECKLIST.md | Procedures and canonical required gate IDs | Keep procedures aligned with manifest |
 | TEST_MATRIX.md | Existing executable test groups and future required outcomes | Record new exact commands once tools exist |
 | PATCH_WORKFLOW.md | Patch metadata, application, duplicate/conflict and signing rules | Apply for every delivery |
@@ -90,6 +97,6 @@ The optional --repo argument on check_handoff.py checks whether the current-sour
 
 ## Delivery and stop rule
 
-Follow PATCH_WORKFLOW.md. Return the actual patch, metadata, exact commands using ~/Downloads, verification summary and next smallest unfinished criterion. Preserve the maintainer's unrelated work.
+Follow CHECKPOINTING.md during work and PATCH_WORKFLOW.md for each delivery. Return the actual patch, metadata, exact commands using ~/Downloads, verification summary and next smallest unfinished criterion. Preserve the maintainer's unrelated work.
 
 Do not run privileged Git, commit, push, merge, deploy, reboot, switch beta or mutate trust merely because this plan mentions a future step. The maintainer makes those concrete decisions. Already-authorized bounded source preparation and testing should continue without repeated permission prompts.

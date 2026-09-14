@@ -15,6 +15,16 @@ The patch must include newly created files and deletions, not merely tracked-fil
 
 Validate application on a disposable copy of the exact supplied base plus any prerequisite patch preimages. Compare resulting postimages and run git diff --check. Do not rely on a patch applying to the agent's already-edited tree.
 
+## Deliver recovery material while work is in progress
+
+Follow [CHECKPOINTING.md](CHECKPOINTING.md) from the first edit onward. Export unfinished source, handoff records and evidence during normal work so a sudden chat cutoff does not require a final response.
+
+A recovery bundle contains a cumulative patch against its declared signed base, or every required uncommitted patch in a complete ordered chain. Include new files and deletions. Mark unfinished code and pending tests accurately; a checkpoint is not a completed card or a new Git commit.
+
+Provide a separate incremental application patch only when its preimages match the last confirmed DEV state. A newer cumulative snapshot must not be applied blindly over an older applied snapshot. Inspect actual files first if application is uncertain.
+
+Keep patch checksums in metadata outside the files modified by that patch. Store the full-bundle checksum in the delivery receipt rather than inside the bundle itself. Confirm that a saved artifact is accessible outside the temporary session before calling the checkpoint durable.
+
 ## DEV MACHINE: inspect actual state first
 
 ~~~bash
@@ -116,6 +126,8 @@ The actual bootstrap patch is open-mmi-trust-handoff-6b0de79968a5-r1.patch. It a
 
 The master download and ZIP DOWNLOADS_README.md contain its exact SHA-256 and ready-to-run DEV commands. This file deliberately does not embed its own containing patch hash, avoiding a circular checksum.
 
-## End-of-chat delivery checkpoint
+## Ongoing and final delivery checkpoints
+
+Keep this delivery current throughout work under CHECKPOINTING.md; an abrupt cutoff may prevent any final response.
 
 Never leave only prose such as "done" or "continue next time". Return the patch, actual base/digests, exact apply commands, verification summary, updated ledger and the next smallest unfinished criterion. If only analysis/design was completed, mark it accordingly and retain the reviewed decisions instead of manufacturing a runtime patch.

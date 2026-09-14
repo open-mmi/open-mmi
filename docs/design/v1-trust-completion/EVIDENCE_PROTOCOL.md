@@ -62,7 +62,7 @@ Record reused_from and a concrete no-impact rationale. Never overwrite an older 
 
 ## Durable records and self-reference
 
-progress.json is the task ledger. evidence-records.json is an append-only working evidence index. HANDOFF_LATEST.md is the human continuation note. Commit cards and manifest.json define intent; change them only with a recorded reason.
+progress.json is the task ledger. evidence-records.json is an append-only working evidence index. HANDOFF_LATEST.md is the human continuation note. Update and export these at the rolling checkpoints defined in [CHECKPOINTING.md](CHECKPOINTING.md), including failed or interrupted work; do not defer all handoff maintenance to the end of a chat. Commit cards and manifest.json define intent; change them only with a recorded reason.
 
 Do not write a commit's own future SHA into a file inside that commit. Record:
 

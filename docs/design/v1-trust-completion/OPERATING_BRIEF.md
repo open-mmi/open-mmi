@@ -121,11 +121,19 @@ No sudo git. Agents may perform read-only Git inspection and produce/check patch
 
 The agent must say exactly what is unverified. No invented filenames, commands, machine actions, test counts, signer keys, commit IDs or hardware outcomes.
 
+## Rolling checkpoints are required
+
+Follow [CHECKPOINTING.md](CHECKPOINTING.md). Save an initial recovery checkpoint before implementation, then update and publish it after coherent edit/test batches and before long operations or large context reads. Checkpoint as the next action after at most two edit/test cycles or roughly 15 minutes of active work. Do not rely on a final handoff turn or wait for a chat-limit warning.
+
+Keep HANDOFF_LATEST.md, progress.json, evidence and all unfinished source changes recoverable outside a temporary assistant workspace. A checkpoint must distinguish generated, saved, downloaded, applied and committed work; it must not claim that an incomplete boundary passed. Checkpoints do not require or authorize Git commits/pushes.
+
+After a cutoff, the next agent resumes from the latest saved bundle and reconciles actual DEV state. If no durable checkpoint exists, report what may be lost instead of inventing the missing work. Preserve the distinction between cumulative recovery patches and incremental patches for the user's current tree.
+
 ## Where to read next
 
 | Work | Read first |
 | --- | --- |
-| Current task and resume | CURRENT_STATE.md, progress.json, HANDOFF_LATEST.md, chosen commit card |
+| Current task and resume | CURRENT_STATE.md, progress.json, HANDOFF_LATEST.md, chosen commit card, CHECKPOINTING.md |
 | Trust semantics | docs/trust-architecture.md, SECURITY.md, open_mmi_trust/ modules |
 | Owner UI | ui/web_dashboard/trust_status.py, ui/trust_status_coordinator.py, static Trust/System settings, UI tests |
 | CAN enforcement | ui/can_namespace.py, provisioning/apply paths, exact systemd units, independent CAN checker |
