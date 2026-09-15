@@ -77,3 +77,69 @@ This commit does not claim an independent physical CAN observation. The separate
 CAN trust test owns challenge generation and challenge-bound passive-CAN evidence.
 The Open MMI runtime must not gain CAN transmit authority in order to satisfy this
 checker.
+
+## Independent CAN topology and challenge checker
+
+`open_mmi_can_trust_test.py` reports
+`open-mmi-independent-can-trust-test-v2`. Its `production` dimension is a
+read-only independent measurement of the private ACK-capable CAN receive
+topology. It does not require `LISTEN-ONLY` and it never repairs or creates an
+interface, namespace, qdisc, filter or CAN gateway.
+
+The production collector uses only these fixed system executables:
+
+- `/usr/bin/systemctl`
+- `/usr/bin/nsenter`
+- `/usr/bin/readlink`
+- `/sbin/ip`
+- `/sbin/tc`
+- `/usr/bin/cangw`
+
+Each executable is checked as a root-owned executable whose resolved file is
+not group- or world-writable. A missing tool, insufficient privilege, missing
+namespace or incomplete driver evidence yields `UNVERIFIED`.
+
+The production check resolves only
+`open-mmi-can-namespace.service`, records its `MainPID` and network namespace
+identity, enters that namespace read-only, then rechecks both PID and namespace
+identity after collection. It inspects:
+
+- host `openmmi-rx` and absence of the physical `canN` on the host;
+- private `canN` and `openmmi-rxp`, including the reciprocal vxcan peer indexes;
+- `tc -json ... show` evidence for both exact egress DROP barriers;
+- `cangw -L` for exactly one `canN -> openmmi-rxp` route and positive
+  passive receive counters;
+- physical controller mode and link state; and
+- kernel parent-bus/device identity plus the fixed
+  `/sys/bus/<bus>/devices/<device>/driver` symlink target.
+
+On can-utils versions where a successful `cangw -L` returns its netlink
+`sendto()` byte count instead of zero, the checker handles that quirk only for
+the exact read-only list command. Stderr, malformed output, extra/reverse
+routes, or missing live receive counters still fail closed or remain
+`UNVERIFIED` as appropriate.
+
+Real iproute2 may omit the active `ctrlmode` field when the kernel controller
+mode flag word is zero. That absence is accepted only when a structurally valid
+`ctrlmode_supported` list is present and explicitly advertises `LISTEN-ONLY`.
+An active `LISTEN-ONLY` flag remains a production failure.
+
+Driver evidence is derived from the physical link's validated `parentbus` and
+`parentdev`. Missing, inaccessible or malformed controller/driver identity is
+`UNVERIFIED`; the checker does not assume that every CAN controller name must
+equal its kernel driver basename.
+
+Run the production measurement with privilege sufficient to inspect the fixed
+network namespace:
+
+```sh
+sudo ./independent_checker/open_mmi_can_trust_test.py \
+  --mode production \
+  --production-interface can0 \
+  --json
+```
+
+The `challenge` dimension remains separate. It uses an explicitly isolated
+`vcanN` selected by the checker operator and exercises Open MMI receive
+behavior as a black box. Any CAN transmission in that challenge is
+checker-owned and must never target the live vehicle interface.
