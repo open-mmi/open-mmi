@@ -307,3 +307,287 @@ button.openmmi-service-reminder-indicator {
     grid-template-columns: 1fr;
   }
 }
+
+/* Open MMI trust evidence layout polish */
+[data-openmmi-trust-panel] .openmmi-settings-panel-head {
+  margin-bottom: .5rem;
+}
+
+[data-openmmi-trust-panel] .openmmi-settings-subhead {
+  margin-top: .82rem;
+  padding-top: .68rem;
+}
+
+.openmmi-trust-status {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  min-width: 6.5rem;
+  padding: .24rem .5rem;
+  border: 1px solid rgba(255,255,255,.16);
+  border-radius: 999px;
+  font-size: .72rem !important;
+  font-weight: 750 !important;
+  letter-spacing: .055em;
+  line-height: 1.15;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.openmmi-trust-status-pass {
+  border-color: rgba(90,220,143,.46);
+  background: rgba(33,130,78,.18);
+  color: #8ce6ae !important;
+}
+
+.openmmi-trust-status-fail {
+  border-color: rgba(255,93,93,.58);
+  background: rgba(160,33,33,.2);
+  color: #ff9a9a !important;
+}
+
+.openmmi-trust-status-unverified {
+  border-color: rgba(255,193,75,.52);
+  background: rgba(160,106,33,.18);
+  color: #ffd27a !important;
+}
+
+.openmmi-trust-status-metric {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.openmmi-trust-digest {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.openmmi-trust-digest code {
+  max-width: 15rem;
+  overflow: hidden;
+  color: var(--text);
+  font-size: .77rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.openmmi-trust-capability-table {
+  display: grid;
+  gap: .4rem;
+  margin-top: .48rem;
+}
+
+.openmmi-trust-capability-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(7.5rem, 28%);
+  gap: .8rem;
+  padding: 0 .82rem;
+  color: var(--muted);
+  font-size: .66rem;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.openmmi-trust-capability-head span:last-child {
+  text-align: right;
+}
+
+.openmmi-trust-capability-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(7.5rem, 28%);
+  gap: .8rem;
+  margin-top: 0;
+  align-items: center;
+}
+
+.openmmi-trust-capability-copy strong {
+  overflow-wrap: anywhere;
+  font-size: .9rem;
+}
+
+.openmmi-trust-capability-copy small {
+  margin-top: .22rem;
+}
+
+.openmmi-trust-capability-copy small span {
+  color: rgba(255,255,255,.74);
+  font-weight: 700;
+}
+
+.openmmi-trust-capability-purposes {
+  opacity: .78;
+  overflow-wrap: anywhere;
+}
+
+.openmmi-trust-assurance {
+  min-width: 0;
+  text-align: right;
+}
+
+.openmmi-trust-assurance small {
+  margin: 0 0 .18rem;
+  color: var(--muted);
+  font-size: .64rem;
+  font-weight: 700;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+
+.openmmi-trust-assurance strong {
+  overflow-wrap: anywhere;
+  font-size: .78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.openmmi-trust-check-list {
+  display: grid;
+  gap: .42rem;
+  margin-top: .55rem;
+}
+
+.openmmi-trust-check-card {
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,.09);
+  border-radius: 11px;
+  background: rgba(255,255,255,.028);
+}
+
+.openmmi-trust-check-card > summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: .7rem;
+  padding: .58rem .68rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.openmmi-trust-check-card > summary::-webkit-details-marker {
+  display: none;
+}
+
+.openmmi-trust-check-card[open] > summary {
+  border-bottom: 1px solid rgba(255,255,255,.08);
+  background: rgba(255,255,255,.025);
+}
+
+.openmmi-trust-check-copy {
+  min-width: 0;
+}
+
+.openmmi-trust-check-copy strong,
+.openmmi-trust-check-copy small {
+  display: block;
+}
+
+.openmmi-trust-check-copy strong {
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: .82rem;
+  font-weight: 650;
+}
+
+.openmmi-trust-check-copy small {
+  margin-top: .12rem;
+  color: var(--muted);
+  font-size: .69rem;
+  line-height: 1.2;
+  text-transform: capitalize;
+}
+
+.openmmi-trust-check-body {
+  padding: .62rem .68rem .7rem;
+}
+
+.openmmi-trust-check-body p {
+  margin: 0 0 .58rem;
+  color: var(--muted);
+  font-size: .74rem;
+  line-height: 1.35;
+}
+
+.openmmi-trust-observations,
+.openmmi-trust-dimensions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .38rem;
+}
+
+.openmmi-trust-observations > div,
+.openmmi-trust-dimensions > div {
+  min-width: 0;
+  padding: .46rem .5rem;
+  border-radius: 8px;
+  background: rgba(255,255,255,.035);
+}
+
+.openmmi-trust-observations span,
+.openmmi-trust-dimensions span {
+  display: block;
+  color: var(--muted);
+  font-size: .63rem;
+  line-height: 1.15;
+}
+
+.openmmi-trust-observations strong {
+  display: block;
+  margin-top: .18rem;
+  color: var(--text);
+  font-size: .72rem;
+  font-weight: 650;
+}
+
+.openmmi-trust-detail-label {
+  margin: .62rem 0 .32rem;
+  color: var(--muted);
+  font-size: .64rem;
+  font-weight: 700;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+
+.openmmi-trust-dimensions > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: .38rem;
+}
+
+.openmmi-trust-dimensions .openmmi-trust-status {
+  min-width: 5.6rem;
+  padding: .18rem .36rem;
+  font-size: .62rem !important;
+}
+
+@media (max-width: 620px) {
+  .openmmi-trust-capability-head {
+    display: none;
+  }
+
+  .openmmi-trust-capability-row {
+    grid-template-columns: 1fr;
+    gap: .42rem;
+  }
+
+  .openmmi-trust-assurance {
+    text-align: left;
+  }
+
+  .openmmi-trust-check-card > summary {
+    grid-template-columns: 1fr;
+  }
+
+  .openmmi-trust-check-card > summary .openmmi-trust-status {
+    justify-self: start;
+  }
+
+  .openmmi-trust-observations,
+  .openmmi-trust-dimensions {
+    grid-template-columns: 1fr;
+  }
+}
+/* Open MMI trust evidence layout polish end */

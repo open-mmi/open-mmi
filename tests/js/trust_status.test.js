@@ -89,7 +89,7 @@ test("missing report remains visibly UNVERIFIED", () => {
   assert.match(html, /Trust inspection evidence is unavailable/);
 });
 
-test("rendered checks expose evidence scope and observation limits", () => {
+test("rendered checks expose compact scoped evidence cards", () => {
   const html = trust.renderPayload({
     status: "UNVERIFIED",
     report: {
@@ -126,17 +126,24 @@ test("rendered checks expose evidence scope and observation limits", () => {
     },
   });
 
-  assert.match(html, /declared assurance: os-enforced/);
+  assert.match(html, /openmmi-trust-capability-head/);
+  assert.match(html, />os-enforced</);
+  assert.match(html, /openmmi-trust-check-card/);
   assert.match(html, /static contract \+ deployed configuration/);
-  assert.match(html, /no live runtime observation/);
-  assert.match(html, /no hardware observation/);
-  assert.match(html, /declared policy PASS/);
-  assert.match(html, /static contract PASS/);
-  assert.match(html, /runtime enforcement UNVERIFIED/);
-  assert.match(html, /hardware qualification UNVERIFIED/);
+  assert.match(html, /Runtime observation/);
+  assert.match(html, /Hardware observation/);
+  assert.match(html, />Not observed</);
+  assert.match(html, /Evidence dimensions/);
+  assert.match(html, /Declared policy/);
+  assert.match(html, /Static contract/);
+  assert.match(html, /Runtime enforcement/);
+  assert.match(html, /Hardware qualification/);
+  assert.match(html, /openmmi-trust-status-pass/);
+  assert.match(html, /openmmi-trust-status-unverified/);
+  assert.doesNotMatch(html, /Dimensions:/);
 });
 
-test("legacy report observation metadata remains unspecified", () => {
+test("legacy report observation metadata remains explicitly unspecified", () => {
   const html = trust.renderPayload({
     status: "UNVERIFIED",
     report: {
@@ -158,11 +165,32 @@ test("legacy report observation metadata remains unspecified", () => {
     },
   });
 
-  assert.match(html, /evidence scope unspecified/);
-  assert.match(html, /runtime observation unspecified/);
-  assert.match(html, /hardware observation unspecified/);
-  assert.doesNotMatch(html, /no live runtime observation/);
-  assert.doesNotMatch(html, /Dimensions:/);
+  assert.match(html, /scope unspecified/);
+  assert.match(html, /Runtime observation/);
+  assert.match(html, /Hardware observation/);
+  assert.match(html, />Unspecified</);
+  assert.doesNotMatch(html, /Evidence dimensions/);
+  assert.doesNotMatch(html, />Not observed</);
+});
+
+test("long manifest digests are compact but retain the full value", () => {
+  const digest = `sha256:${"a".repeat(64)}`;
+  const html = trust.renderPayload({
+    status: "UNVERIFIED",
+    report: {
+      manifest: {
+        available: true,
+        policy_generation: 6,
+        digest,
+        capabilities: {},
+      },
+      telemetry_authorization: { authorized: false },
+      checks: [],
+    },
+  });
+
+  assert.match(html, /sha256:aaaaaaaa…aaaaaaaa/);
+  assert.match(html, new RegExp(`title="${digest}"`));
 });
 
 test("rendered trust surface contains no mutation controls", () => {

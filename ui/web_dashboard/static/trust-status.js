@@ -145,6 +145,37 @@
     `;
   }
 
+  function statusBadge(value) {
+    const status = normalizeStatus(value);
+    return `<strong class="openmmi-trust-status openmmi-trust-status-${status.toLowerCase()}">${escapeHtml(status)}</strong>`;
+  }
+
+  function statusMetric(label, value) {
+    return `
+      <div class="openmmi-settings-metric openmmi-trust-status-metric">
+        <span>${escapeHtml(label)}</span>
+        ${statusBadge(value)}
+      </div>
+    `;
+  }
+
+  function compactDigest(value) {
+    const digest = String(value || "");
+    const match = /^(sha256:)([0-9a-f]{64})$/i.exec(digest);
+    if (!match) return digest || "--";
+    return `${match[1]}${match[2].slice(0, 8)}…${match[2].slice(-8)}`;
+  }
+
+  function digestMetric(label, value) {
+    const raw = String(value || "--");
+    return `
+      <div class="openmmi-settings-metric openmmi-trust-digest">
+        <span>${escapeHtml(label)}</span>
+        <code title="${escapeHtml(raw)}">${escapeHtml(compactDigest(raw))}</code>
+      </div>
+    `;
+  }
+
   function row(title, note, value) {
     return `
       <div class="openmmi-setting-row">
@@ -180,17 +211,35 @@
       );
     }
 
-    return capabilities.map((capability) => {
+    const rows = capabilities.map((capability) => {
       const purposes = capability.purposes.length
-        ? ` Purposes: ${capability.purposes.join(", ")}.`
+        ? `<small class="openmmi-trust-capability-purposes">Purposes: ${escapeHtml(capability.purposes.join(", "))}</small>`
         : "";
 
-      return row(
-        capability.id,
-        `Declared policy: ${capability.policy}.${purposes}`,
-        `declared assurance: ${capability.assurance}`,
-      );
+      return `
+        <div class="openmmi-setting-row openmmi-trust-capability-row">
+          <div class="openmmi-trust-capability-copy">
+            <strong>${escapeHtml(capability.id)}</strong>
+            <small><span>Policy</span> ${escapeHtml(capability.policy)}</small>
+            ${purposes}
+          </div>
+          <div class="openmmi-trust-assurance">
+            <small>Assurance</small>
+            <strong>${escapeHtml(capability.assurance)}</strong>
+          </div>
+        </div>
+      `;
     }).join("");
+
+    return `
+      <div class="openmmi-trust-capability-table">
+        <div class="openmmi-trust-capability-head" aria-hidden="true">
+          <span>Capability / policy</span>
+          <span>Assurance</span>
+        </div>
+        ${rows}
+      </div>
+    `;
   }
 
   function checksTemplate(checks) {
@@ -202,39 +251,79 @@
       );
     }
 
-    return checks.map((check) => {
-      const scope = check.evidenceScopes.length
-        ? check.evidenceScopes.map((value) => String(value).replace(/-/g, " ")).join(" + ")
-        : "evidence scope unspecified";
-      const runtime = check.liveRuntimeObservation === true
-        ? "live runtime observed"
-        : check.liveRuntimeObservation === false
-          ? "no live runtime observation"
-          : "runtime observation unspecified";
-      const hardware = check.hardwareObservation === true
-        ? "hardware observed"
-        : check.hardwareObservation === false
-          ? "no hardware observation"
-          : "hardware observation unspecified";
-      const dimensions = check.evidenceDimensions
-        ? ` Dimensions: declared policy ${check.evidenceDimensions.declaredPolicy}`
-          + ` · static contract ${check.evidenceDimensions.staticContract}`
-          + ` · runtime enforcement ${check.evidenceDimensions.runtimeEnforcement}`
-          + ` · hardware qualification ${check.evidenceDimensions.hardwareQualification}.`
-        : "";
+    return `
+      <div class="openmmi-trust-check-list">
+        ${checks.map((check) => {
+          const scope = check.evidenceScopes.length
+            ? check.evidenceScopes
+                .map((value) => String(value).replace(/-/g, " "))
+                .join(" + ")
+            : "scope unspecified";
+          const runtime = check.liveRuntimeObservation === true
+            ? "Observed live"
+            : check.liveRuntimeObservation === false
+              ? "Not observed"
+              : "Unspecified";
+          const hardware = check.hardwareObservation === true
+            ? "Observed"
+            : check.hardwareObservation === false
+              ? "Not observed"
+              : "Unspecified";
 
-      return `
-        <div class="openmmi-setting-row" data-openmmi-trust-check="${escapeHtml(check.id)}">
-          <div>
-            <strong>${escapeHtml(check.id)}</strong>
-            <small>${escapeHtml(check.summary)} Evidence: ${escapeHtml(scope)} · ${escapeHtml(runtime)} · ${escapeHtml(hardware)}.${escapeHtml(dimensions)}</small>
-          </div>
-          <div class="openmmi-setting-controls">
-            <strong>${escapeHtml(check.status)}</strong>
-          </div>
-        </div>
-      `;
-    }).join("");
+          const dimensions = check.evidenceDimensions
+            ? `
+              <div class="openmmi-trust-dimension-block">
+                <div class="openmmi-trust-detail-label">Evidence dimensions</div>
+                <div class="openmmi-trust-dimensions">
+                  <div>
+                    <span>Declared policy</span>
+                    ${statusBadge(check.evidenceDimensions.declaredPolicy)}
+                  </div>
+                  <div>
+                    <span>Static contract</span>
+                    ${statusBadge(check.evidenceDimensions.staticContract)}
+                  </div>
+                  <div>
+                    <span>Runtime enforcement</span>
+                    ${statusBadge(check.evidenceDimensions.runtimeEnforcement)}
+                  </div>
+                  <div>
+                    <span>Hardware qualification</span>
+                    ${statusBadge(check.evidenceDimensions.hardwareQualification)}
+                  </div>
+                </div>
+              </div>
+            `
+            : "";
+
+          return `
+            <details class="openmmi-trust-check-card" data-openmmi-trust-check="${escapeHtml(check.id)}">
+              <summary>
+                <span class="openmmi-trust-check-copy">
+                  <strong>${escapeHtml(check.id)}</strong>
+                  <small>${escapeHtml(scope)}</small>
+                </span>
+                ${statusBadge(check.status)}
+              </summary>
+              <div class="openmmi-trust-check-body">
+                <p>${escapeHtml(check.summary)}</p>
+                <div class="openmmi-trust-observations">
+                  <div>
+                    <span>Runtime observation</span>
+                    <strong>${escapeHtml(runtime)}</strong>
+                  </div>
+                  <div>
+                    <span>Hardware observation</span>
+                    <strong>${escapeHtml(hardware)}</strong>
+                  </div>
+                </div>
+                ${dimensions}
+              </div>
+            </details>
+          `;
+        }).join("")}
+      </div>
+    `;
   }
 
   function renderPayload(payload = {}) {
@@ -282,7 +371,7 @@
 
       ${error}
 
-      ${metric("Overall", model.status)}
+      ${statusMetric("Overall", model.status)}
 
       <div class="openmmi-settings-subhead">
         <span>Trust Manifest</span>
@@ -290,7 +379,7 @@
       </div>
 
       ${metric("Policy generation", manifestGeneration)}
-      ${metric("Manifest digest", manifestDigest)}
+      ${digestMetric("Manifest digest", manifestDigest)}
       ${capabilitiesTemplate(model.manifest.capabilities)}
 
       <div class="openmmi-settings-subhead">
