@@ -67,6 +67,51 @@ PASS = "PASS"
 UNVERIFIED = "UNVERIFIED"
 FAIL = "FAIL"
 STATUSES = {PASS, UNVERIFIED, FAIL}
+
+EVIDENCE_DECLARED_POLICY = "declared-policy"
+EVIDENCE_LOCAL_AUTHORITY = "local-authority-state"
+EVIDENCE_INSTALLED_INTEGRITY = "installed-integrity"
+EVIDENCE_CRYPTOGRAPHIC_PROVENANCE = "cryptographic-provenance"
+EVIDENCE_STATIC_CONTRACT = "static-contract"
+EVIDENCE_RUNTIME_SELF_TEST = "runtime-self-test"
+EVIDENCE_DEPLOYED_CONFIGURATION = "deployed-configuration"
+EVIDENCE_SCOPES = frozenset(
+    {
+        EVIDENCE_DECLARED_POLICY,
+        EVIDENCE_LOCAL_AUTHORITY,
+        EVIDENCE_INSTALLED_INTEGRITY,
+        EVIDENCE_CRYPTOGRAPHIC_PROVENANCE,
+        EVIDENCE_STATIC_CONTRACT,
+        EVIDENCE_RUNTIME_SELF_TEST,
+        EVIDENCE_DEPLOYED_CONFIGURATION,
+    }
+)
+
+DIMENSION_DECLARED_POLICY = "declared-policy"
+DIMENSION_STATIC_CONTRACT = "static-contract"
+DIMENSION_RUNTIME_ENFORCEMENT = "runtime-enforcement"
+DIMENSION_HARDWARE_QUALIFICATION = "hardware-qualification"
+EVIDENCE_DIMENSIONS = (
+    DIMENSION_DECLARED_POLICY,
+    DIMENSION_STATIC_CONTRACT,
+    DIMENSION_RUNTIME_ENFORCEMENT,
+    DIMENSION_HARDWARE_QUALIFICATION,
+)
+
+_LOCAL_AUTHORITY_CHECKS = frozenset(
+    {
+        "telemetry.authorization-state",
+        "owner.accepted-release-state",
+        "release.transition-lineage",
+    }
+)
+_INSTALLED_INTEGRITY_CHECKS = frozenset(
+    {
+        "release.file-integrity",
+        "release.privileged-runtime-integrity",
+    }
+)
+
 BOOTSTRAP_SHA384_BASE64 = "sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB"
 _REMOTE_DEPENDENCY_RE = re.compile(
     r"<(?:script|link)\b[^>]*(?:src|href)=[\"'](?P<url>(?:https?:)?//[^\"']+)",
@@ -74,19 +119,155 @@ _REMOTE_DEPENDENCY_RE = re.compile(
 )
 
 
-def _check(check_id: str, status: str, summary: str, **evidence: Any) -> dict[str, Any]:
+def _default_check_evidence_scopes(check_id: str) -> tuple[str, ...]:
+    if check_id == "manifest.valid":
+        return (EVIDENCE_DECLARED_POLICY,)
+    if check_id in _LOCAL_AUTHORITY_CHECKS:
+        return (EVIDENCE_LOCAL_AUTHORITY,)
+    if check_id in _INSTALLED_INTEGRITY_CHECKS:
+        return (EVIDENCE_INSTALLED_INTEGRITY,)
+    if check_id == "release.provenance":
+        return (EVIDENCE_CRYPTOGRAPHIC_PROVENANCE,)
+    if check_id == "telemetry.default-deny-runtime":
+        return (EVIDENCE_RUNTIME_SELF_TEST,)
+    return (EVIDENCE_STATIC_CONTRACT,)
+
+
+def _capability_evidence_dimensions(
+    check_id: str,
+    status: str,
+    scopes: Sequence[str],
+    *,
+    live_runtime_observation: bool,
+    hardware_observation: bool,
+) -> dict[str, str] | None:
+    if not (
+        check_id.startswith("capability.")
+        and check_id.endswith(".enforcement")
+    ):
+        return None
+
+    declared_status = (
+        FAIL
+        if status == FAIL and set(scopes) == {EVIDENCE_DECLARED_POLICY}
+        else PASS
+    )
+    static_status = (
+        status
+        if (
+            EVIDENCE_STATIC_CONTRACT in scopes
+            or EVIDENCE_DEPLOYED_CONFIGURATION in scopes
+        )
+        else UNVERIFIED
+    )
+    runtime_status = status if live_runtime_observation else UNVERIFIED
+    hardware_status = status if hardware_observation else UNVERIFIED
+
+    return {
+        DIMENSION_DECLARED_POLICY: declared_status,
+        DIMENSION_STATIC_CONTRACT: static_status,
+        DIMENSION_RUNTIME_ENFORCEMENT: runtime_status,
+        DIMENSION_HARDWARE_QUALIFICATION: hardware_status,
+    }
+
+
+def _validated_evidence_dimensions(
+    dimensions: Mapping[str, str],
+) -> dict[str, str]:
+    if set(dimensions) != set(EVIDENCE_DIMENSIONS):
+        raise ValueError(
+            "trust inspection evidence dimensions must contain exactly "
+            + ", ".join(EVIDENCE_DIMENSIONS)
+        )
+    normalized = {key: str(dimensions[key]) for key in EVIDENCE_DIMENSIONS}
+    invalid = {
+        key: value
+        for key, value in normalized.items()
+        if value not in STATUSES
+    }
+    if invalid:
+        raise ValueError(
+            "invalid trust inspection evidence dimension status: "
+            + ", ".join(f"{key}={value}" for key, value in invalid.items())
+        )
+    return normalized
+
+
+def _check(
+    check_id: str,
+    status: str,
+    summary: str,
+    *,
+    evidence_scopes: Sequence[str] | None = None,
+    live_runtime_observation: bool | None = None,
+    hardware_observation: bool | None = None,
+    evidence_dimensions: Mapping[str, str] | None = None,
+    **evidence: Any,
+) -> dict[str, Any]:
     if status not in STATUSES:
         raise ValueError(f"invalid trust inspection status: {status}")
+
+    scopes = tuple(
+        evidence_scopes
+        if evidence_scopes is not None
+        else _default_check_evidence_scopes(check_id)
+    )
+    if not scopes or len(scopes) != len(set(scopes)):
+        raise ValueError("trust inspection evidence scopes must be non-empty and unique")
+    invalid_scopes = sorted(set(scopes) - EVIDENCE_SCOPES)
+    if invalid_scopes:
+        raise ValueError(
+            f"invalid trust inspection evidence scopes: {', '.join(invalid_scopes)}"
+        )
+
+    if live_runtime_observation is None:
+        live_runtime_observation = EVIDENCE_RUNTIME_SELF_TEST in scopes
+    if hardware_observation is None:
+        hardware_observation = False
+
+    dimensions = (
+        _validated_evidence_dimensions(evidence_dimensions)
+        if evidence_dimensions is not None
+        else _capability_evidence_dimensions(
+            check_id,
+            status,
+            scopes,
+            live_runtime_observation=live_runtime_observation,
+            hardware_observation=hardware_observation,
+        )
+    )
+
+    scoped_evidence = dict(evidence)
+    scoped_evidence["evidence_scopes"] = list(scopes)
+    scoped_evidence["live_runtime_observation"] = live_runtime_observation
+    scoped_evidence["hardware_observation"] = hardware_observation
+    if dimensions is not None:
+        scoped_evidence["evidence_dimensions"] = dimensions
     return {
         "id": check_id,
         "status": status,
         "summary": summary,
-        "evidence": evidence,
+        "evidence": scoped_evidence,
     }
 
 
 def _overall_status(checks: Sequence[Mapping[str, Any]]) -> str:
-    statuses = {str(check.get("status")) for check in checks}
+    statuses = {str(item.get("status")) for item in checks}
+
+    # P03 evidence dimensions are part of the report conclusion, not merely
+    # explanatory metadata. A static/deployed PASS must not hide an unavailable
+    # runtime-enforcement or hardware-qualification dimension.
+    for item in checks:
+        evidence = item.get("evidence")
+        if not isinstance(evidence, Mapping):
+            continue
+        dimensions = evidence.get("evidence_dimensions")
+        if not isinstance(dimensions, Mapping):
+            continue
+        for dimension in EVIDENCE_DIMENSIONS:
+            value = dimensions.get(dimension)
+            statuses.add(value if value in STATUSES else UNVERIFIED)
+
     if FAIL in statuses:
         return FAIL
     if UNVERIFIED in statuses:
@@ -94,8 +275,56 @@ def _overall_status(checks: Sequence[Mapping[str, Any]]) -> str:
     return PASS
 
 
+_RUNTIME_PYTHON_ROOTS = (
+    "actions",
+    "bindings",
+    "canbusd",
+    "open_mmi_telemetry",
+    "open_mmi_trust",
+    "powerd",
+    "ui",
+    "vehicles",
+)
+_SYSTEM_UNIT_ROOT = Path("/etc/systemd/system")
+_USER_UNIT_ROOT = Path("/etc/systemd/user")
+
+
 def _default_install_root() -> Path:
     return Path(__file__).resolve().parents[1]
+
+
+def _runtime_python_sources(root: Path):
+    # Never recursively scan unrelated third-party site-packages.
+    for package_name in _RUNTIME_PYTHON_ROOTS:
+        package_root = root / package_name
+        if not package_root.is_dir():
+            continue
+        for path in sorted(package_root.rglob("*.py")):
+            if "__pycache__" not in path.parts:
+                yield path
+
+
+def _unit_contract_path(root: Path, relative: str | Path, *, production: bool) -> Path:
+    # Production installs unit files under /etc rather than retaining source
+    # unit files beneath /opt/open-mmi.
+    relative_path = Path(relative)
+    if not production:
+        return root / relative_path
+
+    production_roots = {
+        Path(INTEGRITY_DEFAULT_INSTALL_ROOT),
+        Path(integrity_default_package_root()),
+    }
+    if Path(root) not in production_roots:
+        # Explicit fixtures keep using their supplied source tree.
+        return root / relative_path
+
+    parts = relative_path.parts
+    if len(parts) == 3 and parts[:2] == ("systemd", "system"):
+        return _SYSTEM_UNIT_ROOT / parts[2]
+    if len(parts) == 3 and parts[:2] == ("systemd", "user"):
+        return _USER_UNIT_ROOT / parts[2]
+    return root / relative_path
 
 
 def _inspect_manifest(path: Path) -> tuple[dict[str, Any] | None, dict[str, Any], dict[str, Any]]:
@@ -1001,7 +1230,7 @@ def _inspect_provenance_root_mutation_source(root: Path) -> dict[str, Any]:
     scanned = 0
     ignored_roots = {"tests", "tools", ".git", ".venv", "venv", "__pycache__", "build", "dist"}
     try:
-        for path in sorted(root.rglob("*.py")):
+        for path in _runtime_python_sources(root):
             relative = path.relative_to(root)
             if ignored_roots.intersection(relative.parts) or path == provenance_module:
                 continue
@@ -1051,15 +1280,24 @@ def _inspect_provenance_root_mutation_source(root: Path) -> dict[str, Any]:
         note="Release Provenance v1 has no signer-rotation or candidate-controlled root-replacement primitive.",
     )
 
-def _inspect_privileged_update_handoff_source(root: Path) -> dict[str, Any]:
+def _inspect_privileged_update_handoff_source(
+    root: Path, *, production: bool = False
+) -> dict[str, Any]:
     relative = Path("systemd/system/open-mmi-update-installer.service")
-    unit = root / relative
+    unit = _unit_contract_path(root, relative, production=production)
+    evidence_scopes = (
+        (EVIDENCE_DEPLOYED_CONFIGURATION,)
+        if production
+        else (EVIDENCE_STATIC_CONTRACT,)
+    )
     if not unit.is_file():
         return _check(
             "updater.privileged-handoff-source",
             UNVERIFIED,
-            "Privileged update service source is not available for inspection.",
-            path=relative.as_posix(),
+            "Privileged update service unit contract is not available for inspection.",
+            evidence_scopes=evidence_scopes,
+            path=str(unit),
+            source_path=relative.as_posix(),
         )
 
     try:
@@ -1068,8 +1306,10 @@ def _inspect_privileged_update_handoff_source(root: Path) -> dict[str, Any]:
         return _check(
             "updater.privileged-handoff-source",
             FAIL,
-            "Privileged update service source could not be inspected reproducibly.",
-            path=relative.as_posix(),
+            "Privileged update service unit contract could not be inspected reproducibly.",
+            evidence_scopes=evidence_scopes,
+            path=str(unit),
+            source_path=relative.as_posix(),
             error=f"{type(exc).__name__}: {exc}",
         )
 
@@ -1184,6 +1424,7 @@ def _inspect_privileged_update_handoff_source(root: Path) -> dict[str, Any]:
             "updater.privileged-handoff-source",
             FAIL,
             "Privileged update service does not preserve the reviewed explicit-root installer handoff.",
+            evidence_scopes=evidence_scopes,
             **evidence,
             failures=failures,
         )
@@ -1192,6 +1433,7 @@ def _inspect_privileged_update_handoff_source(root: Path) -> dict[str, Any]:
         "updater.privileged-handoff-source",
         PASS,
         "Privileged update service explicitly runs the reviewed isolated-Python installer entry point as root with no additional service execution hooks.",
+        evidence_scopes=evidence_scopes,
         **evidence,
         note=(
             "This reproduces the privileged service entry-point contract. "
@@ -1437,7 +1679,7 @@ _CAN_UDEV_RULE_PATH = Path("/etc/udev/rules.d/80-canbus.rules")
 
 
 def _can_transmit_unit_contract(
-    root: Path,
+    root: Path, *, production: bool = False,
 ) -> tuple[list[str], dict[str, Any]]:
     required = {
         "systemd/user/canbusd.service": (
@@ -1484,7 +1726,7 @@ def _can_transmit_unit_contract(
     failures: list[str] = []
     evidence: dict[str, Any] = {}
     for relative, required_lines in required.items():
-        path = root / relative
+        path = _unit_contract_path(root, relative, production=production)
         try:
             source = path.read_text(encoding="utf-8")
         except (OSError, UnicodeError) as exc:
@@ -1503,6 +1745,7 @@ def _can_transmit_unit_contract(
             if any(fragment in line for line in lines)
         )
         evidence[relative] = {
+            "path": str(path),
             "required_lines": list(required_lines),
             "forbidden_fragments": list(forbidden.get(relative, ())),
         }
@@ -1655,6 +1898,11 @@ def _inspect_can_transmit_os_enforcement(
         return None
 
     capability = manifest["capabilities"]["vehicle.can.transmit"]
+    contract_scopes = (
+        (EVIDENCE_STATIC_CONTRACT, EVIDENCE_DEPLOYED_CONFIGURATION)
+        if production
+        else (EVIDENCE_STATIC_CONTRACT,)
+    )
 
     if capability != {
         "policy": "prohibited",
@@ -1667,11 +1915,12 @@ def _inspect_can_transmit_os_enforcement(
                 "CAN transmit manifest semantics do not match "
                 "the enforced passive-CAN boundary."
             ),
+            evidence_scopes=(EVIDENCE_DECLARED_POLICY,),
             capability=capability,
         )
 
     unit_failures, unit_evidence = (
-        _can_transmit_unit_contract(root)
+        _can_transmit_unit_contract(root, production=production)
     )
     source_failures = _can_transmit_source_contract(root)
 
@@ -1690,6 +1939,7 @@ def _inspect_can_transmit_os_enforcement(
             unit_failures=unit_failures,
             source_failures=source_failures,
             units=unit_evidence,
+            evidence_scopes=contract_scopes,
         )
 
     if not production:
@@ -1702,6 +1952,7 @@ def _inspect_can_transmit_os_enforcement(
                 "were not inspected."
             ),
             assurance=capability["assurance"],
+            evidence_scopes=contract_scopes,
         )
 
     if (
@@ -1719,6 +1970,7 @@ def _inspect_can_transmit_os_enforcement(
             privileged_runtime_status=(
                 privileged_runtime_check or {}
             ).get("status"),
+            evidence_scopes=contract_scopes,
         )
 
     shadow_paths = _can_transmit_user_shadow_paths()
@@ -1731,6 +1983,7 @@ def _inspect_can_transmit_os_enforcement(
                 "or weaken the passive CAN daemon boundary."
             ),
             shadow_paths=shadow_paths,
+            evidence_scopes=contract_scopes,
         )
 
     udev_failures, udev_evidence = (
@@ -1749,29 +2002,28 @@ def _inspect_can_transmit_os_enforcement(
             ),
             udev_failures=udev_failures,
             udev=udev_evidence,
+            evidence_scopes=contract_scopes,
         )
 
     return _check(
         "capability.vehicle.can.transmit.enforcement",
         PASS,
         (
-            "Physical CAN is isolated in a private namespace with one-way "
-            "receive export and dual OS egress DROP barriers."
+            "Deployed CAN unit, udev, source, and privilege contracts match "
+            "the reviewed passive-CAN design."
         ),
         assurance=capability["assurance"],
-        canbusd_can_socket_authority=True,
-        canbusd_net_admin_authority=False,
-        physical_interface_host_visible=False,
-        reverse_gateway_allowed=False,
-        provisioner_can_socket_authority=False,
-        provisioner_net_admin_authority=True,
+        deployed_unit_contract=True,
+        deployed_udev_contract=True,
         owner_unit_shadows=[],
         udev=udev_evidence,
         note=(
-            "Live namespace, egress-filter, one-way-gateway, and fresh "
-            "challenge-bound receive behavior are independently measured "
-            "by the separate CAN trust test."
+            "This Inspector check does not observe the live CAN namespace, "
+            "qdiscs, egress filters, gateway direction, controller identity, "
+            "or current receive activity. Those are independently measured "
+            "by open_mmi_can_trust_test.py from the old-trusted side."
         ),
+            evidence_scopes=contract_scopes,
     )
 
 def _inspect_dashboard_render(static_root: Path) -> list[dict[str, Any]]:
@@ -1856,7 +2108,7 @@ def _inspect_dashboard_render(static_root: Path) -> list[dict[str, Any]]:
 
 
 
-def _network_egress_unit_contract(root: Path) -> tuple[list[str], dict[str, Any]]:
+def _network_egress_unit_contract(root: Path, *, production: bool = False) -> tuple[list[str], dict[str, Any]]:
     contracts = {
         "systemd/system/open-mmi-trust-status.service": (
             "RestrictAddressFamilies=AF_UNIX",
@@ -1900,7 +2152,7 @@ def _network_egress_unit_contract(root: Path) -> tuple[list[str], dict[str, Any]
     failures: list[str] = []
     evidence: dict[str, Any] = {}
     for relative, required in contracts.items():
-        path = root / relative
+        path = _unit_contract_path(root, relative, production=production)
         try:
             text = path.read_text(encoding="utf-8")
         except (OSError, UnicodeError) as exc:
@@ -1913,7 +2165,11 @@ def _network_egress_unit_contract(root: Path) -> tuple[list[str], dict[str, Any]
             missing.append("must-not-load-owner-network-secrets")
         if missing:
             failures.extend(f"{relative}:{item}" for item in missing)
-        evidence[relative] = {"required_contract": list(required), "matches": not missing}
+        evidence[relative] = {
+            "path": str(path),
+            "required_contract": list(required),
+            "matches": not missing,
+        }
     return failures, evidence
 
 
@@ -2014,6 +2270,11 @@ def _inspect_network_egress_enforcement(
     if manifest is None:
         return None
     capability = manifest["capabilities"]["network.external-egress"]
+    contract_scopes = (
+        (EVIDENCE_STATIC_CONTRACT, EVIDENCE_DEPLOYED_CONFIGURATION)
+        if production
+        else (EVIDENCE_STATIC_CONTRACT,)
+    )
     if capability["assurance"] == "declared":
         return None
     expected_purposes = ["media.internet-radio", "media.jellyfin", "updates.release-fetch"]
@@ -2026,11 +2287,12 @@ def _inspect_network_egress_enforcement(
             "capability.network.external-egress.enforcement",
             FAIL,
             "Network egress manifest semantics do not match the enforced purpose boundary.",
+            evidence_scopes=(EVIDENCE_DECLARED_POLICY,),
             capability=capability,
             expected_purposes=expected_purposes,
         )
 
-    unit_failures, unit_evidence = _network_egress_unit_contract(root)
+    unit_failures, unit_evidence = _network_egress_unit_contract(root, production=production)
     source_failures = _network_egress_source_contract(root)
     if unit_failures or source_failures:
         return _check(
@@ -2044,6 +2306,7 @@ def _inspect_network_egress_enforcement(
             unit_failures=unit_failures,
             source_failures=source_failures,
             units=unit_evidence,
+            evidence_scopes=contract_scopes,
         )
     if not production:
         return _check(
@@ -2052,6 +2315,7 @@ def _inspect_network_egress_enforcement(
             "Network egress enforcement source is present, but effective production unit ownership/runtime state was not inspected.",
             purposes=expected_purposes,
             assurance=capability["assurance"],
+            evidence_scopes=contract_scopes,
         )
     if privileged_runtime_check is None or privileged_runtime_check.get("status") != PASS:
         return _check(
@@ -2060,6 +2324,7 @@ def _inspect_network_egress_enforcement(
             "Network policy source is present, but root-owned deployed unit integrity is not currently proven.",
             purposes=expected_purposes,
             privileged_runtime_status=(privileged_runtime_check or {}).get("status"),
+            evidence_scopes=contract_scopes,
         )
     shadow_paths = _network_egress_user_shadow_paths()
     if shadow_paths:
@@ -2068,16 +2333,18 @@ def _inspect_network_egress_enforcement(
             FAIL,
             "Owner-writable user-unit state can shadow or weaken a root-owned Open MMI network sandbox.",
             shadow_paths=shadow_paths,
+            evidence_scopes=contract_scopes,
         )
     return _check(
         "capability.network.external-egress.enforcement",
         PASS,
-        "External network authority is confined to the declared updater and media actors by root-owned OS service boundaries.",
+        "Deployed root-owned network sandbox configuration matches the declared updater and media purpose contract; this check does not directly observe effective network traffic.",
         purposes=expected_purposes,
         assurance=capability["assurance"],
         root_owned_units=True,
         owner_unit_shadows=[],
         launcher_ui_target="loopback-only",
+            evidence_scopes=contract_scopes,
     )
 
 
@@ -2089,7 +2356,7 @@ _IDENTITY_NETWORK_DENY_PATHS = (
 )
 
 
-def _vehicle_identity_unit_contract(root: Path) -> tuple[list[str], dict[str, Any]]:
+def _vehicle_identity_unit_contract(root: Path, *, production: bool = False) -> tuple[list[str], dict[str, Any]]:
     inaccessible = (
         "InaccessiblePaths=-/var/lib/open-mmi/trust/telemetry-authorization.v1.json "
         "-/var/lib/open-mmi/vehicle-data"
@@ -2120,7 +2387,7 @@ def _vehicle_identity_unit_contract(root: Path) -> tuple[list[str], dict[str, An
     failures: list[str] = []
     evidence: dict[str, Any] = {}
     for relative, fragments in required.items():
-        path = root / relative
+        path = _unit_contract_path(root, relative, production=production)
         try:
             text = path.read_text(encoding="utf-8")
         except (OSError, UnicodeError) as exc:
@@ -2131,7 +2398,10 @@ def _vehicle_identity_unit_contract(root: Path) -> tuple[list[str], dict[str, An
             missing.append("must-not-authorize-AF_INET")
         if missing:
             failures.extend(f"{relative}:missing:{fragment}" for fragment in missing)
-        evidence[relative] = {"required_fragments": list(fragments)}
+        evidence[relative] = {
+            "path": str(path),
+            "required_fragments": list(fragments),
+        }
     return sorted(set(failures)), evidence
 
 
@@ -2246,7 +2516,7 @@ def _vehicle_identity_source_contract(root: Path) -> list[str]:
     resolver_markers = (
         "vpic", "nhtsa", "vindecoder", "vin-decoder", "vehiclehistory", "vehicle-history",
     )
-    for path in sorted(root.rglob("*.py")):
+    for path in _runtime_python_sources(root):
         relative = path.relative_to(root)
         relative_text = relative.as_posix()
         if ignored_roots.intersection(relative.parts):
@@ -2277,6 +2547,11 @@ def _inspect_vehicle_identity_remote_resolution_enforcement(
     if manifest is None:
         return None
     capability = manifest["capabilities"]["vehicle.identity.remote-resolution"]
+    contract_scopes = (
+        (EVIDENCE_STATIC_CONTRACT, EVIDENCE_DEPLOYED_CONFIGURATION)
+        if production
+        else (EVIDENCE_STATIC_CONTRACT,)
+    )
     if capability["assurance"] == "declared":
         return None
     if capability["policy"] != "prohibited" or capability["assurance"] != _IDENTITY_ASSURANCE:
@@ -2284,6 +2559,7 @@ def _inspect_vehicle_identity_remote_resolution_enforcement(
             "capability.vehicle.identity.remote-resolution.enforcement",
             FAIL,
             "Remote vehicle-identity manifest semantics do not match the enforced local-only boundary.",
+            evidence_scopes=(EVIDENCE_DECLARED_POLICY,),
             capability=capability,
             expected_policy="prohibited",
             expected_assurance=_IDENTITY_ASSURANCE,
@@ -2300,10 +2576,11 @@ def _inspect_vehicle_identity_remote_resolution_enforcement(
             "capability.vehicle.identity.remote-resolution.enforcement",
             FAIL,
             "Remote identity prohibition depends on the exact OS-enforced external-egress purpose boundary.",
+            evidence_scopes=(EVIDENCE_DECLARED_POLICY,),
             network_capability=network_capability,
         )
 
-    unit_failures, unit_evidence = _vehicle_identity_unit_contract(root)
+    unit_failures, unit_evidence = _vehicle_identity_unit_contract(root, production=production)
     source_failures = _vehicle_identity_source_contract(root)
     if unit_failures or source_failures:
         return _check(
@@ -2317,6 +2594,7 @@ def _inspect_vehicle_identity_remote_resolution_enforcement(
             unit_failures=unit_failures,
             source_failures=source_failures,
             units=unit_evidence,
+            evidence_scopes=contract_scopes,
         )
     if not production:
         return _check(
@@ -2324,6 +2602,7 @@ def _inspect_vehicle_identity_remote_resolution_enforcement(
             UNVERIFIED,
             "Local-only identity guards are present, but effective production network isolation was not inspected.",
             assurance=capability["assurance"],
+            evidence_scopes=contract_scopes,
         )
     if network_check is None or network_check.get("status") != PASS:
         status = FAIL if (network_check or {}).get("status") == FAIL else UNVERIFIED
@@ -2332,17 +2611,19 @@ def _inspect_vehicle_identity_remote_resolution_enforcement(
             status,
             "Remote identity prohibition cannot be proven while the external network boundary is not proven.",
             network_enforcement_status=(network_check or {}).get("status"),
+            evidence_scopes=contract_scopes,
         )
     return _check(
         "capability.vehicle.identity.remote-resolution.enforcement",
         PASS,
-        "Vehicle identity remains local: VIN handling is local-only, identity-bearing media egress is rejected, and network actors cannot read Open MMI identity state.",
+        "Deployed identity-isolation configuration and reviewed source match the local-only vehicle-identity contract; this check does not directly observe all effective process or network behavior.",
         policy="prohibited",
         assurance=capability["assurance"],
         authorized_remote_identity_purposes=[],
         local_vin_use="telemetry-authorization-binding-only",
         inaccessible_identity_paths=list(_IDENTITY_NETWORK_DENY_PATHS),
         network_enforcement_status=network_check.get("status"),
+            evidence_scopes=contract_scopes,
     )
 
 
@@ -2356,7 +2637,7 @@ _PERSISTENCE_PURPOSES = [*_PERSISTENCE_DURABLE_PURPOSES, "vehicle-runtime-status
 _PERSISTENCE_STORAGE_ROOT = Path("/var/lib/open-mmi/vehicle-data")
 
 
-def _vehicle_persistence_unit_contract(root: Path) -> tuple[list[str], dict[str, Any]]:
+def _vehicle_persistence_unit_contract(root: Path, *, production: bool = False) -> tuple[list[str], dict[str, Any]]:
     required: dict[str, tuple[str, ...]] = {
         "systemd/system/open-mmi-vehicle-store.service": (
             "User=root",
@@ -2404,7 +2685,7 @@ def _vehicle_persistence_unit_contract(root: Path) -> tuple[list[str], dict[str,
     failures: list[str] = []
     evidence: dict[str, Any] = {}
     for relative, fragments in required.items():
-        path = root / relative
+        path = _unit_contract_path(root, relative, production=production)
         try:
             text = path.read_text(encoding="utf-8")
         except (OSError, UnicodeError) as exc:
@@ -2417,6 +2698,7 @@ def _vehicle_persistence_unit_contract(root: Path) -> tuple[list[str], dict[str,
         if present_forbidden:
             failures.extend(f"{relative}:forbidden:{fragment}" for fragment in present_forbidden)
         evidence[relative] = {
+            "path": str(path),
             "required_fragments": list(fragments),
             "forbidden_fragments": list(forbidden.get(relative, ())),
         }
@@ -2657,6 +2939,11 @@ def _inspect_vehicle_data_persistence_enforcement(
     if manifest is None:
         return None
     capability = manifest["capabilities"]["vehicle-data.persistence"]
+    contract_scopes = (
+        (EVIDENCE_STATIC_CONTRACT, EVIDENCE_DEPLOYED_CONFIGURATION)
+        if production
+        else (EVIDENCE_STATIC_CONTRACT,)
+    )
     if capability["assurance"] == "declared":
         return None
     if (
@@ -2668,11 +2955,12 @@ def _inspect_vehicle_data_persistence_enforcement(
             "capability.vehicle-data.persistence.enforcement",
             FAIL,
             "Vehicle-data persistence manifest semantics do not match the enforced purpose boundary.",
+            evidence_scopes=(EVIDENCE_DECLARED_POLICY,),
             capability=capability,
             expected_purposes=_PERSISTENCE_PURPOSES,
         )
 
-    unit_failures, unit_evidence = _vehicle_persistence_unit_contract(root)
+    unit_failures, unit_evidence = _vehicle_persistence_unit_contract(root, production=production)
     source_failures = _vehicle_persistence_source_contract(root)
     if unit_failures or source_failures:
         return _check(
@@ -2686,6 +2974,7 @@ def _inspect_vehicle_data_persistence_enforcement(
             unit_failures=unit_failures,
             source_failures=source_failures,
             units=unit_evidence,
+            evidence_scopes=contract_scopes,
         )
     if not production:
         return _check(
@@ -2695,6 +2984,7 @@ def _inspect_vehicle_data_persistence_enforcement(
             purposes=_PERSISTENCE_PURPOSES,
             assurance=capability["assurance"],
             runtime_status="ephemeral-/run-only",
+            evidence_scopes=contract_scopes,
         )
     if privileged_runtime_check is None or privileged_runtime_check.get("status") != PASS:
         return _check(
@@ -2703,6 +2993,7 @@ def _inspect_vehicle_data_persistence_enforcement(
             "Persistence policy source is present, but root-owned deployed unit integrity is not currently proven.",
             purposes=_PERSISTENCE_PURPOSES,
             privileged_runtime_status=(privileged_runtime_check or {}).get("status"),
+            evidence_scopes=contract_scopes,
         )
     shadow_paths = _vehicle_persistence_user_shadow_paths()
     if shadow_paths:
@@ -2711,6 +3002,7 @@ def _inspect_vehicle_data_persistence_enforcement(
             FAIL,
             "Owner-writable user-unit state can shadow or weaken an Open MMI persistence sandbox.",
             shadow_paths=shadow_paths,
+            evidence_scopes=contract_scopes,
         )
     storage_failures, storage_evidence = _vehicle_persistence_storage_contract(
         Path(storage_root), expected_uid=storage_expected_uid
@@ -2722,11 +3014,12 @@ def _inspect_vehicle_data_persistence_enforcement(
             "The durable vehicle-data store does not match the declared root-owned purpose boundary.",
             storage_failures=storage_failures,
             storage=storage_evidence,
+            evidence_scopes=contract_scopes,
         )
     return _check(
         "capability.vehicle-data.persistence.enforcement",
         PASS,
-        "Durable vehicle-derived state is confined to root-owned declared-purpose storage; runtime status remains ephemeral under /run.",
+        "Deployed storage layout and service configuration match the declared vehicle-data persistence contract; this check does not prove all effective process write behavior.",
         purposes=_PERSISTENCE_PURPOSES,
         durable_purposes=list(_PERSISTENCE_DURABLE_PURPOSES),
         runtime_status="vehicle-runtime-status:/run-only",
@@ -2734,6 +3027,7 @@ def _inspect_vehicle_data_persistence_enforcement(
         root_owned_units=True,
         owner_unit_shadows=[],
         storage=storage_evidence,
+            evidence_scopes=contract_scopes,
     )
 
 def _declared_assurance_checks(manifest: Mapping[str, Any] | None) -> list[dict[str, Any]]:
@@ -2753,6 +3047,7 @@ def _declared_assurance_checks(manifest: Mapping[str, Any] | None) -> list[dict[
                     f"capability.{capability_id}.enforcement",
                     UNVERIFIED,
                     "Capability is currently declaration-level; Trust Inspector v1 has no generic runtime/OS enforcement proof for it.",
+                    evidence_scopes=(EVIDENCE_DECLARED_POLICY,),
                     capability=capability_id,
                     policy=capability["policy"],
                     assurance=capability["assurance"],
@@ -2850,7 +3145,9 @@ def inspect_system(
             *([privileged_runtime_check] if privileged_runtime_check is not None else []),
             provenance_check,
             _inspect_transition_lineage(Path(lineage_path), Path(accepted_state_path)),
-            _inspect_privileged_update_handoff_source(integrity_source_root),
+            _inspect_privileged_update_handoff_source(
+                integrity_source_root, production=production
+            ),
             _inspect_updater_transition_gate_source(root),
         ]
     )

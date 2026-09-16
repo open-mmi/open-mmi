@@ -73,10 +73,12 @@ evidence is `FAIL`.
 
 ## Deliberate limit
 
-This commit does not claim an independent physical CAN observation. The separate
-CAN trust test owns challenge generation and challenge-bound passive-CAN evidence.
-The Open MMI runtime must not gain CAN transmit authority in order to satisfy this
-checker.
+The general checker validates files, state, signatures and deployed configuration;
+those results are not automatically live-enforcement observations. In particular,
+it does not claim an independent physical CAN observation. The separate CAN trust
+test owns live namespace/topology inspection, receive counters and challenge-bound
+passive-CAN evidence. The Open MMI runtime must not gain CAN transmit authority in
+order to satisfy either checker.
 
 ## Independent CAN topology and challenge checker
 

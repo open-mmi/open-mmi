@@ -101,12 +101,38 @@
 
       checks: checks
         .filter(isObject)
-        .map((check) => ({
-          id: String(check.id || "unknown"),
-          status: normalizeStatus(check.status),
-          summary: String(check.summary || "No explanation available."),
-          evidence: isObject(check.evidence) ? check.evidence : {},
-        })),
+        .map((check) => {
+          const evidence = isObject(check.evidence) ? check.evidence : {};
+          const rawDimensions = isObject(evidence.evidence_dimensions)
+            ? evidence.evidence_dimensions
+            : null;
+          const evidenceDimensions = rawDimensions
+            ? {
+                declaredPolicy: normalizeStatus(rawDimensions["declared-policy"]),
+                staticContract: normalizeStatus(rawDimensions["static-contract"]),
+                runtimeEnforcement: normalizeStatus(rawDimensions["runtime-enforcement"]),
+                hardwareQualification: normalizeStatus(rawDimensions["hardware-qualification"]),
+              }
+            : null;
+          return {
+            id: String(check.id || "unknown"),
+            status: normalizeStatus(check.status),
+            summary: String(check.summary || "No explanation available."),
+            evidence,
+            evidenceScopes: Array.isArray(evidence.evidence_scopes)
+              ? evidence.evidence_scopes.map((value) => String(value))
+              : evidence.evidence_scope
+                ? [String(evidence.evidence_scope)]
+                : [],
+            liveRuntimeObservation: typeof evidence.live_runtime_observation === "boolean"
+              ? evidence.live_runtime_observation
+              : null,
+            hardwareObservation: typeof evidence.hardware_observation === "boolean"
+              ? evidence.hardware_observation
+              : null,
+            evidenceDimensions,
+          };
+        }),
     };
   }
 
@@ -161,8 +187,8 @@
 
       return row(
         capability.id,
-        `Policy: ${capability.policy}.${purposes}`,
-        capability.assurance,
+        `Declared policy: ${capability.policy}.${purposes}`,
+        `declared assurance: ${capability.assurance}`,
       );
     }).join("");
   }
@@ -176,17 +202,39 @@
       );
     }
 
-    return checks.map((check) => `
-      <div class="openmmi-setting-row" data-openmmi-trust-check="${escapeHtml(check.id)}">
-        <div>
-          <strong>${escapeHtml(check.id)}</strong>
-          <small>${escapeHtml(check.summary)}</small>
+    return checks.map((check) => {
+      const scope = check.evidenceScopes.length
+        ? check.evidenceScopes.map((value) => String(value).replace(/-/g, " ")).join(" + ")
+        : "evidence scope unspecified";
+      const runtime = check.liveRuntimeObservation === true
+        ? "live runtime observed"
+        : check.liveRuntimeObservation === false
+          ? "no live runtime observation"
+          : "runtime observation unspecified";
+      const hardware = check.hardwareObservation === true
+        ? "hardware observed"
+        : check.hardwareObservation === false
+          ? "no hardware observation"
+          : "hardware observation unspecified";
+      const dimensions = check.evidenceDimensions
+        ? ` Dimensions: declared policy ${check.evidenceDimensions.declaredPolicy}`
+          + ` · static contract ${check.evidenceDimensions.staticContract}`
+          + ` · runtime enforcement ${check.evidenceDimensions.runtimeEnforcement}`
+          + ` · hardware qualification ${check.evidenceDimensions.hardwareQualification}.`
+        : "";
+
+      return `
+        <div class="openmmi-setting-row" data-openmmi-trust-check="${escapeHtml(check.id)}">
+          <div>
+            <strong>${escapeHtml(check.id)}</strong>
+            <small>${escapeHtml(check.summary)} Evidence: ${escapeHtml(scope)} · ${escapeHtml(runtime)} · ${escapeHtml(hardware)}.${escapeHtml(dimensions)}</small>
+          </div>
+          <div class="openmmi-setting-controls">
+            <strong>${escapeHtml(check.status)}</strong>
+          </div>
         </div>
-        <div class="openmmi-setting-controls">
-          <strong>${escapeHtml(check.status)}</strong>
-        </div>
-      </div>
-    `).join("");
+      `;
+    }).join("");
   }
 
   function renderPayload(payload = {}) {
@@ -238,7 +286,7 @@
 
       <div class="openmmi-settings-subhead">
         <span>Trust Manifest</span>
-        <small>declared boundary</small>
+        <small>declared policy and assurance</small>
       </div>
 
       ${metric("Policy generation", manifestGeneration)}

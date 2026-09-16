@@ -24,8 +24,11 @@ from open_mmi_trust.inspector import (
     _inspect_can_transmit_os_enforcement,
     _inspect_release_provenance,
     _network_egress_source_contract,
+    _overall_status,
     _inspect_privileged_update_handoff_source,
     _inspect_updater_transition_gate_source,
+    _runtime_python_sources,
+    _unit_contract_path,
 )
 from open_mmi_trust.inspector_cli import render_text
 from open_mmi_trust.release_integrity import (
@@ -123,6 +126,34 @@ class TrustInspectorTests(unittest.TestCase):
         self.assertEqual(statuses["release.provenance"], UNVERIFIED)
         self.assertNotIn(FAIL, statuses.values())
 
+        checks = {check["id"]: check for check in report["checks"]}
+        self.assertEqual(
+            checks["manifest.valid"]["evidence"]["evidence_scopes"],
+            ["declared-policy"],
+        )
+        self.assertFalse(
+            checks["manifest.valid"]["evidence"]["live_runtime_observation"]
+        )
+        self.assertEqual(
+            checks["telemetry.default-deny-runtime"]["evidence"]["evidence_scopes"],
+            ["runtime-self-test"],
+        )
+        self.assertTrue(
+            checks["telemetry.default-deny-runtime"]["evidence"][
+                "live_runtime_observation"
+            ]
+        )
+        self.assertFalse(
+            checks["capability.vehicle.can.transmit.enforcement"]["evidence"][
+                "live_runtime_observation"
+            ]
+        )
+        self.assertFalse(
+            checks["capability.vehicle.can.transmit.enforcement"]["evidence"][
+                "hardware_observation"
+            ]
+        )
+
     def establish_integrity_fixture(
         self, root: Path, accepted_state: Path
     ) -> Path:
@@ -194,6 +225,71 @@ class TrustInspectorTests(unittest.TestCase):
         identity.assert_called_once()
         self.assertEqual(identity.call_args.args[0], package_root)
 
+    def test_overall_status_includes_evidence_dimension_limits(self):
+        check = {
+            "id": "capability.vehicle.can.transmit.enforcement",
+            "status": PASS,
+            "summary": "Static/deployed contract matched.",
+            "evidence": {
+                "evidence_dimensions": {
+                    "declared-policy": PASS,
+                    "static-contract": PASS,
+                    "runtime-enforcement": UNVERIFIED,
+                    "hardware-qualification": UNVERIFIED,
+                }
+            },
+        }
+
+        self.assertEqual(_overall_status([check]), UNVERIFIED)
+
+        check["evidence"]["evidence_dimensions"]["runtime-enforcement"] = FAIL
+        self.assertEqual(_overall_status([check]), FAIL)
+
+    def test_runtime_source_scan_is_bounded_to_open_mmi_packages(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "ui").mkdir()
+            (root / "ui" / "owned.py").write_text("VALUE = 1\n", encoding="utf-8")
+            (root / "third_party").mkdir()
+            (root / "third_party" / "foreign.py").write_text(
+                "VALUE = 2\n", encoding="utf-8"
+            )
+
+            paths = [
+                path.relative_to(root).as_posix()
+                for path in _runtime_python_sources(root)
+            ]
+
+        self.assertEqual(paths, ["ui/owned.py"])
+
+    def test_production_unit_contract_paths_use_canonical_deployed_roots(self):
+        from open_mmi_trust import inspector
+
+        self.assertEqual(
+            _unit_contract_path(
+                inspector.INTEGRITY_DEFAULT_INSTALL_ROOT,
+                "systemd/system/open-mmi-trust-status.service",
+                production=True,
+            ),
+            Path("/etc/systemd/system/open-mmi-trust-status.service"),
+        )
+        self.assertEqual(
+            _unit_contract_path(
+                inspector.integrity_default_package_root(),
+                "systemd/user/canbusd.service",
+                production=True,
+            ),
+            Path("/etc/systemd/user/canbusd.service"),
+        )
+        self.assertEqual(
+            _unit_contract_path(
+                ROOT,
+                "systemd/system/open-mmi-trust-status.service",
+                production=True,
+            ),
+            ROOT / "systemd/system/open-mmi-trust-status.service",
+        )
+
     def test_network_egress_contract_binds_release_fetch_to_coordinator(self):
         failures = _network_egress_source_contract(ROOT)
         coordinator_failures = [
@@ -233,6 +329,52 @@ class TrustInspectorTests(unittest.TestCase):
 
         self.assertIsNotNone(result)
         self.assertEqual(result["status"], PASS)
+        self.assertEqual(
+            result["evidence"]["evidence_scopes"],
+            ["static-contract", "deployed-configuration"],
+        )
+        self.assertFalse(result["evidence"]["live_runtime_observation"])
+        self.assertFalse(result["evidence"]["hardware_observation"])
+        self.assertEqual(
+            result["evidence"]["evidence_dimensions"],
+            {
+                "declared-policy": PASS,
+                "static-contract": PASS,
+                "runtime-enforcement": UNVERIFIED,
+                "hardware-qualification": UNVERIFIED,
+            },
+        )
+
+    def test_can_manifest_semantic_failure_is_declared_policy_evidence(self):
+        manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+        manifest["capabilities"]["vehicle.can.transmit"] = {
+            "policy": "allowed",
+            "assurance": "os-enforced",
+        }
+
+        result = _inspect_can_transmit_os_enforcement(
+            ROOT,
+            manifest,
+            {"status": PASS},
+            production=False,
+        )
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result["status"], FAIL)
+        self.assertEqual(
+            result["evidence"]["evidence_scopes"],
+            ["declared-policy"],
+        )
+        self.assertFalse(result["evidence"]["live_runtime_observation"])
+        self.assertEqual(
+            result["evidence"]["evidence_dimensions"],
+            {
+                "declared-policy": FAIL,
+                "static-contract": UNVERIFIED,
+                "runtime-enforcement": UNVERIFIED,
+                "hardware-qualification": UNVERIFIED,
+            },
+        )
 
     def test_can_os_enforcement_rejects_direct_can_activation_in_udev(self):
         manifest = json.loads(

@@ -210,6 +210,9 @@ class TrustStatusCoordinatorTests(unittest.TestCase):
                 coordinator.client_status(Path("/tmp/fake-trust-status.sock"))
         self.assertTrue(fake.closed)
 
+    def test_client_timeout_allows_complete_local_inspection_window(self) -> None:
+        self.assertGreaterEqual(coordinator.DEFAULT_TIMEOUT_SECONDS, 10.0)
+
     def test_client_transport_failures_are_unavailable(self) -> None:
         cases = (
             FakeClientSocket(connect_error=FileNotFoundError("missing socket")),

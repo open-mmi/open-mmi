@@ -28,8 +28,44 @@ before a prepared candidate receives privileged execution, Trust Transition Line
 accepted-state changes from a locally confirmed genesis baseline forward, Installed Release/File
 Integrity v1 binds active installed runtime bytes to the exact accepted Git candidate, and Release
 Provenance / Pinned Signer Root v1 lets old trusted code authenticate current and future candidate
-commit signatures against an owner-established OpenPGP primary key. An independent external checker
-remains a later anchor.
+commit signatures against an owner-established OpenPGP primary key. The repository also ships an
+independent trust checker and a separate independent CAN topology/challenge checker. They do not
+import the target Open MMI Python package and keep their conclusions separate from the installed
+Inspector. They remain software evidence: neither path is hardware attestation or an immutable
+off-device anchor merely because it is independently implemented.
+
+## Evidence scope is part of the result
+
+Trust Inspector status is intentionally not a one-bit claim that every declared
+boundary was observed live. Each check carries additive evidence metadata inside
+its existing `evidence` object. A check can name one or more evidence scopes, so
+a result that compares reviewed source with deployed configuration does not have
+to pretend those are the same thing. New readers can distinguish declared
+policy, local owner authority, installed byte integrity, cryptographic
+provenance, reviewed static contracts, bounded runtime self-tests, and deployed
+configuration. Older v1 readers may ignore those extra evidence keys; newer
+readers treat missing legacy observation metadata as unspecified, never as
+evidence that an observation did or did not occur.
+
+`PASS` therefore means the check succeeded **within its stated evidence scope**.
+A static/deployed-configuration PASS does not claim that a namespace, qdisc,
+firewall, network path, storage mediation, or hardware boundary was observed
+live. Capability enforcement checks additionally retain `PASS` / `FAIL` /
+`UNVERIFIED` independently across four evidence dimensions: declared policy,
+static contract, runtime enforcement, and hardware qualification. A static
+contract can therefore be `PASS` while runtime enforcement and hardware
+qualification remain visibly `UNVERIFIED`; unavailable evidence is not hidden
+behind the static result. Overall report status aggregates both check statuses
+and these capability-dimension statuses: any dimension `FAIL` dominates, and
+otherwise any `UNVERIFIED` dimension prevents an overall `PASS`. The local
+Inspector does not claim hardware observation. Live CAN namespace,
+egress-DROP, one-way-gateway, controller
+identity, receive-counter and challenge evidence belongs to the separate
+independent CAN trust test.
+
+The privileged dashboard coordinator remains AF_UNIX-only and read-only. It does
+not gain `NET_ADMIN`, enter the vehicle network namespace, or mutate the machine
+to turn static evidence into a green runtime claim.
 
 ## Current v1 capabilities
 
@@ -68,13 +104,15 @@ os-enforced
 hardware-enforced
 ```
 
-A stronger policy statement does not magically create stronger enforcement. Telemetry
-Guard v1 now places Open MMI telemetry collection behind a runtime authorization check, so
-`telemetry.collection` is `runtime-guarded`. This does not mean the operating system could
-prevent deliberately modified privileged software from bypassing the library. CAN
-transmission remains prohibited, and the current source plus CI tripwire contain no CAN
-send path, so its v1 assurance is `ci-guarded`. A later phase can move these boundaries
-toward OS/interface enforcement.
+A stronger policy statement does not magically create stronger enforcement. In policy
+generation 6, `telemetry.collection` remains `runtime-guarded` and `vehicle.can.receive`
+remains `ci-guarded`; `network.external-egress`, `vehicle-data.persistence` and
+`vehicle.can.transmit` are declared `os-enforced`, while
+`vehicle.identity.remote-resolution` is `runtime-guarded`. Those assurance values describe
+the declared control layer, not the provenance of every observation. A Trust Inspector PASS
+for a reviewed or deployed OS contract does not by itself mean the effective runtime boundary
+was observed live, and no software-only inspection is silently promoted to hardware
+qualification.
 
 Removing an established enforcement layer is itself trust-relevant even if the headline
 policy text does not change.
@@ -162,10 +200,9 @@ collection is trust-relevant.
 
 ## Networking
 
-Open MMI is local-first, not network-free. The current manifest declares external egress
-only for named purposes that exist in the current tree:
+Open MMI is local-first, not network-free. Policy generation 6 declares external egress
+only for these named purposes:
 
-- an owner-configured dashboard URL (loopback by default);
 - Internet Radio;
 - Jellyfin;
 - release/update retrieval.
@@ -179,18 +216,30 @@ so that dependency was removed rather than copied locally.
 This removes the former `frontend.bootstrap-cdn` and `frontend.bootstrap-icons-cdn` purposes
 from `network.external-egress`. It is the first recorded example of the trust boundary
 becoming narrower after Trust Manifest v1: the dashboard keeps the same declared feature
-set while surrendering two unrelated third-party egress paths. Network assurance remains
-`declared` for now; later architecture should narrow actual process network authority so
-undeclared egress becomes technically harder rather than only review-visible.
+set while surrendering two unrelated third-party egress paths. Generation 6 declares this
+capability `os-enforced`. The local Inspector can compare the reviewed source contract with
+the root-owned deployed service configuration, but that scoped PASS does not directly
+observe effective network traffic. Effective isolation and any external measurement remain
+separate evidence rather than being inferred from unit-file text.
 
 ## Vehicle CAN
 
-The current project posture remains passive observation first. Production CAN runtime code
-has no transmit call and Trust Manifest v1 declares `vehicle.can.transmit` prohibited.
+The current project posture remains passive observation first. Policy generation 6 declares
+`vehicle.can.receive` allowed with `ci-guarded` assurance and `vehicle.can.transmit`
+prohibited with `os-enforced` assurance. Production `canbusd` still has no transmit action.
 
-The initial CI check is deliberately only a tripwire. It is not presented as proof that a
-process with a SocketCAN socket could never be modified to transmit. Later work should add
-stronger process, SocketCAN, adapter, and hardware controls where platforms support them.
+The production topology places the physical `canN` inside the fixed private CAN namespace,
+exports receive traffic one way through `openmmi-rxp`/`openmmi-rx`, and requires exact egress
+DROP barriers on both the private physical interface and the host receive proxy. The physical
+controller is deliberately not required to be `LISTEN-ONLY`, so ACK-capable reception remains
+possible without giving Open MMI a CAN transmit surface.
+
+Trust Inspector validates the reviewed source, deployed unit/udev and privilege contracts but
+does not claim that it observed the live namespace, qdiscs, filters, gateway, controller or
+current traffic. The separate P02 independent CAN checker performs that read-only live
+measurement, including namespace identity, vxcan peers, exact dual DROP rules, one-way gateway,
+controller/driver identity and positive passive receive counters. That independent runtime
+evidence is still not hardware attestation.
 
 ## Accepted Owner Trust State v1
 
@@ -240,9 +289,11 @@ also rejects normal Open MMI production code that mutates accepted state: the ra
 module-internal and the local owner CLI may call only the monotonic record primitive.
 
 This is still software enforcement on a privileged machine. Arbitrary root software can
-replace Open MMI or its state. Signed installed-file integrity, append-only transition
-lineage and an independent checker are later layers needed to make that tampering externally
-verifiable.
+replace Open MMI or its local state. Installed-file integrity, append-only transition lineage,
+pinned release provenance and independent checker implementations now exist as separate
+evidence layers. The independent checker can be run against a mounted target with an
+owner-supplied signer fingerprint and optional checker/lineage anchors, but those software
+layers do not make an arbitrary-root system hardware-attested or intrinsically immutable.
 
 ## Trust Transition Gate v1
 
@@ -294,8 +345,9 @@ After the gate succeeds, the existing deployment engine still executes the prepa
 `scripts/manage.sh _deploy-prepared` as root. That execution is intentionally *after* the trust
 decision and must never be moved before it. Trust Transition Gate v1 constrains official update
 flow and owner acknowledgement; it is not an OS sandbox against arbitrary root software or a
-proof that a candidate's manifest is truthful. Stronger runtime/OS enforcement and independent
-verification remain later layers.
+proof that a candidate's manifest is truthful. Generation 6 now includes specific OS-level
+boundaries and independent verification paths, but those are separately scoped evidence and do
+not turn the transition gate into a general sandbox or make a candidate's declaration self-proving.
 
 A maintainer signature proves provenance only when old trusted code can authenticate it to a
 signer identity the owner independently established. It still does not grant permission to silently
@@ -303,8 +355,10 @@ redraw an owner's accepted trust boundary. Trust Transition Lineage v1 records l
 changes, Installed Release/File Integrity v1 binds current runtime bytes to the exact accepted Git
 candidate, and Release Provenance v1 verifies that exact commit against a pinned signer root. Their
 genesis baselines do not retroactively prove earlier history, and arbitrary root can still replace
-installed code plus local trust state. An independent external verifier therefore remains necessary
-for externally grounded attestation.
+installed code plus local trust state. Externally grounded conclusions therefore still require
+verification from outside the inspected runtime. The independent checker provides that path when
+the operator supplies independent signer/checker/lineage anchors; it does not by itself create a
+hardware or immutable off-device attestation root.
 
 ## Trust Transition Lineage v1
 
@@ -545,9 +599,10 @@ integrity commit and the exact candidate commit verify against that root before 
 Gate and before any candidate-controlled PEP 517 build/deployment begins.
 
 Arbitrary privileged code can still replace the installed verifier and local signer/integrity state,
-so local `release.provenance: PASS` is not an external attestation. A future independent Trust
-Checker should carry or independently obtain the same reviewed signer root and verify release
-lineage/installed evidence from outside the inspected installation.
+so local `release.provenance: PASS` is not an external attestation. The independent Trust Checker
+can carry or independently obtain the reviewed signer root and verify release lineage and installed
+evidence without importing the target Open MMI package, including against a target filesystem
+mounted from rescue/live media.
 
 ## SI and downstream distributions
 
@@ -556,15 +611,15 @@ from running different software. The goal is narrower: a modified installation s
 silently inherit Open MMI's trust reputation after removing or weakening the controls that
 support that reputation.
 
-Future Trust Inspection and independent-verifier work should therefore evaluate demonstrated
-capabilities and lineage rather than simply checking whether an installation has an official
-Open MMI file hash.
+Trust Inspection and the independent verifier therefore evaluate demonstrated capabilities,
+evidence provenance and lineage rather than simply checking whether an installation has an
+official Open MMI file hash.
 
 ## Trust Inspector v1
 
 Trust Inspector v1 is a read-only local evidence surface. It does not authorize a
-capability, modify telemetry consent, contact a network service, or change Trust Manifest
-policy generation 2. Run it with:
+capability, modify telemetry consent, contact a network service, or change the Trust Manifest.
+Run it with:
 
 ```text
 open-mmi-trust-inspect
@@ -598,24 +653,33 @@ mutation primitives; the current CAN no-send source tripwire; and the dashboard'
 Bootstrap / no-remote-render-dependency contract. VIN salt and fingerprint bytes are
 intentionally not part of the inspection report schema.
 
-The inspector also states what it cannot currently prove. In generation 2, generic network
-egress enforcement, generic vehicle-data persistence enforcement and remote VIN-resolution
-enforcement remain declaration-level. Accepted owner release trust state is inspectable once
-locally bootstrapped, and Trust Inspector v1 now reproduces the source-level ordering of Trust
-Transition Gate v1: coordinator preflight before installer launch, installer recheck before
-candidate deployment, and Git-object candidate-manifest inspection. Trust Transition Lineage v1
-is inspected as a hash-chained local record and becomes `PASS` once a locally confirmed baseline
-exists and its head anchors current accepted state. Installed Release/File Integrity v1 can make
-`release.file-integrity` `PASS` once its locally confirmed baseline exists and both active runtime
-roots match it. `release.provenance` remains `UNVERIFIED` until a Release Provenance v1 signer
-root is locally established; after bootstrap it becomes `PASS` only when the integrity-bound commit
-verifies against that exact pinned root. A normal installation can still have an overall
-`UNVERIFIED` result because generic network egress, persistence, and remote identity enforcement
-remain declaration-level.
+The inspector also states what it cannot currently prove. In generation 6 it distinguishes
+declared policy from reviewed static contracts and deployed configuration. For
+`network.external-egress`, `vehicle-data.persistence`, `vehicle.can.transmit` and
+`vehicle.identity.remote-resolution`, production checks can validate the applicable source,
+root-owned deployed unit/udev/storage and privilege contracts, but those results do not directly
+observe every effective process action, network packet, filesystem write, CAN namespace/qdisc
+state or hardware property. Missing deployed evidence remains `UNVERIFIED`; a contradiction or
+weakened contract is `FAIL`. Live CAN topology is measured separately by the independent P02 CAN
+checker and is not folded into the local Inspector PASS.
+
+Accepted owner release trust state is inspectable once locally bootstrapped, and Trust Inspector v1
+reproduces the source-level ordering of Trust Transition Gate v1: coordinator preflight before
+installer launch, installer recheck before candidate deployment, and Git-object candidate-manifest
+inspection. Trust Transition Lineage v1 is inspected as a hash-chained local record and becomes
+`PASS` once a locally confirmed baseline exists and its head anchors current accepted state.
+Installed Release/File Integrity v1 can make `release.file-integrity` `PASS` once its locally
+confirmed baseline exists and both active runtime roots match it. `release.provenance` remains
+`UNVERIFIED` until a Release Provenance v1 signer root is locally established; after bootstrap it
+becomes `PASS` only when the integrity-bound commit verifies against that exact pinned root. An
+overall `UNVERIFIED` result can therefore still be correct when a required evidence dimension is
+unavailable; a static/deployed PASS never hides missing live or hardware evidence.
 
 That limitation is intentional. The built-in inspector is evidence produced by the installed
 software itself; File Integrity v1 plus a pinned signer root make byte drift and signer mismatch
 detectable relative to local anchors, but sufficiently privileged modified software can replace the
-inspector and those local anchors together. A later independent Trust Checker should carry an
-independently reviewed signer root and consume the same evidence from outside the inspected
-installation to provide externally grounded conclusions.
+inspector and those local anchors together. The independent Trust Checker now provides the
+separate verifier path: it can use an independently reviewed signer fingerprint and inspect the
+target without importing its Open MMI package. Externally retained signer/checker/lineage anchors
+strengthen that conclusion, while hardware qualification and immutable off-device attestation
+remain separate questions.
